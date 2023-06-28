@@ -62,6 +62,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
 		return
 	}
+	log.LogDebugf("[CreateInode] partitionID: %v, newInodeID: %v", mp.config.PartitionId, inoID)
 	ino := NewInode(inoID, req.Mode)
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid

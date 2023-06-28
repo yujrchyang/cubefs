@@ -389,6 +389,7 @@ type volValue struct {
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
 	InodeCountThreshold      uint64
+	BitMapSnapFrozenHour     int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -479,6 +480,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 		MpSplitStep:              vol.MpSplitStep,
 		InodeCountThreshold:      vol.InodeCountThreshold,
+		BitMapSnapFrozenHour:     vol.BitMapSnapFrozenHour,
 	}
 	return
 }

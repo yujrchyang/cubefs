@@ -311,6 +311,7 @@ const (
 	TopologyFetchIntervalMinKey      = "topoFetchIntervalMin"
 	TopologyForceFetchIntervalSecKey = "topoForceFetchIntervalSec"
 	DataNodeDiskReservedRatioKey     = "dataNodeDiskReservedRatio"
+	BitMapSnapFrozenHour             = "bitmapSnapFrozenHour"
 
 	IDsKey = "ids"
 )
@@ -1264,6 +1265,7 @@ type SimpleVolView struct {
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
 	InodeCountThreshold      uint64
+	BitMapSnapFrozenHour     int64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1297,6 +1299,7 @@ type VolInfo struct {
 	CleanTrashMaxCountEachTime    int32
 	TruncateEKCountEveryTime      int
 	StoreMode                     StoreMode
+	BitMapSnapFrozenHour          int64
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,

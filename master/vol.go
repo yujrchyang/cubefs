@@ -133,6 +133,7 @@ type Vol struct {
 	RemoteCacheTTL             int64
 	MpSplitStep                uint64 // the step of split meta partition，0：used default step; if larger than the default step, used the value
 	InodeCountThreshold        uint64 // the threshold of inode count, if the inode count of a meat replica is larger than this value, the meta partition will be readonly,default 1000w
+	BitMapSnapFrozenHour       int64
 	ConnConfig                 proto.ConnConfig
 	sync.RWMutex
 }
@@ -325,6 +326,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.enableRemoveDupReq = vv.RemoveDupReqEnable
 	vol.ConnConfig = vv.ConnConfig
 	vol.TruncateEKCountEveryTime = vv.TruncateEKCountEveryTime
+	vol.BitMapSnapFrozenHour = vv.BitMapSnapFrozenHour
 	return vol
 }
 
@@ -1383,6 +1385,7 @@ func (vol *Vol) backupConfig() *Vol {
 		TruncateEKCountEveryTime:   vol.TruncateEKCountEveryTime,
 		MpSplitStep:                vol.MpSplitStep,
 		InodeCountThreshold:        vol.InodeCountThreshold,
+		BitMapSnapFrozenHour:       vol.BitMapSnapFrozenHour,
 	}
 }
 
@@ -1439,6 +1442,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.TruncateEKCountEveryTime = backupVol.TruncateEKCountEveryTime
 	vol.MpSplitStep = backupVol.MpSplitStep
 	vol.InodeCountThreshold = backupVol.InodeCountThreshold
+	vol.BitMapSnapFrozenHour = backupVol.BitMapSnapFrozenHour
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

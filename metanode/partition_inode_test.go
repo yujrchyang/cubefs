@@ -27,6 +27,7 @@ func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreM
 	node := &MetaNode{
 		nodeId: nodeID,
 	}
+	node.initFetchTopologyManager()
 	manager := &metadataManager{
 		nodeId:      1,
 		metaNode:    node,

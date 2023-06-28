@@ -38,6 +38,7 @@ func (c *Cluster) updateVolInfoResponseCache() (body []byte, err error) {
 			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
 			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
 			vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
+		volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
 		volsInfo = append(volsInfo, volInfo)
 	}
 	reply := newSuccessHTTPReply(volsInfo)

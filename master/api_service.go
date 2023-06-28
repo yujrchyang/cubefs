@@ -1758,6 +1758,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		remoteCacheTTL         int64
 
 		truncateEKCountEveryTime int
+
+		bitMapSnapFrozenHour   int64
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1887,6 +1889,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if bitMapSnapFrozenHour, err = parseBitMapSnapFrozenHourToUpdateVol(r, vol); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	connConfig, err = parseConnConfigToUpdateVol(r, vol)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -1905,7 +1912,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
-		truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold); err != nil {
+		truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2209,6 +2216,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 		MpSplitStep:              vol.MpSplitStep,
 		InodeCountThreshold:      vol.InodeCountThreshold,
+		BitMapSnapFrozenHour:     vol.BitMapSnapFrozenHour,
 	}
 }
 
@@ -4082,9 +4090,30 @@ func parseTruncateEKCountEveryTimeToUpdateVol(r *http.Request, vol *Vol) (trunca
 	var count int64
 	count, err = strconv.ParseInt(countStr, 10, 64)
 	if err != nil {
-
+		return
 	}
 	truncateEkCount = int(count)
+	return
+}
+
+func parseBitMapSnapFrozenHourToUpdateVol(r *http.Request, vol *Vol) (bitMapSnapFrozenHour int64, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+
+	intervalStr := r.FormValue(proto.BitMapSnapFrozenHour)
+	if intervalStr == "" {
+		bitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
+		return
+	}
+
+	var interval int64
+	interval, err = strconv.ParseInt(intervalStr, 10, 64)
+	if err != nil {
+		return
+	}
+	bitMapSnapFrozenHour = interval
 	return
 }
 
@@ -5579,6 +5608,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 					vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
 					vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
 					vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
+				volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
 				volsInfo = append(volsInfo, volInfo)
 			}
 		}
@@ -5665,6 +5695,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 				vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
 				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
 				vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
+			volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5695,6 +5726,7 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
 			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
 			vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
+		volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))

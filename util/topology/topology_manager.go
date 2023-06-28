@@ -431,14 +431,16 @@ func (f *TopologyManager) updateVolumeConf() (err error) {
 			cleanTrashItemMaxCountEachTime:    volConf.CleanTrashMaxCountEachTime,
 			enableRemoveDupReq:                volConf.EnableRemoveDupReq,
 			truncateEKCount:                   volConf.TruncateEKCountEveryTime,
+			bitmapSnapFrozenHour:              volConf.BitMapSnapFrozenHour,
 		})
 		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, "+
 			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v,"+
-			" enableRemoveDupReq:%v, batchInodeDelCnt: %v, delInodeInterval: %v, truncateEKCountEveryTime: %v",
+			" enableRemoveDupReq:%v, batchInodeDelCnt: %v, delInodeInterval: %v, truncateEKCountEveryTime: %v," +
+			" bitmapSnapFrozenHour: %v",
 			volConf.Name, volConf.TrashRemainingDays, volConf.ChildFileMaxCnt, volConf.TrashCleanInterval,
 			strconv.FormatBool(volConf.EnableBitMapAllocator), volConf.CleanTrashMaxDurationEachTime,
 			volConf.CleanTrashMaxCountEachTime, strconv.FormatBool(volConf.EnableRemoveDupReq), volConf.BatchInodeDelCnt,
-			volConf.DelInodeInterval, volConf.TruncateEKCountEveryTime)
+			volConf.DelInodeInterval, volConf.TruncateEKCountEveryTime, volConf.BitMapSnapFrozenHour)
 	}
 	return
 }

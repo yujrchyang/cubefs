@@ -139,6 +139,8 @@ const (
 	CliFlagWriteConnTimeout       = "writeConnTimeout"
 	CliFlagTruncateEKCount        = "truncateEKCount"
 
+	CliFlagBitMapSnapFrozenHour   = "bitMapSnapFrozenHour"
+
 	CliOpRollBack              = "rollback"
 	CliOpGetCanEcDel           = "get-can-del"
 	CliOpGetCanEcMigrate       = "get-can-migrate"

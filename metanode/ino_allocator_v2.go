@@ -69,7 +69,7 @@ func (allocator *inoAllocatorV2)AllocateId() (id uint64, err error) {
 
 	//find cur region
 	if allocator.L1Bits.IsBitFree(l1LastIndex) {
-		l2Index, _ = allocator.Bits[l1LastIndex].GetFirstFreeBit(allocator.LastBitIndex % bitPerRegion, false)
+		l2Index, _, _ = allocator.Bits[l1LastIndex].GetFirstFreeBit(allocator.LastBitIndex % bitPerRegion, false)
 		if l2Index != -1 {
 			//find free
 			goto CalId
@@ -79,13 +79,13 @@ func (allocator *inoAllocatorV2)AllocateId() (id uint64, err error) {
 	//find other region
 	for ; ; {
 		l1LastIndex = l1Index + 1
-		l1Index, _ = allocator.L1Bits.GetFirstFreeBit(l1LastIndex, true)
+		l1Index, _, _ = allocator.L1Bits.GetFirstFreeBit(l1LastIndex, true)
 		if l1Index == -1 {
 			//no free bit
 			break
 		}
 
-		l2Index, _ = allocator.Bits[l1Index].GetFirstFreeBit(0, false)
+		l2Index, _, _ = allocator.Bits[l1Index].GetFirstFreeBit(0, false)
 		if l2Index == -1 {
 			//this region is full set l1 bit
 			allocator.L1Bits.SetBit(l1Index)

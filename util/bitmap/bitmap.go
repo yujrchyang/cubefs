@@ -19,13 +19,19 @@ func findU64FreeBit(bitValue uint64, start int) int{
 	return -1
 }
 
+func (bitMap U64BitMap) Copy() U64BitMap {
+	newBitMap := make([]uint64, len(bitMap))
+	copy(newBitMap, bitMap)
+	return newBitMap
+}
+
 func (bitMap U64BitMap) GetU64BitInfo(index int) string{
 	buff := make([]byte, 8)
 	binary.BigEndian.PutUint64(buff, bitMap[index])
 	return fmt.Sprintf("value:%d bits:, %08b %08b %08b %08b %08b %08b %08b %08b", bitMap[index], buff[0], buff[1], buff[2], buff[3], buff[4], buff[5], buff[6], buff[7])
 }
 
-func (bitMap U64BitMap) GetFirstFreeBit(start int, loopAllocate bool) (id int, err error) {
+func (bitMap U64BitMap) GetFirstFreeBit(start int, loopAllocate bool) (id int, findToEnd bool, err error) {
 	lastIndex  := (start / bitPerU64) % len(bitMap)
 	freeIndex := lastIndex
 	freeBitIndex := findU64FreeBit(bitMap[freeIndex], start % bitPerU64 + 1)
@@ -44,6 +50,10 @@ func (bitMap U64BitMap) GetFirstFreeBit(start int, loopAllocate bool) (id int, e
 		}
 	}
 
+	if !loopAllocate {
+		return -1, true, fmt.Errorf("no free bit")
+	}
+
 	if lastIndex < len(bitMap) {
 		lastIndex += 1
 	}
@@ -59,7 +69,7 @@ func (bitMap U64BitMap) GetFirstFreeBit(start int, loopAllocate bool) (id int, e
 		}
 	}
 
-	return -1, fmt.Errorf("no free bit")
+	return -1, false, fmt.Errorf("no free bit")
 
 CalId:
 	id = freeIndex * bitPerU64 + freeBitIndex

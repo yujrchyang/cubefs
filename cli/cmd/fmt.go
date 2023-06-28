@@ -213,6 +213,9 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 		sb.WriteString(fmt.Sprintf("  WriteConnTimeout      : %v ms\n", "N/A"))
 	}
 	sb.WriteString(fmt.Sprintf("  TruncateEKCountEveryTime: %v\n", svv.TruncateEKCountEveryTime))
+	sb.WriteString(fmt.Sprintf("  MPSplitStep             : %v\n", svv.MpSplitStep))
+	sb.WriteString(fmt.Sprintf("  InodeCountThreshold     : %v\n", svv.InodeCountThreshold))
+	sb.WriteString(fmt.Sprintf("  BitMapSnapFrozenHour    : %v\n", svv.BitMapSnapFrozenHour))
 	return sb.String()
 }
 

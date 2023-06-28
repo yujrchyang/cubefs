@@ -390,6 +390,7 @@ func (mp *metaPartition) Start() (err error) {
 		if mp.config.BeforeStart != nil {
 			mp.config.BeforeStart()
 		}
+		mp.freezeBitMapAllocatorBeforeStart()
 		if err = mp.onStart(); err != nil {
 			err = errors.NewErrorf("[Start]->%s", err.Error())
 			return
@@ -445,6 +446,19 @@ func (mp *metaPartition) onStart() (err error) {
 	mp.startCleanTrashScheduler()
 	mp.startUpdatePartitionConfigScheduler()
 	return
+}
+
+func (mp *metaPartition) freezeBitMapAllocatorBeforeStart() {
+	if mp.config.Cursor < mp.config.End || mp.inodeIDAllocator == nil {
+		log.LogDebugf("freezeBitMapAllocateBeforeStart cursor less than end or allocator is nil, partitionID: %v," +
+			" cursor: %v", mp.config.PartitionId, mp.config.Cursor)
+		return
+	}
+
+	frozenDuration := mp.getBitmapSnapFrozenDuration()
+	mp.inodeIDAllocator.FreezeAllocator(frozenDuration)
+	log.LogDebugf("freeze bitmap allocator, partitionID: %v", mp.config.PartitionId)
+
 }
 
 func (mp *metaPartition) onStop() {
@@ -1126,21 +1140,72 @@ func (mp *metaPartition) nextInodeID() (inodeId uint64, err error) {
 
 		newId := cur + 1
 		if atomic.CompareAndSwapUint64(&mp.config.Cursor, cur, newId) {
-			if mp.inodeIDAllocator != nil {
-				mp.inodeIDAllocator.SetId(newId)
+			mp.setAllocatorIno(newId)
+			if cur >= mp.config.End {
+				enableBitMap, _ := mp.topoManager.GetBitMapAllocatorEnableFlag(mp.config.VolName)
+				log.LogDebugf("nextInodeID cur equal to end, partitionID: %v", mp.config.PartitionId)
+				if enableBitMap {
+					go mp.freezeBitmapAllocator()
+				}
 			}
 			return newId, nil
 		}
 	}
 }
 
-func (mp *metaPartition) genInodeID() (inodeID uint64, err error) {
-	if inodeID, err = mp.nextInodeID(); err == nil {
+func (mp *metaPartition) freezeBitmapAllocator() {
+	if mp.inodeIDAllocator == nil {
+		log.LogDebugf("freezeBitmapAllocator allocator disable, partitionID: %v", mp.config.PartitionId)
 		return
 	}
 
-	return mp.genInodeIDByBitMap()
+	alreadyFrozen, err := mp.inodeIDAllocator.SetStatusToFrozen()
+	if alreadyFrozen {
+		log.LogDebugf("freezeBitmapAllocator allocator already frozen, partitionID: %v", mp.config.PartitionId)
+		return
+	}
 
+	if err != nil {
+		log.LogDebugf("freezeBitmapAllocator set status to froze failed, partitionID: %v, err: %v", mp.config.PartitionId, err)
+		return
+	}
+
+	if _, err := mp.submit(context.Background(), opFSMFreezeBitmapAllocator, "", nil, nil); err != nil {
+		log.LogErrorf("freezeBitmapAllocator partitionID(%v) submit raft cmd failed:%v", mp.config.PartitionId, err)
+	}
+	log.LogDebugf("freezeBitmapAllocator submit freeze allocator cmd success, partitionID: %v", mp.config.PartitionId)
+	return
+}
+
+func (mp *metaPartition) cancelFreezeBitmapAllocator() {
+	if mp.inodeIDAllocator == nil {
+		log.LogDebugf("cancelFreezeBitmapAllocator allocator disabled, partitionID: %v", mp.config.PartitionId)
+		return
+	}
+
+	status, freezeTime, cancelFreezeTime := mp.inodeIDAllocator.GetAllocatorFreezeState()
+	if status != allocatorStatusFrozen {
+		log.LogDebugf("cancelFreezeBitmapAllocator not froze, partitionID: %v", mp.config.PartitionId)
+		return
+	}
+
+	freezeSecond := mp.getBitmapSnapFrozenDuration()/time.Second
+	newCancelFreezeTime := freezeTime + int64(freezeSecond)
+	if newCancelFreezeTime > cancelFreezeTime {
+		log.LogInfof("reset cancel freeze time: %v -> %v", time.Unix(cancelFreezeTime, 0).Format(proto.TimeFormat),
+			time.Unix(newCancelFreezeTime, 0).Format(proto.TimeFormat))
+		mp.inodeIDAllocator.ResetCancelFreezeTime(newCancelFreezeTime)
+		cancelFreezeTime = newCancelFreezeTime
+	}
+
+	if time.Now().Before(time.Unix(cancelFreezeTime, 0)) {
+		log.LogDebugf("cancelFreezeBitmapAllocator not yet reach to cancel frozen time, partitionID: %v", mp.config.PartitionId)
+		return
+	}
+
+	mp.inodeIDAllocator.CancelFreezeAllocator()
+	log.LogDebugf("cancelFreezeBitmapAllocator cancel freeze success, partitionID: %v", mp.config.PartitionId)
+	return
 }
 
 func (mp *metaPartition) genInodeIDByBitMap() (inodeID uint64, err error) {
@@ -1149,11 +1214,24 @@ func (mp *metaPartition) genInodeIDByBitMap() (inodeID uint64, err error) {
 		return
 	}
 
-	if inodeID, err = mp.inodeIDAllocator.AllocateId(); err != nil {
+	var needFreeze bool
+	if inodeID, needFreeze, err = mp.inodeIDAllocator.AllocateId(); err != nil {
 		err = ErrInodeIDOutOfRange
+		if needFreeze {
+			log.LogDebugf("genInodeIDByBitMap, allocate to end, freeze allocator, partitionID: %v", mp.config.PartitionId)
+			go mp.freezeBitmapAllocator()
+		}
 		return
 	}
 	return
+}
+
+func (mp *metaPartition) genInodeID() (inodeID uint64, err error) {
+	if inodeID, err = mp.nextInodeID(); err == nil {
+		return
+	}
+
+	return mp.genInodeIDByBitMap()
 }
 
 // Return a new inode ID and update the offset.
@@ -1783,4 +1861,19 @@ func (mp *metaPartition) removeDupClientReqEnableState() bool {
 	}
 
 	return false
+}
+
+func (mp *metaPartition) getBitmapSnapFrozenDuration() (intervalDuration time.Duration) {
+	var interval int64
+	volConf := mp.topoManager.GetVolConf(mp.config.VolName)
+	if volConf == nil {
+		intervalDuration = time.Hour*time.Duration(defBitMapAllocatorFrozenHour)
+		return
+	}
+
+	interval = volConf.GetBitMapSnapFrozenHour()
+	if interval <= 0 {
+		interval = defBitMapAllocatorFrozenHour
+	}
+	return time.Hour*time.Duration(interval)
 }

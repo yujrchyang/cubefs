@@ -80,6 +80,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timerCursor := time.NewTimer(intervalToSyncCursor)
 	timerSyncReqRecordsEvictTimestamp := time.NewTimer(time.Second * 5)
 	storeTicker := time.NewTicker(intervalDumpSnap)
+	cancelFreezeBitMapAllocateTicker := time.NewTicker(intervalToCheckCancelFreeze)
 	dumpFunc := func(msg *storeMsg) {
 		defer func() {
 			mp.manager.tokenM.ReleaseToken(mp.config.PartitionId)
@@ -218,6 +219,8 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
+			case <- cancelFreezeBitMapAllocateTicker.C:
+				mp.cancelFreezeBitmapAllocator()
 			}
 		}
 	}(mp.stopC)
@@ -325,6 +328,10 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 
 func (mp *metaPartition) updateMetaPartitionInodeAllocatorState(enable bool) {
 	if enable {
+		if status := mp.inodeIDAllocator.GetStatus(); status == allocatorStatusFrozen {
+			log.LogDebugf("bitmap allocator already frozen, partitionID: %v", mp.config.PartitionId)
+			return
+		}
 		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusAvailable)
 	} else {
 		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusUnavailable)

@@ -14,6 +14,7 @@ type VolumeConfig struct {
 	cleanTrashItemMaxCountEachTime    int32
 	enableRemoveDupReq                bool
 	truncateEKCount                   int
+	bitmapSnapFrozenHour              int64
 }
 
 func (conf *VolumeConfig) GetEnableBitMapFlag() bool {
@@ -86,6 +87,13 @@ func (conf *VolumeConfig) GetTruncateEKCount() int {
 	return conf.truncateEKCount
 }
 
+func (conf *VolumeConfig) GetBitMapSnapFrozenHour() int64 {
+	conf.RLock()
+	defer conf.RUnlock()
+
+	return conf.bitmapSnapFrozenHour
+}
+
 func (conf *VolumeConfig) update(newConf *VolumeConfig) {
 	conf.Lock()
 	defer conf.Unlock()
@@ -100,4 +108,5 @@ func (conf *VolumeConfig) update(newConf *VolumeConfig) {
 	conf.cleanTrashItemMaxDurationEachTime = newConf.cleanTrashItemMaxDurationEachTime
 	conf.enableRemoveDupReq = newConf.enableRemoveDupReq
 	conf.truncateEKCount = newConf.truncateEKCount
+	conf.bitmapSnapFrozenHour = newConf.bitmapSnapFrozenHour
 }

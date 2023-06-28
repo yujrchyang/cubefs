@@ -378,6 +378,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		mp.fsmSyncDelExtentsV2(msg.V)
 	case opFSMSyncEvictReqRecords:
 		mp.evictExpiredRequestRecords(dbWriteHandle, int64(binary.BigEndian.Uint64(msg.V)))
+	case opFSMFreezeBitmapAllocator:
+		mp.fsmFreezeBitmapAllocator()
 	}
 
 	return
@@ -1079,6 +1081,7 @@ func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, n
 	}
 
 	mp.inodeIDAllocator = newInodeIDAllocator
+	mp.freezeBitMapAllocatorBeforeStart()
 
 	if newCursor > mp.config.Cursor {
 		atomic.StoreUint64(&mp.config.Cursor, newCursor)
@@ -1199,4 +1202,14 @@ func (mp *metaPartition) uploadApplyID(applyId uint64) {
 			}
 		}
 	}
+}
+
+func (mp *metaPartition) fsmFreezeBitmapAllocator() {
+	if mp.inodeIDAllocator == nil {
+		return
+	}
+
+	frozenDuration := mp.getBitmapSnapFrozenDuration()
+	mp.inodeIDAllocator.FreezeAllocator(frozenDuration)
+	log.LogDebugf("[fsmFreezeBitmapAllocator] freeze bitmap allocator, partitionID: %v", mp.config.PartitionId)
 }

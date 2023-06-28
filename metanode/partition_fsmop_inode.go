@@ -295,6 +295,9 @@ func (mp *metaPartition) internalCursorReset(req *proto.CursorResetRequest) (res
 		}
 	case AddCursor:
 		atomic.StoreUint64(&mp.config.Cursor, req.NewCursor)
+		if mp.inodeIDAllocator != nil {
+			mp.inodeIDAllocator.ResetBitCursorToEnd()
+		}
 	default:
 		resp.Msg = fmt.Sprintf("mp[%v] with error reset type[%v]", mp.config.PartitionId, req.CursorResetType)
 		return
