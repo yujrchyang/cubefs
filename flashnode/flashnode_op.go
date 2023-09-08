@@ -137,6 +137,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *Packet, block *cache_engine.CacheBlock) (err error) {
 	needReplySize := uint32(req.Size_)
 	offset := int64(req.Offset)
+	vol := req.CacheRequest.Volume
 	defer func() {
 		if err != nil {
 			err = fmt.Errorf("action[doStreamReadRequest] cache block(%v) err:%v", block.String(), err)
@@ -163,7 +164,15 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 
 		err = func() error {
 			var storeErr error
-			reply.CRC, storeErr = block.Read(ctx, reply.Data[0:currReadSize], offset, int64(currReadSize))
+			var hit bool
+			hitObject := f.BeforeTp(vol, proto.ActionCacheHit)
+			missObject := f.BeforeTp(vol, proto.ActionCacheMiss)
+			hit, reply.CRC, storeErr = block.Read(ctx, reply.Data[0:currReadSize], offset, int64(currReadSize))
+			if hit {
+				hitObject.AfterTp(uint64(currReadSize))
+			} else {
+				missObject.AfterTp(uint64(currReadSize))
+			}
 			return storeErr
 		}()
 		p.CRC = reply.CRC
@@ -319,13 +328,13 @@ func respondToClient(conn net.Conn, p *Packet) (err error) {
 }
 
 func (f *FlashNode) contextMaker() {
-	t := time.NewTicker(proto.ReadCacheTimeout * time.Second)
-	f.currentCtx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second*2)
+	t := time.NewTicker(proto.ReadCacheTimeoutMs * time.Millisecond)
+	f.currentCtx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeoutMs*time.Millisecond*2)
 	defer t.Stop()
 	for {
 		select {
 		case <-t.C:
-			f.currentCtx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second*2)
+			f.currentCtx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeoutMs*time.Millisecond*2)
 		case <-f.stopCh:
 			return
 		}
@@ -335,7 +344,7 @@ func (f *FlashNode) contextMaker() {
 func (f *FlashNode) getContext() (ctx context.Context) {
 	ctx = f.currentCtx
 	if ctx == nil {
-		ctx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second)
+		ctx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeoutMs*time.Millisecond)
 	}
 	return ctx
 }

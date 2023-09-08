@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/ping"
 	"hash/crc32"
 	"net"
 	"strings"
@@ -59,6 +60,7 @@ func (reader *ReadSource) ReadExtentData(source *proto.DataSource, writer func(d
 	}
 	ek := &proto.ExtentKey{PartitionId: source.PartitionID, ExtentId: source.ExtentID}
 	req := newStreamFollowerReadPacket(context.Background(), ek, int(source.ExtentOffset), int(source.Size_), source.FileOffset)
+	ping.SortByDistanceASC(source.Hosts)
 	return reader.extentReadWithRetry(req, source.Hosts, wh)
 }
 

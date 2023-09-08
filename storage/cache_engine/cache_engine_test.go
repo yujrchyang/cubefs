@@ -29,7 +29,7 @@ import (
 
 var bytesCommon = randTestData(1024)
 
-func TestCacheEngine(t *testing.T) {
+func TestCacheEngineTmpfsStore(t *testing.T) {
 	ce, err := NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, 1024, DefaultExpireTime, nil, func(volume string, action int) *statistics.TpObject { return nil })
 	assert.Nil(t, err)
 	defer func() {
@@ -41,7 +41,14 @@ func TestCacheEngine(t *testing.T) {
 	version := uint32(112358796)
 	cb, err = ce.createCacheBlock(t.Name(), inode, fixedOffset, version, DefaultExpireTime, proto.CACHE_BLOCK_SIZE)
 	assert.Nil(t, err)
-	assert.Nil(t, cb.WriteAt(bytesCommon, 0, 1024))
+	defer cb.Close()
+	if !assert.Nil(t, cb.WriteAt(bytesCommon, 0, 1024)) {
+		return
+	}
+	data := make([]byte, 1024)
+	cb.markReady()
+	_, _, err = cb.Read(context.Background(), data, 0, 1024)
+	assert.Nil(t, err)
 }
 
 func TestOverFlow(t *testing.T) {
@@ -223,9 +230,7 @@ func TestSparseFile(t *testing.T) {
 	}
 	defer func() {
 		err = ce.Stop()
-		if err != nil {
-			t.Error(err)
-		}
+		assert.NoError(t, err)
 	}()
 	offset1 := uint64(proto.CACHE_BLOCK_SIZE*2 - 256*unit.KB)
 	size1 := uint64(128 * unit.KB)
@@ -250,7 +255,7 @@ func TestSparseFile(t *testing.T) {
 	alloc, err := computeAllocSize(sources)
 	assert.NoError(t, err)
 	cb, err := ce.createCacheBlock(fmt.Sprintf("%s_%s", t.Name(), "sparse"), 1, 0, 0, DefaultExpireTime, alloc)
-	if assert.Error(t, err) {
+	if !assert.NoError(t, err) {
 		return
 	}
 	for _, source := range sources {
@@ -260,24 +265,24 @@ func TestSparseFile(t *testing.T) {
 		}
 	}
 	reader := make([]byte, unit.MB)
-	n, err := cb.Read(context.Background(), reader, 0, int64(offset2&(proto.CACHE_BLOCK_SIZE-1)+size2))
-	if assert.Error(t, err) {
+	_, _, err = cb.Read(context.Background(), reader, 0, int64(offset2&(proto.CACHE_BLOCK_SIZE-1)+size2))
+	if !assert.NoError(t, err) {
 		return
 	}
-	if assert.NotEqual(t, n, offset2&(proto.CACHE_BLOCK_SIZE-1)+size2) {
+	/*	if assert.NotEqual(t, n, offset2&(proto.CACHE_BLOCK_SIZE-1)+size2) {
 		return
-	}
+	}*/
 
 	for _, source := range sources {
 		reader1 := make([]byte, source.Size_)
-		n, err = cb.Read(context.Background(), reader, int64(source.FileOffset&(proto.CACHE_BLOCK_SIZE-1)), int64(source.Size_))
-		if assert.Error(t, err) {
+		_, _, err = cb.Read(context.Background(), reader, int64(source.FileOffset&(proto.CACHE_BLOCK_SIZE-1)), int64(source.Size_))
+		if !assert.NoError(t, err) {
 			return
 		}
-		if assert.NotEqual(t, n, source.Size_) {
+		/*if assert.NotEqual(t, n, source.Size_) {
 			return
-		}
-		if assert.NotEqual(t, reader1, rawData) {
+		}*/
+		if assert.Equal(t, reader1, rawData) {
 			return
 		}
 	}

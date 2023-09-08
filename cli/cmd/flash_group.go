@@ -149,10 +149,10 @@ func newFlashGroupCreateCmd(client *master.MasterClient) *cobra.Command {
 func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		flashGroupID uint64
-		showHitRate  bool
+		detail       bool
 	)
 	var cmd = &cobra.Command{
-		Use:   CliOpInfo + " [FlashGroupID]  [showHitRate ture/false] ",
+		Use:   CliOpInfo + " [FlashGroupID]  [detail ture/false] ",
 		Short: "get flash group by id, default don't show hit rate",
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
@@ -178,46 +178,18 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 			stdout(formatFlashGroupDetail(fgView))
 
 			if len(args) > 1 {
-				showHitRate, _ = strconv.ParseBool(args[1])
+				detail, _ = strconv.ParseBool(args[1])
 			}
 
 			stdout("[Flash nodes]\n")
-			if showHitRate {
+			if detail {
 				stdout("%v\n", formatFlashNodeViewTableHeader())
 			} else {
 				stdout("%v\n", formatFlashNodeSimpleViewTableHeader())
 			}
-			var row string
 			for _, flashNodeViewInfos := range fgView.ZoneFlashNodes {
 				for _, fn := range flashNodeViewInfos {
-					var (
-						hitRate = "N/A"
-						evicts  = "N/A"
-						limit   = "N/A"
-					)
-					if fn.IsActive && fn.IsEnable && showHitRate {
-						stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
-						if err1 == nil {
-							hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
-							evicts = strconv.Itoa(stat.CacheStatus.Evicts)
-							limit = strconv.FormatUint(stat.NodeLimit, 10)
-						}
-					}
-					version := "N/A"
-					commit := "N/A"
-					versionInfo, e := getFlashNodeVersion(fn.Addr, client.FlashNodeProfPort)
-					if e == nil {
-						version = versionInfo.Version
-						commit = versionInfo.CommitID
-					}
-					if showHitRate {
-						row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
-							formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
-					} else {
-						row = fmt.Sprintf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
-							formatYesNo(fn.IsActive), fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
-					}
-					stdout("%v\n", row)
+					stdout("%v\n", formatFlashNodeRowInfo(fn, detail))
 				}
 			}
 		},
@@ -225,14 +197,66 @@ func newFlashGroupGetCmd(client *master.MasterClient) *cobra.Command {
 	return cmd
 }
 
+func formatFlashNodeRowInfo(fn *proto.FlashNodeViewInfo, detail bool) string {
+	var (
+		hitRate     = "N/A"
+		evicts      = "N/A"
+		limit       = "N/A"
+		version     = "N/A"
+		commit      = "N/A"
+		enablePing  = "N/A"
+		enableStack = "N/A"
+	)
+	if fn.IsActive {
+		stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
+		if err1 == nil {
+			hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
+			evicts = strconv.Itoa(stat.CacheStatus.Evicts)
+			limit = strconv.FormatUint(stat.NodeLimit, 10)
+			enablePing = fmt.Sprintf("%v", stat.EnablePing)
+			enableStack = fmt.Sprintf("%v", stat.EnableStack)
+		}
+		versionInfo, e := getFlashNodeVersion(fn.Addr, client.FlashNodeProfPort)
+		if e == nil {
+			version = versionInfo.Version
+			commit = versionInfo.CommitID
+		}
+	}
+	if len(commit) > 7 && "N/A" != commit {
+		commit = commit[:7]
+	}
+	if detail {
+		return fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
+			formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable, enablePing, enableStack)
+	} else {
+		return fmt.Sprintf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
+			formatYesNo(fn.IsActive), fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), fn.IsEnable, enablePing, enableStack)
+	}
+}
+
 func getFlashNodeStat(host string, port uint16) (*proto.FlashNodeStat, error) {
 	fnClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port), false)
 	return fnClient.GetStat()
 }
 
+func getKeys(host string, port uint16) ([]interface{}, error) {
+	fnClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port), false)
+	return fnClient.GetKeys()
+}
+
 func getFlashNodeVersion(host string, port uint16) (*proto.VersionValue, error) {
 	fnClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port), false)
 	return fnClient.GetVersion()
+}
+
+func setFlashNodePing(host string, port uint16, enable bool) error {
+	fnClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port), false)
+	return fnClient.SetFlashNodePing(enable)
+}
+
+func setFlashNodeStack(host string, port uint16, enable bool) error {
+	fnClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port), false)
+	return fnClient.SetFlashNodeStack(enable)
 }
 
 func newFlashGroupSetCmd(client *master.MasterClient) *cobra.Command {
@@ -501,13 +525,13 @@ func newFlashGroupSearchCmd(client *master.MasterClient) *cobra.Command {
 						wg.Add(1)
 						go func(fv *proto.FlashNodeViewInfo) {
 							defer wg.Done()
-							stat, err1 := getFlashNodeStat(fv.Addr, client.FlashNodeProfPort)
+							keys, err1 := getKeys(fv.Addr, client.FlashNodeProfPort)
 							if err1 != nil {
 								fmt.Printf("get addr:%v err:%v\n", fv.Addr, err)
 								return
 							}
-							for _, k := range stat.CacheStatus.Keys {
-								if strings.HasPrefix(k, fmt.Sprintf("%v/%v#%v", volume, inode, fixedOffset)) {
+							for _, k := range keys {
+								if strings.HasPrefix(k.(string), fmt.Sprintf("%v/%v#%v", volume, inode, fixedOffset)) {
 									fmt.Printf("reportTime: %v, blockKey: %v, zone: %v, host: %v\n", fv.ReportTime.Format("2006-01-02 15:04:05"), k, fv.ZoneName, fv.Addr)
 								}
 							}

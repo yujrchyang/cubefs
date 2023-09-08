@@ -93,6 +93,16 @@ func (t *flashNodeTopology) putZoneIfAbsent(zone *FlashNodeZone) (beStoredZone *
 	return
 }
 
+func (t *flashNodeTopology) getAllZones() (zones []*Zone) {
+	zones = make([]*Zone, 0)
+	t.zoneMap.Range(func(zoneName, value interface{}) bool {
+		zone := value.(*Zone)
+		zones = append(zones, zone)
+		return true
+	})
+	return
+}
+
 func (t *flashNodeTopology) putFlashNode(flashNode *FlashNode) (err error) {
 	if _, ok := t.flashNodeMap.Load(flashNode.Addr); ok {
 		return

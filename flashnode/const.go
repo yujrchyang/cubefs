@@ -52,4 +52,5 @@ const (
 
 const (
 	VolumePara = "volume"
+	InodePara  = "inode"
 )

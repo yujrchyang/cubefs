@@ -19,18 +19,13 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/tmpfs"
+	"github.com/cubefs/cubefs/util/unit"
 	"github.com/stretchr/testify/assert"
-	"github.com/tiglabs/raft/util"
 	"math"
 	"math/rand"
-	"os"
 	"sync"
 	"testing"
 	"time"
-)
-
-const (
-	testTmpFS = "/cfs_test/tmpfs"
 )
 
 var letterRunes = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
@@ -44,31 +39,12 @@ func randTestData(size int) (data []byte) {
 	return b
 }
 
-func initTestTmpfs(size int64) (err error) {
-	_, err = os.Stat(testTmpFS)
-	if err == nil {
-		if tmpfs.IsTmpfs(testTmpFS) {
-			if err = tmpfs.Umount(testTmpFS); err != nil {
-				return err
-			}
-		}
-	} else {
-		if !os.IsNotExist(err) {
-			return
-		}
-		_ = os.MkdirAll(testTmpFS, 0777)
-		err = nil
-	}
-	err = tmpfs.MountTmpfs(testTmpFS, size)
-	return
-}
-
 func umountTestTmpfs() error {
 	return tmpfs.Umount(testTmpFS)
 }
 
 func TestWriteCacheBlock(t *testing.T) {
-	assert.Nil(t, initTestTmpfs(200*util.MB))
+	assert.Nil(t, initTestTmpfs(200*unit.MB))
 	defer func() {
 		assert.Nil(t, umountTestTmpfs())
 	}()
@@ -81,7 +57,7 @@ func TestWriteCacheBlock(t *testing.T) {
 
 func testWriteSingleFile(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
-	assert.Nil(t, cacheBlock.initFilePath())
+	assert.Nil(t, cacheBlock.initCacheStore())
 	defer func() {
 		assert.Nil(t, cacheBlock.Delete())
 	}()
@@ -92,7 +68,7 @@ func testWriteSingleFile(t *testing.T) {
 
 func testWriteSingleFileError(t *testing.T) {
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
-	assert.Nil(t, cacheBlock.initFilePath())
+	assert.Nil(t, cacheBlock.initCacheStore())
 	defer func() {
 		assert.Nil(t, cacheBlock.Delete())
 	}()
@@ -105,7 +81,7 @@ func testWriteSingleFileError(t *testing.T) {
 func testWriteCacheBlockFull(t *testing.T) {
 	var err error
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
-	assert.Nil(t, cacheBlock.initFilePath())
+	assert.Nil(t, cacheBlock.initCacheStore())
 	defer func() {
 		assert.Nil(t, cacheBlock.Delete())
 	}()
@@ -126,14 +102,14 @@ func testWriteCacheBlockFull(t *testing.T) {
 
 func newCacheBlockWithDiffInode(volume string, index int, allocSize uint64) (cacheBlock *CacheBlock, err error) {
 	cacheBlock = NewCacheBlock(testTmpFS, volume, uint64(index), 1024, 112456871, allocSize, nil)
-	err = cacheBlock.initFilePath()
+	err = cacheBlock.initCacheStore()
 	return
 }
 
 func newCacheBlockWithDiffVolume(volume string, index int, allocSize uint64) (cacheBlock *CacheBlock, err error) {
 	newVolume := fmt.Sprintf("%s_%d", volume, index)
 	cacheBlock = NewCacheBlock(testTmpFS, newVolume, 1, 1024, 112456871, allocSize, nil)
-	err = cacheBlock.initFilePath()
+	err = cacheBlock.initCacheStore()
 	return
 }
 
@@ -173,27 +149,27 @@ func testWriteMultiCacheBlock(t *testing.T, newMultiCacheFunc func(volume string
 	wg.Wait()
 }
 
-func TestReadCacheBlock(t *testing.T) {
-	assert.Nil(t, initTestTmpfs(200*util.MB))
+func TestCacheBlockTmpfsStore(t *testing.T) {
+	assert.Nil(t, initTestTmpfs(200*unit.MB))
 	defer func() {
 		assert.Nil(t, umountTestTmpfs())
 	}()
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE, nil)
-	assert.Nil(t, cacheBlock.initFilePath())
+	assert.Nil(t, cacheBlock.initCacheStore())
 	defer func() {
 		assert.Nil(t, cacheBlock.Delete())
 	}()
+	cacheBlockReadWrite(t, cacheBlock)
+	return
+}
 
-	bytes := randTestData(1024)
-	offset := int64(0)
-	assert.Nil(t, cacheBlock.WriteAt(bytes, offset, 1024))
-	cacheBlock.markReady()
-	bytesRead := make([]byte, 1024)
-	_, err := cacheBlock.Read(context.Background(), bytesRead, offset, 1024)
-	assert.Nil(t, err)
-	for i := 0; i < 1024; i++ {
-		assert.Equal(t, bytesRead[i], bytes[i])
-	}
+func TestCacheBlockMemoryStore(t *testing.T) {
+	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE, nil)
+	assert.Nil(t, cacheBlock.initCacheStore())
+	defer func() {
+		assert.Nil(t, cacheBlock.Delete())
+	}()
+	cacheBlockReadWrite(t, cacheBlock)
 	return
 }
 
@@ -204,13 +180,13 @@ func TestParallelOperation(t *testing.T) {
 }
 
 func testParallelOperation(t *testing.T) {
-	assert.Nil(t, initTestTmpfs(200*util.MB))
+	assert.Nil(t, initTestTmpfs(200*unit.MB))
 	defer func() {
 		assert.Nil(t, umountTestTmpfs())
 	}()
 
 	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 112456871, proto.CACHE_BLOCK_SIZE, nil)
-	assert.Nil(t, cacheBlock.initFilePath())
+	assert.Nil(t, cacheBlock.initCacheStore())
 	stopCh := make(chan struct{}, 1)
 
 	//delete func
@@ -255,6 +231,87 @@ func testParallelOperation(t *testing.T) {
 	}()
 	time.Sleep(time.Second * 10)
 	close(stopCh)
+}
+
+func cacheBlockReadWrite(t *testing.T, cacheBlock *CacheBlock) {
+	dataLen := 1024
+	offsetIndex := 0
+	sizeIndex := 1
+	sources := [][]int64{
+		{
+			0,
+			int64(dataLen),
+		},
+		{
+			int64(dataLen) * 2,
+			int64(dataLen),
+		},
+		{
+			int64(dataLen) * 3,
+			int64(dataLen),
+		},
+	}
+	lackSource := []int64{
+		int64(dataLen),
+		int64(dataLen),
+	}
+	writeBytes := randTestData(dataLen)
+	for _, s := range sources {
+		assert.Nil(t, cacheBlock.WriteAt(writeBytes, s[offsetIndex]%proto.CACHE_BLOCK_SIZE, s[sizeIndex]))
+	}
+	bytesRead := make([]byte, dataLen)
+
+	t.Run("read_timeout", func(t *testing.T) {
+		timeoutCtx, cancel := context.WithTimeout(context.Background(), proto.ReadCacheTimeoutMs*time.Millisecond)
+		defer cancel()
+		_, _, err := cacheBlock.Read(timeoutCtx, bytesRead, lackSource[offsetIndex], lackSource[sizeIndex])
+		if !assert.Error(t, err) {
+			return
+		}
+		if !assert.Equal(t, err.Error(), context.DeadlineExceeded.Error()) {
+			return
+		}
+	})
+
+	t.Run("range_data_ready", func(t *testing.T) {
+		_, _, err := cacheBlock.Read(context.Background(), bytesRead, sources[0][offsetIndex], sources[0][sizeIndex])
+		if !assert.NoError(t, err) {
+			return
+		}
+		for i := 0; i < dataLen; i++ {
+			if !assert.Equal(t, writeBytes[i], bytesRead[i]) {
+				return
+			}
+		}
+	})
+
+	t.Run("all_data_ready", func(t *testing.T) {
+		cacheBlock.markReady()
+		_, _, err := cacheBlock.Read(context.Background(), bytesRead, lackSource[offsetIndex], lackSource[sizeIndex])
+		if !assert.NoError(t, err) {
+			return
+		}
+		for i := 0; i < dataLen; i++ {
+			if !assert.Equal(t, uint8(0), bytesRead[i]) {
+				return
+			}
+		}
+	})
+
+	t.Run("read_offset_usedsize_0", func(t *testing.T) {
+		offset := int64(0)
+		cacheBlock.usedSize = 0
+		_, _, err := cacheBlock.Read(context.Background(), bytesRead, offset, int64(dataLen))
+		assert.Error(t, err)
+	})
+
+	t.Run("read_offset_gt_usedsize", func(t *testing.T) {
+		offset := int64(dataLen + 1)
+		cacheBlock.usedSize = int64(dataLen)
+		_, _, err := cacheBlock.Read(context.Background(), bytesRead, offset, int64(dataLen))
+		assert.Error(t, err)
+	})
+
 }
 
 func TestComputeAllocSize(t *testing.T) {

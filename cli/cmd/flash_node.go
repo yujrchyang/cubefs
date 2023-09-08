@@ -2,10 +2,15 @@ package cmd
 
 import (
 	"fmt"
+	util_sdk "github.com/cubefs/cubefs/cli/cmd/util/sdk"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/spf13/cobra"
 	"sort"
 	"strconv"
+	"strings"
 )
 
 const (
@@ -23,6 +28,10 @@ func newFlashNodeCommand(client *master.MasterClient) *cobra.Command {
 		newFlashNodeDecommissionCmd(client),
 		newFlashNodeListCmd(client),
 		newFlashNodeSetStateCmd(client),
+		newFlashNodeSetPingCmd(client),
+		newFlashNodeSetStackCmd(client),
+		newFlashNodeEvictCmd(client),
+		newFlashNodeEvictAllCmd(client),
 	)
 	return cmd
 }
@@ -90,36 +99,17 @@ func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("[Flash nodes]\n")
-			stdout("%v\n", formatFlashNodeViewTableHeader())
-			var row string
+			if detail {
+				stdout("%v\n", formatFlashNodeViewTableHeader())
+			} else {
+				stdout("%v\n", formatFlashNodeSimpleViewTableHeader())
+			}
 			for _, flashNodeViewInfos := range zoneFlashNodes {
 				sort.Slice(flashNodeViewInfos, func(i, j int) bool {
 					return flashNodeViewInfos[i].ID < flashNodeViewInfos[j].ID
 				})
 				for _, fn := range flashNodeViewInfos {
-					var (
-						hitRate = "N/A"
-						evicts  = "N/A"
-						limit   = "N/A"
-					)
-					if detail && fn.IsActive && fn.IsEnable {
-						stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
-						if err1 == nil {
-							hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
-							evicts = strconv.Itoa(stat.CacheStatus.Evicts)
-							limit = strconv.FormatUint(stat.NodeLimit, 10)
-						}
-					}
-					version := "N/A"
-					commit := "N/A"
-					versionInfo, e := getFlashNodeVersion(fn.Addr, client.FlashNodeProfPort)
-					if e == nil {
-						version = versionInfo.Version
-						commit = versionInfo.CommitID
-					}
-					row = fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
-						formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
-					stdout("%v\n", row)
+					stdout("%v\n", formatFlashNodeRowInfo(fn, detail))
 				}
 			}
 		},
@@ -147,6 +137,226 @@ func newFlashNodeSetStateCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout("set flashNode state success\n")
+		},
+	}
+	return cmd
+}
+
+func newFlashNodeSetPingCmd(client *master.MasterClient) *cobra.Command {
+	var setAll bool
+	var addr string
+	var cmd = &cobra.Command{
+		Use:   CliOpSetPing + " [true/false]",
+		Short: "enable or disable ping sort in flash node",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			var enable bool
+			enable, err = strconv.ParseBool(args[0])
+			if err != nil {
+				return
+			}
+			if !setAll && addr == "" {
+				err = fmt.Errorf("parameter-[addr] or parameter-[all] is required")
+				return
+			}
+			if setAll && addr != "" {
+				err = fmt.Errorf("parameter-[addr] should be empty when parameter-[all] is true")
+				return
+			}
+			if addr != "" {
+				err = setFlashNodePing(addr, client.FlashNodeProfPort, enable)
+				if err != nil {
+					return
+				}
+				stdout("set flashNode:%v ping success\n", addr)
+				return
+			}
+
+			zoneFlashNodes, err := client.AdminAPI().GetAllFlashNodes(true)
+			if err != nil {
+				return
+			}
+			errHosts := make([]string, 0)
+			for _, flashNodeViewInfos := range zoneFlashNodes {
+				for _, fn := range flashNodeViewInfos {
+					err = setFlashNodePing(fn.Addr, client.FlashNodeProfPort, enable)
+					if err != nil {
+						errHosts = append(errHosts, fn.Addr)
+						errout("Error: %v", err)
+					}
+				}
+			}
+			stdout("set flashNodes ping finished, failed:%v\n", errHosts)
+		},
+	}
+	cmd.Flags().StringVar(&addr, "addr", "", "node address")
+	cmd.Flags().BoolVar(&setAll, "all", false, "all:true, all nodes will be set")
+	return cmd
+}
+
+func newFlashNodeSetStackCmd(client *master.MasterClient) *cobra.Command {
+	var setAll bool
+	var addr string
+	var cmd = &cobra.Command{
+		Use:   CliOpSetStack + " [true/false]",
+		Short: "enable or disable stack read in flash node ",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			defer func() {
+				if err != nil {
+					errout("Error: %v", err)
+				}
+			}()
+			var enable bool
+			enable, err = strconv.ParseBool(args[0])
+			if err != nil {
+				return
+			}
+			if !setAll && addr == "" {
+				err = fmt.Errorf("parameter-[addr] or parameter-[all] is required")
+				return
+			}
+			if setAll && addr != "" {
+				err = fmt.Errorf("parameter-[addr] should be empty when parameter-[all] is true")
+				return
+			}
+			if addr != "" {
+				err = setFlashNodeStack(addr, client.FlashNodeProfPort, enable)
+				if err != nil {
+					return
+				}
+				stdout("set flashNode:%v ping success\n", addr)
+				return
+			}
+
+			zoneFlashNodes, err := client.AdminAPI().GetAllFlashNodes(true)
+			if err != nil {
+				return
+			}
+			errHosts := make([]string, 0)
+			for _, flashNodeViewInfos := range zoneFlashNodes {
+				for _, fn := range flashNodeViewInfos {
+					err = setFlashNodeStack(fn.Addr, client.FlashNodeProfPort, enable)
+					if err != nil {
+						errHosts = append(errHosts, fn.Addr)
+						errout("Error: %v", err)
+					}
+				}
+			}
+			stdout("set flashNodes stack finished, failed:%v\n", errHosts)
+		},
+	}
+	cmd.Flags().StringVar(&addr, "addr", "", "node address")
+	cmd.Flags().BoolVar(&setAll, "all", false, "all:true, all nodes will be set")
+	return cmd
+}
+
+func newFlashNodeEvictCmd(client *master.MasterClient) *cobra.Command {
+	var addr string
+	var inode uint64
+	var cmd = &cobra.Command{
+		Use:   CliOpEvict + " [VOLUME]",
+		Short: "evict cache",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var volume string
+			var flashnodeZone map[string][]*proto.FlashNodeViewInfo
+			defer func() {
+				if err != nil {
+					errout(err.Error())
+				}
+			}()
+			volume = args[0]
+			_, err = client.AdminAPI().GetVolumeSimpleInfo(volume)
+			if err != nil {
+				return
+			}
+			if inode == 0 && addr == "" {
+				errout("--addr or --inode is needed, evict [volume] --addr={}; evict [volume] --inode={}")
+				return
+			}
+			flashnodeZone, err = client.AdminAPI().GetAllFlashNodes(false)
+			if err != nil {
+				return
+			}
+			if inode == 0 {
+				for _, fZone := range flashnodeZone {
+					for _, node := range fZone {
+						if addr != "" && node.Addr != addr {
+							continue
+						}
+						flashClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(node.Addr, ":")[0], client.FlashNodeProfPort), false)
+						e := flashClient.EvictVol(volume)
+						if e != nil {
+							stdout(e.Error())
+						}
+					}
+				}
+				return
+			}
+			var leader string
+			var mpID uint64
+			leader, mpID, err = util_sdk.LocateInode(inode, client, volume)
+			if err != nil {
+				return
+			}
+			mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(leader, ":")[0], client.MetaNodeProfPort), false)
+			_, err = mtClient.GetInode(mpID, inode)
+			if err != nil {
+				return
+			}
+			for _, fZone := range flashnodeZone {
+				for _, node := range fZone {
+					if addr != "" && node.Addr != addr {
+						continue
+					}
+					flashClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(node.Addr, ":")[0], client.FlashNodeProfPort), false)
+					e := flashClient.EvictInode(volume, inode)
+					if e != nil {
+						stdout(e.Error())
+					}
+				}
+			}
+		},
+	}
+	cmd.Flags().StringVar(&addr, "addr", "", "flash node address")
+	cmd.Flags().Uint64Var(&inode, "inode", 0, "inode")
+	return cmd
+}
+
+func newFlashNodeEvictAllCmd(client *master.MasterClient) *cobra.Command {
+	var cmd = &cobra.Command{
+		Use:   CliOpEvictAll + " [ADDRESS]",
+		Short: "evict all cache",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var err error
+			var addr string
+			defer func() {
+				if err != nil {
+					errout(err.Error())
+				}
+			}()
+			addr = args[0]
+			if addr == "" {
+				errout("must specify addr, --addr")
+				return
+			}
+			_, err = client.NodeAPI().GetFlashNode(addr)
+			if err != nil {
+				return
+			}
+			flashClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], client.FlashNodeProfPort), false)
+			err = flashClient.EvictAll()
+			return
 		},
 	}
 	return cmd
