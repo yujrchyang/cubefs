@@ -1959,3 +1959,201 @@ func TestProtoInodeInfoMarshaUnmarshal(t *testing.T) {
 	assert.Equal(t, int64(inodeInfo.CreateTime), inodeInfoUnmarshal.CreateTime.Unix())
 	assert.Equal(t, int64(inodeInfo.AccessTime), inodeInfoUnmarshal.AccessTime.Unix())
 }
+func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) {
+	mp, err := mockMetaPartition(1, 1, storeMode, "./test_inode_size", ApplyMock)
+	if mp == nil {
+		t.Errorf("mock mp failed:%v", err)
+		t.FailNow()
+	}
+	mp.config.TrashRemainingDays = 1
+	mp.config.Cursor = mp.config.Start
+
+	//create inode
+	inodeCnt := uint64(100)
+	inodeIDs := make([]uint64, 0, inodeCnt)
+	for index := uint64(0); index < inodeCnt; index++ {
+		var ino uint64
+		ino, err = createInode(0, 0, 0, mp)
+		if err != nil {
+			t.Error(err)
+			t.FailNow()
+		}
+		inodeIDs = append(inodeIDs, ino)
+	}
+	assert.Equal(t, int64(0), mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, inodeCnt, uint64(len(inodeIDs)))
+
+	t.Logf("create %v inode success", inodeCnt)
+
+	//inset ek
+	expectInodesTotalSize := uint64(0)
+	for _, inodeID := range inodeIDs {
+		expectInodesTotalSize += 420
+		eks := []proto.ExtentKey{
+			{FileOffset: 100, PartitionId: 2, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 300, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 20},
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 200, PartitionId: 3, ExtentId: 1, ExtentOffset: 0, Size: 60},
+			{FileOffset: 400, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 20},
+		}
+
+		for _, ek := range eks {
+			if err = extentInsert(inodeID, ek, mp); err != nil {
+				t.Error(err)
+				t.FailNow()
+			}
+		}
+	}
+	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
+
+	t.Logf("insert ek success")
+
+	//ek truncate
+	truncateInodeCnt := 0
+	for _, inodeID := range inodeIDs {
+		if inodeID % 5 == 1 {
+			truncateInodeCnt++
+			oldSize := uint64(420)
+			expectInodesTotalSize -= oldSize
+			newSize := (inodeID * 10) % 3
+			expectInodesTotalSize += newSize
+			if err = extentTruncate(inodeID, oldSize, newSize, mp); err != nil {
+				t.Error(err)
+				t.FailNow()
+			}
+		}
+	}
+	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
+
+	t.Logf("truncate inode count: %v", truncateInodeCnt)
+
+	//del
+	delInodesID := make([]uint64, 0)
+	expectDelInodeTotalSize := uint64(0)
+	for _, inodeID := range inodeIDs {
+		if inodeID%3==1 {
+			delInodesID = append(delInodesID, inodeID)
+			var retMsg *InodeResponse
+			retMsg, err = mp.getInode(NewInode(inodeID, 0))
+			if err != nil {
+				t.Error(err)
+				t.FailNow()
+			}
+
+			if retMsg.Status != proto.OpOk {
+				t.Errorf("get inode %v failed", inodeID)
+				t.FailNow()
+			}
+
+			inodeSize := retMsg.Msg.Size
+			if err = unlinkInode(inodeID, mp, true); err != nil {
+				t.Error(err)
+				t.FailNow()
+			}
+
+			if err = evictInode(inodeID, mp, true); err != nil {
+				t.Error(err)
+				t.FailNow()
+			}
+
+			expectDelInodeTotalSize += inodeSize
+			expectInodesTotalSize -= inodeSize
+		}
+	}
+	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, int64(expectDelInodeTotalSize), mp.inodeDeletedTree.GetDelInodesTotalSize())
+
+	t.Logf("del inode count: %v", len(delInodesID))
+
+	//recover
+	newDelInodeIDs := make([]uint64, 0)
+	for _, delInodeID := range delInodesID {
+		if delInodeID % 2 == 0 {
+			_, dino, status, _ := mp.getDeletedInode(delInodeID)
+			if status != proto.OpOk {
+				t.Error(status)
+				t.FailNow()
+			}
+			if err = recoverDelInode(delInodeID, mp); err != nil {
+				t.Error(err)
+				t.FailNow()
+			}
+			expectInodesTotalSize += dino.Size
+			expectDelInodeTotalSize -= dino.Size
+		} else {
+			newDelInodeIDs = append(newDelInodeIDs, delInodeID)
+		}
+	}
+	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, int64(expectDelInodeTotalSize), mp.inodeDeletedTree.GetDelInodesTotalSize())
+
+	t.Logf("recover inode success count: %v", len(delInodesID) - len(newDelInodeIDs))
+
+	//clean del inode
+	needCleanDelInodes := make([]*Inode, 0)
+	for _, delInodeID := range newDelInodeIDs {
+		if delInodeID % 8 == 1 {
+			needCleanDelInodes = append(needCleanDelInodes, NewInode(delInodeID, 0))
+			_, dino, status, _ := mp.getDeletedInode(delInodeID)
+			if status != proto.OpOk {
+				t.Error(status)
+				t.FailNow()
+			}
+			expectDelInodeTotalSize -= dino.Size
+		}
+	}
+
+	bufSlice := make([]byte, 0, 8*len(needCleanDelInodes))
+	for _, inode := range needCleanDelInodes {
+		bufSlice = append(bufSlice, inode.MarshalKey()...)
+	}
+	if _, err = mp.submit(context.Background(), opFSMInternalCleanDeletedInode, "", bufSlice, nil); err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, int64(expectDelInodeTotalSize), mp.inodeDeletedTree.GetDelInodesTotalSize())
+	t.Logf("clean del inode success count: %v", len(needCleanDelInodes))
+
+	err = mp.store(&storeMsg{
+		command:    opFSMStoreTick,
+		applyIndex: 10000,
+		snap:       NewSnapshot(mp),
+		reqTree:    mp.reqRecords.ReqBTreeSnap(),
+	})
+	if err != nil {
+		t.Error(err)
+		t.FailNow()
+	}
+
+	if mp.HasRocksDBStore() {
+		err = mp.inodeTree.PersistBaseInfo()
+		if err != nil {
+			t.Error(err)
+			t.FailNow()
+		}
+	}
+
+	//stop partition
+	close(mp.stopC)
+	time.Sleep(time.Second)
+	_ = mp.db.CloseDb()
+
+	//reload partition
+	mp, err = mockMetaPartitionReload(1, 1, storeMode, "./test_inode_size", ApplyMock)
+	if err != nil {
+		t.Errorf("mock mp reload failed:%v", err)
+		t.FailNow()
+	}
+
+	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, int64(expectDelInodeTotalSize), mp.inodeDeletedTree.GetDelInodesTotalSize())
+	releaseMetaPartition(mp)
+}
+
+func TestMetaPartition_CalcInodeAndDelInodeSize(t *testing.T) {
+	innerTestCalcInodeAndDelInodeSize(t, proto.StoreModeMem)
+	t.Logf("test mem mode finished")
+	innerTestCalcInodeAndDelInodeSize(t, proto.StoreModeRocksDb)
+	t.Logf("test rocksdb mode finished")
+}

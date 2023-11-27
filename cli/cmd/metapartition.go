@@ -62,6 +62,7 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newCheckInodeTree(client),
 		newMetaPartitionResetRecoverCmd(client),
 		newMetaPartitionInodeInuse(client),
+		newCheckMetaPartitionTotalSizeCalculation(client),
 	)
 	return cmd
 }
@@ -1250,4 +1251,88 @@ func newMetaPartitionInodeInuse(client *master.MasterClient) *cobra.Command {
 		},
 	}
 	return cmd
+}
+
+func newCheckMetaPartitionTotalSizeCalculation(client *master.MasterClient) *cobra.Command {
+	var (
+		partitionID uint64
+		err         error
+		partition   *proto.MetaPartitionInfo
+		wg          sync.WaitGroup
+		errCh       chan error
+		resps       []*meta.GetMPInfoResp
+	)
+	var cmd = &cobra.Command{
+		Use:   "check-calculation" + " [PARTITION ID]",
+		Short: "check meta partition inode total size calculation",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			defer func() {
+				if err != nil {
+					errout("get meta partition inuse inodes failed:%v\n", err.Error())
+				}
+			}()
+			partitionID, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			if partition, err = client.ClientAPI().GetMetaPartition(partitionID, ""); err != nil {
+				return
+			}
+			if len(partition.Replicas) == 0 {
+				err = fmt.Errorf("partition replicas not exist")
+				return
+			}
+
+			errCh = make(chan error,  len(partition.Replicas))
+			resps = make([]*meta.GetMPInfoResp, len(partition.Replicas))
+			for index, replica := range partition.Replicas {
+				wg.Add(1)
+				go func(index int, host string) {
+					defer wg.Done()
+					mtClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%v", strings.Split(host, ":")[0], client.MetaNodeProfPort), false)
+					resp, errGet := mtClient.GetMetaPartition(partitionID)
+					if errGet != nil {
+						errCh <- errGet
+						return
+					}
+					resps[index] = resp
+				}(index, replica.Addr)
+			}
+			wg.Wait()
+			select {
+			case err = <- errCh:
+				err = fmt.Errorf("get meta partition info failed:%v", err)
+				return
+			default:
+			}
+			if len(resps) == 0 {
+				err = fmt.Errorf("get meta partition info failed")
+				return
+			}
+			if !isConsistent(resps) {
+				for index, resp := range resps {
+					fmt.Printf("partitionID :%v, host: %v, dentryCnt: %v, inodeCnt: %v, delDentryCnt: %v," +
+						" delInodeCnt: %v, freeListCnt: %v, delInodesTotalSize: %v, inodesTotalSize: %v\n", partitionID,
+						partition.Replicas[index].Addr, resp.DentryCount, resp.InodeCount, resp.DelDentryCount,
+						resp.DelInodeCount, resp.FreeListCount, resp.DelInodesTotalSize, resp.InodesTotalSize)
+				}
+				return
+			}
+			fmt.Printf("meta partition with consistent meta data\n")
+		},
+	}
+	return cmd
+}
+
+func isConsistent(resps []*meta.GetMPInfoResp) bool {
+	r := resps[0]
+	for _, resp := range resps {
+		if resp.InodeCount != r.InodeCount || resp.DentryCount != r.DentryCount || resp.DelInodeCount != r.DelInodeCount ||
+			resp.DelDentryCount != r.DelDentryCount || resp.DelInodesTotalSize != r.DelInodesTotalSize ||
+			resp.InodesTotalSize != r.InodesTotalSize || resp.FreeListCount != r.FreeListCount {
+			return false
+		}
+	}
+	return true
 }

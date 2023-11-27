@@ -2148,10 +2148,14 @@ func (m *metadataManager) responseHeartbeatPb(adminTask *proto.AdminTask, remote
 			//already del
 			continue
 		}
+		mp, ok := partition.(*metaPartition)
+		if !ok {
+			continue
+		}
 		mConf := partition.GetBaseConfig()
-		partition.(*metaPartition).updateStatus()
+		mp.updateStatus()
 		var applyID, inodeCnt, dentryCnt, delInodeCnt, delDentryCnt uint64
-		snap := partition.(*metaPartition).GetSnapShot()
+		snap := mp.GetSnapShot()
 		if snap != nil {
 			applyID = snap.ApplyID()
 			inodeCnt = snap.Count(InodeType)
@@ -2161,22 +2165,24 @@ func (m *metadataManager) responseHeartbeatPb(adminTask *proto.AdminTask, remote
 			snap.Close()
 		}
 		mpr := &proto.MetaPartitionReportPb{
-			PartitionID:       mConf.PartitionId,
-			Start:             mConf.Start,
-			End:               mConf.End,
-			Status:            int32(partition.(*metaPartition).status),
-			MaxInodeID:        mConf.Cursor,
-			VolName:           mConf.VolName,
-			InodeCnt:          inodeCnt,
-			DentryCnt:         dentryCnt,
-			DelInodeCnt:       delInodeCnt,
-			DelDentryCnt:      delDentryCnt,
-			IsLearner:         partition.IsLearner(),
-			ExistMaxInodeID:   mConf.Cursor, //unUse
-			StoreMode:         uint32(mConf.StoreMode),
-			ApplyId:           applyID,
-			IsRecover:         partition.(*metaPartition).CreationType == proto.DecommissionedCreateDataPartition,
-			AllocatorInUseCnt: partition.(*metaPartition).inodeIDAllocator.GetUsed(),
+			PartitionID:        mConf.PartitionId,
+			Start:              mConf.Start,
+			End:                mConf.End,
+			Status:             int32(mp.status),
+			MaxInodeID:         mConf.Cursor,
+			VolName:            mConf.VolName,
+			InodeCnt:           inodeCnt,
+			DentryCnt:          dentryCnt,
+			DelInodeCnt:        delInodeCnt,
+			DelDentryCnt:       delDentryCnt,
+			IsLearner:          partition.IsLearner(),
+			ExistMaxInodeID:    mConf.Cursor, //unUse
+			StoreMode:          uint32(mConf.StoreMode),
+			ApplyId:            applyID,
+			IsRecover:          mp.CreationType == proto.DecommissionedCreateDataPartition,
+			AllocatorInUseCnt:  mp.inodeIDAllocator.GetUsed(),
+			InodesTotalSize:    mp.inodeTree.GetInodesTotalSize(),
+			DelInodesTotalSize: mp.inodeDeletedTree.GetDelInodesTotalSize(),
 		}
 		if _, isLeader := partition.IsLeader(); isLeader {
 			mpr.IsLeader = true
@@ -2232,10 +2238,14 @@ func (m *metadataManager) responseHeartbeat(adminTask *proto.AdminTask, remoteAd
 			//already del
 			continue
 		}
+		mp, ok := partition.(*metaPartition)
+		if !ok {
+			continue
+		}
 		mConf := partition.GetBaseConfig()
-		partition.(*metaPartition).updateStatus()
+		mp.updateStatus()
 		var applyID, inodeCnt, dentryCnt, delInodeCnt, delDentryCnt uint64
-		snap := partition.(*metaPartition).GetSnapShot()
+		snap := mp.GetSnapShot()
 		if snap != nil {
 			applyID = snap.ApplyID()
 			inodeCnt = snap.Count(InodeType)
@@ -2245,22 +2255,25 @@ func (m *metadataManager) responseHeartbeat(adminTask *proto.AdminTask, remoteAd
 			snap.Close()
 		}
 		mpr := &proto.MetaPartitionReport{
-			PartitionID:       mConf.PartitionId,
-			Start:             mConf.Start,
-			End:               mConf.End,
-			Status:            int(partition.(*metaPartition).status),
-			MaxInodeID:        mConf.Cursor,
-			VolName:           mConf.VolName,
-			InodeCnt:          inodeCnt,
-			DentryCnt:         dentryCnt,
-			DelInodeCnt:       delInodeCnt,
-			DelDentryCnt:      delDentryCnt,
-			IsLearner:         partition.IsLearner(),
-			ExistMaxInodeID:   mConf.Cursor, //unUse
-			StoreMode:         mConf.StoreMode,
-			ApplyId:           applyID,
-			IsRecover:         partition.(*metaPartition).CreationType == proto.DecommissionedCreateDataPartition,
-			AllocatorInUseCnt: partition.(*metaPartition).inodeIDAllocator.GetUsed(),
+			PartitionID:        mConf.PartitionId,
+			Start:              mConf.Start,
+			End:                mConf.End,
+			Status:             int(mp.status),
+			MaxInodeID:         mConf.Cursor,
+			VolName:            mConf.VolName,
+			InodeCnt:           inodeCnt,
+			DentryCnt:          dentryCnt,
+			DelInodeCnt:        delInodeCnt,
+			DelDentryCnt:       delDentryCnt,
+			IsLearner:          partition.IsLearner(),
+			ExistMaxInodeID:    mConf.Cursor, //unUse
+			StoreMode:          mConf.StoreMode,
+			ApplyId:            applyID,
+			IsRecover:          mp.CreationType == proto.DecommissionedCreateDataPartition,
+			AllocatorInUseCnt:  mp.inodeIDAllocator.GetUsed(),
+			InodesTotalSize:    mp.inodeTree.GetInodesTotalSize(),
+			DelInodesTotalSize: mp.inodeDeletedTree.GetDelInodesTotalSize(),
+
 		}
 		if _, isLeader := partition.IsLeader(); isLeader {
 			mpr.IsLeader = true

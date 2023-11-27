@@ -342,6 +342,8 @@ func ConvertSimpleVolViewPb(vv *SimpleVolViewPb) *SimpleVolView {
 		MpSplitStep:              vv.MpSplitStep,
 		InodeCountThreshold:      vv.InodeCountThreshold,
 		BitMapSnapFrozenHour:     vv.BitMapSnapFrozenHour,
+		FileTotalSize:            vv.FileTotalSize,
+		TrashUsedSize:            vv.TrashUsedSize,
 	}
 	if vv.SmartRules != nil {
 		simpleVolView.SmartRules = vv.SmartRules
@@ -445,6 +447,8 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		MpSplitStep:            vv.MpSplitStep,
 		InodeCountThreshold:    vv.InodeCountThreshold,
 		BitMapSnapFrozenHour:   vv.BitMapSnapFrozenHour,
+		FileTotalSize:          vv.FileTotalSize,
+		TrashUsedSize:          vv.TrashUsedSize,
 	}
 }
 

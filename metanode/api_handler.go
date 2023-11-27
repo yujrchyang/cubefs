@@ -17,6 +17,7 @@ package metanode
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
@@ -135,6 +136,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 
 	http.HandleFunc("/getStartFailedPartitions", m.getStartFailedPartitions)
 	http.HandleFunc("/cancelFrozenMPBitMapAllocator", m.cancelFreezeMPBitMapAllocator)
+	http.HandleFunc("/correctInodesTotalSize", m.correctInodesAndDelInodesTotalSize)
 	return
 }
 
@@ -231,6 +233,8 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 		msg["raft_log_size"] = raftPartition.GetWALFileSize()
 		msg["raft_log_cap"] = raftPartition.GetWALFileCacheCapacity()
 	}
+	msg["del_inodes_total_size"] = partition.inodeDeletedTree.GetDelInodesTotalSize()
+	msg["inodes_total_size"] = partition.inodeTree.GetInodesTotalSize()
 	msg["status"] = partition.status
 	msg["cleanTrashItemMaxDurationEachTime"] = partition.getCleanTrashItemMaxDurationEachTime()
 	msg["cleanTrashItemMaxCountEachTime"] = partition.getCleanTrashItemMaxCountEachTime()
@@ -2745,7 +2749,7 @@ func (m *MetaNode) checkFreelist(w http.ResponseWriter, r *http.Request) {
 	}
 	applyID := partition.applyID
 	//del inode snap
-	delInodeTree := &DeletedInodeBTree{(partition.inodeDeletedTree).(*DeletedInodeBTree).GetTree()}
+	delInodeTree := &DeletedInodeBTree{(partition.inodeDeletedTree).(*DeletedInodeBTree).GetTree(), 0}
 	//free inodes
 	freeInodes := make([]uint64, 0, partition.freeList.Len())
 	partition.freeList.Range(func(ino uint64) bool {
@@ -3134,5 +3138,69 @@ func (m *MetaNode) cancelFreezeMPBitMapAllocator(w http.ResponseWriter, r *http.
 		}
 	}
 	mp.inodeIDAllocator.CancelFreezeAllocator(forceCancel)
+	return
+}
+func (m *MetaNode) correctInodesAndDelInodesTotalSize(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[correctInodesAndDelInodesTotalSize] response %s", err)
+		}
+	}()
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	correctAll, _ := strconv.ParseBool(r.FormValue("correctAll"))
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	var correctAddr string
+	if !correctAll {
+		correctAddr = r.FormValue("correctAddr")
+		if correctAddr == "" {
+			resp.Code = http.StatusBadRequest
+			resp.Msg = "correctAddr is needed"
+			return
+		}
+	}
+
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = "type assertion failed"
+		return
+	}
+
+	if _, ok = partition.IsLeader(); !ok {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = "not leader"
+		return
+	}
+
+	req := new(proto.CorrectMPInodesAndDelInodesTotalSizeReq)
+	if correctAll {
+		for _, peer := range partition.config.Peers {
+			req.NeedCorrectHosts = append(req.NeedCorrectHosts, peer.Addr)
+		}
+
+		for _, learner := range partition.config.Learners {
+			req.NeedCorrectHosts = append(req.NeedCorrectHosts, learner.Addr)
+		}
+	} else {
+		req.NeedCorrectHosts = append(req.NeedCorrectHosts, correctAddr)
+	}
+	if err = partition.CorrectInodesAndDelInodesTotalSize(context.Background(), req); err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
 	return
 }

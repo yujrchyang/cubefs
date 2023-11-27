@@ -24,6 +24,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -467,4 +468,58 @@ func (mp *metaPartition) evictExpiredRequestRecords(dbWriteHandle interface{}, e
 	}
 	log.LogDebugf("evictExpiredRequestRecords, evict timestamp:%v", evictTimestamp)
 	return
+}
+
+func (mp *metaPartition) fsmCorrectInodesAndDelInodesTotalSize(req *proto.CorrectMPInodesAndDelInodesTotalSizeReq) {
+	if !contains(req.NeedCorrectHosts, mp.manager.metaNode.localAddr + ":" + mp.manager.metaNode.listen) {
+		log.LogDebugf("fsmCorrectInodesAndDelInodesTotalSize, partition(%v) in local node no need correct", mp.config.PartitionId)
+		return
+	}
+
+	delInodesOldTotalSize := mp.inodeDeletedTree.GetDelInodesTotalSize()
+	inodesOldTotalSize    := mp.inodeTree.GetInodesTotalSize()
+	snap := NewSnapshot(mp)
+
+	go func() {
+		var (
+			wg                 sync.WaitGroup
+			inodesTotalSize    int64
+			delInodesTotalSize int64
+		)
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = snap.Range(InodeType, func(item interface{}) (bool, error) {
+				ino := item.(*Inode)
+				inodesTotalSize += int64(ino.Size)
+				return true, nil
+			})
+		}()
+
+		go func() {
+			defer wg.Done()
+			_ = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
+				delIno := item.(*DeletedINode)
+				delInodesTotalSize += int64(delIno.Size)
+				return true, nil
+			})
+		}()
+		wg.Wait()
+
+		if inodesTotalSize >= inodesOldTotalSize {
+			mp.updateInodesTotalSize(uint64(inodesTotalSize - inodesOldTotalSize), 0)
+		} else {
+			mp.updateInodesTotalSize(0, uint64(inodesOldTotalSize - inodesTotalSize))
+		}
+		log.LogDebugf("fsmCorrectInodesAndDelInodesTotalSize, correct inodes total size partitionID: %v, changeSize: %v",
+			mp.config.PartitionId, inodesTotalSize - inodesOldTotalSize)
+
+		if delInodesTotalSize > delInodesOldTotalSize {
+			mp.updateDelInodesTotalSize(uint64(delInodesTotalSize - delInodesOldTotalSize), 0)
+		} else {
+			mp.updateDelInodesTotalSize(0, uint64(delInodesOldTotalSize - delInodesTotalSize))
+		}
+		log.LogDebugf("fsmCorrectInodesAndDelInodesTotalSize, correct delInodes total size partitionID: %v, changeSize: %v",
+			mp.config.PartitionId, delInodesTotalSize - delInodesOldTotalSize)
+	}()
 }

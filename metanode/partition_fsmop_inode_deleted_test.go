@@ -35,7 +35,7 @@ func mockInodeTree() InodeTree {
 		ino := NewInode(id, 1)
 		tree.ReplaceOrInsert(ino, false)
 	}
-	return &InodeBTree{tree}
+	return &InodeBTree{tree, 0}
 }
 
 func mockInodeTreeByStoreMode(t *testing.T, storeMode proto.StoreMode, rocksTree *RocksTree) InodeTree {
@@ -65,7 +65,20 @@ func mockDeletedInodeTree() DeletedInodeTree {
 		dino := NewDeletedInode(ino, ts)
 		tree.ReplaceOrInsert(dino, false)
 	}
-	return &DeletedInodeBTree{tree}
+	return &DeletedInodeBTree{tree, 0}
+}
+
+func recoverDelInode(inode uint64, mp *metaPartition) (err error) {
+	recoverInodeReq := &RecoverDeletedInodeReq{
+		PartitionID: mp.config.PartitionId,
+		Inode:       inode,
+	}
+	p := &Packet{}
+	if err = mp.RecoverDeletedInode(recoverInodeReq, p); err != nil {
+		err = fmt.Errorf("recover inode failed:%v", err)
+		return
+	}
+	return
 }
 
 func TestMetaPartition_mvToDeletedInodeTree(t *testing.T) {

@@ -331,6 +331,8 @@ type VolStatInfo struct {
 	TotalSize        uint64
 	UsedSize         uint64
 	RealUsedSize     uint64
+	FileTotalSize    int64
+	TrashUsedSize    int64
 	UsedRatio        string
 	EnableToken      bool
 	EnableWriteCache bool

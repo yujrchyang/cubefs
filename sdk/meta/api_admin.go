@@ -157,18 +157,22 @@ func (c *MetaHttpClient) mergeRequestUrl(url string, params map[string]string) s
 }
 
 type GetMPInfoResp struct {
-	LeaderAddr     string          `json:"leaderAddr"`
-	Peers          []proto.Peer    `json:"peers"`
-	Learners       []proto.Learner `json:"learners"`
-	NodeId         uint64          `json:"nodeId"`
-	Cursor         uint64          `json:"cursor"`
-	ApplyId        uint64          `json:"apply_id"`
-	InodeCount     uint64          `json:"inode_count"`
-	DentryCount    uint64          `json:"dentry_count"`
-	MultipartCount uint64          `json:"multipart_count"`
-	ExtentCount    uint64          `json:"extent_count"`
-	FreeListCount  int             `json:"free_list_count"`
-	Leader         bool            `json:"leader"`
+	LeaderAddr         string          `json:"leaderAddr"`
+	Peers              []proto.Peer    `json:"peers"`
+	Learners           []proto.Learner `json:"learners"`
+	NodeId             uint64          `json:"nodeId"`
+	Cursor             uint64          `json:"cursor"`
+	ApplyId            uint64          `json:"apply_id"`
+	InodeCount         uint64          `json:"inode_count"`
+	DentryCount        uint64          `json:"dentry_count"`
+	MultipartCount     uint64          `json:"multipart_count"`
+	ExtentCount        uint64          `json:"extent_count"`
+	FreeListCount      int             `json:"free_list_count"`
+	Leader             bool            `json:"leader"`
+	DelInodeCount      uint64          `json:"deleted_inode_count"`
+	DelDentryCount     uint64          `json:"deleted_dentry_count"`
+	DelInodesTotalSize int64           `json:"del_inodes_total_size"`
+	InodesTotalSize    int64           `json:"inodes_total_size"`
 }
 
 func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (resp *GetMPInfoResp, err error) {

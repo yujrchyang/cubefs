@@ -19,6 +19,7 @@ import (
 	"github.com/cubefs/cubefs/util/btree"
 	"hash/crc32"
 	"sync"
+	"sync/atomic"
 )
 
 const defaultBTreeDegree = 32
@@ -203,6 +204,7 @@ var _ DeletedInodeTree = &DeletedInodeBTree{}
 
 type InodeBTree struct {
 	*BTree
+	inodesTotalSize int64
 }
 
 type DentryBTree struct {
@@ -223,6 +225,7 @@ type DeletedDentryBTree struct {
 
 type DeletedInodeBTree struct {
 	*BTree
+	delInodesTotalSize int64
 }
 
 func (i *InodeBTree) GetMaxInode() (uint64, error) {
@@ -616,6 +619,43 @@ func (i *InodeBTree) MaxItem() *Inode {
 		return nil
 	}
 	return item.(*Inode)
+}
+
+func (i *InodeBTree) UpdateInodeTotalSize(addSize, subSize uint64) {
+	if addSize == subSize {
+		return
+	}
+
+	if addSize != 0 {
+		atomic.AddInt64(&i.inodesTotalSize, int64(addSize))
+	}
+
+	if subSize != 0 {
+		atomic.AddInt64(&i.inodesTotalSize, int64(^(subSize-1)))
+	}
+	return
+}
+
+func (i *DeletedInodeBTree) UpdateDelInodeTotalSize(addSize, subSize uint64) {
+	if addSize == subSize {
+		return
+	}
+
+	if addSize != 0 {
+		atomic.AddInt64(&i.delInodesTotalSize, int64(addSize))
+	}
+
+	if subSize != 0 {
+		atomic.AddInt64(&i.delInodesTotalSize, int64(^(subSize-1)))
+	}
+}
+
+func (i *InodeBTree) GetInodesTotalSize() int64 {
+	return atomic.LoadInt64(&i.inodesTotalSize)
+}
+
+func (i *DeletedInodeBTree) GetDelInodesTotalSize() int64 {
+	return atomic.LoadInt64(&i.delInodesTotalSize)
 }
 
 // BTree is the wrapper of Google's btree.

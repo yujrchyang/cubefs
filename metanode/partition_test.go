@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/diskusage"
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/tokenmanager"
+	"github.com/cubefs/cubefs/util/unit"
+	"github.com/stretchr/testify/assert"
 	"math"
 	"math/rand"
 	"os"
@@ -23,7 +26,7 @@ func ApplyMock(elem interface{},command []byte, index uint64) (resp interface{},
 
 func mockMetaPartition(partitionID uint64, metaNodeID uint64, storeMode proto.StoreMode, rootDir string, applyFunc metamock.ApplyFunc) (*metaPartition, error) {
 	_ = os.RemoveAll(rootDir)
-	_ = os.MkdirAll(rootDir, 0666)
+	_ = os.MkdirAll(rootDir, 0777)
 	node := &MetaNode{nodeId: metaNodeID, metadataDir: rootDir, limitManager: &multirate.LimiterManager{}}
 	node.initFetchTopologyManager()
 	manager := &metadataManager{nodeId: metaNodeID, rocksDBDirs: []string{rootDir}, metaNode: node}
@@ -38,6 +41,33 @@ func mockMetaPartition(partitionID uint64, metaNodeID uint64, storeMode proto.St
 		StoreMode:   storeMode,
 	}
 	tmp, err := CreateMetaPartition(conf, manager)
+	if err != nil {
+		fmt.Printf("create meta partition failed:%s", err.Error())
+		return nil, err
+	}
+	mp := tmp.(*metaPartition)
+	mp.raftPartition = &metamock.MockPartition{Id: partitionID, Mp: []interface{}{mp}, Apply: applyFunc}
+	mp.vol = NewVol()
+	go metaPartitionSchedule(mp)
+	return mp, nil
+}
+
+func mockMetaPartitionReload(partitionID uint64, metaNodeID uint64, storeMode proto.StoreMode, rootDir string,
+	applyFunc metamock.ApplyFunc) (*metaPartition, error) {
+	node := &MetaNode{nodeId: metaNodeID, metadataDir: rootDir, limitManager: &multirate.LimiterManager{}}
+	node.initFetchTopologyManager()
+	manager := &metadataManager{nodeId: metaNodeID, rocksDBDirs: []string{rootDir}, metaNode: node}
+	conf := &MetaPartitionConfig{
+		RocksDBDir:  rootDir,
+		PartitionId: partitionID,
+		NodeId:      metaNodeID,
+		Start:       1,
+		End:         math.MaxUint64 - 100,
+		Peers:       []proto.Peer{{ID: metaNodeID, Addr: "127.0.0.1"}},
+		RootDir:     rootDir,
+		StoreMode:   storeMode,
+	}
+	tmp, err := LoadMetaPartition(conf, manager)
 	if err != nil {
 		fmt.Printf("create meta partition failed:%s", err.Error())
 		return nil, err
@@ -367,4 +397,71 @@ func TestMetaPartition_storeAndLoadReqInfoInRocksDBStoreMode(t *testing.T) {
 		}
 		return true
 	})
+}
+
+func TestMetaPartition_updateStatus(t *testing.T) {
+	rootDir := "./test_update_status"
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, rootDir, ApplyMock)
+	if err != nil {
+		t.Errorf("mock meta partition failed:%v", err)
+		return
+	}
+	defer releaseMetaPartition(mp)
+
+	mp.manager.metaNode.disks = make(map[string]*diskusage.FsCapMon)
+	mp.manager.metaNode.disks[rootDir] = &diskusage.FsCapMon{
+		Path:          rootDir,
+		IsRocksDBDisk: true,
+		ReservedSpace: 20 * unit.GB,
+		Total:         100 * unit.GB,
+		Used:          10 * unit.GB,
+		Available:     90 * unit.GB,
+		Status:        diskusage.ReadWrite,
+	}
+
+	assert.Equal(t, int8(proto.Unknown), mp.status, "mp status expect Unknown")
+
+	configTotalMem = 100 * unit.GB
+	defer func() {
+		configTotalMem = 0
+	}()
+	mp.config.Cursor = mp.config.End
+	mp.inodeIDAllocator.SetStatus(allocatorStatusAvailable)
+
+	for index := uint64(mp.inodeIDAllocator.BitCursor); index < mp.inodeIDAllocator.Cnt; index++ {
+		mp.inodeIDAllocator.SetId(mp.inodeIDAllocator.Start + index)
+		if mp.inodeIDAllocator.GetUsed() > uint64(float64(mp.inodeIDAllocator.Cnt) * 0.5) {
+			break
+		}
+	}
+	mp.updateStatus()
+	assert.Equal(t, int8(proto.ReadWrite), mp.status, "mp status expect readWrite")
+
+	for index := uint64(mp.inodeIDAllocator.BitCursor); index < mp.inodeIDAllocator.Cnt; index++ {
+		mp.inodeIDAllocator.SetId(mp.inodeIDAllocator.Start + index)
+		if mp.inodeIDAllocator.GetUsed() > uint64(float64(mp.inodeIDAllocator.Cnt) * 0.95) {
+			break
+		}
+	}
+	mp.updateStatus()
+	assert.Equal(t, int8(proto.ReadOnly), mp.status, "mp status expect readOnly")
+
+	for index := uint64(0); index < mp.inodeIDAllocator.Cnt; index++ {
+		mp.inodeIDAllocator.ClearId(mp.inodeIDAllocator.Start + index)
+		if mp.inodeIDAllocator.GetFree() > uint64(float64(mp.inodeIDAllocator.Cnt) * 0.3) {
+			break
+		}
+	}
+	mp.updateStatus()
+	assert.Equal(t, int8(proto.ReadOnly), mp.status, "mp status expect readOnly")
+
+
+	for index := uint64(0); index < mp.inodeIDAllocator.Cnt; index++ {
+		mp.inodeIDAllocator.ClearId(mp.inodeIDAllocator.Start + index)
+		if mp.inodeIDAllocator.GetFree() > uint64(float64(mp.inodeIDAllocator.Cnt) * 0.5) {
+			break
+		}
+	}
+	mp.updateStatus()
+	assert.Equal(t, int8(proto.ReadWrite), mp.status, "mp status expect readWrite")
 }

@@ -1559,6 +1559,16 @@ func (vol *Vol) getDentryCntAndInodeCnt() (dentryCnt, inodeCnt uint64) {
 	return
 }
 
+func (vol *Vol) getFileTotalSizeAndTrashUsedSize() (filesTotalSize, trashUsedSize int64) {
+	vol.mpsLock.RLock()
+	defer vol.mpsLock.RUnlock()
+	for _, mp := range vol.MetaPartitions {
+		filesTotalSize += mp.InodesTotalSize
+		trashUsedSize += mp.DelInodesTotalSize
+	}
+	return
+}
+
 func (vol *Vol) checkAndUpdateDataPartitionReplicaNum(c *Cluster) {
 	defer func() {
 		if r := recover(); r != nil {

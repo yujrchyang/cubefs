@@ -60,6 +60,7 @@ func (mp *metaPartition) fsmCreateInode(dbHandle interface{}, ino *Inode) (statu
 		status = proto.OpExistErr
 		return
 	}
+	mp.updateInodesTotalSize(ino.Size, 0)
 	return
 }
 
@@ -376,6 +377,7 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 		}
 	}
 
+	oldSize := existInode.Size
 	delExtents := existInode.InsertExtents(ctx, eks, ino.ModifyTime)
 	if err = mp.inodeTree.Put(dbHandle, existInode); err != nil {
 		status = proto.OpErr
@@ -385,6 +387,8 @@ func (mp *metaPartition) fsmAppendExtents(ctx context.Context, dbHandle interfac
 	}
 	mp.recordRequest(req, status)
 	mp.persistRequestInfoToRocksDB(dbHandle, req)
+	newSize := existInode.Size
+	mp.updateInodesTotalSize(newSize, oldSize)
 	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
 		log.LogErrorf("fsm(%v) action(AppendExtents) inode(%v) exts(%v) Commit error:%v",
 			mp.config.PartitionId, existInode.Inode, eks, err)
@@ -458,6 +462,7 @@ func (mp *metaPartition) fsmInsertExtents(ctx context.Context, dbHandle interfac
 	}
 	mp.recordRequest(reqInfo, status)
 	mp.persistRequestInfoToRocksDB(dbHandle, reqInfo)
+	mp.updateInodesTotalSize(newSize, oldSize)
 	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
 		log.LogErrorf("fsm(%v) action(InsertExtents) inode(%v) eks(insert: %v, deleted: %v) size(old: %v, new: %v) Commit error:%v",
 			mp.config.PartitionId, existIno.Inode, eks, delExtents, oldSize, newSize, err)
@@ -538,6 +543,7 @@ func (mp *metaPartition) fsmExtentsTruncate(dbHandle interface{}, ino *Inode, re
 	}
 	mp.recordRequest(req, resp.Status)
 	mp.persistRequestInfoToRocksDB(dbHandle, req)
+	mp.updateInodesTotalSize(newSize, oldSize)
 	if err = mp.inodeTree.CommitBatchWrite(dbHandle, true); err != nil {
 		log.LogErrorf("fsm(%v) action(ExtentsTruncate) inode(%v) size(old: %v, new: %v, req: %v) Commit error:%v",
 			mp.config.PartitionId, ino.Inode, oldSize, newSize, ino.Size, err)
@@ -588,7 +594,7 @@ func (mp *metaPartition) fsmEvictInode(dbHandle interface{}, ino *Inode, timesta
 				ino, st)
 			resp.Status = proto.OpErr
 		}
-		log.LogDebugf("fsmEvictInode: inode: %v, status: %v", ino, st)
+		log.LogDebugf("fsmEvictInode: partitionID: %v, inode: %v, status: %v", mp.config.PartitionId, ino, st)
 		return
 	}
 	return

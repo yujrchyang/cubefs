@@ -388,6 +388,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		mp.fsmUpdateAllocatorCancelFreezeTime(newCancelFreezeTime)
 	case opFSMCancelFreezeBitmapAllocator:
 		mp.fsmCancelFreezeBitmapAllocator()
+	case opFSMCorrectInodesAndDelInodesTotalSize:
+		req := &proto.CorrectMPInodesAndDelInodesTotalSizeReq{}
+		if err = json.Unmarshal(msg.V, req); err != nil {
+			return
+		}
+		mp.fsmCorrectInodesAndDelInodesTotalSize(req)
 	}
 
 	return
@@ -613,13 +619,13 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 
 func (mp *metaPartition) ApplyBaseSnapshot(peers []raftproto.Peer, iter raftproto.SnapIterator) (err error) {
 	var (
-		data          []byte
-		index         int
-		appIndexID    uint64
-		cursor        uint64
-		db            *RocksDbInfo
-		dbWriteHandle interface{}
-		count         int
+		data              []byte
+		index             int
+		appIndexID        uint64
+		cursor            uint64
+		db                *RocksDbInfo
+		dbWriteHandle     interface{}
+		count             int
 	)
 
 	nowStr := strconv.FormatInt(time.Now().Unix(), 10)
@@ -723,6 +729,7 @@ func (mp *metaPartition) ApplyBaseSnapshot(peers []raftproto.Peer, iter raftprot
 				log.LogErrorf("ApplyBaseSnapshot: create inode failed, partitionID(%v) inode(%v)", mp.config.PartitionId, ino)
 				return
 			}
+			metaTree.InodeTree.UpdateInodeTotalSize(ino.Size, 0)
 			log.LogDebugf("ApplyBaseSnapshot: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, ino)
 
 		case opFSMCreateDentry:
@@ -979,6 +986,7 @@ func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree
 			*cursor = inode.Inode
 			metaTree.InodeTree.SetCursor(*cursor)
 		}
+		metaTree.InodeTree.UpdateInodeTotalSize(inode.Size, 0)
 		log.LogDebugf("metaItemBatchCreate: create inode: partitonID(%v) inode(%v).", mp.config.PartitionId, inode)
 	}
 
@@ -1012,6 +1020,7 @@ func (mp *metaPartition) metaItemBatchCreate(db *RocksDbInfo, metaTree *MetaTree
 			err = fmt.Errorf("create deleted inode failed:%v", err)
 			return
 		}
+		mp.inodeDeletedTree.UpdateDelInodeTotalSize(delInode.Size, 0)
 		log.LogDebugf("metaItemBatchCreate: create deleted inode: partitionID(%v) delInode(%v)", mp.config.PartitionId, delInode)
 	}
 
@@ -1080,6 +1089,9 @@ func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, n
 		log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) recover from snap failed; update meta conf failed:%s", mp.config.PartitionId, err.Error())
 		return
 	}
+	log.LogDebugf("afterApplySnapshotHandle: metaPartition(%v) update inodes total size to: %v, deleted inodes " +
+		"total size to: %v", mp.config.PartitionId, mp.inodeTree.GetInodesTotalSize(), mp.inodeDeletedTree.GetDelInodesTotalSize())
+
 	if newCursor > mp.config.Cursor {
 		atomic.StoreUint64(&mp.config.Cursor, newCursor)
 	}

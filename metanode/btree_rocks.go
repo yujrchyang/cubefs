@@ -17,20 +17,26 @@ import (
 
 const (
 	DefBatchDelCount = 10000
+
+	BaseInfoBaseVersion                = 0
+	BaseInfoWithInodesTotalSizeVersion = 1
+	BaseInfoLatestVersion              = BaseInfoWithInodesTotalSizeVersion
 )
 
 type RocksBaseInfo struct {
-	version           uint32
-	length            uint32
-	applyId           uint64
-	inodeCnt          uint64
-	dentryCnt         uint64
-	extendCnt         uint64
-	multiCnt          uint64
-	delDentryCnt      uint64
-	delInodeCnt       uint64
-	persistentApplyId uint64
-	cursor            uint64
+	version            uint32
+	length             uint32
+	applyId            uint64
+	inodeCnt           uint64
+	dentryCnt          uint64
+	extendCnt          uint64
+	multiCnt           uint64
+	delDentryCnt       uint64
+	delInodeCnt        uint64
+	persistentApplyId  uint64
+	cursor             uint64
+	inodesTotalSize    int64
+	delInodesTotalSize int64
 }
 
 func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
@@ -65,6 +71,14 @@ func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
 	info.persistentApplyId = info.applyId
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.cursor)); err != nil {
 		panic(err)
+	}
+	if info.version > BaseInfoBaseVersion {
+		if err = binary.Write(buff, binary.BigEndian, atomic.LoadInt64(&info.inodesTotalSize)); err != nil {
+			panic(err)
+		}
+		if err = binary.Write(buff, binary.BigEndian, atomic.LoadInt64(&info.delInodesTotalSize)); err != nil {
+			panic(err)
+		}
 	}
 	return buff.Bytes(), nil
 }
@@ -101,16 +115,25 @@ func (info *RocksBaseInfo) MarshalWithoutApplyID() (result []byte, err error) {
 	if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.cursor)); err != nil {
 		panic(err)
 	}
+	if info.version > BaseInfoBaseVersion {
+		if err = binary.Write(buff, binary.BigEndian, atomic.LoadInt64(&info.inodesTotalSize)); err != nil {
+			panic(err)
+		}
+		if err = binary.Write(buff, binary.BigEndian, atomic.LoadInt64(&info.delInodesTotalSize)); err != nil {
+			panic(err)
+		}
+	}
 	return buff.Bytes(), nil
 }
 
 // Unmarshal unmarshals the inode.
 func (info *RocksBaseInfo) Unmarshal(raw []byte) (err error) {
+	var version, length uint32
 	buff := bytes.NewBuffer(raw)
-	if err = binary.Read(buff, binary.BigEndian, &info.version); err != nil {
+	if err = binary.Read(buff, binary.BigEndian, &version); err != nil {
 		return
 	}
-	if err = binary.Read(buff, binary.BigEndian, &info.length); err != nil {
+	if err = binary.Read(buff, binary.BigEndian, &length); err != nil {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &info.applyId); err != nil {
@@ -138,6 +161,14 @@ func (info *RocksBaseInfo) Unmarshal(raw []byte) (err error) {
 	if err = binary.Read(buff, binary.BigEndian, &info.cursor); err != nil {
 		return
 	}
+	if version >= BaseInfoWithInodesTotalSizeVersion {
+		if err = binary.Read(buff, binary.BigEndian, &info.inodesTotalSize); err != nil {
+			return
+		}
+		if err = binary.Read(buff, binary.BigEndian, &info.delInodesTotalSize); err != nil {
+			return
+		}
+	}
 	return
 }
 
@@ -157,6 +188,7 @@ func NewRocksTree(dbInfo *RocksDbInfo) (*RocksTree, error) {
 		return nil, errors.NewErrorf("dbInfo is null")
 	}
 	tree := &RocksTree{db: dbInfo}
+	tree.baseInfo.version = BaseInfoLatestVersion
 	_ = tree.LoadBaseInfo()
 	if tree.baseInfo.length == 0 {
 		tree.baseInfo.length = uint32(unsafe.Sizeof(tree.baseInfo))
@@ -319,6 +351,7 @@ func (r *RocksTree) Count(tp TreeType) (uint64, error) {
 	}
 
 	var baseInfo RocksBaseInfo
+	baseInfo.version = BaseInfoLatestVersion
 	if err = baseInfo.Unmarshal(baseInfoBytes); err != nil {
 		err = fmt.Errorf("unmarsh base info bytes err:[%s]", err.Error())
 		log.LogErrorf(err.Error())
@@ -1448,6 +1481,43 @@ func (b *InodeRocks) MaxItem() *Inode {
 		return nil
 	}
 	return maxItem
+}
+
+func (b *InodeRocks) UpdateInodeTotalSize(addSize, subSize uint64) {
+	if addSize == subSize {
+		return
+	}
+
+	if addSize != 0 {
+		atomic.AddInt64(&b.baseInfo.inodesTotalSize, int64(addSize))
+	}
+
+	if subSize != 0 {
+		atomic.AddInt64(&b.baseInfo.inodesTotalSize, int64(^(subSize-1)))
+	}
+	return
+}
+
+func (b *DeletedInodeRocks) UpdateDelInodeTotalSize(addSize, subSize uint64) {
+	if addSize == subSize {
+		return
+	}
+
+	if addSize != 0 {
+		atomic.AddInt64(&b.baseInfo.delInodesTotalSize, int64(addSize))
+	}
+
+	if subSize != 0 {
+		atomic.AddInt64(&b.baseInfo.delInodesTotalSize, int64(^(subSize-1)))
+	}
+}
+
+func (b *InodeRocks) GetInodesTotalSize() int64 {
+	return atomic.LoadInt64(&b.baseInfo.inodesTotalSize)
+}
+
+func (b *DeletedInodeRocks) GetDelInodesTotalSize() int64 {
+	return atomic.LoadInt64(&b.baseInfo.delInodesTotalSize)
 }
 
 var _ Snapshot = &RocksSnapShot{}

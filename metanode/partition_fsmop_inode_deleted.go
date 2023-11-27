@@ -125,6 +125,7 @@ func (mp *metaPartition) mvToDeletedInodeTree(dbHandle interface{}, inode *Inode
 	if _, err = mp.inodeTree.Delete(dbHandle, inode.Inode); err != nil {
 		log.LogErrorf("[mvToDeletedInodeTree], inode(%v) deleted failed(%v)", inode, err)
 	}
+	mp.updateInodesTotalSize(0, inode.Size)
 	return
 }
 
@@ -139,6 +140,7 @@ func (mp *metaPartition) fsmCreateDeletedInode(dbHandle interface{}, dino *Delet
 		return
 	}
 	if existDelIno != nil {
+		mp.updateDelInodesTotalSize(0, existDelIno.Size)
 		log.LogErrorf("[fsmCreateDeletedInode], partitionID(%v), delInode(%v) already exist, exist delInode(%v)",
 			mp.config.PartitionId, dino, existDelIno)
 	}
@@ -148,6 +150,7 @@ func (mp *metaPartition) fsmCreateDeletedInode(dbHandle interface{}, dino *Delet
 		rsp.Status = proto.OpErr
 		return
 	}
+	mp.updateDelInodesTotalSize(dino.Size, 0)
 	return
 }
 
@@ -217,6 +220,7 @@ func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inode uint64)
 				resp.Status = proto.OpErr
 				return
 			}
+			mp.updateDelInodesTotalSize(0, deletedInode.Size)
 			return
 		}
 
@@ -266,10 +270,12 @@ func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inode uint64)
 		resp.Status = proto.OpExistErr
 		return
 	}
+	mp.updateInodesTotalSize(inoPtr.Size, 0)
 	if _, err = mp.inodeDeletedTree.Delete(dbHandle, dino.Inode.Inode); err != nil {
 		log.LogErrorf("[recoverDeletedInode], failed to delete deletedInode, delInode: (%v), error: (%v)", dino, err)
 		resp.Status = proto.OpErr
 	}
+	mp.updateDelInodesTotalSize(0, deletedInode.Size)
 	return
 }
 
@@ -440,6 +446,13 @@ func (mp *metaPartition) internalClean(dbHandle interface{}, val []byte) (err er
 func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *Inode) (err error) {
 	mp.freeList.Remove(ino.Inode)
 	var ok bool
+	var dino *DeletedINode
+	if dino, err = mp.inodeDeletedTree.RefGet(ino.Inode); err != nil {
+		log.LogErrorf("[internalCleanDeletedInode] partitionID(%v) get dino(%v) from deleted inode tree error:%v",
+			mp.config.PartitionId, ino.Inode, err)
+		return
+	}
+
 	if ok, err = mp.inodeDeletedTree.Delete(dbHandle, ino.Inode); err != nil {
 		log.LogErrorf("[internalCleanDeletedInode] partitionID(%v) delete dino(%v) from deleted inode tree error:%v",
 			mp.config.PartitionId, ino.Inode, err)
@@ -468,6 +481,9 @@ func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *In
 			return
 		}
 	} else {
+		if dino != nil {
+			mp.updateDelInodesTotalSize(0, dino.Size)
+		}
 		log.LogDebugf("[internalCleanDeletedInode] partitionID(%v) dino(%v) delete success", mp.config.PartitionId, ino.Inode)
 	}
 

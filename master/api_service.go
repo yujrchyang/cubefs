@@ -2217,6 +2217,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		MpSplitStep:              vol.MpSplitStep,
 		InodeCountThreshold:      vol.InodeCountThreshold,
 		BitMapSnapFrozenHour:     vol.BitMapSnapFrozenHour,
+		FileTotalSize:            stat.FileTotalSize,
+		TrashUsedSize:            stat.TrashUsedSize,
 	}
 }
 
@@ -5395,7 +5397,9 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	}
 	stat.EnableToken = vol.enableToken
 	stat.EnableWriteCache = vol.enableWriteCache
-	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.RealUsedSize)
+	stat.FileTotalSize, stat.TrashUsedSize = vol.getFileTotalSizeAndTrashUsedSize()
+	log.LogDebugf("total[%v],usedSize[%v],fileTotalSize[%v],trashUsedSize[%v]", stat.TotalSize, stat.RealUsedSize,
+		stat.FileTotalSize, stat.TrashUsedSize)
 	return
 }
 
@@ -5413,6 +5417,8 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.DentryCount = mp.DentryCount
 	mpView.IsRecover = mp.IsRecover
 	mpView.MaxExistIno = mp.MaxExistIno
+	mpView.InodesTotalSize = mp.InodesTotalSize
+	mpView.DelInodesTotalSize = mp.DelInodesTotalSize
 	if mpView.End == defaultMaxMetaPartitionInodeID && mpView.Status == proto.ReadOnly {
 		log.LogErrorf("[getMetaPartitionView] change mpid(%v) status to read write", mpView.PartitionID)
 		mpView.Status = proto.ReadWrite
@@ -5609,6 +5615,8 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 					vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
 					vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
 				volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
+				volInfo.FileTotalSize = stat.FileTotalSize
+				volInfo.TrashUsedSize = stat.TrashUsedSize
 				volsInfo = append(volsInfo, volInfo)
 			}
 		}
@@ -5696,6 +5704,8 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
 				vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
 			volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
+			volInfo.FileTotalSize = stat.FileTotalSize
+			volInfo.TrashUsedSize = stat.TrashUsedSize
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}

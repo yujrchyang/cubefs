@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/unit"
 	"math"
 	"sort"
 	"strconv"
@@ -136,6 +137,8 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  EcEnable             : %v\n", svv.EcEnable))
 	sb.WriteString(fmt.Sprintf("  Capacity             : %v GB\n", svv.Capacity))
 	sb.WriteString(fmt.Sprintf("  Used                 : %v GB\n", svv.UsedSizeGB))
+	sb.WriteString(fmt.Sprintf("  FileTotalSize        : %.2f GB\n", float64(svv.FileTotalSize)/unit.GB))
+	sb.WriteString(fmt.Sprintf("  TrashUsedSize        : %.2f GB\n", float64(svv.TrashUsedSize)/unit.GB))
 	sb.WriteString(fmt.Sprintf("  Create time          : %v\n", svv.CreateTime))
 	sb.WriteString(fmt.Sprintf("  Authenticate         : %v\n", formatEnabledDisabled(svv.Authenticate)))
 	sb.WriteString(fmt.Sprintf("  Follower read        : %v\n", formatEnabledDisabled(svv.FollowerRead)))
@@ -258,26 +261,28 @@ func formatVolumeStatus(status uint8) string {
 }
 
 var (
-	volumeInfoTablePattern = "%-63v    %-20v    %-8v    %-8v    %-10v    %-8v    %-10v   %-45v"
-	volumeInfoTableHeader  = fmt.Sprintf(volumeInfoTablePattern, "VOLUME", "OWNER", "USED", "TOTAL", "USED RATIO", "STATUS", "IS SMART", "CREATE TIME")
+	volumeInfoTablePattern = "%-63v    %-20v    %-8v    %-8v    %-10v    %-10v    %-10v    %-8v    %-10v   %-45v"
+	volumeInfoTableHeader  = fmt.Sprintf(volumeInfoTablePattern, "VOLUME", "OWNER", "USED", "TOTAL", "USED RATIO",
+		"FILE TOTAL SIZE", "TRASH USED", "STATUS", "IS SMART", "CREATE TIME")
 )
 
 func formatVolInfoTableRow(vi *proto.VolInfo) string {
 	return fmt.Sprintf(volumeInfoTablePattern,
-		vi.Name, vi.Owner, formatSize(vi.UsedSize), formatSize(vi.TotalSize), formatFloat(vi.UsedRatio),
-		formatVolumeStatus(vi.Status), vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
+		vi.Name, vi.Owner, formatSize(vi.UsedSize), formatSize(vi.TotalSize), formatFloat(vi.UsedRatio), formatSize(uint64(vi.FileTotalSize)),
+		formatSize(uint64(vi.TrashUsedSize)), formatVolumeStatus(vi.Status), vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
 var (
-	volumeDetailInfoTablePattern = "%-63v    %-20v    %-30v    %-10v    %-12v    %-8v    %-8v    %-8v    %-8v    %-10v	 %-45v"
+	volumeDetailInfoTablePattern = "%-63v    %-20v    %-30v    %-10v    %-12v    %-8v    %-8v    %-8v    %-10v    %-10v    %-8v    %-10v	 %-45v"
 	volumeDetailInfoTableHeader  = fmt.Sprintf(volumeDetailInfoTablePattern, "VOLUME", "OWNER", "ZONE NAME", "CROSS ZONE", "INODE COUNT",
-		"DP COUNT", "USED", "TOTAL", "STATUS", "IS SMART", "CREATE TIME")
+		"DP COUNT", "USED", "TOTAL", "FILE TOTAL SIZE", "TRASH USED", "STATUS", "IS SMART", "CREATE TIME")
 )
 
 func formatVolDetailInfoTableRow(vv *proto.SimpleVolView, vi *proto.VolInfo) string {
 	return fmt.Sprintf(volumeDetailInfoTablePattern,
 		vv.Name, vv.Owner, vv.ZoneName, vv.CrossZone, vv.InodeCount, vv.DpCnt, formatSize(vi.UsedSize), formatSize(vi.TotalSize),
-		formatVolumeStatus(vi.Status), vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
+		formatSize(uint64(vv.FileTotalSize)), formatSize(uint64(vv.TrashUsedSize)), formatVolumeStatus(vi.Status),
+		vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
 // cfs-cli volume info [vol name] -m/-d/-e
