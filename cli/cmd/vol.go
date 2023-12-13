@@ -367,6 +367,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optWriteConnTimeoutMs       int64
 		optTruncateEKCountEveryTime int
 		optBitMapSnapFrozenHour     int64
+		optNotCacheNode             string
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -791,6 +792,18 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  BitMapSnapFrozenHour: %v\n", vv.BitMapSnapFrozenHour))
 			}
 
+			if optNotCacheNode != "" {
+				isChange = true
+				var val bool
+				if val, err = strconv.ParseBool(optNotCacheNode); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  NotCacheNode : %v -> %v\n", formatEnabledDisabled(vv.NotCacheNode), formatEnabledDisabled(val)))
+				vv.NotCacheNode = val
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  NotCacheNode : %v\n", formatEnabledDisabled(vv.NotCacheNode)))
+			}
+
 			if err != nil {
 				return
 			}
@@ -815,8 +828,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
 				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator,
 				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL,
-				vv.EnableRemoveDupReq, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime,
-				vv.BitMapSnapFrozenHour)
+				vv.EnableRemoveDupReq, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode)
 			if err != nil {
 				return
 			}
@@ -871,6 +883,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optWriteConnTimeoutMs, CliFlagWriteConnTimeout, 0, "set client write connection timeout, unit: ms")
 	cmd.Flags().IntVar(&optTruncateEKCountEveryTime, CliFlagTruncateEKCount, -1, "truncate EK count every time when del inode")
 	cmd.Flags().Int64Var(&optBitMapSnapFrozenHour, CliFlagBitMapSnapFrozenHour, -1, "bit map snap frozen interval")
+	cmd.Flags().StringVar(&optNotCacheNode, CliFlagNotCacheNode, "", "Not cache node info in fuse")
 	return cmd
 }
 

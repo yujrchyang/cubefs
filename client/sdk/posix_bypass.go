@@ -610,7 +610,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 			err = syscall.Errno(-re)
 		}
 		r := recover()
-		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT))
+		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT) && re != statusEEXIST)
 		if !hasErr && !log.IsDebugEnabled() {
 			return
 		}
@@ -704,7 +704,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 				c.releaseFD(f.fd)
 				return statusEACCES
 			}
-			if err = c.truncate(nil, f.ino, 0); err != nil {
+			if err = c.truncate(nil, f.ino, f.size, 0); err != nil {
 				c.closeStream(f)
 				c.releaseFD(f.fd)
 				return statusEIO
@@ -903,8 +903,12 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	if err != nil {
 		return errorToStatus(err)
 	}
+	info, err := c.getInode(nil, inode)
+	if err != nil {
+		return errorToStatus(err)
+	}
 
-	err = c.truncate(nil, inode, uint64(len))
+	err = c.truncate(nil, inode, info.Size, uint64(len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -955,7 +959,7 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	tpObject := exporter.NewCustomKeyTPUs(c.umpFunctionGeneralKeyFast(ump_cfs_ftruncate))
 	defer tpObject.Set(nil)
 
-	err = c.truncate(nil, f.ino, uint64(len))
+	err = c.truncate(nil, f.ino, f.size, uint64(len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1024,7 +1028,7 @@ func cfs_fallocate(id C.int64_t, fd C.int, mode C.int, offset C.off_t, len C.off
 		return statusEINVAL
 	}
 
-	err = c.truncate(nil, info.Inode, uint64(offset+len))
+	err = c.truncate(nil, info.Inode, size, uint64(offset+len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1084,7 +1088,7 @@ func cfs_posix_fallocate(id C.int64_t, fd C.int, offset C.off_t, len C.off_t) (r
 		return statusOK
 	}
 
-	err = c.truncate(nil, info.Inode, uint64(offset+len))
+	err = c.truncate(nil, info.Inode, size, uint64(offset+len))
 	if err != nil {
 		return errorToStatus(err)
 	}
@@ -1287,11 +1291,12 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 	)
 	defer func() {
 		r := recover()
-		if r == nil && re < 0 && !log.IsDebugEnabled() {
+		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOTEMPTY))
+		if !hasErr && !log.IsDebugEnabled() {
 			return
 		}
 		msg := fmt.Sprintf("id(%v) path(%v) re(%v) err(%v)", id, C.GoString(path), re, err)
-		if r != nil || re < 0 {
+		if hasErr {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))

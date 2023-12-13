@@ -17,145 +17,113 @@ package fs
 import (
 	"fmt"
 	"io"
-	"sync"
 	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
 
+	"github.com/cubefs/cubefs/client/cache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/net/context"
 )
 
-// File defines the structure of a file.
-type File struct {
-	super *Super
-	info  proto.InodeInfo
-	sync.RWMutex
+// Node defines the structure of a node.
+type Node struct {
+	super  *Super
+	inode  uint64
+	dcache *cache.DentryCache
 }
 
-// Functions that File needs to implement
-var (
-	_ fs.Node              = (*File)(nil)
-	_ fs.Handle            = (*File)(nil)
-	_ fs.NodeForgetter     = (*File)(nil)
-	_ fs.NodeOpener        = (*File)(nil)
-	_ fs.HandleReleaser    = (*File)(nil)
-	_ fs.HandleReader      = (*File)(nil)
-	_ fs.HandleWriter      = (*File)(nil)
-	_ fs.HandleFlusher     = (*File)(nil)
-	_ fs.NodeFsyncer       = (*File)(nil)
-	_ fs.NodeSetattrer     = (*File)(nil)
-	_ fs.NodeReadlinker    = (*File)(nil)
-	_ fs.NodeGetxattrer    = (*File)(nil)
-	_ fs.NodeListxattrer   = (*File)(nil)
-	_ fs.NodeSetxattrer    = (*File)(nil)
-	_ fs.NodeRemovexattrer = (*File)(nil)
-)
-
-// NewFile returns a new file.
-func NewFile(s *Super, i *proto.InodeInfo) fs.Node {
-	return &File{super: s, info: *i}
+// NewNode returns a new node.
+func NewNode(s *Super, inode uint64) fs.Node {
+	return &Node{super: s, inode: inode}
 }
 
 // Getattr gets the attributes of a file.
-func (f *File) Getattr(ctx context.Context, req *fuse.GetattrRequest, resp *fuse.GetattrResponse) error {
-
-	ino := f.info.Inode
+func (f *Node) Attr(ctx context.Context, a *fuse.Attr) error {
+	ino := f.inode
 	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
 		if err == fuse.ENOENT {
-			resp.Attr.Inode = ino
+			a.Inode = ino
 			return nil
 		}
 		return ParseError(err)
 	}
 
-	fillAttr(info, &resp.Attr)
-	fileSize, gen := f.fileSize(ctx, ino)
-	if gen >= info.Generation {
-		resp.Attr.Size = uint64(fileSize)
-	}
-	if proto.IsSymlink(info.Mode) {
-		resp.Attr.Size = uint64(len(info.Target))
+	fillAttr(info, a)
+	if proto.IsRegular(info.Mode) {
+		fileSize, gen := f.fileSize(ctx, ino)
+		if gen >= info.Generation {
+			a.Size = uint64(fileSize)
+		}
+	} else if proto.IsSymlink(info.Mode) && info.Target != nil {
+		a.Size = uint64(len(*info.Target))
 	}
 
-	log.LogDebugf("TRACE Getattr: inode(%v) attr(%v) fileSize(%v) gen(%v)", info, resp.Attr, fileSize, gen)
+	log.LogDebugf("TRACE Attr: inode(%v) attr(%v)", info, a)
 	return nil
 }
 
-func (f *File) Attr(ctx context.Context, a *fuse.Attr) error {
-	fillAttr(&f.info, a)
-	fileSize, gen := f.fileSize(ctx, f.info.Inode)
-	if gen >= f.info.Generation {
-		a.Size = uint64(fileSize)
-	}
-	if proto.IsSymlink(f.info.Mode) {
-		a.Size = uint64(len(f.info.Target))
-	}
-	if log.IsDebugEnabled() {
-		log.LogDebugf("TRACE Attr: inode(%v) attr(%v) fileSize(%v) gen(%v)", f.info, a, fileSize, gen)
-	}
-	return nil
-}
-
-func (f *File) NodeID() uint64 {
-	return f.info.Inode
-}
-
-func (f *File) Mode() uint32 {
-	return f.info.Mode
+func (f *Node) Inode() uint64 {
+	return f.inode
 }
 
 // Forget evicts the inode of the current file. This can only happen when the inode is on the orphan list.
-func (f *File) Forget() {
-
-	ino := f.info.Inode
+func (f *Node) Forget() {
+	ino := f.inode
 	defer func() {
 		log.LogDebugf("TRACE Forget: ino(%v)", ino)
 	}()
 
 	f.super.ic.Delete(nil, ino)
-
 	if err := f.super.ec.EvictStream(nil, ino); err != nil {
 		log.LogWarnf("Forget: stream not ready to evict, ino(%v) err(%v)", ino, err)
 		return
 	}
 
-	if !f.super.orphan.Evict(ino) {
-		return
-	}
-
-	if err := f.super.mw.Evict(nil, ino, false); err != nil {
-		log.LogWarnf("Forget Evict: ino(%v) err(%v)", ino, err)
+	if f.super.orphan.Evict(ino) {
+		if err := f.super.mw.Evict(nil, ino, false); err != nil {
+			log.LogWarnf("Forget Evict: ino(%v) err(%v)", ino, err)
+		}
 	}
 }
 
 // Open handles the open request.
-func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
+func (f *Node) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenResponse) (handle fs.Handle, err error) {
+	if req != nil && req.Dir {
+		return f, nil
+	}
 
-	tpObject := exporter.NewVolumeTPUs("Open_us", f.super.volname)
-	defer func() {
-		tpObject.Set(err)
-	}()
+	ino := f.inode
+	// open from rebuildFuseContext doesn't have req&resp
+	if req == nil {
+		var info *proto.InodeInfo
+		if info, err = f.super.InodeGet(ctx, ino); err != nil {
+			return
+		}
+		if proto.IsDir(info.Mode) {
+			return f, nil
+		}
+	}
+
+	tpObject := exporter.NewVolumeTPUs("Open_us", Sup.volname)
 	tpObject1 := exporter.NewModuleTP("fileopen")
 	defer func() {
+		tpObject.Set(err)
 		tpObject1.Set(err)
 	}()
 
-	ino := f.info.Inode
 	start := time.Now()
-
 	f.super.ec.OpenStream(ino, false)
-
 	if f.super.prefetchManager == nil {
 		f.super.ec.RefreshExtentsCache(ctx, ino)
 	}
 
-	if f.super.keepCache {
+	if f.super.keepCache && resp != nil {
 		resp.Flags |= fuse.OpenKeepCache
 	}
 
@@ -166,13 +134,16 @@ func (f *File) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 }
 
 // Release handles the release request.
-func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
-	tpObject := exporter.NewVolumeTPUs("Release_us", f.super.volname)
+func (f *Node) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error) {
+	if req.Dir {
+		return
+	}
+	tpObject := exporter.NewVolumeTPUs("Release_us", Sup.volname)
 	defer func() {
 		tpObject.Set(err)
 	}()
 
-	ino := f.info.Inode
+	ino := f.inode
 	if log.IsDebugEnabled() {
 		log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
 	}
@@ -198,14 +169,11 @@ func (f *File) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 }
 
 // Read handles the read request.
-func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
-
+func (f *Node) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 	tpObject := exporter.NewVolumeTPUs("Read_us", f.super.volname)
-	defer func() {
-		tpObject.Set(err)
-	}()
 	tpObject1 := exporter.NewModuleTP("fileread")
 	defer func() {
+		tpObject.Set(err)
 		tpObject1.Set(err)
 	}()
 	f.super.prefetchManager.AddTotalReadCount()
@@ -214,74 +182,78 @@ func (f *File) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		tpObjectPid := exporter.NewVolumeTPUs("AppRead_us", f.super.volname)
 		defer func() {
 			tpObjectPid.Set(err)
-			log.LogWarnf("Read CFS: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+			log.LogWarnf("Read CFS: ino(%v) offset(%v) reqsize(%v) req(%v)", f.inode, req.Offset, req.Size, req)
 		}()
 	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.info.Inode, req.Offset, req.Size, req)
+		log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.inode, req.Offset, req.Size, req)
 	}
 
 	start := time.Now()
 
-	size, _, err := f.super.ec.Read(ctx, f.info.Inode, resp.Data[fuse.OutHeaderSize:(fuse.OutHeaderSize+req.Size)], uint64(req.Offset), req.Size)
+	size, _, err := f.super.ec.Read(ctx, f.inode, resp.Data[fuse.OutHeaderSize:(fuse.OutHeaderSize+req.Size)], uint64(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
-		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.info.Inode, req, err, size)
-		f.super.handleErrorWithGetInode("Read", msg, f.info.Inode)
+		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.inode, req, err, size)
+		f.super.handleErrorWithGetInode("Read", msg, f.inode)
 		return fuse.EIO
 	}
 
 	if size > req.Size {
-		msg := fmt.Sprintf("Read: read size larger than request size, ino(%v) req(%v) size(%v)", f.info.Inode, req, size)
+		msg := fmt.Sprintf("Read: read size larger than request size, ino(%v) req(%v) size(%v)", f.inode, req, size)
 		f.super.handleError("Read", msg)
 		return fuse.ERANGE
 	}
 
 	if size > 0 {
-		resp.ActualSize = uint64(size+fuse.OutHeaderSize)
+		resp.ActualSize = uint64(size + fuse.OutHeaderSize)
 	} else if size <= 0 {
 		resp.ActualSize = uint64(fuse.OutHeaderSize)
-		log.LogWarnf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.info.Inode, req.Offset, req.Size, req, size)
+		log.LogWarnf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.inode, req.Offset, req.Size, req, size)
 	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)", f.info.Inode, req.Offset, req.Size, req, size, time.Since(start))
+		log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)", f.inode, req.Offset, req.Size, req, size, time.Since(start))
 	}
 	return nil
 }
 
 // Write handles the write request.
-func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
-
+func (f *Node) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.WriteResponse) (err error) {
+	var (
+		ino         = f.inode
+		filesize    uint64
+		newFileSize uint64
+	)
 	tpObject := exporter.NewVolumeTPUs("Write_us", f.super.volname)
-	defer func() {
-		tpObject.Set(err)
-	}()
 	tpObject1 := exporter.NewModuleTP("filewrite")
 	defer func() {
+		tpObject.Set(err)
 		tpObject1.Set(err)
+		newFileSize, _ = f.fileSize(ctx, ino)
+		if newFileSize > filesize {
+			info := f.super.ic.Get(ctx, ino)
+			if info != nil {
+				info.Size = newFileSize
+			}
+		}
 	}()
 
-	ino := f.info.Inode
 	reqlen := len(req.Data)
-	filesize, _ := f.fileSize(ctx, ino)
+	filesize, _ = f.fileSize(ctx, ino)
 
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) filesize(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, filesize, req.Flags, req.FileFlags, req)
 
 	if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
-		err = f.super.ec.Truncate(ctx, ino, uint64(req.Offset)+uint64(reqlen))
+		err = f.super.ec.Truncate(ctx, ino, filesize, uint64(req.Offset)+uint64(reqlen))
 		if err == nil {
 			resp.Size = reqlen
 		}
 
-		log.LogDebugf("fallocate: ino(%v) origFilesize(%v) req(%v) err(%v)", f.info.Inode, filesize, req, err)
+		log.LogDebugf("fallocate: ino(%v) origFilesize(%v) req(%v) err(%v)", f.inode, filesize, req, err)
 		return
 	}
-
-	defer func() {
-		f.super.ic.Delete(ctx, ino)
-	}()
 
 	var waitForFlush, enSyncWrite bool
 	if isDirectIOEnabled(req.FileFlags) || (req.FileFlags&fuse.OpenSync != 0) {
@@ -316,87 +288,70 @@ func (f *File) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 }
 
 // Flush only when fsyncOnClose is enabled.
-func (f *File) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
-
+func (f *Node) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	if !f.super.fsyncOnClose {
 		return fuse.ENOSYS
 	}
-	log.LogDebugf("TRACE Flush enter: ino(%v)", f.info.Inode)
+	log.LogDebugf("TRACE Flush enter: ino(%v)", f.inode)
 	start := time.Now()
 
 	tpObject := exporter.NewVolumeTPUs("Flush_us", f.super.volname)
-	defer func() {
-		tpObject.Set(err)
-	}()
 	tpObject1 := exporter.NewModuleTP("filesync")
 	defer func() {
+		tpObject.Set(err)
 		tpObject1.Set(err)
 	}()
 
-	err = f.super.ec.Flush(ctx, f.info.Inode)
+	err = f.super.ec.Flush(ctx, f.inode)
 	if err != nil {
-		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.info.Inode, err)
-		f.super.handleErrorWithGetInode("Flush", msg, f.info.Inode)
+		msg := fmt.Sprintf("Flush: ino(%v) err(%v)", f.inode, err)
+		f.super.handleErrorWithGetInode("Flush", msg, f.inode)
 		return fuse.EIO
 	}
-	f.super.ic.Delete(ctx, f.info.Inode)
+	f.super.ic.Delete(ctx, f.inode)
 
-	log.LogDebugf("TRACE Flush: ino(%v) (%v)", f.info.Inode, time.Since(start))
+	log.LogDebugf("TRACE Flush: ino(%v) (%v)", f.inode, time.Since(start))
 	return nil
 }
 
 // Fsync hanldes the fsync request.
-func (f *File) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
+func (f *Node) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
+	// fsync from saveFuseContext doesn't have req
+	if req != nil && req.Dir {
+		return nil
+	}
 	tpObject := exporter.NewVolumeTPUs("Fsync_us", f.super.volname)
-	defer func() {
-		tpObject.Set(err)
-	}()
 	tpObject1 := exporter.NewModuleTP("filefsync")
 	defer func() {
+		tpObject.Set(err)
 		tpObject1.Set(err)
 	}()
 
-	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.info.Inode)
+	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.inode)
 	start := time.Now()
 
-	err = f.super.ec.Flush(ctx, f.info.Inode)
+	err = f.super.ec.Flush(ctx, f.inode)
 	if err != nil {
-		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.info.Inode, err)
-		f.super.handleErrorWithGetInode("Fsync", msg, f.info.Inode)
+		msg := fmt.Sprintf("Fsync: ino(%v) err(%v)", f.inode, err)
+		f.super.handleErrorWithGetInode("Fsync", msg, f.inode)
 		return fuse.EIO
 	}
-	f.super.ic.Delete(ctx, f.info.Inode)
 
-	log.LogDebugf("TRACE Fsync: ino(%v) (%v)", f.info.Inode, time.Since(start))
+	log.LogDebugf("TRACE Fsync: ino(%v) (%v)", f.inode, time.Since(start))
 	return nil
 }
 
 // Setattr handles the setattr request.
-func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) (err error) {
+func (f *Node) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) (err error) {
 	tpObject := exporter.NewVolumeTPUs("Setattr_us", f.super.volname)
-	defer func() {
-		tpObject.Set(err)
-	}()
 	tpObject1 := exporter.NewModuleTP("filesetattr")
 	defer func() {
+		tpObject.Set(err)
 		tpObject1.Set(err)
 	}()
 
-	ino := f.info.Inode
+	ino := f.inode
 	start := time.Now()
-	if req.Valid.Size() {
-		if err := f.super.ec.Flush(ctx, ino); err != nil {
-			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
-			return ParseError(err)
-		}
-		if err := f.super.ec.Truncate(ctx, ino, req.Size); err != nil {
-			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
-			return ParseError(err)
-		}
-		f.super.ic.Delete(ctx, ino)
-		f.super.ec.RefreshExtentsCache(ctx, ino)
-	}
-
 	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.LogErrorf("Setattr: InodeGet failed, ino(%v) err(%v)", ino, err)
@@ -404,9 +359,16 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	}
 
 	if req.Valid.Size() {
-		if req.Size != info.Size {
-			log.LogWarnf("Setattr: truncate ino(%v) reqSize(%v) inodeSize(%v)", ino, req.Size, info.Size)
+		if err := f.super.ec.Flush(ctx, ino); err != nil {
+			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
+			return ParseError(err)
 		}
+		if err := f.super.ec.Truncate(ctx, ino, info.Size, req.Size); err != nil {
+			log.LogErrorf("Setattr: truncate ino(%v) size(%v) err(%v)", ino, req.Size, err)
+			return ParseError(err)
+		}
+		f.super.ic.Delete(ctx, ino)
+		f.super.ec.RefreshExtentsCache(ctx, ino)
 	}
 
 	if valid := setattr(info, req); valid != 0 {
@@ -419,15 +381,14 @@ func (f *File) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	}
 
 	fillAttr(info, &resp.Attr)
-
 	log.LogDebugf("TRACE Setattr: ino(%v) req(%v) (%v)", ino, req, time.Since(start))
 	return nil
 }
 
 // Readlink handles the readlink request.
-func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
+func (f *Node) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string, error) {
 
-	ino := f.info.Inode
+	ino := f.inode
 	info, err := f.super.InodeGet(ctx, ino)
 	if err != nil {
 		log.LogErrorf("Readlink: ino(%v) err(%v)", ino, err)
@@ -438,12 +399,11 @@ func (f *File) Readlink(ctx context.Context, req *fuse.ReadlinkRequest) (string,
 }
 
 // Getxattr has not been implemented yet.
-func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
-
+func (f *Node) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fuse.GetxattrResponse) error {
 	if !f.super.enableXattr {
 		return fuse.ENOSYS
 	}
-	ino := f.info.Inode
+	ino := f.inode
 	name := req.Name
 	size := req.Size
 	pos := req.Position
@@ -453,7 +413,7 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 		return ParseError(err)
 	}
 	value := info.Get(name)
-	if pos > 0 && pos < uint32(len(value))  {
+	if pos > 0 && pos < uint32(len(value)) {
 		value = value[pos:]
 	}
 	if size > 0 && size < uint32(len(value)) {
@@ -465,12 +425,11 @@ func (f *File) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 }
 
 // Listxattr has not been implemented yet.
-func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
-
+func (f *Node) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *fuse.ListxattrResponse) error {
 	if !f.super.enableXattr {
 		return fuse.ENOSYS
 	}
-	ino := f.info.Inode
+	ino := f.inode
 	_ = req.Size     // ignore currently
 	_ = req.Position // ignore currently
 
@@ -487,12 +446,11 @@ func (f *File) Listxattr(ctx context.Context, req *fuse.ListxattrRequest, resp *
 }
 
 // Setxattr has not been implemented yet.
-func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
-
+func (f *Node) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	if !f.super.enableXattr {
 		return fuse.ENOSYS
 	}
-	ino := f.info.Inode
+	ino := f.inode
 	name := req.Name
 	value := req.Xattr
 	// TODO： implement flag to improve compatible (Mofei Zhang)
@@ -505,12 +463,11 @@ func (f *File) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 }
 
 // Removexattr has not been implemented yet.
-func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
-
+func (f *Node) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) error {
 	if !f.super.enableXattr {
 		return fuse.ENOSYS
 	}
-	ino := f.info.Inode
+	ino := f.inode
 	name := req.Name
 	if err := f.super.mw.XAttrDel_ll(ctx, ino, name); err != nil {
 		log.LogErrorf("Removexattr: ino(%v) name(%v) err(%v)", ino, name, err)
@@ -520,7 +477,7 @@ func (f *File) Removexattr(ctx context.Context, req *fuse.RemovexattrRequest) er
 	return nil
 }
 
-func (f *File) fileSize(ctx context.Context, ino uint64) (size uint64, gen uint64) {
+func (f *Node) fileSize(ctx context.Context, ino uint64) (size uint64, gen uint64) {
 	size, gen, valid := f.super.ec.FileSize(ino)
 	log.LogDebugf("fileSize: ino(%v) fileSize(%v) gen(%v) valid(%v)", ino, size, gen, valid)
 

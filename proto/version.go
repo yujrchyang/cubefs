@@ -37,6 +37,11 @@ const (
 	RemoveDupReq = "4.3.0"
 
 	/*
+		Client: support notCacheNode
+	*/
+	NotCacheNodeVersion = "4.6.0"
+
+	/*
 
 	 */
 	Version_4_6_0 = "4.6.0"

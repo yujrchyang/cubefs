@@ -9,7 +9,6 @@ import (
 	"hash/fnv"
 	"io"
 	"log"
-	"os"
 	"reflect"
 	"runtime"
 	"strings"
@@ -44,7 +43,7 @@ var ForgetServeLimit *rate.Limiter = rate.NewLimiter(defaultForgetServeLimit, de
 type FS interface {
 	// Root is called to obtain the Node for the file system root.
 	Root() (Node, error)
-	Node(ino uint64, mode uint32) Node
+	Node(ino uint64) Node
 }
 
 type FSStatfser interface {
@@ -106,8 +105,7 @@ type Node interface {
 	//
 	// The result may be cached for the duration set in Valid.
 	Attr(ctx context.Context, attr *fuse.Attr) error
-	NodeID() uint64
-	Mode() uint32
+	Inode() uint64
 }
 
 type NodeGetattrer interface {
@@ -384,6 +382,8 @@ type Config struct {
 	//
 	// Must not retain req.
 	WithContext func(ctx context.Context, req fuse.Request) context.Context
+
+	NotCacheNode bool
 }
 
 // New returns a new FUSE server ready to serve this kernel FUSE
@@ -393,6 +393,7 @@ type Config struct {
 func New(conn *fuse.Conn, config *Config) *Server {
 	s := &Server{
 		conn:         conn,
+		notCacheNode: false,
 		req:          map[fuse.RequestID]*serveRequest{},
 		nodeRef:      map[uint64]fuse.NodeID{},
 		dynamicInode: GenerateDynamicInode,
@@ -400,6 +401,7 @@ func New(conn *fuse.Conn, config *Config) *Server {
 	if config != nil {
 		s.debug = config.Debug
 		s.context = config.WithContext
+		s.notCacheNode = config.NotCacheNode
 	}
 	if s.debug == nil {
 		s.debug = fuse.Debug
@@ -409,9 +411,10 @@ func New(conn *fuse.Conn, config *Config) *Server {
 
 type Server struct {
 	// set in New
-	conn    *fuse.Conn
-	debug   func(msg interface{})
-	context func(ctx context.Context, req fuse.Request) context.Context
+	conn         *fuse.Conn
+	debug        func(msg interface{})
+	context      func(ctx context.Context, req fuse.Request) context.Context
+	notCacheNode bool
 
 	// set once at Serve time
 	fs           FS
@@ -438,7 +441,6 @@ type ContextNode struct {
 	Generation uint64
 	Refs       uint64
 	NodeID     uint64
-	Mode       uint32
 }
 
 type ContextHandle struct {
@@ -466,19 +468,22 @@ func (s *Server) saveFuseContext() (fuseContext *FuseContext) {
 	s.meta.Lock()
 	// s.node[0] is nil and s.node[1] is root.
 	// No need to save root since it is created everytime fuse is mounted.
-	skip = 2
-	nodeList := make([]*ContextNode, 0, len(s.node)-int(skip))
-	for i, sn := range s.node[skip:] {
-		if sn == nil {
-			continue
+	var nodeList []*ContextNode
+	if !s.notCacheNode {
+		skip = 2
+		nodeList = make([]*ContextNode, 0, len(s.node)-int(skip))
+		for i, sn := range s.node[skip:] {
+			if sn == nil {
+				continue
+			}
+			var nodeid uint64 = skip + uint64(i)
+
+			sn.wg.Wait()
+
+			cn := &ContextNode{sn.node.Inode(), sn.generation, sn.refs, nodeid}
+			nodeList = append(nodeList, cn)
+			ncount++
 		}
-		var nodeid uint64 = skip + uint64(i)
-
-		sn.wg.Wait()
-
-		cn := &ContextNode{sn.inode, sn.generation, sn.refs, nodeid, sn.node.Mode()}
-		nodeList = append(nodeList, cn)
-		ncount++
 	}
 
 	skip = 1
@@ -487,14 +492,17 @@ func (s *Server) saveFuseContext() (fuseContext *FuseContext) {
 		if sh == nil {
 			continue
 		}
+		inode := uint64(sh.nodeID)
+		if !s.notCacheNode {
+			inode = s.node[sh.nodeID].node.Inode()
+		}
 		handleid := skip + uint64(i)
 		if nodeFsyncer, ok := sh.handle.(NodeFsyncer); ok {
 			if err = nodeFsyncer.Fsync(nil, nil); err != nil {
-				cfslog.LogErrorf("saveFuseContext: sync node err. Inode %v, err: %v\n",
-					s.node[sh.nodeID].inode, err)
+				cfslog.LogErrorf("saveFuseContext: sync node err. Inode %v, err: %v\n", inode, err)
 			}
 		}
-		cfslog.LogDebugf("saveFuseContext. Opened inode: %d, nodeID: %d\n", s.node[sh.nodeID].inode, sh.nodeID)
+		cfslog.LogDebugf("saveFuseContext. Opened inode: %d, nodeID: %d\n", inode, sh.nodeID)
 		ch := &ContextHandle{handleid, uint64(sh.nodeID), sh.readData}
 		handleList = append(handleList, ch)
 		hcount++
@@ -513,8 +521,8 @@ func (s *Server) rebuildFuseContext(fs FS, fuseContext *FuseContext) {
 	}
 
 	for _, cn := range fuseContext.NodeList {
-		sn := &serveNode{inode: cn.Inode, generation: cn.Generation, refs: cn.Refs}
-		sn.node = fs.Node(cn.Inode, cn.Mode)
+		sn := &serveNode{generation: cn.Generation, refs: cn.Refs}
+		sn.node = fs.Node(cn.Inode)
 
 		for uint64(len(s.node)) < cn.NodeID {
 			freeNodeID := fuse.NodeID(len(s.node))
@@ -522,31 +530,31 @@ func (s *Server) rebuildFuseContext(fs FS, fuseContext *FuseContext) {
 			s.node = append(s.node, nil)
 		}
 		s.node = append(s.node, sn)
-		s.nodeRef[sn.node.NodeID()] = fuse.NodeID(cn.NodeID)
+		s.nodeRef[sn.node.Inode()] = fuse.NodeID(cn.NodeID)
 	}
 
 	for _, ch := range fuseContext.HandleList {
-		if ch.NodeID > uint64(len(s.node)) {
-			cfslog.LogErrorf("rebuildFuseContext: invalid handle(%v). Len of s.node %v\n",
-				ch, len(s.node))
-			continue
-		}
-
 		var (
-			hdl Handle
-			err error
+			node Node
+			hdl  Handle
+			err  error
 		)
-		sn := s.node[ch.NodeID]
-		if node, ok := sn.node.(NodeOpener); ok {
-			// create streamers for chubaofs
-			if hdl, err = node.Open(context.Background(), &fuse.OpenRequest{}, &fuse.OpenResponse{}); err != nil {
-				cfslog.LogErrorf("rebuildFuseContext: failed to open handle. ino(%d): %v\n", sn.inode, err)
+		if s.notCacheNode {
+			node = fs.Node(ch.NodeID)
+		} else {
+			if ch.NodeID > uint64(len(s.node)) {
+				cfslog.LogErrorf("rebuildFuseContext: invalid handle(%v). Len of s.node %v\n",
+					ch, len(s.node))
 				continue
 			}
-		} else {
-			hdl = sn.node
+			node = s.node[ch.NodeID].node
 		}
-		cfslog.LogDebugf("rebuildFuseContext: reopen inode : %d\n", sn.inode)
+
+		if hdl, err = node.(NodeOpener).Open(context.Background(), nil, nil); err != nil {
+			cfslog.LogErrorf("rebuildFuseContext: failed to open handle. ino(%d): %v\n", node.Inode(), err)
+			continue
+		}
+		cfslog.LogDebugf("rebuildFuseContext: reopen inode(%d)\n", node.Inode())
 
 		sh := &serveHandle{handle: hdl, readData: ch.ReadData, nodeID: fuse.NodeID(ch.NodeID)}
 		for uint64(len(s.handle)) < ch.HandleID {
@@ -573,19 +581,20 @@ func (s *Server) Serve(fs FS, fuseContext *FuseContext) (*FuseContext, error) {
 		s.dynamicInode = dyn.GenerateInode
 	}
 
-	root, err := fs.Root()
-	if err != nil {
-		return nil, fmt.Errorf("cannot obtain root node: %v", err)
+	if !s.notCacheNode {
+		root, err := fs.Root()
+		if err != nil {
+			return nil, fmt.Errorf("cannot obtain root node: %v", err)
+		}
+		// Recognize the root node if it's ever returned from Lookup,
+		// passed to Invalidate, etc.
+		s.nodeRef[root.Inode()] = 1
+		s.node = append(s.node, nil, &serveNode{
+			generation: s.nodeGen,
+			node:       root,
+			refs:       1,
+		})
 	}
-	// Recognize the root node if it's ever returned from Lookup,
-	// passed to Invalidate, etc.
-	s.nodeRef[root.NodeID()] = 1
-	s.node = append(s.node, nil, &serveNode{
-		inode:      1,
-		generation: s.nodeGen,
-		node:       root,
-		refs:       1,
-	})
 	s.handle = append(s.handle, nil)
 
 	s.rebuildFuseContext(fs, fuseContext)
@@ -640,7 +649,6 @@ type serveRequest struct {
 }
 
 type serveNode struct {
-	inode      uint64
 	generation uint64
 	node       Node
 	refs       uint64
@@ -654,14 +662,6 @@ type serveNode struct {
 	//     - hold Server.meta while calling wg.Add, then unlock
 	//     - do NOT try to reacquire Server.meta
 	wg sync.WaitGroup
-}
-
-func (sn *serveNode) attr(ctx context.Context, attr *fuse.Attr) error {
-	err := nodeAttr(ctx, sn.node, attr)
-	if attr.Inode == 0 {
-		attr.Inode = sn.inode
-	}
-	return err
 }
 
 type serveHandle struct {
@@ -723,19 +723,17 @@ func (dData *dirPlusData) seekDirPlusOff(reqOff int64) {
 // without needing NodeRef.
 type NodeRef struct{}
 
-func (c *Server) saveNode(inode uint64, node Node) (id fuse.NodeID, gen uint64) {
+func (c *Server) saveNode(node Node) (id fuse.NodeID, gen uint64) {
 	c.meta.Lock()
 	defer c.meta.Unlock()
 
-	if id, ok := c.nodeRef[node.NodeID()]; ok {
+	if id, ok := c.nodeRef[node.Inode()]; ok {
 		sn := c.node[id]
-		if (sn.node.Mode()^node.Mode())&uint32(os.ModeType) == 0 {
-			sn.refs++
-			return id, sn.generation
-		}
+		sn.refs++
+		return id, sn.generation
 	}
 
-	sn := &serveNode{inode: inode, node: node, refs: 1}
+	sn := &serveNode{node: node, refs: 1}
 	if n := len(c.freeNode); n > 0 {
 		id = c.freeNode[n-1]
 		c.freeNode = c.freeNode[:n-1]
@@ -746,7 +744,7 @@ func (c *Server) saveNode(inode uint64, node Node) (id fuse.NodeID, gen uint64) 
 		c.node = append(c.node, sn)
 	}
 	sn.generation = c.nodeGen
-	c.nodeRef[node.NodeID()] = id
+	c.nodeRef[node.Inode()] = id
 	return id, sn.generation
 }
 
@@ -776,6 +774,9 @@ func (n *nodeRefcountDropBug) String() string {
 }
 
 func (c *Server) dropNode(id fuse.NodeID, n uint64) (forget bool) {
+	if c.notCacheNode {
+		return true
+	}
 	c.meta.Lock()
 	defer c.meta.Unlock()
 	snode := c.node[id]
@@ -801,8 +802,8 @@ func (c *Server) dropNode(id fuse.NodeID, n uint64) (forget bool) {
 		snode.wg.Wait()
 		c.node[id] = nil
 		c.freeNode = append(c.freeNode, id)
-		if curNodeID, exist := c.nodeRef[snode.node.NodeID()]; exist && curNodeID == id {
-			delete(c.nodeRef, snode.node.NodeID())
+		if curNodeID, exist := c.nodeRef[snode.node.Inode()]; exist && curNodeID == id {
+			delete(c.nodeRef, snode.node.Inode())
 			return true
 		}
 	}
@@ -1029,31 +1030,35 @@ func (c *Server) serve(r fuse.Request) {
 		Request: r.Hdr(),
 		In:      r,
 	})
-	var node Node
-	var snode *serveNode
-	c.meta.Lock()
 	hdr := r.Hdr()
-	if id := hdr.Node; id != 0 {
-		if id < fuse.NodeID(len(c.node)) {
-			snode = c.node[uint(id)]
+	var node Node
+	c.meta.Lock()
+	if c.notCacheNode {
+		node = c.fs.Node(uint64(hdr.Node))
+	} else {
+		var snode *serveNode
+		if id := hdr.Node; id != 0 {
+			if id < fuse.NodeID(len(c.node)) {
+				snode = c.node[uint(id)]
+			}
+			if snode == nil {
+				c.meta.Unlock()
+				c.debug(response{
+					Op:      opName(r),
+					Request: logResponseHeader{ID: hdr.ID},
+					Error:   fuse.ESTALE.ErrnoName(),
+					// this is the only place that sets both Error and
+					// Out; not sure if i want to do that; might get rid
+					// of len(c.node) things altogether
+					Out: logMissingNode{
+						MaxNode: fuse.NodeID(len(c.node)),
+					},
+				})
+				r.RespondError(fuse.ESTALE)
+				return
+			}
+			node = snode.node
 		}
-		if snode == nil {
-			c.meta.Unlock()
-			c.debug(response{
-				Op:      opName(r),
-				Request: logResponseHeader{ID: hdr.ID},
-				Error:   fuse.ESTALE.ErrnoName(),
-				// this is the only place that sets both Error and
-				// Out; not sure if i want to do that; might get rid
-				// of len(c.node) things altogether
-				Out: logMissingNode{
-					MaxNode: fuse.NodeID(len(c.node)),
-				},
-			})
-			r.RespondError(fuse.ESTALE)
-			return
-		}
-		node = snode.node
 	}
 	if c.req[hdr.ID] != nil {
 		// This happens with OSXFUSE.  Assume it's okay and
@@ -1123,7 +1128,7 @@ func (c *Server) serve(r fuse.Request) {
 		}
 	}()
 
-	if err := c.handleRequest(ctx, node, snode, r, done); err != nil {
+	if err := c.handleRequest(ctx, node, r, done); err != nil {
 		if err == context.Canceled {
 			select {
 			case <-parentCtx.Done():
@@ -1152,7 +1157,7 @@ func (c *Server) serve(r fuse.Request) {
 }
 
 // handleRequest will either a) call done(s) and r.Respond(s) OR b) return an error.
-func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode, r fuse.Request, done func(resp interface{})) error {
+func (c *Server) handleRequest(ctx context.Context, node Node, r fuse.Request, done func(resp interface{})) error {
 	switch r := r.(type) {
 	default:
 		// Note: To FUSE, ENOSYS means "this server never implements this request."
@@ -1179,7 +1184,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 				return err
 			}
 		} else {
-			if err := snode.attr(ctx, &s.Attr); err != nil {
+			if err := nodeAttr(ctx, node, &s.Attr); err != nil {
 				return err
 			}
 		}
@@ -1195,7 +1200,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 			}
 		}
 
-		if err := snode.attr(ctx, &s.Attr); err != nil {
+		if err := nodeAttr(ctx, node, &s.Attr); err != nil {
 			return err
 		}
 		done(s)
@@ -1213,7 +1218,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		if err != nil {
 			return err
 		}
-		if err := c.saveLookup(ctx, &s.LookupResponse, snode, r.NewName, n2); err != nil {
+		if err := c.saveLookup(ctx, &s.LookupResponse, r.NewName, n2); err != nil {
 			return err
 		}
 		done(s)
@@ -1238,26 +1243,30 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		if !ok {
 			return fuse.EIO /// XXX or EPERM?
 		}
-		c.meta.Lock()
-		var oldNode *serveNode
-		if int(r.OldNode) < len(c.node) {
-			oldNode = c.node[r.OldNode]
+		var old Node
+		if !c.notCacheNode {
+			c.meta.Lock()
+			var oldNode *serveNode
+			if int(r.OldNode) < len(c.node) {
+				oldNode = c.node[r.OldNode]
+			}
+			c.meta.Unlock()
+			if oldNode == nil {
+				c.debug(logLinkRequestOldNodeNotFound{
+					Request: r.Hdr(),
+					In:      r,
+				})
+				return fuse.EIO
+			}
+			old = oldNode.node
 		}
-		c.meta.Unlock()
-		if oldNode == nil {
-			c.debug(logLinkRequestOldNodeNotFound{
-				Request: r.Hdr(),
-				In:      r,
-			})
-			return fuse.EIO
-		}
-		n2, err := n.Link(ctx, r, oldNode.node)
+		n2, err := n.Link(ctx, r, old)
 		if err != nil {
 			return err
 		}
 		s := &fuse.LookupResponse{}
 		initLookupResponse(s)
-		if err := c.saveLookup(ctx, s, snode, r.NewName, n2); err != nil {
+		if err := c.saveLookup(ctx, s, r.NewName, n2); err != nil {
 			return err
 		}
 		done(s)
@@ -1302,7 +1311,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		if err != nil {
 			return err
 		}
-		if err := c.saveLookup(ctx, s, snode, r.Name, n2); err != nil {
+		if err := c.saveLookup(ctx, s, r.Name, n2); err != nil {
 			return err
 		}
 		done(s)
@@ -1320,7 +1329,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		if err != nil {
 			return err
 		}
-		if err := c.saveLookup(ctx, &s.LookupResponse, snode, r.Name, n2); err != nil {
+		if err := c.saveLookup(ctx, &s.LookupResponse, r.Name, n2); err != nil {
 			return err
 		}
 		done(s)
@@ -1356,7 +1365,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		if err != nil {
 			return err
 		}
-		if err := c.saveLookup(ctx, &s.LookupResponse, snode, r.Name, n2); err != nil {
+		if err := c.saveLookup(ctx, &s.LookupResponse, r.Name, n2); err != nil {
 			return err
 		}
 		s.Handle = c.saveHandle(h2, s.LookupResponse.Node)
@@ -1446,84 +1455,76 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		s := &fuse.ReadResponse{}
 		if r.Dir {
 			s.Data = make([]byte, r.Size)
-			if h, ok := handle.(HandleReadDirAller); ok {
-				// detect rewinddir(3) or similar seek and refresh
-				// contents
-				if r.Offset == 0 {
-					shandle.readData = nil
-				}
-
-				if shandle.readData == nil {
-					dirs, err := h.ReadDirAll(ctx)
-					if err != nil {
-						return err
-					}
-					var data []byte
-					for _, dir := range dirs {
-						if dir.Inode == 0 {
-							dir.Inode = c.dynamicInode(snode.inode, dir.Name)
-						}
-						data = fuse.AppendDirent(data, dir, 0)
-					}
-					shandle.readData = data
-				}
-				fuseutil.HandleRead(r, s, shandle.readData)
-				done(s)
-				r.Respond(s)
-				return nil
+			h := handle.(HandleReadDirAller)
+			// detect rewinddir(3) or similar seek and refresh
+			// contents
+			if r.Offset == 0 {
+				shandle.readData = nil
 			}
+
+			if shandle.readData == nil {
+				dirs, err := h.ReadDirAll(ctx)
+				if err != nil {
+					return err
+				}
+				var data []byte
+				for _, dir := range dirs {
+					data = fuse.AppendDirent(data, dir, 0)
+				}
+				shandle.readData = data
+			}
+			fuseutil.HandleRead(r, s, shandle.readData)
+			done(s)
+			r.Respond(s)
+			return nil
 		} else if r.DirPlus {
 			s.Data = make([]byte, r.Size)
-			if h, ok := handle.(HandleReadDirPlusAller); ok {
-				shandle.Lock()
-				defer shandle.Unlock()
+			h := handle.(HandleReadDirPlusAller)
+			shandle.Lock()
+			defer shandle.Unlock()
 
-				if cfslog.IsDebugEnabled() {
-					cfslog.LogDebugf("readdirplus request: off(%v) size(%v)", r.Offset, r.Size)
-				}
-				// detect rewinddir(3) or similar seek and refresh
-				// contents
-				if r.Offset == 0 {
-					shandle.dirData = nil
-				}
-
-				proto := r.Header.Conn.Protocol()
-				if shandle.dirData == nil || !shandle.dirData.correctDirPlusOff(r.Offset) {
-					resp := &fuse.ReadDirPlusResponse{EntryValid: entryValidTime}
-					dirs, err := h.ReadDirPlusAll(ctx, resp)
-					if err != nil {
-						return err
-					}
-					shandle.dirData = initDirPlusData(proto, dirs, resp.EntryValid)
-					if r.Offset != 0 {
-						shandle.dirData.seekDirPlusOff(r.Offset)
-					}
-				}
-
-				var data []byte
-				for pos := shandle.dirData.dirPlusOff + 1; pos < len(shandle.dirData.dirs); pos++ {
-					dir := shandle.dirData.dirs[pos]
-					if dir.EndOff > r.Offset+int64(r.Size) {
-						break
-					}
-					lookupResp := &fuse.LookupResponse{EntryValid: shandle.dirData.entryValid}
-					if dir.Node != nil {
-						c.saveLookup(ctx, lookupResp, snode, dir.Dirent.Name, dir.Node)
-					}
-					if dir.Dirent.Inode == 0 {
-						dir.Dirent.Inode = c.dynamicInode(snode.inode, dir.Dirent.Name)
-					}
-					data = AppendDirentPlus(data, lookupResp, dir, proto)
-					shandle.dirData.dirPlusOff = pos
-					if cfslog.IsDebugEnabled() {
-						cfslog.LogDebugf("readdirplus appendDirentPlus: dir(%v) lookup(%v) dataLen(%v)", dir, lookupResp, len(data))
-					}
-				}
-				fuseutil.HandleReadDirPlus(r, s, data)
-				done(s)
-				r.Respond(s)
-				return nil
+			if cfslog.IsDebugEnabled() {
+				cfslog.LogDebugf("readdirplus request: off(%v) size(%v)", r.Offset, r.Size)
 			}
+			// detect rewinddir(3) or similar seek and refresh
+			// contents
+			if r.Offset == 0 {
+				shandle.dirData = nil
+			}
+
+			proto := r.Header.Conn.Protocol()
+			if shandle.dirData == nil || !shandle.dirData.correctDirPlusOff(r.Offset) {
+				resp := &fuse.ReadDirPlusResponse{EntryValid: entryValidTime}
+				dirs, err := h.ReadDirPlusAll(ctx, resp)
+				if err != nil {
+					return err
+				}
+				shandle.dirData = initDirPlusData(proto, dirs, resp.EntryValid)
+				if r.Offset != 0 {
+					shandle.dirData.seekDirPlusOff(r.Offset)
+				}
+			}
+
+			var data []byte
+			for pos := shandle.dirData.dirPlusOff + 1; pos < len(shandle.dirData.dirs); pos++ {
+				dir := shandle.dirData.dirs[pos]
+				if dir.EndOff > r.Offset+int64(r.Size) {
+					break
+				}
+				lookupResp := &fuse.LookupResponse{EntryValid: shandle.dirData.entryValid}
+				if dir.Node != nil {
+					c.saveLookup(ctx, lookupResp, dir.Dirent.Name, dir.Node)
+				}
+				data = AppendDirentPlus(data, lookupResp, dir, proto)
+				shandle.dirData.dirPlusOff = pos
+				if cfslog.IsDebugEnabled() {
+					cfslog.LogDebugf("readdirplus appendDirentPlus: dir(%v) lookup(%v) dataLen(%v)", dir, lookupResp, len(data))
+				}
+			}
+			fuseutil.HandleReadDirPlus(r, s, data)
+			done(s)
+			r.Respond(s)
+			return nil
 		} else {
 			s.Data = fuse.GetBlockBuf(r.Size)
 			if h, ok := handle.(HandleReadAller); ok {
@@ -1616,24 +1617,28 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		return nil
 
 	case *fuse.RenameRequest:
-		c.meta.Lock()
-		var newDirNode *serveNode
-		if int(r.NewDir) < len(c.node) {
-			newDirNode = c.node[r.NewDir]
-		}
-		c.meta.Unlock()
-		if newDirNode == nil {
-			c.debug(renameNewDirNodeNotFound{
-				Request: r.Hdr(),
-				In:      r,
-			})
-			return fuse.EIO
+		var newDir Node
+		if !c.notCacheNode {
+			c.meta.Lock()
+			var newDirNode *serveNode
+			if int(r.NewDir) < len(c.node) {
+				newDirNode = c.node[r.NewDir]
+			}
+			c.meta.Unlock()
+			if newDirNode == nil {
+				c.debug(renameNewDirNodeNotFound{
+					Request: r.Hdr(),
+					In:      r,
+				})
+				return fuse.EIO
+			}
+			newDir = newDirNode.node
 		}
 		n, ok := node.(NodeRenamer)
 		if !ok {
 			return fuse.EIO // XXX or EPERM like Mkdir?
 		}
-		err := n.Rename(ctx, r, newDirNode.node)
+		err := n.Rename(ctx, r, newDir)
 		if err != nil {
 			return err
 		}
@@ -1652,7 +1657,7 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 		}
 		s := &fuse.LookupResponse{}
 		initLookupResponse(s)
-		if err := c.saveLookup(ctx, s, snode, r.Name, n2); err != nil {
+		if err := c.saveLookup(ctx, s, r.Name, n2); err != nil {
 			return err
 		}
 		done(s)
@@ -1701,15 +1706,16 @@ func (c *Server) handleRequest(ctx context.Context, node Node, snode *serveNode,
 	panic("not reached")
 }
 
-func (c *Server) saveLookup(ctx context.Context, s *fuse.LookupResponse, snode *serveNode, elem string, n2 Node) error {
+func (c *Server) saveLookup(ctx context.Context, s *fuse.LookupResponse, elem string, n2 Node) error {
 	if err := nodeAttr(ctx, n2, &s.Attr); err != nil {
 		return err
 	}
-	if s.Attr.Inode == 0 {
-		s.Attr.Inode = c.dynamicInode(snode.inode, elem)
+	if c.notCacheNode {
+		s.Node = fuse.NodeID(n2.Inode())
+		return nil
 	}
 
-	s.Node, s.Generation = c.saveNode(s.Attr.Inode, n2)
+	s.Node, s.Generation = c.saveNode(n2)
 	return nil
 }
 
@@ -1730,18 +1736,23 @@ func errstr(err error) string {
 }
 
 func (s *Server) invalidateNode(node Node, off int64, size int64) error {
-	s.meta.Lock()
-	id, ok := s.nodeRef[node.NodeID()]
-	if ok {
-		snode := s.node[id]
-		snode.wg.Add(1)
-		defer snode.wg.Done()
-	}
-	s.meta.Unlock()
-	if !ok {
-		// This is what the kernel would have said, if we had been
-		// able to send this message; it's not cached.
-		return fuse.ErrNotCached
+	var id fuse.NodeID
+	if s.notCacheNode {
+		id = fuse.NodeID(node.Inode())
+	} else {
+		s.meta.Lock()
+		id, ok := s.nodeRef[node.Inode()]
+		if ok {
+			snode := s.node[id]
+			snode.wg.Add(1)
+			defer snode.wg.Done()
+		}
+		s.meta.Unlock()
+		if !ok {
+			// This is what the kernel would have said, if we had been
+			// able to send this message; it's not cached.
+			return fuse.ErrNotCached
+		}
 	}
 	// Delay logging until after we can record the error too. We
 	// consider a /dev/fuse write to be instantaneous enough to not
@@ -1805,18 +1816,23 @@ func (i invalidateEntryDetail) String() string {
 // Returns ErrNotCached if the kernel is not currently caching the
 // node.
 func (s *Server) InvalidateEntry(parent Node, name string) error {
-	s.meta.Lock()
-	id, ok := s.nodeRef[parent.NodeID()]
-	if ok {
-		snode := s.node[id]
-		snode.wg.Add(1)
-		defer snode.wg.Done()
-	}
-	s.meta.Unlock()
-	if !ok {
-		// This is what the kernel would have said, if we had been
-		// able to send this message; it's not cached.
-		return fuse.ErrNotCached
+	var id fuse.NodeID
+	if s.notCacheNode {
+		id = fuse.NodeID(parent.Inode())
+	} else {
+		s.meta.Lock()
+		id, ok := s.nodeRef[parent.Inode()]
+		if ok {
+			snode := s.node[id]
+			snode.wg.Add(1)
+			defer snode.wg.Done()
+		}
+		s.meta.Unlock()
+		if !ok {
+			// This is what the kernel would have said, if we had been
+			// able to send this message; it's not cached.
+			return fuse.ErrNotCached
+		}
 	}
 	err := s.conn.InvalidateEntry(id, name)
 	s.debug(notification{

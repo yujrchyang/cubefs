@@ -308,8 +308,7 @@ func (client *ExtentClient) EvictStream(ctx context.Context, inode uint64) error
 func (client *ExtentClient) RefreshExtentsCache(ctx context.Context, inode uint64) error {
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return fmt.Errorf("stream is not opened yet, inode:%v", inode)
-		// return nil
+		return nil
 	}
 	return s.GetExtents(ctx)
 }
@@ -513,15 +512,16 @@ func (client *ExtentClient) SyncWriteToSpecificExtent(ctx context.Context, dp *D
 	return
 }
 
-func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, size uint64) error {
+func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, oldSize uint64, size uint64) error {
 	if client.dataWrapper.VolNotExists() {
 		return proto.ErrVolNotExists
 	}
 
 	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
+	// fuse Setattr may call Truncate without opening the file
 	if s == nil {
-		return fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
+		return client.truncate(ctx, inode, oldSize, size)
 	}
 
 	// GetExtents if has not been called, to prevent file old size check failure.
@@ -548,8 +548,9 @@ func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
 	}
 
 	s := client.GetStreamer(inode)
+	// fuse Setattr may call Flush without opening the file
 	if s == nil {
-		return fmt.Errorf("Flush: stream is not opened yet, ino(%v)", inode)
+		return nil
 	}
 	return s.IssueFlushRequest(ctx)
 }
@@ -847,4 +848,8 @@ func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRequest) {
 		return
 	}
 	s.prepareRemoteCache(prepareReq.ctx, prepareReq.ek)
+}
+
+func (c *ExtentClient) NotCacheNode() bool {
+       return c.dataWrapper.notCacheNode
 }

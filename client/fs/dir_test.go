@@ -29,7 +29,7 @@ func Test_ReaddirPlus(t *testing.T) {
 		t.Fatalf("Test_ReaddirPlus: new super err(%v)", err)
 		return
 	}
-	d := &Dir{super: s}
+	d := &Node{super: s}
 	ctx := context.Background()
 	// create test dir
 	var dInfo *proto.InodeInfo
@@ -37,7 +37,7 @@ func Test_ReaddirPlus(t *testing.T) {
 		t.Fatalf("Test_ReaddirPlus: create dir err(%v)", err)
 		return
 	}
-	d.info = *dInfo
+	d.inode = dInfo.Inode
 	// create file/dir under the folder
 	createInfos := make([]*createInfo, 0)
 	for i := int64(0); i < 3; i++ {
@@ -46,7 +46,7 @@ func Test_ReaddirPlus(t *testing.T) {
 			info.mode = uint32(os.ModeDir)
 		}
 		var inoInfo *proto.InodeInfo
-		if inoInfo, err = s.mw.Create_ll(ctx, d.info.Inode, info.name, info.mode, 0, 0, nil); err != nil {
+		if inoInfo, err = s.mw.Create_ll(ctx, d.inode, info.name, info.mode, 0, 0, nil); err != nil {
 			t.Fatalf("Test_ReaddirPlus: create inode err(%v)", err)
 			return
 		}

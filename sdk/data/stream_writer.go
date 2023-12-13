@@ -1076,13 +1076,13 @@ func (s *Streamer) truncate(ctx context.Context, size uint64) error {
 	if log.IsDebugEnabled() {
 		log.LogDebugf("streamer truncate: inode(%v) oldSize(%v) size(%v)", s.inode, oldSize, size)
 	}
-	err = s.client.truncate(ctx, s.inode, uint64(oldSize), uint64(size))
+	err = s.client.truncate(ctx, s.inode, oldSize, size)
 	if err != nil {
 		return err
 	}
 
 	if oldSize <= size {
-		s.extents.SetSize(uint64(size), true)
+		s.extents.SetSize(size, true)
 		return nil
 	}
 

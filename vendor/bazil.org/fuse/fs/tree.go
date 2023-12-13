@@ -7,11 +7,8 @@ import (
 	pathpkg "path"
 	"strings"
 
-	"golang.org/x/net/context"
-)
-
-import (
 	"bazil.org/fuse"
+	"golang.org/x/net/context"
 )
 
 // A Tree implements a basic read-only directory tree for FUSE.
@@ -24,7 +21,7 @@ func (t *Tree) Root() (Node, error) {
 	return &t.tree, nil
 }
 
-func (t *Tree) Node(ino uint64, mode uint32) Node {
+func (t *Tree) Node(ino uint64, isDir bool) Node {
 	panic("Node need to implement")
 	return nil
 }
@@ -87,13 +84,8 @@ func (t *tree) Attr(ctx context.Context, a *fuse.Attr) error {
 	return nil
 }
 
-func (t *tree) NodeID() uint64 {
-	panic("NodeID need to implement")
-	return 0
-}
-
-func (t *tree) Mode() uint32 {
-	panic("Mode need to implement")
+func (t *tree) Inode() uint64 {
+	panic("Inode need to implement")
 	return 0
 }
 

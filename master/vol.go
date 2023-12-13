@@ -119,6 +119,7 @@ type Vol struct {
 	LastSelectReuseMPID        uint64
 	EnableBitMapAllocator      bool
 	enableRemoveDupReq         bool //for remove dup client retry operation
+    notCacheNode               bool
 	CleanTrashDurationEachTime int32
 	TrashCleanMaxCountEachTime int32
 	TruncateEKCountEveryTime   int
@@ -327,6 +328,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.RemoteCacheAutoPrepare = vv.RemoteCacheAutoPrepare
 	vol.RemoteCacheTTL = vv.RemoteCacheTTL
 	vol.enableRemoveDupReq = vv.RemoveDupReqEnable
+    vol.notCacheNode = vv.NotCacheNode
 	vol.ConnConfig = vv.ConnConfig
 	vol.TruncateEKCountEveryTime = vv.TruncateEKCountEveryTime
 	vol.BitMapSnapFrozenHour = vv.BitMapSnapFrozenHour
@@ -1399,6 +1401,7 @@ func (vol *Vol) backupConfig() *Vol {
 		UmpCollectWay:              vol.UmpCollectWay,
 		EnableBitMapAllocator:      vol.EnableBitMapAllocator,
 		enableRemoveDupReq:         vol.enableRemoveDupReq,
+        notCacheNode:               vol.notCacheNode,
 		CleanTrashDurationEachTime: vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCountEachTime: vol.TrashCleanMaxCountEachTime,
 		RemoteCacheBoostPath:       vol.RemoteCacheBoostPath,
@@ -1463,6 +1466,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.RemoteCacheAutoPrepare = backupVol.RemoteCacheAutoPrepare
 	vol.RemoteCacheTTL = backupVol.RemoteCacheTTL
 	vol.enableRemoveDupReq = backupVol.enableRemoveDupReq
+    vol.notCacheNode = backupVol.notCacheNode
 	vol.ConnConfig = backupVol.ConnConfig
 	vol.TruncateEKCountEveryTime = backupVol.TruncateEKCountEveryTime
 	vol.MpSplitStep = backupVol.MpSplitStep

@@ -17,8 +17,6 @@ package fs
 import (
 	"context"
 
-
-
 	"bazil.org/fuse"
 
 	"github.com/cubefs/cubefs/proto"
@@ -88,6 +86,7 @@ func fillAttr(info *proto.InodeInfo, attr *fuse.Attr) {
 	attr.Blocks = attr.Size >> 9 // In 512 bytes
 	attr.Atime = info.AccessTime
 	attr.Ctime = info.CreateTime
+	attr.Crtime = info.CreateTime
 	attr.Mtime = info.ModifyTime
 	attr.BlockSize = DefaultBlksize
 	attr.Uid = info.Uid

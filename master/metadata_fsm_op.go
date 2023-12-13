@@ -388,6 +388,7 @@ type volValue struct {
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
 	RemoveDupReqEnable     bool
+    NotCacheNode           bool
 
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
@@ -480,6 +481,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:         vol.RemoteCacheTTL,
 		RemoveDupReqEnable:     vol.enableRemoveDupReq,
+        NotCacheNode:           vol.notCacheNode,
 
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 		MpSplitStep:              vol.MpSplitStep,

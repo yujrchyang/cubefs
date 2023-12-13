@@ -193,7 +193,16 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     tmp_fd = open(path, O_RDONLY);
     assertf(tmp_fd < 0, "open %s after rename with O_RDONLY returning %d", path, tmp_fd);
     re = rename(new_path, path);
-    assertf(re == 0, "rename %s to %s returning %d", path, new_path, re);
+    assertf(re == 0, "rename %s to %s returning %d", new_path, path, re);
+    re = truncate(path, 123);
+    assertf(re == 0, "truncate %s returning %d", path, re);
+    struct stat statbuf;
+    re = stat(path, &statbuf);
+    assertf(re == 0 && statbuf.st_size == 123, "stat %s returning %d, size: %d", path, re, statbuf.st_size);
+    re = ftruncate(fd, 0);
+    assertf(re == 0, "ftruncate %d returning %d", fd, re);
+    re = stat(path, &statbuf);
+    assertf(re == 0 && statbuf.st_size == 0, "stat %s returning %d, size: %d", path, re, statbuf.st_size);
 
     // read & write
     size = write(fd, wbuf, LEN-1);
@@ -225,7 +234,6 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     assertf(re == 0, "utimensat %s at dir fd %d returning %d", file, dir_fd, re);
     re = chmod(path, 0611);
     assertf(re == 0, "chmod %s returning %d", path, re);
-    struct stat statbuf;
     re = stat(path, &statbuf);
     // access time is updated in metanode when accessing inode, inconsistent with client inode cache
     bool atim_valid = !ignore && is_cfs ?

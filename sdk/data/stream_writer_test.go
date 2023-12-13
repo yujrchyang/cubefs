@@ -722,7 +722,7 @@ func TestStreamer_InitServer(t *testing.T)  {
 
 	err = ec.OpenStream(inodeID, false)
 	assert.Equal(t, nil, err, "open streamer again")
-	err = ec.Truncate(context.Background(), inodeID, 0)
+	err = ec.Truncate(context.Background(), inodeID, uint64(writeSize), 0)
 	assert.Equal(t, nil, err, "truncate streamer")
 
 	err = ec.CloseStream(context.Background(), inodeID)

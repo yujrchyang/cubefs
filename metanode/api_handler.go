@@ -21,11 +21,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/cpu"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/unit"
-	"golang.org/x/time/rate"
 	"hash/crc32"
 	"io"
 	"io/fs"
@@ -38,6 +33,12 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/cpu"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
+	"golang.org/x/time/rate"
 )
 
 // APIResponse defines the structure of the response to an HTTP request
@@ -140,6 +141,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 
 	http.HandleFunc("/getDataPartitionViewCache", m.getDataPartitionViewCache)
 	http.HandleFunc("/resetEKDelDelayDuration", m.resetEKDeleteDelayDuration)
+	http.HandleFunc("/createInodeForTest", m.createInodeForTest)
 	return
 }
 
@@ -605,7 +607,7 @@ func (m *MetaNode) getInodeNoModifyAccessTimeHandler(w http.ResponseWriter, r *h
 	return
 }
 
-func (m *MetaNode) getExtentsNoModifyAccessTimeHandler(w http.ResponseWriter, r *http.Request)  {
+func (m *MetaNode) getExtentsNoModifyAccessTimeHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
 	defer func() {
@@ -630,7 +632,6 @@ func (m *MetaNode) getExtentsNoModifyAccessTimeHandler(w http.ResponseWriter, r 
 		resp.Msg = err.Error()
 		return
 	}
-
 
 	req := &proto.GetExtentsRequest{
 		PartitionID: pid,
@@ -1077,7 +1078,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"clientReqRecordsReserveMin":        reqRecordReserveMin.Load(),
 		"dumpSnapConfCount":                 m.GetDumpSnapCount(),
 		"dumpSnapRunningCount":              m.GetDumpSnapRunningCount(),
-		"dumpSnapMpIDS":					 m.GetDumpSnapMPID(),
+		"dumpSnapMpIDS":                     m.GetDumpSnapMPID(),
 		"delExtentRateLimitLocalValue":      atomic.LoadUint64(&delExtentRateLimitLocal),
 	}
 	resp.Data = msg
@@ -2443,7 +2444,6 @@ func (m *MetaNode) removeOldDelEKRecordFile(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-
 	maxTotalSizeStr := r.FormValue("maxTotalSize")
 	if maxTotalSizeStr != "" {
 		maxTotalSize, err = strconv.ParseUint(maxTotalSizeStr, 10, 64)
@@ -2959,7 +2959,7 @@ func (m *MetaNode) setLocalDeleteExtentRateLimit(w http.ResponseWriter, r *http.
 
 func (m *MetaNode) setDumpSnapCount(w http.ResponseWriter, r *http.Request) {
 	var (
-		err error
+		err       error
 		dumpCount uint64
 	)
 	resp := NewAPIResponse(http.StatusOK, "OK")
@@ -2985,10 +2985,10 @@ func (m *MetaNode) setDumpSnapCount(w http.ResponseWriter, r *http.Request) {
 	m.updateDumpSnapCountLoc(dumpCount)
 
 	resp.Data = &struct {
-		Count   uint64            `json:"count"`
-		RunningCount uint64		  `json:"running_count"`
+		Count        uint64 `json:"count"`
+		RunningCount uint64 `json:"running_count"`
 	}{
-		Count:   m.GetDumpSnapCount(),
+		Count:        m.GetDumpSnapCount(),
 		RunningCount: m.GetDumpSnapRunningCount(),
 	}
 	return
@@ -3046,7 +3046,7 @@ func (m *MetaNode) getAllDentriesByParentInoHandler(w http.ResponseWriter, r *ht
 		delimiter = []byte{',', '\n'}
 		isFirst   = true
 		start     = &Dentry{ParentId: parentIno}
-		end       = &Dentry{ParentId: parentIno+1}
+		end       = &Dentry{ParentId: parentIno + 1}
 		prefix    = &Dentry{ParentId: parentIno}
 	)
 	err = snap.RangeDentryTreeWithPrefix(prefix, start, end, func(den *Dentry) (bool, error) {
@@ -3159,6 +3159,7 @@ func (m *MetaNode) cancelFreezeMPBitMapAllocator(w http.ResponseWriter, r *http.
 	mp.inodeIDAllocator.CancelFreezeAllocator(forceCancel)
 	return
 }
+
 func (m *MetaNode) correctInodesAndDelInodesTotalSize(w http.ResponseWriter, r *http.Request) {
 	resp := NewAPIResponse(http.StatusOK, "OK")
 	defer func() {
@@ -3264,7 +3265,7 @@ func (m *MetaNode) resetEKDeleteDelayDuration(w http.ResponseWriter, r *http.Req
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getDataPartitionViewCache] response %s", err)
+			log.LogErrorf("[resetEKDeleteDelayDuration] response %s", err)
 		}
 	}()
 	if proto.ENV != proto.ENV_TEST {
@@ -3287,5 +3288,86 @@ func (m *MetaNode) resetEKDeleteDelayDuration(w http.ResponseWriter, r *http.Req
 	}
 
 	ekDelDelayDuration = time.Minute * time.Duration(delayMin)
+	return
+}
+
+func (m *MetaNode) createInodeForTest(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("[createInodeForTest] response %s", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	pid, _ := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	inodeID, _ := strconv.ParseUint(r.FormValue("inoID"), 10, 64)
+	mode, _ := strconv.ParseUint(r.FormValue("mode"), 10, 64)
+	if pid == 0 || inodeID == 0 || mode == 0 {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, err := m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	partition, ok := mp.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		return
+	}
+
+	getInodeResp, _ := partition.getInode(NewInode(inodeID, 0), false)
+	if getInodeResp.Status == proto.OpInodeOutOfRange {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("inode id (%v) out of range [%v - %v]", inodeID, partition.config.Start, partition.config.End)
+		return
+	}
+
+	if getInodeResp.Status != proto.OpNotExistErr {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("inode id (%v) already exist", inodeID)
+		return
+	}
+	req := &CreateInoReq{
+		VolName:     mp.GetBaseConfig().VolName,
+		PartitionID: mp.GetBaseConfig().PartitionId,
+		Mode:        uint32(mode),
+		Uid:         0,
+		Gid:         0,
+		Target:      nil,
+	}
+	p := &Packet{}
+	ino := NewInode(inodeID, req.Mode)
+	ino.Uid = req.Uid
+	ino.Gid = req.Gid
+	ino.LinkTarget = req.Target
+	val, err := ino.Marshal()
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("marshal inode failed: %v", err)
+		return
+	}
+	createInoResp, err := partition.submit(p.Ctx(), opFSMCreateInode, p.RemoteWithReqID(), val, nil)
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("submit create inode failed: %v", err)
+		return
+	}
+	if createInoResp.(uint8) != proto.OpOk {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = fmt.Sprintf("create inode failed, respCode %v", createInoResp.(uint8))
+		return
+	}
 	return
 }

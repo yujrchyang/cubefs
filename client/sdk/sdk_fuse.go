@@ -87,6 +87,9 @@ const (
 	ControlBatchDownload     = "/batchdownload"
 	ControlBatchDownloadPath = "/batchdownload/path"
 
+	ControlClearCache = "/clearCache"
+	ControlGetConf    = "/conf/get"
+
 	Role = "Client"
 )
 
@@ -269,7 +272,7 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 		if !first_start {
 			fuseState = clientState.FuseState
 		}
-		gClient.fuseServer = fs.New(fsConn, nil)
+		gClient.fuseServer = fs.New(fsConn, &fs.Config{Debug: log.LogDebugSingle, NotCacheNode: cfs.Sup.NotCacheNode()})
 		if fuseState, err = gClient.fuseServer.Serve(gClient.super, fuseState); err != nil {
 			log.LogFlush()
 			syslog.Printf("fs Serve returns err(%v)", err)
@@ -334,6 +337,8 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	http.HandleFunc(ControlUnregisterPid, super.UnregisterAppPid)
 	http.HandleFunc(ControlBatchDownload, super.BatchDownload)
 	http.HandleFunc(ControlBatchDownloadPath, super.BatchDownloadPath)
+	http.HandleFunc(ControlClearCache, super.ClearCache)
+	http.HandleFunc(ControlGetConf, super.GetConf)
 	var (
 		server *http.Server
 		lc     net.ListenConfig
@@ -533,6 +538,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.PrefetchThread = GlobalMountOptions[proto.PrefetchThread].GetInt64()
 	opt.StreamerSegCount = GlobalMountOptions[proto.StreamerSegCount].GetInt64()
 	opt.UpdateExtentsOnRead = GlobalMountOptions[proto.UpdateExtentsOnRead].GetBool()
+	opt.NotCacheNode = GlobalMountOptions[proto.NotCacheNode].GetBool()
 
 	opt.Profile = GlobalMountOptions[proto.Profile].GetString()
 	if opt.Profile == proto.ProfileAiPrefetch {
@@ -543,7 +549,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 			opt.KeepCache = true
 		}
 		if !GlobalMountOptions[proto.PrefetchThread].HasConfig() {
-			opt.PrefetchThread = 3*int64(runtime.NumCPU())
+			opt.PrefetchThread = 3 * int64(runtime.NumCPU())
 		}
 		if !GlobalMountOptions[proto.FsyncOnClose].HasConfig() {
 			opt.FsyncOnClose = false

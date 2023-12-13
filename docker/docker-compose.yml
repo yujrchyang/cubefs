@@ -757,6 +757,7 @@ services:
     client:
         image: chubaofs/cfs-base:1.5
         ports:
+            - "17410"
             - 9500
         volumes:
             - ./bin:/cfs/bin:rw
@@ -787,6 +788,7 @@ services:
         command: /bin/bash /cfs/script/start.sh
         networks:
             extnetwork:
+                ipv4_address: 192.168.0.10
 
     convert:
         image: chubaofs/cfs-base:1.5

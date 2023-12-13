@@ -67,6 +67,7 @@ const (
 	CongestionThresh
 	Profile
 	UpdateExtentsOnRead
+	NotCacheNode
 
 	MaxMountOption
 )
@@ -160,6 +161,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[StreamerSegCount] = NewMountOption("streamerSegCount", "The number of streamer segment map", int64(0))
 	opts[Profile] = NewMountOption("profile", "config group for different situations", "")
 	opts[UpdateExtentsOnRead] = NewMountOption("updateExtentsOnRead", "update extents cache when requested offset exceeds extents length", true)
+	opts[NotCacheNode] = NewMountOption("notCacheNode", "not cache node in libfuse", false)
 }
 
 func ParseMountOptions(opts []MountOption, cfg *config.Config) {
@@ -307,10 +309,11 @@ type MountOptions struct {
 	MaxBackground            int64
 	CongestionThresh         int64
 	Profile                  string
-	UpdateExtentsOnRead		 bool
+	UpdateExtentsOnRead      bool
+	NotCacheNode             bool
 }
 
 func (opt MountOptions) String() string {
-	return fmt.Sprintf("MountPoint:%v, Modulename:%v, Volname:%v, Owner:%v, Master:%v, Logpath:%v, Loglvl:%v, Profport:%v, IcacheTimeout:%v, LookupValid:%v, AttrValid:%v, ReadRate:%v, WriteRate:%v, EnSyncWrite:%v, AutoInvalData:%v, UmpDatadir:%v, Rdonly:%v, WriteCache:%v, KeepCache:%v, FollowerRead:%v, Authenticate:%v, TicketMess:%v, TokenKey:%v, AccessKey:%v, SecretKey:%v, DisableDcache:%v, SubDir:%v, AutoMakeSubDir:%v, FsyncOnClose:%v, MaxCPUs:%v, EnableXattr:%v, NearRead:%v, EnablePosixACL:%v, ExtentSize:%v, AutoFlush:%v, DelProcessPath:%v, NoBatchGetInodeOnReaddir:%v, ReadAheadSize:%v, UmpCollectWay:%v, PidFile:%v, EnableReadDirPlus:%v, PrefetchThread:%v, StreamerSegCount:%v, MaxBackground:%v, CongestionThresh:%v, Profile:%v, UpdateExtentsOnRead:%v",
-		opt.MountPoint, opt.Modulename, opt.Volname, opt.Owner, opt.Master, opt.Logpath, opt.Loglvl, opt.Profport, opt.IcacheTimeout, opt.LookupValid, opt.AttrValid, opt.ReadRate, opt.WriteRate, opt.EnSyncWrite, opt.AutoInvalData, opt.UmpDatadir, opt.Rdonly, opt.WriteCache, opt.KeepCache, opt.FollowerRead, opt.Authenticate, opt.TicketMess, opt.TokenKey, opt.AccessKey, opt.SecretKey, opt.DisableDcache, opt.SubDir, opt.AutoMakeSubDir, opt.FsyncOnClose, opt.MaxCPUs, opt.EnableXattr, opt.NearRead, opt.EnablePosixACL, opt.ExtentSize, opt.AutoFlush, opt.DelProcessPath, opt.NoBatchGetInodeOnReaddir, opt.ReadAheadSize, opt.UmpCollectWay, opt.PidFile, opt.EnableReadDirPlus, opt.PrefetchThread, opt.StreamerSegCount, opt.MaxBackground, opt.CongestionThresh, opt.Profile, opt.UpdateExtentsOnRead)
+	return fmt.Sprintf("MountPoint:%v, Modulename:%v, Volname:%v, Owner:%v, Master:%v, Logpath:%v, Loglvl:%v, Profport:%v, IcacheTimeout:%v, LookupValid:%v, AttrValid:%v, ReadRate:%v, WriteRate:%v, EnSyncWrite:%v, AutoInvalData:%v, UmpDatadir:%v, Rdonly:%v, WriteCache:%v, KeepCache:%v, FollowerRead:%v, Authenticate:%v, TicketMess:%v, TokenKey:%v, AccessKey:%v, SecretKey:%v, DisableDcache:%v, SubDir:%v, AutoMakeSubDir:%v, FsyncOnClose:%v, MaxCPUs:%v, EnableXattr:%v, NearRead:%v, EnablePosixACL:%v, ExtentSize:%v, AutoFlush:%v, DelProcessPath:%v, NoBatchGetInodeOnReaddir:%v, ReadAheadSize:%v, UmpCollectWay:%v, PidFile:%v, EnableReadDirPlus:%v, PrefetchThread:%v, StreamerSegCount:%v, MaxBackground:%v, CongestionThresh:%v, Profile:%v, UpdateExtentsOnRead:%v, NotCacheNode:%v",
+		opt.MountPoint, opt.Modulename, opt.Volname, opt.Owner, opt.Master, opt.Logpath, opt.Loglvl, opt.Profport, opt.IcacheTimeout, opt.LookupValid, opt.AttrValid, opt.ReadRate, opt.WriteRate, opt.EnSyncWrite, opt.AutoInvalData, opt.UmpDatadir, opt.Rdonly, opt.WriteCache, opt.KeepCache, opt.FollowerRead, opt.Authenticate, opt.TicketMess, opt.TokenKey, opt.AccessKey, opt.SecretKey, opt.DisableDcache, opt.SubDir, opt.AutoMakeSubDir, opt.FsyncOnClose, opt.MaxCPUs, opt.EnableXattr, opt.NearRead, opt.EnablePosixACL, opt.ExtentSize, opt.AutoFlush, opt.DelProcessPath, opt.NoBatchGetInodeOnReaddir, opt.ReadAheadSize, opt.UmpCollectWay, opt.PidFile, opt.EnableReadDirPlus, opt.PrefetchThread, opt.StreamerSegCount, opt.MaxBackground, opt.CongestionThresh, opt.Profile, opt.UpdateExtentsOnRead, opt.NotCacheNode)
 }

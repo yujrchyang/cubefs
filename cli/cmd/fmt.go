@@ -145,6 +145,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Near read            : %v\n", formatEnabledDisabled(svv.NearRead)))
 	sb.WriteString(fmt.Sprintf("  Force ROW            : %v\n", formatEnabledDisabled(svv.ForceROW)))
 	sb.WriteString(fmt.Sprintf("  Enable Write Cache   : %v\n", formatEnabledDisabled(svv.EnableWriteCache)))
+	sb.WriteString(fmt.Sprintf("  NotCacheNode         : %v\n", formatEnabledDisabled(svv.NotCacheNode)))
 	sb.WriteString(fmt.Sprintf("  Cross zone           : %v\n", formatEnabledDisabled(svv.CrossZone)))
 	sb.WriteString(fmt.Sprintf("  Cross Region HA      : %s\n", svv.CrossRegionHAType))
 	if svv.MasterRegionZone != "" {

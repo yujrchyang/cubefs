@@ -451,6 +451,7 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		FileTotalSize:          vv.FileTotalSize,
 		TrashUsedSize:          vv.TrashUsedSize,
 		EnableCheckDeleteEK:    vv.EnableCheckDeleteEK,
+		NotCacheNode:           vv.NotCacheNode,
 	}
 }
 

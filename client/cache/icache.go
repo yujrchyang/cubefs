@@ -131,6 +131,16 @@ func (ic *InodeCache) Delete(ctx context.Context, ino uint64) {
 	ic.Unlock()
 }
 
+func (ic *InodeCache) Clear() {
+	ic.Lock()
+	defer ic.Unlock()
+	for k := range ic.cache {
+		delete(ic.cache, k)
+	}
+	ic.cache = make(map[uint64]*list.Element)
+	ic.lruList.Init()
+}
+
 // Foreground eviction cares more about the speed.
 // Background eviction evicts all expired items from the cache.
 // The caller should grab the WRITE lock of the inode cache.

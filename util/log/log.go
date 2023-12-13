@@ -621,6 +621,18 @@ func LogDebugf(format string, v ...interface{}) {
 	gLog.debugLogger.Output(2, s)
 }
 
+func LogDebugSingle(v interface{}) {
+	if gLog == nil {
+		return
+	}
+	if DebugLevel&gLog.level != gLog.level {
+		return
+	}
+	s := fmt.Sprintln(v)
+	s = gLog.SetPrefix(s, levelPrefixes[0])
+	gLog.debugLogger.Print(s)
+}
+
 // LogFatal logs the fatal errors.
 func LogFatal(v ...interface{}) {
 	if gLog == nil {

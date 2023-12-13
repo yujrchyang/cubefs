@@ -1736,6 +1736,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		extentCacheExpireSec int64
 		enableWriteCache     bool
 		enableRemoveDupReq   bool
+		notCacheNode         bool
 
 		vol *Vol
 
@@ -1803,7 +1804,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		mpReplicaNum = int(vol.mpReplicaNum)
 	}
 	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache,
-		enableBitMapAllocator, enableRemoveDupReq, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
+		enableBitMapAllocator, enableRemoveDupReq, notCacheNode, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1928,7 +1929,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
-		truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK); err != nil {
+		notCacheNode, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2229,6 +2230,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		RemoteCacheAutoPrepare:   vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:           vol.RemoteCacheTTL,
 		EnableRemoveDupReq:       vol.enableRemoveDupReq,
+		NotCacheNode:             vol.notCacheNode,
 		ConnConfig:               &vol.ConnConfig,
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 		MpSplitStep:              vol.MpSplitStep,
@@ -3644,7 +3646,7 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 }
 
 func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRead, authenticate, enableToken, autoRepair,
-	forceROW, volWriteMutexEnable, enableWriteCache, enableBitMapAllocator, volRemoveDupReqEnable bool, err error) {
+	forceROW, volWriteMutexEnable, enableWriteCache, enableBitMapAllocator, volRemoveDupReqEnable, notCacheNode bool, err error) {
 	if followerReadStr := r.FormValue(followerReadKey); followerReadStr != "" {
 		if followerRead, err = strconv.ParseBool(followerReadStr); err != nil {
 			err = unmatchedKey(followerReadKey)
@@ -3726,6 +3728,15 @@ func parseBoolFieldToUpdateVol(r *http.Request, vol *Vol) (followerRead, nearRea
 		}
 	} else {
 		volRemoveDupReqEnable = vol.enableRemoveDupReq
+	}
+
+	if notCacheNodeStr := r.FormValue(proto.NotCacheNodeKey); notCacheNodeStr != "" {
+		if notCacheNode, err = strconv.ParseBool(notCacheNodeStr); err != nil {
+			err = unmatchedKey(proto.NotCacheNodeKey)
+			return
+		}
+	} else {
+		notCacheNode = vol.notCacheNode
 	}
 	return
 }

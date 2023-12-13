@@ -59,6 +59,7 @@ type Super struct {
 	fsyncOnClose             bool
 	enableXattr              bool
 	noBatchGetInodeOnReaddir bool
+	notCacheNode             bool
 	rootIno                  uint64
 	readDirPlus              bool
 
@@ -74,6 +75,7 @@ type Super struct {
 type SuperState struct {
 	RootIno           uint64
 	EnableReadDirPlus bool
+	NotCacheNode      bool
 }
 
 // Functions that Super needs to implement
@@ -113,23 +115,23 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval, true)
 
 	var extentConfig = &data.ExtentConfig{
-		Volume:            		opt.Volname,
-		Masters:           		masters,
-		FollowerRead:      		opt.FollowerRead,
-		NearRead:          		opt.NearRead,
-		ReadRate:          		opt.ReadRate,
-		WriteRate:         		opt.WriteRate,
-		ExtentSize:        		int(opt.ExtentSize),
-		AutoFlush:         		opt.AutoFlush,
-		UpdateExtentsOnRead:	opt.UpdateExtentsOnRead,
-		OnInodeGet: 			s.InodeGet,
-		OnInsertExtentKey: 		s.mw.InsertExtentKey,
-		OnGetExtents:      		s.mw.GetExtents,
-		OnTruncate:        		s.mw.Truncate,
-		OnEvictIcache:     		s.ic.Delete,
-		OnPutIcache:       		s.ic.PutValue,
-		MetaWrapper:       		s.mw,
-		StreamerSegCount:  		opt.StreamerSegCount,
+		Volume:              opt.Volname,
+		Masters:             masters,
+		FollowerRead:        opt.FollowerRead,
+		NearRead:            opt.NearRead,
+		ReadRate:            opt.ReadRate,
+		WriteRate:           opt.WriteRate,
+		ExtentSize:          int(opt.ExtentSize),
+		AutoFlush:           opt.AutoFlush,
+		UpdateExtentsOnRead: opt.UpdateExtentsOnRead,
+		OnInodeGet:          s.InodeGet,
+		OnInsertExtentKey:   s.mw.InsertExtentKey,
+		OnGetExtents:        s.mw.GetExtents,
+		OnTruncate:          s.mw.Truncate,
+		OnEvictIcache:       s.ic.Delete,
+		OnPutIcache:         s.ic.PutValue,
+		MetaWrapper:         s.mw,
+		StreamerSegCount:    opt.StreamerSegCount,
 	}
 	if first_start {
 		s.ec, err = data.NewExtentClient(extentConfig, nil)
@@ -168,9 +170,11 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 			return nil, err
 		}
 		s.readDirPlus = opt.EnableReadDirPlus
+		s.notCacheNode = opt.NotCacheNode || s.ec.NotCacheNode()
 	} else {
 		s.rootIno = superState.RootIno
 		s.readDirPlus = superState.EnableReadDirPlus
+		s.notCacheNode = superState.NotCacheNode
 	}
 
 	s.volumeLabelValue = exporter.LabelValue{
@@ -225,7 +229,7 @@ func (s *Super) ExtentClient() *data.ExtentClient {
 }
 
 func (s *Super) SaveSuperState() *SuperState {
-	return &SuperState{s.rootIno, s.readDirPlus}
+	return &SuperState{s.rootIno, s.readDirPlus, s.notCacheNode}
 }
 
 // Root returns the root directory where it resides.
@@ -234,22 +238,12 @@ func (s *Super) Root() (fs.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	root := NewDir(s, inode)
+	root := NewNode(s, inode.Inode)
 	return root, nil
 }
 
-func (s *Super) Node(ino uint64, mode uint32) fs.Node {
-	var node fs.Node
-
-	// Create a fake InodeInfo. All File or Dir operations only use
-	// InodeInfo.Inode.
-	fakeInfo := &proto.InodeInfo{Inode: ino, Mode: mode}
-	if proto.OsMode(fakeInfo.Mode).IsDir() {
-		node = NewDir(s, fakeInfo)
-	} else {
-		node = NewFile(s, fakeInfo)
-	}
-	return node
+func (s *Super) Node(ino uint64) fs.Node {
+	return NewNode(s, ino)
 }
 
 // Statfs handles the Statfs request and returns a set of statistics.
@@ -271,6 +265,10 @@ func (s *Super) ClusterName() string {
 
 func (s *Super) VolName() string {
 	return s.volname
+}
+
+func (s *Super) NotCacheNode() bool {
+	return s.notCacheNode
 }
 
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {
@@ -805,4 +803,17 @@ func (s *Super) BatchDownloadPath(w http.ResponseWriter, r *http.Request) {
 		log.LogDebugf("BatchDownloadPath: batchArr(%v) end cost(%v)", batchArr, time.Since(start))
 	}
 	return
+}
+
+func (s *Super) ClearCache(w http.ResponseWriter, r *http.Request) {
+	s.ic.Clear()
+	w.Write([]byte("done"))
+}
+
+func (s *Super) GetConf(w http.ResponseWriter, r *http.Request) {
+	conf := struct {
+		NotCacheNode bool
+	}{NotCacheNode: s.notCacheNode}
+	str, _ := json.Marshal(conf)
+	w.Write(str)
 }

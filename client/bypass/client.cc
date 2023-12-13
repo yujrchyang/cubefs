@@ -359,6 +359,17 @@ int real_truncate(const char *pathname, off_t length) {
             }
         }
         re = cfs_errno(cfs_truncate(g_client_info.cfs_client_id, path, length));
+        if(re < 0) {
+            goto log;
+        }
+        struct stat statbuf;
+        int re1 = cfs_errno(cfs_stat(g_client_info.cfs_client_id, path, &statbuf));
+        if(re1 == 0) {
+            inode_info_t *inode = get_open_inode(statbuf.st_ino);
+            if(inode != NULL) {
+                inode->size = length;
+            }
+        }
     } else {
         re = libc_truncate(pathname, length);
     }

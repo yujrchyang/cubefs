@@ -214,7 +214,7 @@ func SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.RemoveAll(tmpPath)
 
-	fileNames, err := downloadAndCheck(c.mc, tmpPath, version, false)
+	fileNames, err := downloadAndCheck(c.mc, tmpPath, version, false, false)
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return

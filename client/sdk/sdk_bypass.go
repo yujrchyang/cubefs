@@ -677,14 +677,14 @@ func (c *client) delete(ctx context.Context, parentID uint64, name string, isDir
 	return
 }
 
-func (c *client) truncate(ctx context.Context, inode uint64, len uint64) (err error) {
-	err = c.ec.Truncate(nil, inode, len)
+func (c *client) truncate(ctx context.Context, inode uint64, oldSize uint64, size uint64) (err error) {
+	err = c.ec.Truncate(nil, inode, oldSize, size)
 	info := c.inodeCache.Get(nil, inode)
 	if info != nil {
-		info.Size = uint64(len)
+		info.Size = uint64(size)
 		c.inodeCache.Put(info)
 	}
-	c.updateSizeByIno(inode, len)
+	c.updateSizeByIno(inode, size)
 	return
 }
 
