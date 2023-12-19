@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 	"io/ioutil"
 	"net/http"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -439,6 +440,7 @@ func (mc *MetaHttpClient) GetInuseInodes(mpId uint64) (inodeInuseBitMap []uint64
 	inodeInuseBitMap = respStruct.InoInuseBitMap
 	return
 }
+
 func (mc *MetaHttpClient) GetInode(mpId uint64, inode uint64) (inodeInfoView *proto.InodeInfoView, err error) {
 	req := newAPIRequest(http.MethodGet, "/getInode")
 	req.addParam("pid", fmt.Sprintf("%v", mpId))
@@ -474,6 +476,23 @@ func (mc *MetaHttpClient) GetInode(mpId uint64, inode uint64) (inodeInfoView *pr
 	return
 }
 
+func (mc *MetaHttpClient) CreateInode(pid uint64, inode uint64, mode uint32) (err error) {
+	defer func() {
+		if err != nil {
+			log.LogWarnf("action[CreateInode],mpId:%v,inode:%v,mode:%v,err:%v", pid, inode, mode, err)
+		}
+	}()
+
+	req := newAPIRequest(http.MethodGet, "/createInodeForTest")
+	req.addParam("pid", fmt.Sprintf("%v", pid))
+	req.addParam("inoID", fmt.Sprintf("%v", inode))
+	req.addParam("mode", fmt.Sprintf("%v", mode))
+
+	if _, err = mc.serveRequest(req); err != nil {
+		return
+	}
+	return
+}
 
 func (mc *MetaHttpClient) ListAllInodesIDAndDelInodesID(pid uint64, mode uint32, stTime, endTime int64) (resp *proto.MpAllInodesId, err error) {
 	defer func() {
@@ -541,7 +560,7 @@ func (mc *MetaHttpClient) GetExtentKeyByDelInodeId(metaPartitionId, inode uint64
 	return
 }
 
-func  (mc *MetaHttpClient) GetMetaDataCrcSum(pid uint64) (r *proto.MetaDataCRCSumInfo, err error) {
+func (mc *MetaHttpClient) GetMetaDataCrcSum(pid uint64) (r *proto.MetaDataCRCSumInfo, err error) {
 	req := newAPIRequest(http.MethodGet, "/getMetaDataCrcSum")
 	req.params["pid"] = fmt.Sprintf("%v", pid)
 	var data []byte

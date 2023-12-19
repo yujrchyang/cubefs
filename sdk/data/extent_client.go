@@ -41,10 +41,11 @@ type InsertExtentKeyFunc func(ctx context.Context, inode uint64, key proto.Exten
 type GetExtentsFunc func(ctx context.Context, inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(ctx context.Context, inode, oldSize, size uint64) error
 type EvictIcacheFunc func(ctx context.Context, inode uint64)
-type PutIcacheFunc func(inodeInfo proto.InodeInfo)
+type PutIcacheFunc func(inodeInfo *proto.InodeInfo)
 type InodeMergeExtentsFunc func(ctx context.Context, inode uint64, oldEks []proto.ExtentKey, newEk []proto.ExtentKey, mergeType proto.MergeEkType) error
 
 type ExtentClientType uint8
+
 const (
 	Normal ExtentClientType = iota
 	Smart
@@ -96,26 +97,26 @@ func init() {
 }
 
 type ExtentConfig struct {
-	Volume                   string
-	Masters                  []string
-	FollowerRead             bool
-	NearRead                 bool
-	ReadRate                 int64
-	WriteRate                int64
-	TinySize                 int
-	ExtentSize               int
-	AutoFlush                bool
-	UpdateExtentsOnRead		 bool
-	OnInodeGet				 InodeGetFunc
-	OnInsertExtentKey        InsertExtentKeyFunc
-	OnGetExtents             GetExtentsFunc
-	OnTruncate               TruncateFunc
-	OnEvictIcache            EvictIcacheFunc
-	OnPutIcache				 PutIcacheFunc
-	OnInodeMergeExtents      InodeMergeExtentsFunc
-	MetaWrapper              *meta.MetaWrapper
-	StreamerSegCount		 int64
-	ExtentClientType         ExtentClientType
+	Volume              string
+	Masters             []string
+	FollowerRead        bool
+	NearRead            bool
+	ReadRate            int64
+	WriteRate           int64
+	TinySize            int
+	ExtentSize          int
+	AutoFlush           bool
+	UpdateExtentsOnRead bool
+	OnInodeGet          InodeGetFunc
+	OnInsertExtentKey   InsertExtentKeyFunc
+	OnGetExtents        GetExtentsFunc
+	OnTruncate          TruncateFunc
+	OnEvictIcache       EvictIcacheFunc
+	OnPutIcache         PutIcacheFunc
+	OnInodeMergeExtents InodeMergeExtentsFunc
+	MetaWrapper         *meta.MetaWrapper
+	StreamerSegCount    int64
+	ExtentClientType    ExtentClientType
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -135,19 +136,19 @@ type ExtentClient struct {
 
 	dataWrapper     *Wrapper
 	metaWrapper     *meta.MetaWrapper
-	inodeGet		InodeGetFunc
+	inodeGet        InodeGetFunc
 	insertExtentKey InsertExtentKeyFunc
 	getExtents      GetExtentsFunc
 	truncate        TruncateFunc
 	evictIcache     EvictIcacheFunc //May be null, must check before using
-	putIcache		PutIcacheFunc 	//May be null, must check before using
+	putIcache       PutIcacheFunc   //May be null, must check before using
 
-	followerRead             bool
+	followerRead bool
 
-	tinySize   int
-	extentSize int
-	autoFlush  bool
-	updateExtentsOnRead	bool
+	tinySize            int
+	extentSize          int
+	autoFlush           bool
+	updateExtentsOnRead bool
 
 	stopC chan struct{}
 	wg    sync.WaitGroup
@@ -475,7 +476,7 @@ func (client *ExtentClient) ReadExtentAllHost(ctx context.Context, inode uint64,
 		return nil, proto.ErrVolNotExists
 	}
 	var (
-		dp *DataPartition
+		dp   *DataPartition
 		data = make([]byte, size)
 	)
 	if dp, err = client.dataWrapper.GetDataPartition(extentKey.PartitionId); err != nil {
@@ -483,7 +484,7 @@ func (client *ExtentClient) ReadExtentAllHost(ctx context.Context, inode uint64,
 	}
 	for _, host := range dp.Hosts {
 		reqPacket := common.NewReadPacket(ctx, &extentKey, extentOffset, size, inode, uint64(extentOffset), true)
-		req := NewExtentRequest(extentKey.ExtentOffset, size, data, 0, uint64(size),  &extentKey)
+		req := NewExtentRequest(extentKey.ExtentOffset, size, data, 0, uint64(size), &extentKey)
 		_, err = dp.AssignHostRead(reqPacket, req, host)
 		if err != nil {
 			return
@@ -581,7 +582,7 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 		return
 	}
 
-	s.UpdateExpiredExtentCache(ctx, offset + uint64(size))
+	s.UpdateExpiredExtentCache(ctx, offset+uint64(size))
 
 	read, hasHole, err = s.read(ctx, data, offset, size)
 	if err != nil && strings.Contains(err.Error(), proto.ExtentNotFoundError.Error()) {
@@ -851,5 +852,5 @@ func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRequest) {
 }
 
 func (c *ExtentClient) NotCacheNode() bool {
-       return c.dataWrapper.notCacheNode
+	return c.dataWrapper.notCacheNode
 }

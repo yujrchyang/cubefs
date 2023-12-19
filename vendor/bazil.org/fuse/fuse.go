@@ -1367,10 +1367,7 @@ func (a Attr) String() string {
 }
 
 func unix(t time.Time) (sec uint64, nsec uint32) {
-	nano := t.UnixNano()
-	sec = uint64(nano / 1e9)
-	nsec = uint32(nano % 1e9)
-	return
+	return uint64(t.Unix()), uint32(t.Nanosecond())
 }
 
 func (a *Attr) SetAttr(out *attr, proto Protocol) {

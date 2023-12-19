@@ -87,11 +87,6 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 	ic.Unlock()
 }
 
-// PutValue puts the given inode info into the inode cache.
-func (ic *InodeCache) PutValue(info proto.InodeInfo) {
-	ic.Put(&info)
-}
-
 // Get returns the inode info based on the given inode number.
 func (ic *InodeCache) Get(ctx context.Context, ino uint64) *proto.InodeInfo {
 	if !ic.useCache {
@@ -184,6 +179,11 @@ func (ic *InodeCache) evict(foreground bool) {
 		delete(ic.cache, info.Inode)
 		count++
 	}
+
+	// shrink the map manually to reduce memory consumption
+	if len(ic.cache) == 0 {
+		ic.cache = make(map[uint64]*list.Element)
+	}
 }
 
 func (ic *InodeCache) backgroundEviction() {
@@ -212,12 +212,9 @@ func (ic *InodeCache) Stop() {
 }
 
 func inodeExpired(info *proto.InodeInfo) bool {
-	if time.Now().UnixNano() > info.Expiration() {
-		return true
-	}
-	return false
+	return time.Now().Unix() > info.Expiration()
 }
 
 func inodeSetExpiration(info *proto.InodeInfo, t time.Duration) {
-	info.SetExpiration(time.Now().Add(t).UnixNano())
+	info.SetExpiration(time.Now().Add(t).Unix())
 }

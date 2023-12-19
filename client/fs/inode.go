@@ -16,6 +16,7 @@ package fs
 
 import (
 	"context"
+	"time"
 
 	"bazil.org/fuse"
 
@@ -29,8 +30,7 @@ const (
 
 func (s *Super) InodeGet(ctx context.Context, ino uint64) (*proto.InodeInfo, error) {
 
-	info := s.ic.Get(ctx, ino)
-	if info != nil {
+	if info := s.ic.Get(ctx, ino); info != nil {
 		return info, nil
 	}
 
@@ -65,12 +65,12 @@ func setattr(info *proto.InodeInfo, req *fuse.SetattrRequest) (valid uint32) {
 	}
 
 	if req.Valid.Atime() {
-		info.AccessTime = req.Atime
+		info.AccessTime = proto.CubeFSTime(req.Atime.Unix())
 		valid |= proto.AttrAccessTime
 	}
 
 	if req.Valid.Mtime() {
-		info.ModifyTime = req.Mtime
+		info.ModifyTime = proto.CubeFSTime(req.Mtime.Unix())
 		valid |= proto.AttrModifyTime
 	}
 
@@ -84,10 +84,10 @@ func fillAttr(info *proto.InodeInfo, attr *fuse.Attr) {
 	attr.Mode = proto.OsMode(info.Mode)
 	attr.Size = info.Size
 	attr.Blocks = attr.Size >> 9 // In 512 bytes
-	attr.Atime = info.AccessTime
-	attr.Ctime = info.CreateTime
-	attr.Crtime = info.CreateTime
-	attr.Mtime = info.ModifyTime
+	attr.Atime = time.Unix(int64(info.AccessTime), 0)
+	attr.Ctime = time.Unix(int64(info.CreateTime), 0)
+	attr.Crtime = attr.Ctime
+	attr.Mtime = time.Unix(int64(info.ModifyTime), 0)
 	attr.BlockSize = DefaultBlksize
 	attr.Uid = info.Uid
 	attr.Gid = info.Gid

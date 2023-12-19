@@ -4,11 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/metanode/metamock"
-	"github.com/cubefs/cubefs/proto"
-	se "github.com/cubefs/cubefs/util/sortedextent"
-	"github.com/cubefs/cubefs/util/unit"
-	"github.com/stretchr/testify/assert"
 	"hash/crc32"
 	"math"
 	"math/rand"
@@ -19,6 +14,12 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/metanode/metamock"
+	"github.com/cubefs/cubefs/proto"
+	se "github.com/cubefs/cubefs/util/sortedextent"
+	"github.com/cubefs/cubefs/util/unit"
+	"github.com/stretchr/testify/assert"
 )
 
 func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreMode, rootDir string) *metaPartition {
@@ -241,7 +242,7 @@ func UnlinkInodeInterTest(t *testing.T, leader, follower *metaPartition, start u
 	}
 	rand.Seed(time.Now().UnixMilli())
 	reqUnlinkInode := &proto.UnlinkInodeRequest{
-		Inode: 10 + cursor,
+		Inode:           10 + cursor,
 		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
 		ClientStartTime: time.Now().Unix(),
 		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
@@ -421,7 +422,7 @@ func BatchInodeUnlinkInterTest(t *testing.T, leader, follower *metaPartition) {
 		//create nlink for dir
 		rand.Seed(time.Now().UnixMilli())
 		req := &proto.LinkInodeRequest{
-			Inode: ino,
+			Inode:           ino,
 			ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
 			ClientStartTime: time.Now().Unix(),
 			ClientID:        uint64(rand.Int63n(math.MaxInt64)),
@@ -906,7 +907,7 @@ func BatchInodeGetWithXAttrInterTest(t *testing.T, leader, follower *metaPartiti
 	testIno := inos[20:50]
 
 	req := &proto.BatchInodeGetRequest{
-		Inodes: testIno,
+		Inodes:         testIno,
 		WithExtendAttr: true,
 		ExtendAttrKeys: []string{"extend_attr_1"},
 	}
@@ -947,7 +948,7 @@ func BatchInodeGetWithXAttrInterTest(t *testing.T, leader, follower *metaPartiti
 	}
 
 	req = &proto.BatchInodeGetRequest{
-		Inodes: testIno,
+		Inodes:         testIno,
 		WithExtendAttr: true,
 	}
 	packet = &Packet{}
@@ -1005,7 +1006,7 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 	rand.Seed(time.Now().UnixMilli())
 	req := &proto.LinkInodeRequest{
-		Inode: ino,
+		Inode:           ino,
 		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
 		ClientStartTime: time.Now().Unix(),
 		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
@@ -1043,7 +1044,7 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	//create inode link for not exist inode
 	rand.Seed(time.Now().UnixMilli())
 	req = &proto.LinkInodeRequest{
-		Inode: math.MaxUint64 - 10,
+		Inode:           math.MaxUint64 - 10,
 		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
 		ClientStartTime: time.Now().Unix(),
 		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
@@ -1065,7 +1066,7 @@ func CreateInodeLinkInterTest(t *testing.T, leader, follower *metaPartition) {
 	_ = inodePut(follower.inodeTree, inode)
 	rand.Seed(time.Now().UnixMilli())
 	req = &proto.LinkInodeRequest{
-		Inode: ino,
+		Inode:           ino,
 		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
 		ClientStartTime: time.Now().Unix(),
 		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
@@ -1096,7 +1097,7 @@ func TestMetaPartition_CreateInodeLinkCase01(t *testing.T) {
 	releaseMp(leader, follower, dir)
 }
 
-//simulate remove file
+// simulate remove file
 func EvictFileInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	//create inode
 	ino, err := createInode(470, 0, 0, leader)
@@ -1198,7 +1199,7 @@ func EvictDirInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	}
 	rand.Seed(time.Now().UnixMilli())
 	req := &proto.LinkInodeRequest{
-		Inode: ino,
+		Inode:           ino,
 		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
 		ClientStartTime: time.Now().Unix(),
 		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
@@ -1255,7 +1256,7 @@ func EvictDirInodeInterTest(t *testing.T, leader, follower *metaPartition) {
 	//unlink to empty
 	rand.Seed(time.Now().UnixMilli())
 	reqUnlinkInode := &proto.UnlinkInodeRequest{
-		Inode: ino,
+		Inode:           ino,
 		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
 		ClientStartTime: time.Now().Unix(),
 		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
@@ -1911,6 +1912,22 @@ func TestResetCursor_ResetMaxMP(t *testing.T) {
 	return
 }
 
+type oldInodeInfo struct {
+	Inode      uint64    `json:"ino"`
+	Mode       uint32    `json:"mode"`
+	Nlink      uint32    `json:"nlink"`
+	Size       uint64    `json:"sz"`
+	Uid        uint32    `json:"uid"`
+	Gid        uint32    `json:"gid"`
+	Generation uint64    `json:"gen"`
+	ModifyTime time.Time `json:"mt"`
+	CreateTime time.Time `json:"ct"`
+	AccessTime time.Time `json:"at"`
+	Target     []byte    `json:"tgt"`
+
+	expiration int64
+}
+
 func TestProtoInodeInfoMarshaUnmarshal(t *testing.T) {
 	ino := NewInode(10, 0)
 	ino.Uid = 500
@@ -1934,7 +1951,7 @@ func TestProtoInodeInfoMarshaUnmarshal(t *testing.T) {
 		ek.PartitionId = i
 		ino.Extents.Insert(nil, ek, 10)
 	}
-	inodeInfo := &proto.MetaInodeInfo{}
+	inodeInfo := &proto.InodeInfo{}
 	replyInfo(inodeInfo, ino)
 	data, err := json.Marshal(inodeInfo)
 	if err != nil {
@@ -1942,7 +1959,7 @@ func TestProtoInodeInfoMarshaUnmarshal(t *testing.T) {
 		return
 	}
 
-	inodeInfoUnmarshal := &proto.InodeInfo{}
+	inodeInfoUnmarshal := &oldInodeInfo{}
 	if err = json.Unmarshal(data, inodeInfoUnmarshal); err != nil {
 		t.Errorf("unmarshal failed: %v", err)
 		return
@@ -1953,7 +1970,7 @@ func TestProtoInodeInfoMarshaUnmarshal(t *testing.T) {
 	assert.Equal(t, inodeInfo.Uid, inodeInfoUnmarshal.Uid)
 	assert.Equal(t, inodeInfo.Gid, inodeInfoUnmarshal.Gid)
 	assert.Equal(t, inodeInfo.Generation, inodeInfoUnmarshal.Generation)
-	assert.Equal(t, inodeInfo.Target, inodeInfoUnmarshal.Target)
+	assert.Equal(t, *inodeInfo.Target, inodeInfoUnmarshal.Target)
 	assert.Equal(t, inodeInfo.Nlink, inodeInfoUnmarshal.Nlink)
 	assert.Equal(t, int64(inodeInfo.ModifyTime), inodeInfoUnmarshal.ModifyTime.Unix())
 	assert.Equal(t, int64(inodeInfo.CreateTime), inodeInfoUnmarshal.CreateTime.Unix())
@@ -2011,7 +2028,7 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 	//ek truncate
 	truncateInodeCnt := 0
 	for _, inodeID := range inodeIDs {
-		if inodeID % 5 == 1 {
+		if inodeID%5 == 1 {
 			truncateInodeCnt++
 			oldSize := uint64(420)
 			expectInodesTotalSize -= oldSize
@@ -2031,7 +2048,7 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 	delInodesID := make([]uint64, 0)
 	expectDelInodeTotalSize := uint64(0)
 	for _, inodeID := range inodeIDs {
-		if inodeID%3==1 {
+		if inodeID%3 == 1 {
 			delInodesID = append(delInodesID, inodeID)
 			var retMsg *InodeResponse
 			retMsg, err = mp.getInode(NewInode(inodeID, 0), false)
@@ -2068,7 +2085,7 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 	//recover
 	newDelInodeIDs := make([]uint64, 0)
 	for _, delInodeID := range delInodesID {
-		if delInodeID % 2 == 0 {
+		if delInodeID%2 == 0 {
 			_, dino, status, _ := mp.getDeletedInode(delInodeID)
 			if status != proto.OpOk {
 				t.Error(status)
@@ -2087,12 +2104,12 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
 	assert.Equal(t, int64(expectDelInodeTotalSize), mp.inodeDeletedTree.GetDelInodesTotalSize())
 
-	t.Logf("recover inode success count: %v", len(delInodesID) - len(newDelInodeIDs))
+	t.Logf("recover inode success count: %v", len(delInodesID)-len(newDelInodeIDs))
 
 	//clean del inode
 	needCleanDelInodes := make([]*Inode, 0)
 	for _, delInodeID := range newDelInodeIDs {
-		if delInodeID % 8 == 1 {
+		if delInodeID%8 == 1 {
 			needCleanDelInodes = append(needCleanDelInodes, NewInode(delInodeID, 0))
 			_, dino, status, _ := mp.getDeletedInode(delInodeID)
 			if status != proto.OpOk {

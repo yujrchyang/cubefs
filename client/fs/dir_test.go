@@ -1,35 +1,30 @@
 package fs
 
 import (
-	"bazil.org/fuse"
 	"context"
 	"os"
 	"strconv"
 	"testing"
 
+	"bazil.org/fuse"
 	"github.com/cubefs/cubefs/proto"
 )
 
-var (
-	ltptestMasterStr = "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010"
-)
-
 type createInfo struct {
-	name	string
-	ino		uint64
-	mode	uint32
+	name string
+	ino  uint64
+	mode uint32
 }
 
 func Test_ReaddirPlus(t *testing.T) {
-	os.RemoveAll("/cfs/mnt/Test_ReaddirPlus")
-
-	opt := &proto.MountOptions{Modulename: "fuseclient", Volname: ltptestVol, Owner: ltptestVol, Master: ltptestMasterStr}
+	opt := &proto.MountOptions{Modulename: "fuseclient", Volname: ltptestVolume, Owner: ltptestOwner, Master: ltptestMasterStr}
 	s, err := NewSuper(opt, true, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("Test_ReaddirPlus: new super err(%v)", err)
 		return
 	}
-	d := &Node{super: s}
+	Sup = s
+	d := &Node{}
 	ctx := context.Background()
 	// create test dir
 	var dInfo *proto.InodeInfo
@@ -71,4 +66,3 @@ func Test_ReaddirPlus(t *testing.T) {
 		}
 	}
 }
-

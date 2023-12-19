@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -25,10 +26,11 @@ import (
 )
 
 const (
-	ControlVersion       = "/version"
-	ControlGetReadStatus = "/get/readstatus"
-	ControlSetUpgrade    = "/set/clientUpgrade"
-	ControlUnsetUpgrade  = "/unset/clientUpgrade"
+	ControlCommandFreeOSMemory = "/debug/freeosmemory"
+	ControlVersion             = "/version"
+	ControlGetReadStatus       = "/get/readstatus"
+	ControlSetUpgrade          = "/set/clientUpgrade"
+	ControlUnsetUpgrade        = "/unset/clientUpgrade"
 
 	ControlCommandGetUmpCollectWay = "/umpCollectWay/get"
 	ControlCommandSetUmpCollectWay = "/umpCollectWay/set"
@@ -121,6 +123,10 @@ func writePidFile(file string) error {
 
 	_, err = io.WriteString(f, fmt.Sprintf("%d%s%s", os.Getpid(), pidFileSeparator, os.Args[0]))
 	return err
+}
+
+func freeOSMemory(w http.ResponseWriter, r *http.Request) {
+	debug.FreeOSMemory()
 }
 
 func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {

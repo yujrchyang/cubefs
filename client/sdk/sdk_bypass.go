@@ -64,7 +64,7 @@ const (
 	maxInodeCache         = 10000
 	inodeExpiration       = time.Hour
 	inodeEvictionInterval = time.Hour
-	dentryValidDuration   = time.Hour
+	dentryValidSec        = 3600
 
 	RequestMasterRetryInterval = time.Second * 2
 	CommonRetryTime            = 5
@@ -205,7 +205,7 @@ type file struct {
 	// save the path for openat, fstat, etc.
 	path string
 	// symbolic file only
-	target []byte
+	target string
 	// dir only
 	dirp *dirStream
 	// for file write lock
@@ -327,7 +327,7 @@ func (c *client) saveClientState() *SDKState {
 		f.Size = v.size
 		f.Pos = v.pos
 		f.Path = v.path
-		f.Target = string(v.target)
+		f.Target = v.target
 		f.Locked = v.locked
 		if v.dirp != nil {
 			f.DirPos = v.dirp.pos
@@ -353,7 +353,7 @@ func (c *client) rebuildClientState(clientState *SDKState) {
 	}
 
 	for _, v := range clientState.Files {
-		f := &file{fd: v.Fd, ino: v.Ino, flags: v.Flags, mode: v.Mode, size: v.Size, pos: v.Pos, path: v.Path, target: []byte(v.Target), locked: v.Locked}
+		f := &file{fd: v.Fd, ino: v.Ino, flags: v.Flags, mode: v.Mode, size: v.Size, pos: v.Pos, path: v.Path, target: v.Target, locked: v.Locked}
 		if v.DirPos >= 0 {
 			f.dirp = &dirStream{}
 			f.dirp.pos = v.DirPos
@@ -595,7 +595,7 @@ func (c *client) allocFD() int {
 	return int(fd)
 }
 
-func (c *client) allocFile(ino uint64, flags, mode uint32, target []byte, fd int) *file {
+func (c *client) allocFile(ino uint64, flags, mode uint32, target string, fd int) *file {
 	c.fdlock.Lock()
 	defer c.fdlock.Unlock()
 	var (
@@ -654,7 +654,8 @@ func (c *client) copyFile(fd uint, newfd uint) uint {
 }
 
 func (c *client) create(ctx context.Context, parentID uint64, name string, mode, uid, gid uint32, target []byte) (info *proto.InodeInfo, err error) {
-	if info, err = c.mw.Create_ll(nil, parentID, name, mode, uid, gid, target); err != nil {
+	info, err = c.mw.Create_ll(nil, parentID, name, mode, uid, gid, target)
+	if err != nil {
 		return
 	}
 	c.inodeCache.Delete(nil, parentID)
@@ -662,7 +663,7 @@ func (c *client) create(ctx context.Context, parentID uint64, name string, mode,
 	c.inodeDentryCacheLock.Lock()
 	dentryCache, ok := c.inodeDentryCache[parentID]
 	if !ok {
-		dentryCache = cache.NewDentryCache(dentryValidDuration, c.useMetaCache)
+		dentryCache = cache.NewDentryCache(dentryValidSec, c.useMetaCache)
 		c.inodeDentryCache[parentID] = dentryCache
 	}
 	dentryCache.Put(name, info.Inode)
@@ -778,8 +779,7 @@ func (c *client) lookupPath(ctx context.Context, path string) (ino uint64, err e
 }
 
 func (c *client) getInode(ctx context.Context, ino uint64) (info *proto.InodeInfo, err error) {
-	info = c.inodeCache.Get(nil, ino)
-	if info != nil {
+	if info = c.inodeCache.Get(nil, ino); info != nil {
 		return
 	}
 	info, err = c.mw.InodeGet_ll(nil, ino)
@@ -808,7 +808,7 @@ func (c *client) getDentry(ctx context.Context, parentID uint64, name string, st
 	}
 
 	if !cacheExists {
-		dentryCache = cache.NewDentryCache(dentryValidDuration, c.useMetaCache)
+		dentryCache = cache.NewDentryCache(dentryValidSec, c.useMetaCache)
 		c.inodeDentryCache[parentID] = dentryCache
 	}
 

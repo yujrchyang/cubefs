@@ -21,7 +21,7 @@ func (t *Tree) Root() (Node, error) {
 	return &t.tree, nil
 }
 
-func (t *Tree) Node(ino uint64, isDir bool) Node {
+func (t *Tree) Node(ino uint64) Node {
 	panic("Node need to implement")
 	return nil
 }

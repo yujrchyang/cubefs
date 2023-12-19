@@ -29,7 +29,7 @@ const (
 	CubeInfoDir      = ".cube_torch"
 	CubeInfoFileName = ".cube_info"
 
-	DefaultIndexDentryExpiration = 60 * time.Minute
+	DefaultIndexDentryExpirationSec uint32 = 60 * 60
 
 	DownloadFileSizeThreshold = 2 * unit.MB
 )
@@ -46,7 +46,7 @@ type CubeInfo struct {
 type PrefetchManager struct {
 	volName          string
 	mountPoint       string
-	rootIno			 uint64
+	rootIno          uint64
 	ec               *ExtentClient
 	indexFileInfoMap sync.Map // key: index file path, value: *IndexInfo
 	indexInfoChan    chan *IndexInfo
@@ -112,7 +112,7 @@ func NewPrefetchManager(ec *ExtentClient, volName, mountPoint string, rootIno ui
 	pManager := &PrefetchManager{
 		volName:       volName,
 		mountPoint:    mountPoint,
-		rootIno: 	   rootIno,
+		rootIno:       rootIno,
 		ec:            ec,
 		closeC:        make(chan struct{}, 1),
 		indexInfoChan: make(chan *IndexInfo, 1024),
@@ -291,7 +291,7 @@ func computeHitPercent(totalRead, appRead uint64) float64 {
 		return 0
 	}
 	if totalRead != 0 {
-		hitPercent = float64(totalRead - appRead) / float64(totalRead) * 100
+		hitPercent = float64(totalRead-appRead) / float64(totalRead) * 100
 	}
 	return hitPercent
 }
@@ -412,9 +412,9 @@ func (pManager *PrefetchManager) getFileInode(ctx context.Context, pathDentryInf
 	if ino, exist := dInfo.dcache.Get(fileName); exist {
 		value, ok := pManager.dcacheMap.Load(dInfo.parIno)
 		if !ok {
-			valid := DefaultIndexDentryExpiration
+			valid := DefaultIndexDentryExpirationSec
 			if indexInfo.validMinute > 0 {
-				valid = time.Duration(indexInfo.validMinute) * time.Minute
+				valid = uint32(indexInfo.validMinute) * 60
 			}
 			indexDentryInfo := &IndexDentryInfo{
 				path:   indexInfo.path,
@@ -447,7 +447,7 @@ func (pManager *PrefetchManager) getDirInfo(ctx context.Context, path string) (p
 	if children, err = pManager.ec.metaWrapper.ReadDir_ll(ctx, parIno); err != nil {
 		return
 	}
-	dcache = cache.NewDentryCache(30*time.Minute, true)
+	dcache = cache.NewDentryCache(30*60, true)
 	for _, child := range children {
 		dcache.Put(copyString(child.Name), child.Inode)
 	}
@@ -459,7 +459,7 @@ func (pManager *PrefetchManager) getDirInfo(ctx context.Context, path string) (p
 
 func (pManager *PrefetchManager) resetExistedIndexInfo(oldIndexInfo, newIndexInfo *IndexInfo, ttlMinute int64) bool {
 	// reset expiration for existed index info
-	dcacheValid := DefaultIndexDentryExpiration
+	dcacheValid := DefaultIndexDentryExpirationSec
 	if oldIndexInfo.ttl > 0 && time.Now().Unix() > oldIndexInfo.ttl {
 		pManager.indexFileInfoMap.Store(newIndexInfo.path, newIndexInfo)
 		log.LogInfof("resetExistedIndexInfo: store new index(%v)", newIndexInfo)
@@ -471,7 +471,7 @@ func (pManager *PrefetchManager) resetExistedIndexInfo(oldIndexInfo, newIndexInf
 	} else {
 		oldIndexInfo.ttl = time.Now().Add(time.Duration(ttlMinute) * time.Minute).Unix()
 		oldIndexInfo.validMinute = ttlMinute
-		dcacheValid = time.Duration(ttlMinute) * time.Minute
+		dcacheValid = uint32(ttlMinute) * 60
 	}
 	log.LogInfof("resetExistedIndexInfo: reset index(%v) file count(%v)", oldIndexInfo, len(oldIndexInfo.fileInfoMap))
 
@@ -559,7 +559,7 @@ func (pManager *PrefetchManager) PrefetchInodeInfo(datasetCnt string, batchArr [
 	}
 	infos := pManager.ec.metaWrapper.BatchInodeGet(context.Background(), inodes)
 	for _, info := range infos {
-		pManager.ec.putIcache(*info)
+		pManager.ec.putIcache(info)
 	}
 }
 
@@ -585,13 +585,13 @@ func (d *DownloadFileInfo) String() string {
 }
 
 type DownloadResult struct {
-	RespData	[]byte
-	DataLen		int
+	RespData []byte
+	DataLen  int
 }
 
 type BatchDownloadRespWriter struct {
-	Wg     	sync.WaitGroup
-	ResChan	chan *DownloadResult
+	Wg      sync.WaitGroup
+	ResChan chan *DownloadResult
 }
 
 func (pManager *PrefetchManager) GetBatchFileInfos(batchArr [][]uint64, datasetCnt string) (infos []*FileInfo, err error) {
@@ -643,9 +643,9 @@ func (pManager *PrefetchManager) DownloadPath(filePath string, respData *BatchDo
 
 func (pManager *PrefetchManager) ReadData(ctx context.Context, dInfo *DownloadFileInfo) (err error) {
 	var (
-		content 	[]byte
-		readSize	int
-		inodeID		uint64
+		content  []byte
+		readSize int
+		inodeID  uint64
 	)
 	defer func() {
 		if err == nil && readSize > 0 {
@@ -765,7 +765,7 @@ func (pManager *PrefetchManager) LookupPathByCache(ctx context.Context, absPath 
 				continue
 			}
 		} else {
-			value, _ = pManager.lookupDcache.LoadOrStore(ino, cache.NewDentryCache(DefaultIndexDentryExpiration, true))
+			value, _ = pManager.lookupDcache.LoadOrStore(ino, cache.NewDentryCache(DefaultIndexDentryExpirationSec, true))
 			dcache = value.(*cache.DentryCache)
 		}
 		child, _, err := pManager.ec.metaWrapper.Lookup_ll(ctx, ino, dir)

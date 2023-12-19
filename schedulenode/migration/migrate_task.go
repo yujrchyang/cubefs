@@ -2,6 +2,10 @@ package migration
 
 import (
 	"fmt"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
@@ -9,9 +13,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/net/context"
-	"strings"
-	"sync"
-	"time"
 )
 
 type MigrateTask struct {
@@ -319,7 +320,7 @@ func (migTask *MigrateTask) getInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err
 		mu                                          sync.Mutex
 		inodeInfoViews                              []*proto.InodeInfo
 		members                                     = migTask.mpInfo.Members
-		maxAccessTime, maxModifyTime, maxCreateTime time.Time
+		maxAccessTime, maxModifyTime, maxCreateTime proto.CubeFSTime
 	)
 	for _, member := range members {
 		wg.Add(1)
@@ -373,22 +374,22 @@ func (migTask *MigrateTask) getInodeMigDirection(inodeInfo *proto.InodeInfo) (mi
 			break
 		}
 		if policyInodeATime.TimeType == proto.InodeAccessTimeTypeTimestamp {
-			if inodeInfo.AccessTime.Unix() < policyInodeATime.TimeValue &&
-				inodeInfo.ModifyTime.Unix() < policyInodeATime.TimeValue {
+			if int64(inodeInfo.AccessTime) < policyInodeATime.TimeValue &&
+				int64(inodeInfo.ModifyTime) < policyInodeATime.TimeValue {
 				migDirection = SSDTOHDDFILEMIGRATE
 				break
 			}
 		}
 		if policyInodeATime.TimeType == proto.InodeAccessTimeTypeDays {
-			if time.Now().Unix()-inodeInfo.AccessTime.Unix() > policyInodeATime.TimeValue*24*60*60 &&
-				time.Now().Unix()-inodeInfo.ModifyTime.Unix() > policyInodeATime.TimeValue*24*60*60 {
+			if time.Now().Unix()-int64(inodeInfo.AccessTime) > policyInodeATime.TimeValue*24*60*60 &&
+				time.Now().Unix()-int64(inodeInfo.ModifyTime) > policyInodeATime.TimeValue*24*60*60 {
 				migDirection = SSDTOHDDFILEMIGRATE
 				break
 			}
 		}
 		if policyInodeATime.TimeType == proto.InodeAccessTimeTypeSec {
-			if time.Now().Unix()-inodeInfo.AccessTime.Unix() > policyInodeATime.TimeValue &&
-				time.Now().Unix()-inodeInfo.ModifyTime.Unix() > policyInodeATime.TimeValue {
+			if time.Now().Unix()-int64(inodeInfo.AccessTime) > policyInodeATime.TimeValue &&
+				time.Now().Unix()-int64(inodeInfo.ModifyTime) > policyInodeATime.TimeValue {
 				migDirection = SSDTOHDDFILEMIGRATE
 				break
 			}

@@ -2,6 +2,15 @@ package migration
 
 import (
 	"fmt"
+	"hash"
+	"hash/crc32"
+	"io"
+	"net"
+	"reflect"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -13,14 +22,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"golang.org/x/net/context"
-	"hash"
-	"hash/crc32"
-	"io"
-	"net"
-	"reflect"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -869,7 +870,7 @@ func (migInode *MigrateInode) setInodeAttrMaxTime() (err error) {
 		mu                                          sync.Mutex
 		inodeInfoViews                              []*proto.InodeInfo
 		members                                     = migInode.mpOp.mpInfo.Members
-		maxAccessTime, maxModifyTime, maxCreateTime time.Time
+		maxAccessTime, maxModifyTime, maxCreateTime proto.CubeFSTime
 	)
 	for _, member := range members {
 		wg.Add(1)

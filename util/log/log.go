@@ -108,6 +108,15 @@ type asyncWriter struct {
 	wg          sync.WaitGroup
 }
 
+func (writer *asyncWriter) init() {
+	if writer.buffer == nil {
+		writer.buffer = bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize))
+		writer.flushTmp = bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize))
+		writer.wg.Add(1)
+		go writer.flushScheduler()
+	}
+}
+
 func (writer *asyncWriter) flushScheduler() {
 	defer writer.wg.Done()
 	ticker := time.NewTicker(1 * time.Second)
@@ -131,6 +140,8 @@ func (writer *asyncWriter) flushScheduler() {
 // Write writes the log.
 func (writer *asyncWriter) Write(p []byte) (n int, err error) {
 	writer.mu.Lock()
+	// delay initialization to avoid unnecessary memory and goroutine comsumption
+	writer.init()
 	writer.buffer.Write(p)
 	writer.mu.Unlock()
 	if writer.buffer.Len() > WriterBufferLenLimit {
@@ -158,6 +169,7 @@ func (writer *asyncWriter) Flush() {
 
 func (writer *asyncWriter) flushToFile() {
 	writer.mu.Lock()
+	writer.init()
 	writer.buffer, writer.flushTmp = writer.flushTmp, writer.buffer
 	writer.mu.Unlock()
 	isRotateDay := false
@@ -211,13 +223,9 @@ func newAsyncWriter(fileName string, rollingSize int64) (*asyncWriter, error) {
 		fileName:    fileName,
 		rollingSize: rollingSize,
 		logSize:     fInfo.Size(),
-		buffer:      bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
-		flushTmp:    bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize)),
 		flushC:      make(chan bool, 1000),
 		rotateDay:   make(chan struct{}, 1),
 	}
-	w.wg.Add(1)
-	go w.flushScheduler()
 	return w, nil
 }
 

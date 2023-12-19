@@ -309,7 +309,7 @@ func creatHelper(t *testing.T) (mw *meta.MetaWrapper, ec *ExtentClient, err erro
 		OnInsertExtentKey: mw.InsertExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
-		OnPutIcache:       ic.PutValue,
+		OnPutIcache:       ic.Put,
 		TinySize:          NoUseTinyExtent,
 	}, nil); err != nil {
 		t.Fatalf("NewExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)

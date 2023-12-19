@@ -390,11 +390,11 @@ func checkInodeInfo(inodeInfoSet []*proto.InodeInfo, extentsInfoSet []*proto.Get
 		}
 
 		if info.ModifyTime != mtime {
-			log.LogDebugf("inode %v with diff modify time [expect: %v, actual: %v]", inodeInfo.Inode, mtime.Format(proto.TimeFormat), info.ModifyTime.Format(proto.TimeFormat))
+			log.LogDebugf("inode %v with diff modify time [expect: %v, actual: %v]", inodeInfo.Inode, mtime, info.ModifyTime)
 		}
 
 		if  info.CreateTime != ctime {
-			log.LogDebugf("inode %v with diff create time [expect: %v, actual: %v]", inodeInfo.Inode, ctime.Format(proto.TimeFormat), info.CreateTime.Format(proto.TimeFormat))
+			log.LogDebugf("inode %v with diff create time [expect: %v, actual: %v]", inodeInfo.Inode, ctime, info.CreateTime)
 		}
 
 	}

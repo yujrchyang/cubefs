@@ -39,7 +39,7 @@ const (
 
 const (
 	// the expiration duration of the dentry in the cache (used internally)
-	DentryValidDuration = 5 * time.Second
+	DentryValidSec = 5
 )
 
 const (

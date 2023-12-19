@@ -233,6 +233,7 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		log.LogInfof("using prof port: %v", gClientManager.profPort)
 		syslog.Printf("using prof port: %v\n", gClientManager.profPort)
 
+		http.HandleFunc(ControlCommandFreeOSMemory, freeOSMemory)
 		http.HandleFunc(ControlVersion, GetVersionHandleFunc)
 		http.HandleFunc(ControlReadProcessRegister, registerReadProcStatusHandleFunc)
 		http.HandleFunc(ControlBroadcastRefreshExtents, broadcastRefreshExtentsHandleFunc)
@@ -679,7 +680,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	} else {
 		var newInfo *proto.InodeInfo
 		for newInfo, err = c.getInodeByPath(nil, absPath); err == nil && fuseFlags&uint32(C.O_NOFOLLOW) == 0 && proto.IsSymlink(newInfo.Mode); {
-			absPath := c.absPath(string(newInfo.Target))
+			absPath := c.absPath(newInfo.TargetStr())
 			newInfo, err = c.getInodeByPath(nil, absPath)
 		}
 		if err != nil {
@@ -689,7 +690,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 	}
 
 	ino = info.Inode
-	f = c.allocFile(info.Inode, fuseFlags, info.Mode, info.Target, int(fd))
+	f = c.allocFile(info.Inode, fuseFlags, info.Mode, info.TargetStr(), int(fd))
 	if f == nil {
 		return statusEMFILE
 	}
@@ -1797,15 +1798,15 @@ func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) (re C.
 	if err != nil {
 		return C.ssize_t(errorToStatus(err))
 	}
-	if !proto.IsSymlink(info.Mode) {
+	if !proto.IsSymlink(info.Mode) || info.Target == nil {
 		return C.ssize_t(statusEINVAL)
 	}
 	ino = info.Inode
 
-	if len(info.Target) < int(size) {
-		size = C.size_t(len(info.Target))
+	if len(*info.Target) < int(size) {
+		size = C.size_t(len(*info.Target))
 	}
-	hdr := (*reflect.StringHeader)(unsafe.Pointer(&info.Target))
+	hdr := (*reflect.StringHeader)(unsafe.Pointer(info.Target))
 	C.memcpy(unsafe.Pointer(buf), unsafe.Pointer(hdr.Data), size)
 	return C.ssize_t(size)
 }
@@ -1878,7 +1879,7 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
-		absPath := c.absPath(string(info.Target))
+		absPath := c.absPath(info.TargetStr())
 		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
@@ -1914,19 +1915,16 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 
 	// fill up the time struct
 	var st_atim, st_mtim, st_ctim C.struct_timespec
-	t := info.AccessTime.UnixNano()
-	st_atim.tv_sec = C.time_t(t / 1e9)
-	st_atim.tv_nsec = C.long(t % 1e9)
+	st_atim.tv_sec = C.time_t(info.AccessTime)
+	st_atim.tv_nsec = 0
 	stat.st_atim = st_atim
 
-	t = info.ModifyTime.UnixNano()
-	st_mtim.tv_sec = C.time_t(t / 1e9)
-	st_mtim.tv_nsec = C.long(t % 1e9)
+	st_mtim.tv_sec = C.time_t(info.ModifyTime)
+	st_mtim.tv_nsec = 0
 	stat.st_mtim = st_mtim
 
-	t = info.CreateTime.UnixNano()
-	st_ctim.tv_sec = C.time_t(t / 1e9)
-	st_ctim.tv_nsec = C.long(t % 1e9)
+	st_ctim.tv_sec = C.time_t(info.CreateTime)
+	st_ctim.tv_nsec = 0
 	stat.st_ctim = st_ctim
 	return statusOK
 }
@@ -1971,7 +1969,7 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 	absPath := c.absPath(C.GoString(path))
 	var info *proto.InodeInfo
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
-		absPath = c.absPath(string(info.Target))
+		absPath = c.absPath(info.TargetStr())
 		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
@@ -2007,19 +2005,16 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 
 	// fill up the time struct
 	var st_atim, st_mtim, st_ctim C.struct_timespec
-	t := info.AccessTime.UnixNano()
-	st_atim.tv_sec = C.time_t(t / 1e9)
-	st_atim.tv_nsec = C.long(t % 1e9)
+	st_atim.tv_sec = C.time_t(info.AccessTime)
+	st_atim.tv_nsec = 0
 	stat.st_atim = st_atim
 
-	t = info.ModifyTime.UnixNano()
-	st_mtim.tv_sec = C.time_t(t / 1e9)
-	st_mtim.tv_nsec = C.long(t % 1e9)
+	st_mtim.tv_sec = C.time_t(info.ModifyTime)
+	st_mtim.tv_nsec = 0
 	stat.st_mtim = st_mtim
 
-	t = info.CreateTime.UnixNano()
-	st_ctim.tv_sec = C.time_t(t / 1e9)
-	st_ctim.tv_nsec = C.long(t % 1e9)
+	st_ctim.tv_sec = C.time_t(info.CreateTime)
+	st_ctim.tv_nsec = 0
 	stat.st_ctim = st_ctim
 	return statusOK
 }
@@ -2123,7 +2118,7 @@ func _cfs_chmod(id C.int64_t, path *C.char, mode C.mode_t, flags C.int) C.int {
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
-		absPath := c.absPath(string(info.Target))
+		absPath := c.absPath(info.TargetStr())
 		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
@@ -2218,7 +2213,7 @@ func _cfs_chown(id C.int64_t, path *C.char, uid C.uid_t, gid C.gid_t, flags C.in
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
-		absPath := c.absPath(string(info.Target))
+		absPath := c.absPath(info.TargetStr())
 		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
@@ -2299,7 +2294,7 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && (uint32(flags)&uint32(C.AT_SYMLINK_NOFOLLOW) == 0) && proto.IsSymlink(info.Mode); {
-		absPath := c.absPath(string(info.Target))
+		absPath := c.absPath(info.TargetStr())
 		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
@@ -2335,8 +2330,8 @@ func cfs_utimens(id C.int64_t, path *C.char, times *C.struct_timespec, flags C.i
 	if err != nil {
 		return errorToStatus(err)
 	}
-	info.AccessTime = time.Unix(atime, 0)
-	info.ModifyTime = time.Unix(mtime, 0)
+	info.AccessTime = proto.CubeFSTime(atime)
+	info.ModifyTime = proto.CubeFSTime(mtime)
 	c.inodeCache.Put(info)
 
 	return statusOK
@@ -2428,7 +2423,7 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 		if !proto.IsSymlink(info.Mode) {
 			break
 		}
-		absPath = c.absPath(string(info.Target))
+		absPath = c.absPath(info.TargetStr())
 		inode, err = c.lookupPath(nil, absPath)
 	}
 	if err != nil {
@@ -2455,7 +2450,7 @@ func cfs_setxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointer
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
-		absPath := c.absPath(string(info.Target))
+		absPath := c.absPath(info.TargetStr())
 		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
@@ -2547,7 +2542,7 @@ func cfs_getxattr(id C.int64_t, path *C.char, name *C.char, value unsafe.Pointer
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
-		absPath := c.absPath(string(info.Target))
+		absPath := c.absPath(info.TargetStr())
 		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
@@ -2667,7 +2662,7 @@ func cfs_listxattr(id C.int64_t, path *C.char, list *C.char, size C.size_t) C.ss
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
-		absPath := c.absPath(string(info.Target))
+		absPath := c.absPath(info.TargetStr())
 		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
@@ -2810,7 +2805,7 @@ func cfs_removexattr(id C.int64_t, path *C.char, name *C.char) C.int {
 	var info *proto.InodeInfo
 	var err error
 	for info, err = c.getInodeByPath(nil, absPath); err == nil && proto.IsSymlink(info.Mode); {
-		absPath := c.absPath(string(info.Target))
+		absPath := c.absPath(info.TargetStr())
 		info, err = c.getInodeByPath(nil, absPath)
 	}
 	if err != nil {
@@ -3566,19 +3561,16 @@ func cfs_batch_stat(id C.int64_t, inosp unsafe.Pointer, stats []C.struct_stat, c
 		}
 
 		var st_atim, st_mtim, st_ctim C.struct_timespec
-		t := info.AccessTime.UnixNano()
-		st_atim.tv_sec = C.time_t(t / 1e9)
-		st_atim.tv_nsec = C.long(t % 1e9)
+		st_atim.tv_sec = C.time_t(info.AccessTime)
+		st_atim.tv_nsec = 0
 		stats[i].st_atim = st_atim
 
-		t = info.ModifyTime.UnixNano()
-		st_mtim.tv_sec = C.time_t(t / 1e9)
-		st_mtim.tv_nsec = C.long(t % 1e9)
+		st_mtim.tv_sec = C.time_t(info.ModifyTime)
+		st_mtim.tv_nsec = 0
 		stats[i].st_mtim = st_mtim
 
-		t = info.CreateTime.UnixNano()
-		st_ctim.tv_sec = C.time_t(t / 1e9)
-		st_ctim.tv_nsec = C.long(t % 1e9)
+		st_ctim.tv_sec = C.time_t(info.CreateTime)
+		st_ctim.tv_nsec = 0
 		stats[i].st_ctim = st_ctim
 
 		found++

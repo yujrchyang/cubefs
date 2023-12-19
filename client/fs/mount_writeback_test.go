@@ -1,10 +1,7 @@
 package fs
 
 import (
-	"crypto/md5"
-	"encoding/hex"
 	"os"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,8 +11,6 @@ import (
 )
 
 var (
-	ltptestVol      = "ltptest"
-	ltptestMaster   = []string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}
 	readConnTimeout = 3 * int64(time.Second)
 )
 
@@ -50,15 +45,15 @@ func Test_EnableJdosKernelWriteBack(t *testing.T) {
 		},
 	}
 	mc := masterSDK.NewMasterClient(ltptestMaster, false)
-	volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(ltptestVol)
+	volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(ltptestVolume)
 	if err != nil {
-		t.Fatalf("Test_EnableJdosKernelWriteBack: get vol(%v) info err(%v)", ltptestVol, err)
+		t.Fatalf("Test_EnableJdosKernelWriteBack: get vol(%v) info err(%v)", ltptestVolume, err)
 		return
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// update vol write-cache
-			err := mc.AdminAPI().UpdateVolume(ltptestVol, volInfo.Capacity, int(volInfo.DpReplicaNum), int(volInfo.MpReplicaNum),
+			err := mc.AdminAPI().UpdateVolume(ltptestVolume, volInfo.Capacity, int(volInfo.DpReplicaNum), int(volInfo.MpReplicaNum),
 				int(volInfo.TrashRemainingDays), int(volInfo.DefaultStoreMode), volInfo.FollowerRead, false, false,
 				false, false, false, false, false, tt.volWriteCache, calcAuthKey("ltptest"),
 				"default", "0,0", "", 0, 0, 60, volInfo.CompactTag,
@@ -70,7 +65,7 @@ func Test_EnableJdosKernelWriteBack(t *testing.T) {
 			}
 			// write control file
 			var info *proto.VolStatInfo
-			if info, err = mc.ClientAPI().GetVolumeStat(ltptestVol); err != nil {
+			if info, err = mc.ClientAPI().GetVolumeStat(ltptestVolume); err != nil {
 				err = errors.Trace(err, "Get volume stat failed, check your masterAddr!")
 				return
 			}
@@ -105,11 +100,4 @@ func Test_EnableJdosKernelWriteBack(t *testing.T) {
 		t.Fatalf("Test_EnableJdosKernelWriteBack: enable control file(%v) err(%v)", JdosKernelWriteBackControlFile, err)
 		return
 	}
-}
-
-func calcAuthKey(key string) (authKey string) {
-	h := md5.New()
-	_, _ = h.Write([]byte(key))
-	cipherStr := h.Sum(nil)
-	return strings.ToLower(hex.EncodeToString(cipherStr))
 }

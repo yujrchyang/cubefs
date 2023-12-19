@@ -16,6 +16,7 @@ package proto
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -57,17 +58,18 @@ func IsSymlink(mode uint32) bool {
 
 // InodeInfo defines the inode struct.
 type InodeInfo struct {
-	Inode      uint64    `json:"ino"`
-	Mode       uint32    `json:"mode"`
-	Nlink      uint32    `json:"nlink"`
-	Size       uint64    `json:"sz"`
-	Uid        uint32    `json:"uid"`
-	Gid        uint32    `json:"gid"`
-	Generation uint64    `json:"gen"`
-	ModifyTime time.Time `json:"mt"`
-	CreateTime time.Time `json:"ct"`
-	AccessTime time.Time `json:"at"`
-	Target     []byte    `json:"tgt"`
+	Inode      uint64     `json:"ino"`
+	Mode       uint32     `json:"mode"`
+	Nlink      uint32     `json:"nlink"`
+	Size       uint64     `json:"sz"`
+	Uid        uint32     `json:"uid"`
+	Gid        uint32     `json:"gid"`
+	Generation uint64     `json:"gen"`
+	ModifyTime CubeFSTime `json:"mt"`
+	CreateTime CubeFSTime `json:"ct"`
+	AccessTime CubeFSTime `json:"at"`
+	// most of the inodes don't have target, a pointer would save 16 bytes
+	Target *[]byte `json:"tgt"`
 
 	expiration int64
 }
@@ -88,28 +90,52 @@ func (info *InodeInfo) String() string {
 	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
 }
 
+func (info *InodeInfo) TargetStr() (t string) {
+	if info.Target != nil {
+		t = string(*info.Target)
+	}
+	return
+}
+
 type CubeFSTime int64
 
 func (t CubeFSTime) MarshalText() ([]byte, error) {
 	return []byte(time.Unix(int64(t), 0).Format(time.RFC3339)), nil
 }
 
+func (t *CubeFSTime) UnmarshalText(data []byte) (err error) {
+	var time time.Time
+	err = time.UnmarshalText(data)
+	*t = CubeFSTime(time.Unix())
+	return
+}
+
 func (t CubeFSTime) String() string {
 	return time.Unix(int64(t), 0).Format(time.RFC3339)
 }
 
-type MetaInodeInfo struct {
-	Inode      uint64     `json:"ino"`
-	Mode       uint32     `json:"mode"`
-	Nlink      uint32     `json:"nlink"`
-	Size       uint64     `json:"sz"`
-	Uid        uint32     `json:"uid"`
-	Gid        uint32     `json:"gid"`
-	Generation uint64     `json:"gen"`
-	ModifyTime CubeFSTime `json:"mt"`
-	CreateTime CubeFSTime `json:"ct"`
-	AccessTime CubeFSTime `json:"at"`
-	Target     []byte     `json:"tgt"`
+func (t CubeFSTime) FormatTimeISO() string {
+	return time.Unix(int64(t), 0).UTC().Format("2006-01-02T15:04:05.000Z")
+}
+
+func (t CubeFSTime) FormatTimeRFC1123() string {
+	return time.Unix(int64(t), 0).UTC().Format(http.TimeFormat)
+}
+
+func (t CubeFSTime) Before(u CubeFSTime) bool {
+	return t < u
+}
+
+func (t CubeFSTime) BeforeTime(u time.Time) bool {
+	return time.Unix(int64(t), 0).Before(u)
+}
+
+func (t CubeFSTime) After(u CubeFSTime) bool {
+	return t > u
+}
+
+func (t CubeFSTime) AfterTime(u time.Time) bool {
+	return time.Unix(int64(t), 0).After(u)
 }
 
 type XAttrInfo struct {
@@ -168,10 +194,6 @@ type CreateInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
-type MetaCreateInodeResponse struct {
-	Info *MetaInodeInfo `json:"info"`
-}
-
 // LinkInodeRequest defines the request to link an inode.
 type LinkInodeRequest struct {
 	VolName         string `json:"vol"`
@@ -185,10 +207,6 @@ type LinkInodeRequest struct {
 // LinkInodeResponse defines the response to the request of linking an inode.
 type LinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
-}
-
-type MetaLinkInodeResponse struct {
-	Info *MetaInodeInfo `json:"info"`
 }
 
 // UnlinkInodeRequest defines the request to unlink an inode.
@@ -215,22 +233,11 @@ type UnlinkInodeResponse struct {
 	Info *InodeInfo `json:"info"`
 }
 
-type MetaUnlinkInodeResponse struct {
-	Info *MetaInodeInfo `json:"info"`
-}
-
 // batch UnlinkInodeResponse defines the response to the request of unlinking an inode.
 type BatchUnlinkInodeResponse struct {
 	Items []*struct {
 		Info   *InodeInfo `json:"info"`
 		Status uint8      `json:"status"`
-	} `json:"items"`
-}
-
-type MetaBatchUnlinkInodeResponse struct {
-	Items []*struct {
-		Info   *MetaInodeInfo `json:"info"`
-		Status uint8          `json:"status"`
 	} `json:"items"`
 }
 
@@ -265,11 +272,11 @@ type CreateDentryRequest struct {
 
 // UpdateDentryRequest defines the request to update a dentry.
 type UpdateDentryRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	ParentID    uint64 `json:"pino"`
-	Name        string `json:"name"`
-	Inode       uint64 `json:"ino"` // new inode number
+	VolName         string `json:"vol"`
+	PartitionID     uint64 `json:"pid"`
+	ParentID        uint64 `json:"pino"`
+	Name            string `json:"name"`
+	Inode           uint64 `json:"ino"` // new inode number
 	ClientID        uint64 `json:"client_id"`
 	ClientStartTime int64  `json:"client_sTime"`
 	ClientIP        uint32 `json:"client_ip"`
@@ -360,11 +367,6 @@ type InodeGetResponse struct {
 	ExtendAttrs []*ExtendAttrInfo `json:"extendAttrs,omitempty"`
 }
 
-type MetaInodeGetResponse struct {
-	Info        *MetaInodeInfo    `json:"info"`
-	ExtendAttrs []*ExtendAttrInfo `json:"extendAttrs,omitempty"`
-}
-
 // BatchInodeGetRequest defines the request to get the inode in batch.
 type BatchInodeGetRequest struct {
 	VolName        string   `json:"vol"`
@@ -382,11 +384,6 @@ type InodeExtendAttrsInfo struct {
 // BatchInodeGetResponse defines the response to the request of getting the inode in batch.
 type BatchInodeGetResponse struct {
 	Infos       []*InodeInfo            `json:"infos"`
-	ExtendAttrs []*InodeExtendAttrsInfo `json:"inodesExtendAttrs,omitempty"`
-}
-
-type MetaBatchInodeGetResponse struct {
-	Infos       []*MetaInodeInfo        `json:"infos"`
 	ExtendAttrs []*InodeExtendAttrsInfo `json:"inodesExtendAttrs,omitempty"`
 }
 
@@ -699,28 +696,19 @@ type InodeExtents struct {
 	Extents []ExtentKey
 }
 
-type MetaCmpInodeInfo struct {
-	Inode   *MetaInodeInfo
-	Extents []ExtentKey
-}
-
 type GetCmpInodesResponse struct {
 	Inodes []*InodeExtents
 }
 
-type MetaGetCmpInodesResponse struct {
-	Inodes []*MetaCmpInodeInfo
-}
-
 type InodeMergeExtentsRequest struct {
-	VolName     string      `json:"vol"`
-	PartitionId uint64      `json:"pid"`
-	Inode       uint64      `json:"inode_id"`
-	OldExtents  []ExtentKey `json:"old_extents"`
-	NewExtents  []ExtentKey `json:"new_extents"`
-	ClientID        uint64 `json:"client_id"`
-	ClientStartTime int64  `json:"client_sTime"`
-	ClientIP        uint32 `json:"client_ip"`
+	VolName         string      `json:"vol"`
+	PartitionId     uint64      `json:"pid"`
+	Inode           uint64      `json:"inode_id"`
+	OldExtents      []ExtentKey `json:"old_extents"`
+	NewExtents      []ExtentKey `json:"new_extents"`
+	ClientID        uint64      `json:"client_id"`
+	ClientStartTime int64       `json:"client_sTime"`
+	ClientIP        uint32      `json:"client_ip"`
 }
 
 // Dentry defines the dentry struct.

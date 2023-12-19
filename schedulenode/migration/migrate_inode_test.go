@@ -82,8 +82,8 @@ func TestSetInodeMigDirection(t *testing.T) {
 	inodeOperation := &MigrateInode{
 		mpOp: mpOperation,
 		inodeInfo: &proto.InodeInfo{
-			AccessTime: time.Now().Add(time.Second * -100),
-			ModifyTime: time.Now().Add(time.Second * -100),
+			AccessTime: proto.CubeFSTime(time.Now().Unix() - 100),
+			ModifyTime: proto.CubeFSTime(time.Now().Unix() - 100),
 		},
 	}
 	var (

@@ -297,8 +297,8 @@ func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (*proto.In
 		}
 		return nil, statusToErrno(status)
 	}
-	if proto.IsSymlink(info.Mode) {
-		info.Size = uint64(len(info.Target))
+	if proto.IsSymlink(info.Mode) && info.Target != nil {
+		info.Size = uint64(len(*info.Target))
 	}
 	log.LogDebugf("InodeGet_ll: info(%v)", info)
 	return info, nil
@@ -326,7 +326,7 @@ func (mw *MetaWrapper) InodeGetWithXattrs(ctx context.Context, inode uint64) (*p
 		return nil, nil, statusToErrno(status)
 	}
 	if proto.IsSymlink(info.Mode) {
-		info.Size = uint64(len(info.Target))
+		info.Size = uint64(len(*info.Target))
 	}
 	log.LogDebugf("InodeGetWithXattrs: info(%v)", info)
 	return info, xattrs, nil

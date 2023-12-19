@@ -80,8 +80,9 @@ type SuperState struct {
 
 // Functions that Super needs to implement
 var (
-	_ fs.FS         = (*Super)(nil)
-	_ fs.FSStatfser = (*Super)(nil)
+	_   fs.FS         = (*Super)(nil)
+	_   fs.FSStatfser = (*Super)(nil)
+	Sup *Super
 )
 
 // NewSuper returns a new Super.
@@ -129,7 +130,7 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		OnGetExtents:        s.mw.GetExtents,
 		OnTruncate:          s.mw.Truncate,
 		OnEvictIcache:       s.ic.Delete,
-		OnPutIcache:         s.ic.PutValue,
+		OnPutIcache:         s.ic.Put,
 		MetaWrapper:         s.mw,
 		StreamerSegCount:    opt.StreamerSegCount,
 	}
@@ -238,12 +239,12 @@ func (s *Super) Root() (fs.Node, error) {
 	if err != nil {
 		return nil, err
 	}
-	root := NewNode(s, inode.Inode)
+	root := NewNode(inode.Inode)
 	return root, nil
 }
 
 func (s *Super) Node(ino uint64) fs.Node {
-	return NewNode(s, ino)
+	return NewNode(ino)
 }
 
 // Statfs handles the Statfs request and returns a set of statistics.

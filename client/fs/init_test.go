@@ -22,7 +22,8 @@ const (
 )
 
 var (
-	ltptestMaster = []string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}
+	ltptestMasterStr = "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010"
+	ltptestMaster    = []string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}
 
 	mw *meta.MetaWrapper
 	ec *data.ExtentClient

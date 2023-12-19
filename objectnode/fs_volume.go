@@ -421,8 +421,8 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			Path:       path,
 			Size:       0,
 			Mode:       DefaultDirMode,
-			CreateTime: time.Now(),
-			ModifyTime: time.Now(),
+			CreateTime: proto.CubeFSTime(time.Now().Unix()),
+			ModifyTime: proto.CubeFSTime(time.Now().Unix()),
 			ETag:       EmptyContentMD5String,
 			Inode:      rootIno,
 			MIMEType:   HeaderValueContentTypeDirectory,
@@ -858,7 +858,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		Path:       fileName,
 		Size:       int64(size),
 		Mode:       os.FileMode(DefaultFileMode),
-		ModifyTime: time.Now(),
+		ModifyTime: proto.CubeFSTime(time.Now().Unix()),
 		CreateTime: tempInodeInfo.CreateTime,
 		ETag:       etag,
 		Inode:      tempInodeInfo.Inode,
@@ -1076,8 +1076,8 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		Path:       path,
 		Size:       int64(size),
 		Mode:       os.FileMode(DefaultFileMode),
-		CreateTime: time.Now(),
-		ModifyTime: time.Now(),
+		CreateTime: proto.CubeFSTime(time.Now().Unix()),
+		ModifyTime: proto.CubeFSTime(time.Now().Unix()),
 		ETag:       etagValue.ETag(),
 		Inode:      finalInode.Inode,
 	}
@@ -1484,8 +1484,9 @@ func (v *Volume) Close() error {
 // and the actual search result is a non-directory, an ENOENT error is returned.
 //
 // ENOENT:
-// 		0x2 ENOENT No such file or directory. A component of a specified
-// 		pathname did not exist, or the pathname was an empty string.
+//
+//	0x2 ENOENT No such file or directory. A component of a specified
+//	pathname did not exist, or the pathname was an empty string.
 func (v *Volume) recursiveLookupTarget(path string, targetRedirect bool) (entries POSIXDentries, err error) {
 	defer func() {
 		if err == syscall.ELOOP {
@@ -1571,7 +1572,7 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 					v.name, libpath.Join(base, pathItem.Name), curIno, err)
 				return
 			}
-			var linkTarget = string(symlinkInodeInfo.Target)
+			var linkTarget = symlinkInodeInfo.TargetStr()
 			var redirectPath = libpath.Join(base, linkTarget)
 			if pathItem.IsDirectory {
 				redirectPath += pathSep
@@ -1882,7 +1883,7 @@ func (v *Volume) lookupPrefix(prefix string) (inode uint64, prefixDirs []string,
 				log.LogErrorf("volume[%v]: lookupPrefix: get symlink inode info failed: %v", v.name, err)
 				return 0, nil, err
 			}
-			var linkTarget = string(symlinkInodeInfo.Target)
+			var linkTarget = symlinkInodeInfo.TargetStr()
 			var redirectPath = libpath.Join(base, linkTarget) + pathSep
 			if log.IsDebugEnabled() {
 				log.LogDebugf("volume[%v]: lookupPrefix: found symlink [%v -> %v], path redirect [%v -> %v]", v.name, dir, linkTarget, libpath.Join(base, dir), redirectPath)
@@ -2142,7 +2143,7 @@ func (v *Volume) supplyListFileInfo(fileInfos []*FSFileInfo) (err error) {
 	return
 }
 
-func (v *Volume) updateETag(inode uint64, size int64, mt time.Time) (etagValue ETagValue, err error) {
+func (v *Volume) updateETag(inode uint64, size int64, mt proto.CubeFSTime) (etagValue ETagValue, err error) {
 	// The ETag is invalid or outdated then generate a new ETag and make update.
 	if size == 0 {
 		etagValue = EmptyContentETagValue(mt)

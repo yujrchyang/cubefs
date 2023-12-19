@@ -51,17 +51,8 @@ cd /go/src/github.com/cubefs/cubefs/client;
 bash ./build.sh -d ${build_opt} &>> /tmp/cfs_build_output
 if [[ $? -eq 0 ]]; then
     echo -e "\033[32mdone\033[0m";
-    mv bin/cfs-client /go/src/github.com/cubefs/cubefs/docker/bin/cfs-client;
-    mv bin/cfs-client-inner /go/src/github.com/cubefs/cubefs/docker/bin/cfs-client-inner;
-    mv bin/libcfssdk.so /go/src/github.com/cubefs/cubefs/docker/bin/libcfssdk.so;
-    mv bin/libcfsc.so /go/src/github.com/cubefs/cubefs/docker/bin/libcfsc.so;
-    mv bin/libcfssdk_cshared.so /go/src/github.com/cubefs/cubefs/docker/bin/libcfssdk_cshared.so;
-    mv bin/libcfsclient.so /go/src/github.com/cubefs/cubefs/docker/bin/libcfsclient.so;
-    mv bin/libempty.so /go/src/github.com/cubefs/cubefs/docker/bin/libempty.so;
-    mv /usr/local/go/pkg/linux_amd64_dynlink/libstd.so /go/src/github.com/cubefs/cubefs/docker/bin/libstd.so;
-    if [ "${build_opt}"x = "test"x ]; then
-        mv bin/test-bypass /go/src/github.com/cubefs/cubefs/docker/bin/test-bypass;
-    fi
+    cp bin/* /go/src/github.com/cubefs/cubefs/docker/bin;
+    cp /usr/local/go/pkg/linux_amd64_dynlink/libstd.so /go/src/github.com/cubefs/cubefs/docker/bin;
 else
     echo -e "\033[31mfail\033[0m";
     failed=1

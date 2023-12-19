@@ -442,7 +442,7 @@ int libc_setxattr(const char *pathname, const char *name, const void *value, siz
 }
 
 int libc_lsetxattr(const char *pathname, const char *name, const void *value, size_t size, int flags) {
-    if(func_lsetxattr) {
+    if(func_lsetxattr == NULL) {
         func_lsetxattr = (lsetxattr_t)dlsym(RTLD_NEXT, "lsetxattr");
     }
     return func_lsetxattr(pathname, name, value, size, flags);

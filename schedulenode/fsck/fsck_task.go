@@ -460,7 +460,7 @@ func (t *FSCheckTask) dumpObsoleteInode() {
 		}
 		t.exportObsoleteInodeToFile(inodeInfo)
 		t.obsoleteSize += inodeInfo.Size
-		if inodeInfo.Nlink != 0 || time.Since(inodeInfo.ModifyTime) < t.safeCleanInterval || !proto.IsRegular(inodeInfo.Mode) {
+		if inodeInfo.Nlink != 0 || time.Since(time.Unix(int64(inodeInfo.ModifyTime), 0)) < t.safeCleanInterval || !proto.IsRegular(inodeInfo.Mode) {
 			continue
 		}
 		t.safeCleanSize += inodeInfo.Size
@@ -482,7 +482,7 @@ func (t *FSCheckTask) dumpAndCleanObsoleteInode() {
 		}
 		t.exportObsoleteInodeToFile(inodeInfo)
 		t.obsoleteSize += inodeInfo.Size
-		if inodeInfo.Nlink != 0 || time.Since(inodeInfo.ModifyTime) < t.safeCleanInterval || !proto.IsRegular(inodeInfo.Mode) {
+		if inodeInfo.Nlink != 0 || time.Since(time.Unix(int64(inodeInfo.ModifyTime), 0)) < t.safeCleanInterval || !proto.IsRegular(inodeInfo.Mode) {
 			continue
 		}
 		t.safeCleanInodeIDs = append(t.safeCleanInodeIDs, inodeID)

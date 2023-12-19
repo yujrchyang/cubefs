@@ -18,12 +18,11 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"math/rand"
 	"regexp"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"github.com/google/uuid"
 )
 
@@ -40,7 +39,7 @@ var (
 type ETagValue struct {
 	Value   string
 	PartNum int
-	TS      time.Time
+	TS      proto.CubeFSTime
 }
 
 func (e ETagValue) ETag() string {
@@ -53,34 +52,34 @@ func (e ETagValue) ETag() string {
 }
 
 func (e ETagValue) TSUnix() int64 {
-	return e.TS.Unix()
+	return int64(e.TS)
 }
 
 func (e ETagValue) String() string {
 	if !e.Valid() {
 		return "Invalid"
 	}
-	return fmt.Sprintf("%s_%d_%d", e.Value, e.PartNum, e.TS.Unix())
+	return fmt.Sprintf("%s_%d_%d", e.Value, e.PartNum, e.TS)
 }
 
 func (e ETagValue) Encode() string {
 	sb := strings.Builder{}
 	sb.WriteString(e.ETag())
-	if ts := e.TS.Unix(); ts > 0 {
-		sb.WriteString(":" + strconv.FormatInt(ts, 10))
+	if ts := e.TS; ts > 0 {
+		sb.WriteString(":" + strconv.FormatInt(int64(ts), 10))
 	}
 	return sb.String()
 }
 
 func (e ETagValue) Valid() bool {
-	return len(e.Value) > 0 && e.PartNum >= 0 && e.TS.Unix() >= 0
+	return len(e.Value) > 0 && e.PartNum >= 0 && e.TS >= 0
 }
 
 func DirectoryETagValue() ETagValue {
 	return staticDirectoryETagValue
 }
 
-func EmptyContentETagValue(ts time.Time) ETagValue {
+func EmptyContentETagValue(ts proto.CubeFSTime) ETagValue {
 	return ETagValue{
 		Value:   EmptyContentMD5String,
 		PartNum: 0,
@@ -88,22 +87,7 @@ func EmptyContentETagValue(ts time.Time) ETagValue {
 	}
 }
 
-func NewRandomBytesETagValue(partNum int, ts time.Time) ETagValue {
-	r := rand.New(rand.NewSource(ts.Unix()))
-	tmp := make([]byte, 4*1024)
-	n, _ := r.Read(tmp)
-	md5Hash := md5.New()
-	md5Hash.Write(tmp[:n])
-
-	value := ETagValue{
-		Value:   hex.EncodeToString(md5Hash.Sum(nil)),
-		PartNum: partNum,
-		TS:      ts,
-	}
-	return value
-}
-
-func NewRandomUUIDETagValue(partNum int, ts time.Time) ETagValue {
+func NewRandomUUIDETagValue(partNum int, ts proto.CubeFSTime) ETagValue {
 	uUID, _ := uuid.NewRandom()
 	md5Hash := md5.New()
 	md5Hash.Write([]byte(uUID.String()))
@@ -138,10 +122,10 @@ func ParseETagValue(raw string) ETagValue {
 	tsLoc := regexpEncodedETagParts[2].FindStringIndex(raw[offset:])
 	if len(tsLoc) == 2 {
 		unixSec, _ := strconv.ParseInt(raw[offset:][tsLoc[0]+1:tsLoc[1]], 10, 64)
-		value.TS = time.Unix(unixSec, 0)
+		value.TS = proto.CubeFSTime(unixSec)
 		offset += tsLoc[1] - tsLoc[0]
 	} else {
-		value.TS = time.Unix(0, 0)
+		value.TS = 0
 	}
 	return value
 }

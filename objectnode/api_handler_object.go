@@ -212,7 +212,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		if !fileModTime.After(modifiedTime) {
+		if !fileModTime.AfterTime(modifiedTime) {
 			log.LogInfof("getObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = NotModified
 			return
@@ -238,7 +238,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		if fileModTime.After(modifiedTime) {
+		if fileModTime.AfterTime(modifiedTime) {
 			log.LogInfof("getObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = PreconditionFailed
 			return
@@ -266,7 +266,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// set response header for GetObject
 	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
-	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
+	w.Header()[HeaderNameLastModified] = []string{fileInfo.ModifyTime.FormatTimeRFC1123()}
 	if len(responseContentType) > 0 {
 		w.Header()[HeaderNameContentType] = []string{responseContentType}
 	} else if len(fileInfo.MIMEType) > 0 {
@@ -453,7 +453,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		if !fileModTime.After(modifiedTime) {
+		if !fileModTime.AfterTime(modifiedTime) {
 			if log.IsDebugEnabled() {
 				log.LogDebugf("headObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
 			}
@@ -485,7 +485,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		if fileModTime.After(modifiedTime) {
+		if fileModTime.AfterTime(modifiedTime) {
 			if log.IsDebugEnabled() {
 				log.LogDebugf("headObjectHandler: file modified time after than specified time: requestID(%v)", GetRequestID(r))
 			}
@@ -496,7 +496,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// set response header
 	w.Header()[HeaderNameAcceptRange] = []string{HeaderValueAcceptRange}
-	w.Header()[HeaderNameLastModified] = []string{formatTimeRFC1123(fileInfo.ModifyTime)}
+	w.Header()[HeaderNameLastModified] = []string{fileInfo.ModifyTime.FormatTimeRFC1123()}
 	w.Header()[HeaderNameContentMD5] = []string{EmptyContentMD5String}
 	if len(fileInfo.MIMEType) > 0 {
 		w.Header()[HeaderNameContentType] = []string{fileInfo.MIMEType}
@@ -809,7 +809,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		if fileModTime.Before(modifiedTime) {
+		if fileModTime.BeforeTime(modifiedTime) {
 			log.LogInfof("copyObjectHandler: file modified time not after than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = PreconditionFailed
 			return
@@ -823,7 +823,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 			errorCode = InvalidArgument
 			return
 		}
-		if fileModTime.After(unmodifiedTime) {
+		if fileModTime.AfterTime(unmodifiedTime) {
 			log.LogInfof("copyObjectHandler: file modified time not before than specified time: requestID(%v)", GetRequestID(r))
 			errorCode = PreconditionFailed
 			return
@@ -887,7 +887,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	copyResult := CopyResult{
 		ETag:         fsFileInfo.ETag,
-		LastModified: formatTimeISO(fsFileInfo.ModifyTime),
+		LastModified: fsFileInfo.ModifyTime.FormatTimeISO(),
 	}
 
 	var bytes []byte
@@ -990,7 +990,7 @@ func (o *ObjectNode) listObjectsV1Handler(w http.ResponseWriter, r *http.Request
 		}
 		content := &Content{
 			Key:          encodeKey(file.Path, encodingType),
-			LastModified: formatTimeISO(file.ModifyTime),
+			LastModified: file.ModifyTime.FormatTimeISO(),
 			ETag:         wrapUnescapedQuot(file.ETag),
 			Size:         int(file.Size),
 			StorageClass: StorageClassStandard,
@@ -1142,7 +1142,7 @@ func (o *ObjectNode) listObjectsV2Handler(w http.ResponseWriter, r *http.Request
 			}
 			content := &Content{
 				Key:          encodeKey(file.Path, encodingType),
-				LastModified: formatTimeISO(file.ModifyTime),
+				LastModified: file.ModifyTime.FormatTimeISO(),
 				ETag:         wrapUnescapedQuot(file.ETag),
 				Size:         int(file.Size),
 				StorageClass: StorageClassStandard,

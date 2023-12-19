@@ -32,29 +32,27 @@ import (
 
 // Create handles the create request.
 func (d *Node) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
-
-	start := time.Now()
-
 	var err error
 	tpObject := exporter.NewModuleTP("filecreate")
 	defer tpObject.Set(err)
 
-	info, err := d.super.mw.Create_ll(ctx, d.inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
+	start := time.Now()
+	info, err := Sup.mw.Create_ll(ctx, d.inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.inode, req, err)
 		return nil, nil, ParseError(err)
 	}
 
-	d.super.ic.Put(info)
-	child := NewNode(d.super, info.Inode)
-	d.super.ec.OpenStream(info.Inode, false)
+	Sup.ic.Put(info)
+	child := NewNode(info.Inode)
+	Sup.ec.OpenStream(info.Inode, false)
 
-	if d.super.keepCache {
+	if Sup.keepCache {
 		resp.Flags |= fuse.OpenKeepCache
 	}
 	resp.EntryValid = LookupValidDuration
 
-	d.super.ic.Delete(ctx, d.inode)
+	Sup.ic.Delete(ctx, d.inode)
 
 	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) time(%v)", d.inode, req, resp, info.Inode, time.Since(start))
 	return child, child, nil
@@ -62,22 +60,20 @@ func (d *Node) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.C
 
 // Mkdir handles the mkdir request.
 func (d *Node) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
-	start := time.Now()
-
 	var err error
 	tpObject := exporter.NewModuleTP("mkdir")
 	defer tpObject.Set(err)
 
-	info, err := d.super.mw.Create_ll(ctx, d.inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
+	start := time.Now()
+	info, err := Sup.mw.Create_ll(ctx, d.inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.inode, req, err)
 		return nil, ParseError(err)
 	}
 
-	d.super.ic.Put(info)
-	child := NewNode(d.super, info.Inode)
-
-	d.super.ic.Delete(ctx, d.inode)
+	Sup.ic.Put(info)
+	child := NewNode(info.Inode)
+	Sup.ic.Delete(ctx, d.inode)
 
 	log.LogDebugf("TRACE Mkdir: parent(%v) req(%v) ino(%v) time(%v)", d.inode, req, info.Inode, time.Since(start))
 	return child, nil
@@ -85,16 +81,16 @@ func (d *Node) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, erro
 
 // Remove handles the remove request.
 func (d *Node) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
-	tpObject := exporter.NewVolumeTPUs("Remove_us", d.super.volname)
+	tpObject := exporter.NewVolumeTPUs("Remove_us", Sup.volname)
 	tpObject1 := exporter.NewModuleTP("remove")
 	defer func() {
 		tpObject.Set(err)
 		tpObject1.Set(err)
 	}()
 
-	if len(d.super.delProcessPath) > 0 {
+	if len(Sup.delProcessPath) > 0 {
 		delProcPath, errStat := os.Readlink(fmt.Sprintf("/proc/%v/exe", req.Pid))
-		if errStat != nil || !contains(d.super.delProcessPath, delProcPath) {
+		if errStat != nil || !contains(Sup.delProcessPath, delProcPath) {
 			log.LogErrorf("Remove: pid(%v) process(%v) is not permitted err(%v), parent(%v) name(%v)", req.Pid, delProcPath, errStat, d.inode, req.Name)
 			return fuse.EPERM
 		}
@@ -104,22 +100,22 @@ func (d *Node) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) 
 	start := time.Now()
 	d.dcache.Delete(req.Name)
 
-	info, syserr := d.super.mw.Delete_ll(ctx, d.inode, req.Name, req.Dir)
+	info, syserr := Sup.mw.Delete_ll(ctx, d.inode, req.Name, req.Dir)
 	if syserr != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.inode, req.Name, syserr)
 		//if errors.Is(err, syscall.EIO) {
 		if syserr == syscall.EIO {
 			msg := fmt.Sprintf("parent(%v) name(%v) err(%v)", d.inode, req.Name, syserr)
-			d.super.handleError("Remove", msg)
+			Sup.handleError("Remove", msg)
 		}
 		err = ParseError(syserr)
 		return
 	}
 
-	d.super.ic.Delete(ctx, d.inode)
+	Sup.ic.Delete(ctx, d.inode)
 
 	if info != nil && info.Nlink == 0 && !proto.IsDir(info.Mode) {
-		d.super.orphan.Put(info.Inode)
+		Sup.orphan.Put(info.Inode)
 		log.LogDebugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
 	}
 
@@ -134,7 +130,7 @@ func (d *Node) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.L
 		err error
 	)
 
-	tpObject := exporter.NewVolumeTPUs("Lookup_us", d.super.volname)
+	tpObject := exporter.NewVolumeTPUs("Lookup_us", Sup.volname)
 	defer func() {
 		tpObject.Set(err)
 	}()
@@ -144,15 +140,15 @@ func (d *Node) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.L
 	}
 
 	ino, ok := d.dcache.Get(req.Name)
-	if !ok && d.super.prefetchManager != nil {
-		dcache := d.super.prefetchManager.GetDentryCache(d.inode)
+	if !ok && Sup.prefetchManager != nil {
+		dcache := Sup.prefetchManager.GetDentryCache(d.inode)
 		if dcache != nil {
 			d.dcache = dcache
 			ino, ok = d.dcache.Get(req.Name)
 		}
 	}
 	if !ok {
-		ino, _, err = d.super.mw.Lookup_ll(ctx, d.inode, req.Name)
+		ino, _, err = Sup.mw.Lookup_ll(ctx, d.inode, req.Name)
 		if err != nil {
 			if err != syscall.ENOENT {
 				log.LogErrorf("Lookup: parent(%v) name(%v) err(%v)", d.inode, req.Name, err)
@@ -161,7 +157,7 @@ func (d *Node) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.L
 		}
 	}
 
-	child := NewNode(d.super, ino)
+	child := NewNode(ino)
 	resp.EntryValid = LookupValidDuration
 
 	if log.IsDebugEnabled() {
@@ -178,7 +174,7 @@ func (d *Node) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	tpObject := exporter.NewModuleTP("readdir")
 	defer tpObject.Set(err)
 
-	children, err := d.super.mw.ReadDir_ll(ctx, d.inode)
+	children, err := Sup.mw.ReadDir_ll(ctx, d.inode)
 	if err != nil {
 		log.LogErrorf("Readdir: ino(%v) err(%v)", d.inode, err)
 		return make([]fuse.Dirent, 0), ParseError(err)
@@ -188,8 +184,8 @@ func (d *Node) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	dirents := make([]fuse.Dirent, 0, len(children))
 
 	var dcache *cache.DentryCache
-	if !d.super.disableDcache {
-		dcache = cache.NewDentryCache(DentryValidDuration, true)
+	if !Sup.disableDcache {
+		dcache = cache.NewDentryCache(DentryValidSec, true)
 	}
 
 	for _, child := range children {
@@ -204,10 +200,10 @@ func (d *Node) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	}
 
 	// batch get inode info is only useful when using stat/fstat to all files, or in shell ls command
-	if !d.super.noBatchGetInodeOnReaddir {
-		infos := d.super.mw.BatchInodeGet(ctx, inodes)
+	if !Sup.noBatchGetInodeOnReaddir {
+		infos := Sup.mw.BatchInodeGet(ctx, inodes)
 		for _, info := range infos {
-			d.super.ic.Put(info)
+			Sup.ic.Put(info)
 		}
 	}
 	d.dcache = dcache
@@ -224,7 +220,7 @@ func (d *Node) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusRespons
 	tpObject := exporter.NewModuleTP("readdirplus")
 	defer tpObject.Set(err)
 
-	children, err := d.super.mw.ReadDir_ll(ctx, d.inode)
+	children, err := Sup.mw.ReadDir_ll(ctx, d.inode)
 	if err != nil {
 		log.LogErrorf("ReaddirPlus: ino(%v) err(%v)", d.inode, err)
 		return make([]*fs.DirentPlus, 0), ParseError(err)
@@ -234,16 +230,16 @@ func (d *Node) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusRespons
 	for _, child := range children {
 		inodes = append(inodes, child.Inode)
 	}
-	infos := d.super.mw.BatchInodeGet(ctx, inodes)
+	infos := Sup.mw.BatchInodeGet(ctx, inodes)
 	infoMap := make(map[uint64]*proto.InodeInfo, len(infos))
 	for _, info := range infos {
-		d.super.ic.Put(info)
+		Sup.ic.Put(info)
 		infoMap[info.Inode] = info
 	}
 
 	var dcache *cache.DentryCache
-	if !d.super.disableDcache {
-		dcache = cache.NewDentryCache(DentryValidDuration, true)
+	if !Sup.disableDcache {
+		dcache = cache.NewDentryCache(DentryValidSec, true)
 	}
 	dirents := make([]*fs.DirentPlus, 0, len(children))
 	for _, child := range children {
@@ -255,7 +251,7 @@ func (d *Node) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusRespons
 		}
 		info, exist := infoMap[child.Inode]
 		if exist {
-			dentryPlus.Node = NewNode(d.super, info.Inode)
+			dentryPlus.Node = NewNode(info.Inode)
 		}
 		dirents = append(dirents, dentryPlus)
 		dcache.Put(child.Name, child.Inode)
@@ -271,7 +267,7 @@ func (d *Node) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusRespons
 // Rename handles the rename request.
 func (d *Node) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.Node) error {
 	var destDirIno uint64
-	if d.super.notCacheNode {
+	if Sup.notCacheNode {
 		destDirIno = uint64(req.NewDir)
 	} else {
 		dstDir, ok := newDir.(*Node)
@@ -288,14 +284,14 @@ func (d *Node) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.No
 	tpObject := exporter.NewModuleTP("rename")
 	defer tpObject.Set(err)
 
-	err = d.super.mw.Rename_ll(ctx, d.inode, req.OldName, destDirIno, req.NewName, false)
+	err = Sup.mw.Rename_ll(ctx, d.inode, req.OldName, destDirIno, req.NewName, false)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.inode, req, err)
 		return ParseError(err)
 	}
 
-	d.super.ic.Delete(ctx, d.inode)
-	d.super.ic.Delete(ctx, destDirIno)
+	Sup.ic.Delete(ctx, d.inode)
+	Sup.ic.Delete(ctx, destDirIno)
 
 	log.LogDebugf("TRACE Rename: SrcParent(%v) OldName(%v) DstParent(%v) NewName(%v) time(%v)", d.inode, req.OldName, destDirIno, req.NewName, time.Since(start))
 	return nil
@@ -312,14 +308,14 @@ func (d *Node) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, erro
 	tpObject := exporter.NewModuleTP("mknod")
 	defer tpObject.Set(err)
 
-	info, err := d.super.mw.Create_ll(ctx, d.inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
+	info, err := Sup.mw.Create_ll(ctx, d.inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mknod: parent(%v) req(%v) err(%v)", d.inode, req, err)
 		return nil, ParseError(err)
 	}
 
-	d.super.ic.Put(info)
-	child := NewNode(d.super, info.Inode)
+	Sup.ic.Put(info)
+	child := NewNode(info.Inode)
 
 	log.LogDebugf("TRACE Mknod: parent(%v) req(%v) ino(%v) time(%v)", d.inode, req, info.Inode, time.Since(start))
 	return child, nil
@@ -334,14 +330,14 @@ func (d *Node) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, 
 	tpObject := exporter.NewModuleTP("symlink")
 	defer tpObject.Set(err)
 
-	info, err := d.super.mw.Create_ll(ctx, parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
+	info, err := Sup.mw.Create_ll(ctx, parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
 		return nil, ParseError(err)
 	}
 
-	d.super.ic.Put(info)
-	child := NewNode(d.super, info.Inode)
+	Sup.ic.Put(info)
+	child := NewNode(info.Inode)
 
 	log.LogDebugf("TRACE Symlink: parent(%v) req(%v) ino(%v) time(%v)", parentIno, req, info.Inode, time.Since(start))
 	return child, nil
@@ -366,14 +362,14 @@ func (d *Node) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs
 	defer tpObject.Set(err)
 
 	start := time.Now()
-	info, err := d.super.mw.Link(ctx, d.inode, req.NewName, oldInode)
+	info, err := Sup.mw.Link(ctx, d.inode, req.NewName, oldInode)
 	if err != nil {
 		log.LogErrorf("Link: parent(%v) name(%v) ino(%v) err(%v)", d.inode, req.NewName, oldInode, err)
 		return nil, ParseError(err)
 	}
 
-	d.super.ic.Put(info)
-	newFile := NewNode(d.super, info.Inode)
+	Sup.ic.Put(info)
+	newFile := NewNode(info.Inode)
 	log.LogDebugf("TRACE Link: parent(%v) name(%v) ino(%v) time(%v)", d.inode, req.NewName, info.Inode, time.Since(start))
 	return newFile, nil
 }

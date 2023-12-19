@@ -17,15 +17,16 @@ package objectnode
 import (
 	"os"
 	"sort"
-	"time"
+
+	"github.com/cubefs/cubefs/proto"
 )
 
 type FSFileInfo struct {
 	Path         string
 	Size         int64
 	Mode         os.FileMode
-	ModifyTime   time.Time
-	CreateTime   time.Time
+	ModifyTime   proto.CubeFSTime
+	CreateTime   proto.CubeFSTime
 	ETag         string
 	Inode        uint64
 	MIMEType     string

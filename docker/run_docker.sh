@@ -51,7 +51,7 @@ check_docker_images() {
       wget "http://storage.jd.local/dpgimage/dockerimage/${name}-${version}.tar" -O image.tar > /dev/null 2>&1;
       ret=$?
       if [[ ${ret} -eq 0 ]]; then
-        docker load -i image.tar 2>1 > /dev/null
+        docker load -i image.tar > /dev/null 2>&1
         rm image.tar
         echo -e "\033[32mdone\033[0m";
       else

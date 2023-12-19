@@ -22,19 +22,19 @@ import (
 // DentryCache defines the dentry cache.
 type DentryCache struct {
 	sync.RWMutex
-	cache               map[string]uint64
-	expiration          time.Time
-	dentryValidDuration time.Duration
-	useCache            bool
+	cache          map[string]uint64
+	expiration     int64
+	dentryValidSec uint32
+	useCache       bool
 }
 
 // NewDentryCache returns a new dentry cache.
-func NewDentryCache(dentryValidDuration time.Duration, useCache bool) *DentryCache {
+func NewDentryCache(dentryValidSec uint32, useCache bool) *DentryCache {
 	return &DentryCache{
-		cache:               make(map[string]uint64),
-		expiration:          time.Now().Add(dentryValidDuration),
-		dentryValidDuration: dentryValidDuration,
-		useCache:            useCache,
+		cache:          make(map[string]uint64),
+		expiration:     time.Now().Unix() + int64(dentryValidSec),
+		dentryValidSec: dentryValidSec,
+		useCache:       useCache,
 	}
 }
 
@@ -46,7 +46,7 @@ func (dc *DentryCache) Put(name string, ino uint64) {
 	dc.Lock()
 	defer dc.Unlock()
 	dc.cache[name] = ino
-	dc.expiration = time.Now().Add(dc.dentryValidDuration)
+	dc.expiration = time.Now().Unix() + int64(dc.dentryValidSec)
 }
 
 // Get gets the item from the cache based on the given key.
@@ -56,7 +56,7 @@ func (dc *DentryCache) Get(name string) (uint64, bool) {
 	}
 
 	dc.RLock()
-	if dc.expiration.Before(time.Now()) {
+	if dc.expiration < time.Now().Unix() {
 		dc.RUnlock()
 		dc.Lock()
 		dc.cache = make(map[string]uint64)
@@ -96,10 +96,7 @@ func (dc *DentryCache) IsEmpty() bool {
 	dc.RLock()
 	defer dc.RUnlock()
 
-	if len(dc.cache) == 0 {
-		return true
-	}
-	return false
+	return len(dc.cache) == 0
 }
 
 func (dc *DentryCache) IsExpired() bool {
@@ -109,15 +106,12 @@ func (dc *DentryCache) IsExpired() bool {
 	dc.RLock()
 	defer dc.RUnlock()
 
-	if dc.expiration.Before(time.Now()) {
-		return true
-	}
-	return false
+	return dc.expiration < time.Now().Unix()
 }
 
-func (dc *DentryCache) Expiration() time.Time {
+func (dc *DentryCache) Expiration() int64 {
 	if dc == nil || !dc.useCache {
-		return time.Now()
+		return time.Now().Unix()
 	}
 	dc.RLock()
 	defer dc.RUnlock()
@@ -125,13 +119,13 @@ func (dc *DentryCache) Expiration() time.Time {
 	return dc.expiration
 }
 
-func (dc *DentryCache) ResetExpiration(dentryValidDuration time.Duration) {
+func (dc *DentryCache) ResetExpiration(dentryValidSec uint32) {
 	if dc == nil || !dc.useCache {
 		return
 	}
 	dc.Lock()
 	defer dc.Unlock()
 
-	dc.expiration = time.Now().Add(dentryValidDuration)
-	dc.dentryValidDuration = dentryValidDuration
+	dc.expiration = time.Now().Unix() + int64(dentryValidSec)
+	dc.dentryValidSec = dentryValidSec
 }

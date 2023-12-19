@@ -72,11 +72,9 @@ const (
 
 	ConfigKeyExporterPort = "exporterKey"
 
-	ControlCommandSetRate      = "/rate/set"
-	ControlCommandGetRate      = "/rate/get"
-	ControlCommandGetOpRate    = "/opRate/get"
-	ControlCommandFreeOSMemory = "/debug/freeosmemory"
-	ControlCommandTracing      = "/tracing"
+	ControlCommandSetRate   = "/rate/set"
+	ControlCommandGetRate   = "/rate/get"
+	ControlCommandGetOpRate = "/opRate/get"
 
 	ControlPrefetchRead      = "/prefetch/read"
 	ControlPrefetchReadPath  = "/prefetch/read/path"
@@ -316,6 +314,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 		return
 	}
 
+	cfs.Sup = super
 	gClient.super = super
 	gClient.mw = super.MetaWrapper()
 	gClient.ec = super.ExtentClient()
@@ -674,10 +673,6 @@ func changeRlimit(val uint64) {
 	} else {
 		syslog.Printf("Successfully set rlimit to %v \n", val)
 	}
-}
-
-func freeOSMemory(w http.ResponseWriter, r *http.Request) {
-	debug.FreeOSMemory()
 }
 
 func GetFuseFd() *os.File {

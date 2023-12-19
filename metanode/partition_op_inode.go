@@ -26,7 +26,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 )
 
-func replyInfo(info *proto.MetaInodeInfo, ino *Inode) bool {
+func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 	ino.RLock()
 	defer ino.RUnlock()
 	if ino.Flag&DeleteMarkFlag > 0 {
@@ -40,8 +40,9 @@ func replyInfo(info *proto.MetaInodeInfo, ino *Inode) bool {
 	info.Gid = ino.Gid
 	info.Generation = ino.Generation
 	if length := len(ino.LinkTarget); length > 0 {
-		info.Target = make([]byte, length)
-		copy(info.Target, ino.LinkTarget)
+		target := make([]byte, length)
+		info.Target = &target
+		copy(*info.Target, ino.LinkTarget)
 	}
 	info.CreateTime = proto.CubeFSTime(ino.CreateTime)
 	info.AccessTime = proto.CubeFSTime(ino.AccessTime)
@@ -89,7 +90,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	)
 	if resp.(uint8) == proto.OpOk {
 		resp := &CreateInoResp{
-			Info: &proto.MetaInodeInfo{},
+			Info: &proto.InodeInfo{},
 		}
 		if replyInfo(resp.Info, ino) {
 			status = proto.OpOk
@@ -127,7 +128,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		var reply []byte
 		if status == proto.OpOk {
 			resp := &UnlinkInoResp{
-				Info: &proto.MetaInodeInfo{},
+				Info: &proto.InodeInfo{},
 			}
 			replyInfo(resp.Info, msg.Msg)
 			if reply, err = json.Marshal(resp); err != nil {
@@ -213,11 +214,11 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 			continue
 		}
 
-		info := &proto.MetaInodeInfo{}
+		info := &proto.InodeInfo{}
 		replyInfo(info, ir.Msg)
 		result.Items = append(result.Items, &struct {
-			Info   *proto.MetaInodeInfo `json:"info"`
-			Status uint8                `json:"status"`
+			Info   *proto.InodeInfo `json:"info"`
+			Status uint8            `json:"status"`
 		}{
 			Info:   info,
 			Status: ir.Status,
@@ -272,8 +273,8 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 	}
 
 	status := proto.OpOk
-	resp := &proto.MetaInodeGetResponse{
-		Info:        &proto.MetaInodeInfo{},
+	resp := &proto.InodeGetResponse{
+		Info:        &proto.InodeInfo{},
 		ExtendAttrs: extendAttrResp,
 	}
 
@@ -300,12 +301,12 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 
 	mp.monitorData[proto.ActionMetaBatchInodeGet].UpdateData(0)
 
-	resp := &proto.MetaBatchInodeGetResponse{}
+	resp := &proto.BatchInodeGetResponse{}
 	for _, inoId := range req.Inodes {
 		ino.Inode = inoId
 		retMsg, err = mp.getInode(ino, false)
 		if err == nil && retMsg.Status == proto.OpOk {
-			inoInfo := &proto.MetaInodeInfo{}
+			inoInfo := &proto.InodeInfo{}
 			if replyInfo(inoInfo, retMsg.Msg) {
 				resp.Infos = append(resp.Infos, inoInfo)
 			}
@@ -354,7 +355,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		var reply []byte
 		if retMsg.Status == proto.OpOk {
 			r := &LinkInodeResp{
-				Info: &proto.MetaInodeInfo{},
+				Info: &proto.InodeInfo{},
 			}
 			if replyInfo(r.Info, retMsg.Msg) {
 				status = proto.OpOk
@@ -628,8 +629,8 @@ func (mp *metaPartition) GetInodeTree() InodeTree {
 	return mp.inodeTree
 }
 
-func (mp *metaPartition) InodesMergeCheck(inos []uint64, limitCnt uint32, minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) (resp *proto.MetaGetCmpInodesResponse) {
-	resp = &proto.MetaGetCmpInodesResponse{}
+func (mp *metaPartition) InodesMergeCheck(inos []uint64, limitCnt uint32, minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) (resp *proto.GetCmpInodesResponse) {
+	resp = &proto.GetCmpInodesResponse{}
 	cnt := uint32(0)
 	for i := 0; i < len(inos) && cnt < limitCnt; i++ {
 		ino := inos[i]
@@ -642,11 +643,11 @@ func (mp *metaPartition) InodesMergeCheck(inos []uint64, limitCnt uint32, minEkL
 			continue
 		}
 
-		cInode := &proto.MetaInodeInfo{}
+		cInode := &proto.InodeInfo{}
 		if !replyInfo(cInode, inode) {
 			continue
 		}
-		resp.Inodes = append(resp.Inodes, &proto.MetaCmpInodeInfo{Inode: cInode, Extents: inode.Extents.CopyExtents()})
+		resp.Inodes = append(resp.Inodes, &proto.InodeExtents{Inode: cInode, Extents: inode.Extents.CopyExtents()})
 		cnt++
 	}
 	return

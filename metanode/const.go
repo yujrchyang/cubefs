@@ -16,12 +16,12 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/unit"
 	"time"
 	"unsafe"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 // Type alias.
@@ -33,19 +33,19 @@ type (
 	// Client -> MetaNode create Inode request
 	CreateInoReq = proto.CreateInodeRequest
 	// MetaNode -> Client create Inode response
-	CreateInoResp = proto.MetaCreateInodeResponse
+	CreateInoResp = proto.CreateInodeResponse
 	// Client -> MetaNode create Link Request
 	LinkInodeReq = proto.LinkInodeRequest
 	// MetaNode -> Client create Link Response
-	LinkInodeResp = proto.MetaLinkInodeResponse
+	LinkInodeResp = proto.LinkInodeResponse
 	// Client -> MetaNode delete Inode request struct
 	UnlinkInoReq = proto.UnlinkInodeRequest
 	// Client -> MetaNode delete Inode request struct
 	BatchUnlinkInoReq = proto.BatchUnlinkInodeRequest
 	// MetaNode -> Client delete Inode response
-	UnlinkInoResp = proto.MetaUnlinkInodeResponse
+	UnlinkInoResp = proto.UnlinkInodeResponse
 	// MetaNode -> Client delete batch Inode response
-	BatchUnlinkInoResp = proto.MetaBatchUnlinkInodeResponse
+	BatchUnlinkInoResp = proto.BatchUnlinkInodeResponse
 	// Client -> MetaNode create Dentry request struct
 	CreateDentryReq = proto.CreateDentryRequest
 	// Client -> MetaNode delete Dentry request
@@ -263,12 +263,12 @@ const (
 	intervalToSyncEvictReqRecords = time.Minute * 2
 	defParallelismStartMPCount    = 32
 
-	defParallelismDumpCount        = 128
-	intervalDumpSnap              = time.Second * 5
+	defParallelismDumpCount = 128
+	intervalDumpSnap        = time.Second * 5
 
-	registerMaxRetryCount     = 3
-	registerRetryWaitInterval = time.Second * 5
-	cleanExpiredExtentsMaxCountEveryTime = 10 * 10000   //10w
+	registerMaxRetryCount                = 3
+	registerRetryWaitInterval            = time.Second * 5
+	cleanExpiredExtentsMaxCountEveryTime = 10 * 10000 //10w
 
 	defBitMapAllocatorFrozenHour = 48
 )
