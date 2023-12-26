@@ -23,7 +23,8 @@ func printMigrate(info *MigrateRecordTable) error {
 }
 
 func TestReBalanceZone(t *testing.T) {
-	ctrl, err := NewZoneReBalanceController(cluster, zoneName, highRatio, lowRatio, goalRatio, printMigrate)
+	rw := &ReBalanceWorker{}
+	ctrl, err := NewZoneReBalanceController(1, cluster, zoneName, highRatio, lowRatio, goalRatio, rw)
 	if err != nil {
 		t.Fatal(err)
 	}

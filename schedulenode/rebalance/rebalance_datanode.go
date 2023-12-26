@@ -22,6 +22,7 @@ type DNReBalanceController struct {
 	minWritableDPNum     int // 最小可写dp限制
 	clusterMaxBatchCount int
 	migrateLimitPerDisk  int
+	isFinished           bool
 }
 
 func NewDNReBalanceController(info proto.DataNodeInfo, masterClient *master.MasterClient, masterAddr string,
@@ -62,6 +63,9 @@ func (dnCtrl *DNReBalanceController) NeedReBalance(goalRatio float64) bool {
 }
 
 func (dnCtrl *DNReBalanceController) SelectDP(goalRatio float64) (*Disk, *proto.DataPartitionInfo, error) {
+	if dnCtrl.UsageRatio < goalRatio {
+		return nil, nil, ErrLessThanUsageRatio
+	}
 	for _, disk := range dnCtrl.disks {
 		if disk.total == 0 {
 			continue

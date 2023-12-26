@@ -102,6 +102,9 @@ func (d *Disk) checkAvailable(dp *proto.PartitionReport) (bool, *proto.DataParti
 	if dataPartition.IsRecover {
 		return false, nil
 	}
+	if dataPartition.ReplicaNum <= 2 { // 忽略2副本的dp
+		return false, nil
+	}
 	if len(dataPartition.Replicas) == 0 || dataPartition.Replicas[0].Used == 0 {
 		return false, nil
 	}

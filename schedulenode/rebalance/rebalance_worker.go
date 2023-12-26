@@ -5,7 +5,6 @@ import (
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/worker"
-	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
@@ -16,8 +15,6 @@ import (
 
 type ReBalanceWorker struct {
 	worker.BaseWorker
-	masterAddr       map[string][]string
-	mcw              map[string]*master.MasterClient
 	mcwRWMutex       sync.RWMutex
 	reBalanceCtrlMap sync.Map
 	dbHandle         *gorm.DB
@@ -38,23 +35,21 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	rw.StopC = make(chan struct{}, 0)
-	rw.mcw = make(map[string]*master.MasterClient)
 	rw.reBalanceCtrlMap = sync.Map{}
 	if err = rw.parseConfig(cfg); err != nil {
 		log.LogErrorf("[doStart] parse config info failed, error(%v)", err)
 		return
 	}
 
-	masterClient := make(map[string]*master.MasterClient)
-	for cluster, addresses := range rw.masterAddr {
-		mc := master.NewMasterClient(addresses, false)
-		masterClient[cluster] = mc
-	}
-
 	err = rw.OpenSql()
 	if err != nil {
 		return err
 	}
+	err = rw.loadInRunningRebalanced()
+	if err != nil {
+		return err
+	}
+
 	rw.registerHandler()
 	return nil
 }
@@ -77,31 +72,20 @@ func (rw *ReBalanceWorker) Sync() {
 
 func (rw *ReBalanceWorker) parseConfig(cfg *config.Config) (err error) {
 	err = rw.ParseBaseConfig(cfg)
-	if err != nil {
+	return
+}
+
+func (rw *ReBalanceWorker) loadInRunningRebalanced() (err error) {
+	var rInfos []*RebalancedInfoTable
+	if rInfos, err = rw.GetRebalancedInfoByStatus(StatusRunning); err != nil {
 		return
 	}
-	// parse cluster master address
-	masters := make(map[string][]string)
-	baseInfo := cfg.GetMap(config.ConfigKeyClusterAddr)
-	var masterAddr []string
-	for clusterName, value := range baseInfo {
-		addresses := make([]string, 0)
-		if valueSlice, ok := value.([]interface{}); ok {
-			for _, item := range valueSlice {
-				if addr, ok := item.(string); ok {
-					addresses = append(addresses, addr)
-				}
-			}
+	for _, info := range rInfos {
+		err = rw.ReBalanceStart(info.Host, info.ZoneName, info.HighRatio, info.LowRatio, info.GoalRatio, info.MaxBatchCount, info.MigrateLimitPerDisk)
+		if err != nil {
+			log.LogErrorf("start rebalance info:%v err:%v", info, err)
 		}
-		if len(masterAddr) == 0 {
-			masterAddr = addresses
-		}
-		masters[clusterName] = addresses
-	}
-	rw.masterAddr = masters
-	// used for cmd to report version
-	if len(masterAddr) == 0 {
-		cfg.SetStringSlice(proto.MasterAddr, masterAddr)
+		log.LogInfof("rebalance start host:%v zoneName:%v", info.Host, info.ZoneName)
 	}
 	return
 }
@@ -118,4 +102,8 @@ func (rw *ReBalanceWorker) registerHandler() {
 	http.HandleFunc(RBStop, responseHandler(rw.handleStop))
 	http.HandleFunc(RBStatus, responseHandler(rw.handleStatus))
 	http.HandleFunc(RBReset, responseHandler(rw.handleReset))
+	http.HandleFunc(RBInfo, responseHandler(rw.handleRebalancedInfo))
+	http.HandleFunc(RBResetControl, responseHandler(rw.handleReSetControlParam))
+	http.HandleFunc(RBList, rw.handleRebalancedList)
+	http.HandleFunc(ZoneUsageRatio, rw.handleZoneUsageRatio)
 }
