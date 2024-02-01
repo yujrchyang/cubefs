@@ -110,7 +110,7 @@ func LoadConfigString(s string) *Config {
 }
 
 func (c *Config) parse(fileName string) error {
-	jsonFileBytes, err := ioutil.ReadFile(fileName)
+	jsonFileBytes, err := os.ReadFile(fileName)
 	c.Raw = jsonFileBytes
 	if err == nil {
 		err = json.Unmarshal(jsonFileBytes, &c.data)

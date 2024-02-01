@@ -18,8 +18,8 @@ import (
 )
 
 var (
-	configFile       = flag.String("c", "", "FUSE client config file")
-	configForeground = flag.Bool("f", false, "run foreground")
+	configFile       = flag.String("c", "", "ChubaoFS client config file")
+	configForeground = flag.Bool("f", false, "Run foreground")
 	configUseVersion = flag.String("u", "", "Use this client version")
 )
 

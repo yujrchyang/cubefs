@@ -30,6 +30,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path"
 	"path/filepath"
@@ -132,12 +133,26 @@ func init() {
 }
 
 func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (err error) {
+	var outputFilePath string
+	defer func() {
+		if r := recover(); r != nil {
+			if outputFilePath == "" {
+				outputFilePath = "output.log in logDir"
+			}
+			stack := fmt.Sprintf("%v:\n%s", r, string(debug.Stack()))
+			syslog.Printf(stack)
+			err = fmt.Errorf("%s\nPlease check %s for more details.", stack, outputFilePath)
+		}
+	}()
 
 	/*
 	 * We are in daemon from here.
 	 * Must notify the parent process through SignalOutcome anyway.
 	 */
-	cfg, _ := config.LoadConfigFile(configFile)
+	cfg, err := config.LoadConfigFile(configFile)
+	if err != nil {
+		return err
+	}
 	opt, err := parseMountOption(cfg)
 	if err != nil {
 		return err
@@ -166,7 +181,7 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 		return err
 	}
 
-	outputFilePath := path.Join(opt.Logpath, opt.Volname, LoggerOutput)
+	outputFilePath = path.Join(opt.Logpath, opt.Volname, LoggerOutput)
 	outputFile, err := os.OpenFile(outputFilePath, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
 	if err != nil {
 		return err
@@ -174,8 +189,8 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	_ = os.Chmod(outputFilePath, 0666)
 	defer func() {
 		if err != nil {
-			syslog.Printf("start fuse client failed: err(%v)\n", err)
-			err = fmt.Errorf("%v.\nPlease check %s for more details.", err, outputFilePath)
+			syslog.Printf("start ChubaoFS client failed: err(%v)\n", err)
+			err = fmt.Errorf("%v\nPlease check %s for more details.", err, outputFilePath)
 			outputFile.Sync()
 			outputFile.Close()
 		}
@@ -218,6 +233,14 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 			if err = checkPermission(opt); err == nil || err == proto.ErrNoPermission {
 				break
 			}
+			if strings.Contains(err.Error(), "no such host") {
+				err = fmt.Errorf("masterAddr:%s is not valid, or dns has error", opt.Master)
+				break
+			}
+			if strings.Contains(err.Error(), proto.ErrVolNotExists.Error()) {
+				err = fmt.Errorf("%v, masterAddr:%s, volName:%s", proto.ErrVolNotExists, opt.Master, opt.Volname)
+				break
+			}
 			log.LogWarnf("StartClient: checkPermission err(%v) retry count(%v)", err, retry)
 			time.Sleep(StartRetryIntervalSec * time.Second)
 		}
@@ -239,6 +262,9 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	fsConn, err := mount(opt, fuseFd, first_start, clientState)
 	if err != nil {
 		syslog.Println("mount failed: ", err)
+		if strings.Contains(err.Error(), proto.ErrVolAuthKeyNotMatch.Error()) {
+			err = fmt.Errorf("owner:%s is not valid", opt.Owner)
+		}
 		log.LogFlush()
 		return err
 	}
@@ -516,7 +542,7 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.CongestionThresh = GlobalMountOptions[proto.CongestionThresh].GetInt64()
 
 	if opt.MountPoint == "" || opt.Volname == "" || opt.Owner == "" || opt.Master == "" {
-		return nil, errors.New(fmt.Sprintf("invalid config file: lack of mandatory fields, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
+		return nil, errors.New(fmt.Sprintf("invalid config file: fields can't be empty, mountPoint(%v), volName(%v), owner(%v), masterAddr(%v)", opt.MountPoint, opt.Volname, opt.Owner, opt.Master))
 	}
 
 	absMnt, err := filepath.Abs(opt.MountPoint)
@@ -580,7 +606,18 @@ func checkMountPoint(mountPoint string) error {
 	}
 	stat, err := os.Stat(mountPoint)
 	if err != nil {
+		if strings.Contains(err.Error(), "is not connected") {
+			cmd := exec.Command("umount", mountPoint)
+			cmd.Run()
+			stat, err = os.Stat(mountPoint)
+		}
+	}
+	if err != nil {
 		return err
+	}
+	entries, _ := os.ReadDir(mountPoint)
+	if len(entries) > 0 {
+		return fmt.Errorf("mountPoint:%s is not empty", mountPoint)
 	}
 	rootStat, err := os.Stat(filepath.Dir(strings.TrimSuffix(mountPoint, "/")))
 	if err != nil {
@@ -710,11 +747,7 @@ func GetVersion() string {
 func startDaemon(file string) error {
 	cmdPath, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("startDaemon failed: cannot get absolute command path, err(%v)", err)
-	}
-
-	if len(os.Args) <= 1 {
-		return fmt.Errorf("startDaemon failed: cannot use null arguments")
+		return fmt.Errorf("start ChubaoFS client failed: cannot get absolute command path, err(%v)", err)
 	}
 
 	args := []string{"-f"}
@@ -723,7 +756,7 @@ func startDaemon(file string) error {
 	if file != "" {
 		configPath, err := filepath.Abs(file)
 		if err != nil {
-			return fmt.Errorf("startDaemon failed: cannot get absolute command path of config file(%v) , err(%v)", file, err)
+			return fmt.Errorf("start ChubaoFS client failed: cannot get absolute command path of config file(%v) , err(%v)", file, err)
 		}
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-c" {
@@ -741,7 +774,7 @@ func startDaemon(file string) error {
 		if buf.Len() > 0 {
 			fmt.Println(buf.String())
 		}
-		return fmt.Errorf("startDaemon failed.\ncmd(%v)\nargs(%v)\nerr(%v)\n", cmdPath, args, err)
+		return fmt.Errorf("start ChubaoFS client failed.\n%v\n", err)
 	}
 	return nil
 }
@@ -776,7 +809,6 @@ func main() {
 	}
 	err = StartClient(*configFile, nil, nil)
 	if err != nil {
-		fmt.Printf("\nStart fuse client failed: %v\n", err.Error())
 		_ = daemonize.SignalOutcome(err)
 		os.Exit(1)
 	} else {

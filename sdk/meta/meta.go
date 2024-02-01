@@ -247,7 +247,7 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 		err = mw.initMetaWrapper()
 		// When initializing the volume, if the master explicitly responds that the specified
 		// volume does not exist, it will not retry.
-		if err == proto.ErrVolNotExists {
+		if err == proto.ErrVolNotExists || err == proto.ErrVolAuthKeyNotMatch {
 			return nil, err
 		}
 		if err != nil {

@@ -186,16 +186,9 @@ func Run(
 	// Wait for a result from one of the above.
 	select {
 	case err = <-startProcessErr:
-		err = fmt.Errorf("startProcess: %v", err)
 		return
 
 	case err = <-readFromProcessOutcome:
-		if err == nil {
-			// All is good.
-			return
-		}
-
-		err = fmt.Errorf("readFromProcess: %v", err)
 		return
 	}
 }
@@ -263,7 +256,7 @@ func readFromProcess(
 				return
 			}
 
-			err = fmt.Errorf("sub-process: %s", msg.ErrorMsg)
+			err = fmt.Errorf("%s", msg.ErrorMsg)
 			return
 
 		default:

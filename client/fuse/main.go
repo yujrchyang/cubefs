@@ -150,11 +150,7 @@ func main() {
 func startDaemon() error {
 	cmdPath, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("startDaemon failed: cannot get absolute command path, err(%v)", err)
-	}
-
-	if len(os.Args) <= 1 {
-		return fmt.Errorf("startDaemon failed: cannot use null arguments")
+		return fmt.Errorf("start ChubaoFS client failed: cannot get absolute command path, err(%v)", err)
 	}
 
 	args := []string{"-f"}
@@ -163,7 +159,7 @@ func startDaemon() error {
 	if *configFile != "" {
 		configPath, err := filepath.Abs(*configFile)
 		if err != nil {
-			return fmt.Errorf("startDaemon failed: cannot get absolute command path of config file(%v) , err(%v)", *configFile, err)
+			return fmt.Errorf("start ChubaoFS client failed: cannot get absolute command path of config file(%v) , err(%v)", *configFile, err)
 		}
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-c" {
@@ -181,7 +177,7 @@ func startDaemon() error {
 		if buf.Len() > 0 {
 			fmt.Println(buf.String())
 		}
-		return fmt.Errorf("startDaemon failed.\ncmd(%v)\nargs(%v)\nerr(%v)\n", cmdPath, args, err)
+		return fmt.Errorf("start ChubaoFS client failed.\n%v\n", err)
 	}
 	return nil
 }
