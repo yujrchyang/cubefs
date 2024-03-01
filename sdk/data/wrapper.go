@@ -111,6 +111,7 @@ type Wrapper struct {
 	cacheReadTimeoutMs      int64
 	remoteCache             *flash.RemoteCache
 	HostsDelay              sync.Map
+	extentClientType        ExtentClientType
 }
 
 type DataState struct {
@@ -150,13 +151,14 @@ func (level *connConfigLevel) String() string {
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err error) {
+func NewDataPartitionWrapper(volName string, masters []string, extentClientType ExtentClientType) (w *Wrapper, err error) {
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters
 	w.mc = masterSDK.NewMasterClient(masters, false)
 	w.schedulerClient = scheduler.NewSchedulerClient(w.dpMetricsReportDomain, false)
 	w.volName = volName
+	w.extentClientType = extentClientType
 	w.partitions = new(sync.Map)
 	w.HostsStatus = make(map[string]bool)
 	w.SetDefaultConnConfig()
@@ -202,13 +204,14 @@ func NewDataPartitionWrapper(volName string, masters []string) (w *Wrapper, err 
 	return
 }
 
-func RebuildDataPartitionWrapper(volName string, masters []string, dataState *DataState) (w *Wrapper) {
+func RebuildDataPartitionWrapper(volName string, masters []string, dataState *DataState, extentClientType ExtentClientType) (w *Wrapper) {
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters
 	w.mc = masterSDK.NewMasterClient(masters, false)
 	w.schedulerClient = scheduler.NewSchedulerClient(w.dpMetricsReportDomain, false)
 	w.volName = volName
+	w.extentClientType = extentClientType
 	w.partitions = new(sync.Map)
 	w.HostsStatus = make(map[string]bool)
 	w.SetDefaultConnConfig()
@@ -643,7 +646,16 @@ func (w *Wrapper) updateDataPartition(isInit bool) (err error) {
 }
 
 func (w *Wrapper) fetchDataPartition() (dpv *proto.DataPartitionsView, err error) {
-	if dpv, err = w.mc.ClientAPI().GetDataPartitions(w.volName, nil); err != nil {
+	var f func(volName string, dpIDs []uint64) (view *proto.DataPartitionsView, err error)
+	if w.extentClientType == Normal {
+		f = w.mc.ClientAPI().GetDataPartitions
+	} else if w.extentClientType == Smart {
+		f = w.mc.AdminAPI().GetHDDDataPartitions
+	} else {
+		err = errors.NewErrorf("ExtentClientType(%v) is incorrect", w.extentClientType)
+		return
+	}
+	if dpv, err = f(w.volName, nil); err != nil {
 		if err == proto.ErrVolNotExists {
 			w.volNotExistCount++
 		}
@@ -677,8 +689,18 @@ func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit boo
 		}
 		//log.LogInfof("updateDataPartition: dp(%v)", dp)
 		actualDp := w.replaceOrInsertPartition(dp)
-		if actualDp.Status == proto.ReadWrite {
-			rwPartitionGroups = append(rwPartitionGroups, actualDp)
+		if w.extentClientType == Normal {
+			if actualDp.Status == proto.ReadWrite {
+				rwPartitionGroups = append(rwPartitionGroups, actualDp)
+			}
+		} else if w.extentClientType == Smart {
+			if actualDp.MediumType == proto.MediumHDDName &&
+				actualDp.TransferStatus == proto.ReadWrite {
+				rwPartitionGroups = append(rwPartitionGroups, actualDp)
+			}
+		} else {
+			err = errors.NewErrorf("updateDataPartition: extentClientType(%v) is incorrect", w.extentClientType)
+			return err
 		}
 	}
 
@@ -735,6 +757,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) (actualDp *DataPar
 			}
 		}
 		old.Status = dp.Status
+		old.TransferStatus = dp.TransferStatus
 		old.ReplicaNum = dp.ReplicaNum
 		old.Hosts = dp.Hosts
 		old.NearHosts = dp.NearHosts
@@ -742,6 +765,7 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) (actualDp *DataPar
 		old.EcHosts = dp.EcHosts
 		old.EcMaxUnitSize = dp.EcMaxUnitSize
 		old.EcDataNum = dp.EcDataNum
+		old.MediumType = dp.MediumType
 		old.CrossRegionMetrics.Lock()
 		old.CrossRegionMetrics.CrossRegionHosts = dp.CrossRegionMetrics.CrossRegionHosts
 		old.CrossRegionMetrics.Unlock()

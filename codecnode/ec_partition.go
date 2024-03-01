@@ -62,7 +62,7 @@ func getDataSdkWrapper(volume string, masters []string) (w *dataSdk.Wrapper, err
 	}
 	limit := MaxRetryLimit
 retry:
-	w, err = dataSdk.NewDataPartitionWrapper(volume, masters)
+	w, err = dataSdk.NewDataPartitionWrapper(volume, masters, dataSdk.Normal)
 	if err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init data wrapper failed!")
