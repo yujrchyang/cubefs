@@ -174,6 +174,7 @@ func (checkEngine *CheckEngine) checkInodes(mps []*proto.MetaPartitionView, inod
 				}
 				mp := locateMpByInode(mps, ino)
 				if mp == nil {
+					wg.Done()
 					continue
 				}
 				if checkEngine.checkType == CheckTypeInodeEkNum {
