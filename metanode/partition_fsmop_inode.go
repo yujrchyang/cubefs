@@ -109,7 +109,7 @@ func (mp *metaPartition) fsmCreateLinkInode(dbHandle interface{}, ino *Inode, re
 	return
 }
 
-func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse, err error) {
+func (mp *metaPartition) getInode(ino *Inode, needUpdateATime bool) (resp *InodeResponse, err error) {
 	resp = NewInodeResponse()
 	resp.Status = proto.OpOk
 
@@ -138,35 +138,8 @@ func (mp *metaPartition) getInode(ino *Inode) (resp *InodeResponse, err error) {
 	 * FIXME: not protected by lock yet, since nothing is depending on atime.
 	 * Shall add inode lock in the future.
 	 */
-	i.AccessTime = Now.GetCurrentTime().Unix()
-	resp.Msg = i
-	return
-}
-
-func (mp *metaPartition) getInodeNoModifyAccessTime(ino *Inode) (resp *InodeResponse, err error) {
-	resp = NewInodeResponse()
-	resp.Status = proto.OpOk
-
-	if isOutOfRange, _ := mp.isInoOutOfRange(ino.Inode); isOutOfRange {
-		resp.Status = proto.OpInodeOutOfRange
-		return
-	}
-
-	var i *Inode
-	i, err = mp.inodeTree.RefGet(ino.Inode)
-	if err != nil {
-		if err == rocksDBError {
-			exporter.WarningRocksdbError(fmt.Sprintf("action[getInode] clusterID[%s] volumeName[%s] partitionID[%v]"+
-				" get inode failed witch rocksdb error", mp.manager.metaNode.clusterId, mp.config.VolName,
-				mp.config.PartitionId))
-		}
-		resp.Status = proto.OpErr
-		return
-	}
-
-	if i == nil || i.ShouldDelete() {
-		resp.Status = proto.OpNotExistErr
-		return
+	if needUpdateATime {
+		i.AccessTime = Now.GetCurrentTime().Unix()
 	}
 	resp.Msg = i
 	return

@@ -106,7 +106,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	mp.monitorData[proto.ActionMetaExtentsList].UpdateData(0)
 
 	var retMsg *InodeResponse
-	retMsg, err = mp.getInode(NewInode(req.Inode, 0))
+	retMsg, err = mp.getInode(NewInode(req.Inode, 0), true)
 	if err != nil {
 		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
 		return
@@ -220,7 +220,7 @@ func (mp *metaPartition) ExtentsListNoModifyAT(req *proto.GetExtentsRequest, p *
 	}
 
 	var retMsg *InodeResponse
-	retMsg, err = mp.getInodeNoModifyAccessTime(NewInode(req.Inode, 0))
+	retMsg, err = mp.getInode(NewInode(req.Inode, 0), false)
 	if err != nil {
 		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
 		return
