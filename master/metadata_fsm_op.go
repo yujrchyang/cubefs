@@ -18,17 +18,16 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/raftstore"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/exporter"
-
 	bsProto "github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/tiglabs/raft/proto"
 )
@@ -388,7 +387,8 @@ type volValue struct {
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
 	RemoveDupReqEnable     bool
-    NotCacheNode           bool
+	NotCacheNode           bool
+	Flock                  bool
 
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
@@ -481,7 +481,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:         vol.RemoteCacheTTL,
 		RemoveDupReqEnable:     vol.enableRemoveDupReq,
-        NotCacheNode:           vol.notCacheNode,
+		NotCacheNode:           vol.notCacheNode,
+		Flock:                  vol.flock,
 
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 		MpSplitStep:              vol.MpSplitStep,

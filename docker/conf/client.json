@@ -15,5 +15,6 @@
   "secretKey": "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd",
   "readDirPlus": true,
   "prefetchThread": 10,
-  "updateExtentsOnRead": true
+  "updateExtentsOnRead": true,
+  "enableXattr": true
 }

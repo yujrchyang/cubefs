@@ -250,6 +250,7 @@ message SimpleVolViewPb {
     int64                     TrashUsedSize          = 96;
     bool                      EnableCheckDeleteEK    = 97;
     bool                      NotCacheNode           = 98;
+    bool                      Flock                  = 99;
 }
 
 message NodeStatInfoPb {

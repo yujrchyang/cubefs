@@ -147,7 +147,7 @@ func GetVersionHandleFunc(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-func downloadAndCheck(mc *master.MasterClient, tmpPath, version string, enableReadDirPlus bool, notCacheNode bool) (fileNames []string, err error) {
+func downloadAndCheck(mc *master.MasterClient, tmpPath, version string, enableReadDirPlus bool, notCacheNode bool, flock bool) (fileNames []string, err error) {
 	var tarName string
 	if runtime.GOARCH == AMD64 {
 		tarName = fmt.Sprintf("%s_%s.tar.gz", TarNamePre, version)
@@ -170,7 +170,7 @@ func downloadAndCheck(mc *master.MasterClient, tmpPath, version string, enableRe
 	if checkMap, err = readCheckfile(filepath.Join(tmpPath, CheckFile)); err != nil {
 		return nil, fmt.Errorf("Invalid checkfile: %v", err)
 	}
-	if err = checkVersionID(checkMap, enableReadDirPlus, notCacheNode); err != nil {
+	if err = checkVersionID(checkMap, enableReadDirPlus, notCacheNode, flock); err != nil {
 		return nil, err
 	}
 	if !checkFiles(fileNames, checkMap, tmpPath) {
@@ -180,30 +180,30 @@ func downloadAndCheck(mc *master.MasterClient, tmpPath, version string, enableRe
 	return fileNames, nil
 }
 
-func checkVersionID(checkMap map[string]string, enableReadDirPlus bool, notCacheNode bool) error {
+func checkVersionID(checkMap map[string]string, enableReadDirPlus bool, notCacheNode bool, flock bool) error {
 	version, exist := checkMap[VersionID]
-	if enableReadDirPlus {
-		if !exist {
-			return fmt.Errorf("unsupported 'readDirPlus': version ID does not exist, at least %v", proto.ReadDirPlusVersion)
-		}
-		less, err := versionUtil.VersionID(version).LessThan(proto.ReadDirPlusVersion)
-		if err != nil {
-			return fmt.Errorf("invalid version: %v", version)
-		}
-		if less {
-			return fmt.Errorf("unsupported 'readDirPlus': version ID at least %v, current is %v", proto.ReadDirPlusVersion, version)
-		}
+	params := []struct {
+		Name    string
+		Val     bool
+		Version string
+	}{
+		{"readDirPlus", enableReadDirPlus, proto.ReadDirPlusVersion},
+		{"notCacheNode", notCacheNode, proto.NotCacheNodeAndFlockVersion},
+		{"flock", flock, proto.NotCacheNodeAndFlockVersion},
 	}
-	if notCacheNode {
-		if !exist {
-			return fmt.Errorf("unsupported 'notCacheNode': version ID does not exist, at least %v", proto.NotCacheNodeVersion)
+	for _, param := range params {
+		if !param.Val {
+			continue
 		}
-		less, err := versionUtil.VersionID(version).LessThan(proto.NotCacheNodeVersion)
+		if !exist {
+			return fmt.Errorf("unsupported '%v': version ID does not exist, at least %v", param.Name, param.Version)
+		}
+		less, err := versionUtil.VersionID(version).LessThan(versionUtil.VersionID(param.Version))
 		if err != nil {
 			return fmt.Errorf("invalid version: %v", version)
 		}
 		if less {
-			return fmt.Errorf("unsupported 'notCacheNode': version ID at least %v, current is %v", proto.NotCacheNodeVersion, version)
+			return fmt.Errorf("unsupported '%v': version ID at least %v, current is %v", param.Name, param.Version, version)
 		}
 	}
 	return nil

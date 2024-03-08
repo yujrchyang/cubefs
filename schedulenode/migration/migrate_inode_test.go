@@ -4,6 +4,15 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"hash/crc32"
+	"io"
+	"os"
+	"strconv"
+	"strings"
+	"syscall"
+	"testing"
+	"time"
+
 	util_sdk "github.com/cubefs/cubefs/cli/cmd/util/sdk"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data"
@@ -13,14 +22,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
-	"hash/crc32"
-	"io"
-	"os"
-	"strconv"
-	"strings"
-	"syscall"
-	"testing"
-	"time"
 )
 
 const (
@@ -449,7 +450,7 @@ func TestDeleteOldExtents(t *testing.T) {
 }
 
 var (
-//inodeOp *MigrateInode
+// inodeOp *MigrateInode
 )
 
 func TestCalcCmpExtents(t *testing.T) {
@@ -998,7 +999,7 @@ func setVolForceRow(forceRow bool) {
 		int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
 		forceRow, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, fmt.Sprintf("%v,%v", vv.MpLayout.PercentOfMP, vv.MpLayout.PercentOfReplica), strings.Join(vv.SmartRules, ","),
 		uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag, vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, 0, 0, 0, vv.UmpCollectWay, -1, -1, false,
-		"", false, false, 0, false, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, 0, 0)
+		"", false, false, 0, false, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, 0, 0, false, false)
 }
 
 func calcAuthKey(key string) (authKey string) {

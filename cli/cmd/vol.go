@@ -368,6 +368,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optTruncateEKCountEveryTime int
 		optBitMapSnapFrozenHour     int64
 		optNotCacheNode             string
+		optFlock                    string
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -804,6 +805,18 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				confirmString.WriteString(fmt.Sprintf("  NotCacheNode : %v\n", formatEnabledDisabled(vv.NotCacheNode)))
 			}
 
+			if optFlock != "" {
+				isChange = true
+				var val bool
+				if val, err = strconv.ParseBool(optFlock); err != nil {
+					return
+				}
+				confirmString.WriteString(fmt.Sprintf("  Flock : %v -> %v\n", formatEnabledDisabled(vv.Flock), formatEnabledDisabled(val)))
+				vv.Flock = val
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  Flock : %v\n", formatEnabledDisabled(vv.Flock)))
+			}
+
 			if err != nil {
 				return
 			}
@@ -828,7 +841,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
 				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator,
 				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL,
-				vv.EnableRemoveDupReq, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode)
+				vv.EnableRemoveDupReq, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode, vv.Flock)
 			if err != nil {
 				return
 			}
@@ -884,6 +897,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().IntVar(&optTruncateEKCountEveryTime, CliFlagTruncateEKCount, -1, "truncate EK count every time when del inode")
 	cmd.Flags().Int64Var(&optBitMapSnapFrozenHour, CliFlagBitMapSnapFrozenHour, -1, "bit map snap frozen interval")
 	cmd.Flags().StringVar(&optNotCacheNode, CliFlagNotCacheNode, "", "Not cache node info in fuse")
+	cmd.Flags().StringVar(&optFlock, CliFlagFlock, "", "with flock support")
 	return cmd
 }
 

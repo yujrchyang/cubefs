@@ -15,13 +15,14 @@
 package fs
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"bazil.org/fuse"
 	"bazil.org/fuse/fs"
-
 	"github.com/cubefs/cubefs/client/cache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -89,6 +90,7 @@ func (f *Node) Forget() {
 			log.LogWarnf("Forget Evict: ino(%v) err(%v)", ino, err)
 		}
 	}
+	Sup.ic.DeleteParent(ino)
 }
 
 // Open handles the open request.
@@ -238,6 +240,10 @@ func (f *Node) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		}
 	}()
 
+	if !f.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
+		return fuse.EPERM
+	}
+
 	reqlen := len(req.Data)
 	filesize, _ = f.fileSize(ctx, ino)
 
@@ -358,6 +364,9 @@ func (f *Node) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 	}
 
 	if req.Valid.Size() {
+		if !f.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
+			return fuse.EPERM
+		}
 		if err := Sup.ec.Flush(ctx, ino); err != nil {
 			log.LogErrorf("Setattr: truncate wait for flush ino(%v) size(%v) err(%v)", ino, req.Size, err)
 			return ParseError(err)
@@ -405,6 +414,11 @@ func (f *Node) Getxattr(ctx context.Context, req *fuse.GetxattrRequest, resp *fu
 	name := req.Name
 	size := req.Size
 	pos := req.Position
+
+	// ignore system.* and security.* xattr, ls will request these automatically
+	if strings.HasPrefix(name, "system.") || strings.HasPrefix(name, "security.") {
+		return nil
+	}
 	info, err := Sup.mw.XAttrGet_ll(ctx, ino, name)
 	if err != nil {
 		log.LogErrorf("GetXattr: ino(%v) name(%v) err(%v)", ino, name, err)
@@ -451,10 +465,23 @@ func (f *Node) Setxattr(ctx context.Context, req *fuse.SetxattrRequest) error {
 	ino := f.inode
 	name := req.Name
 	value := req.Xattr
+
+	var flock *proto.XAttrFlock
+	if name == proto.XATTR_FLOCK {
+		var tmpFlock proto.XAttrFlock
+		if err := json.Unmarshal(value, &tmpFlock); err != nil || tmpFlock.WaitTime == 0 {
+			return fuse.EPERM
+		}
+		flock = &tmpFlock
+	}
 	// TODO： implement flag to improve compatible (Mofei Zhang)
 	if err := Sup.mw.XAttrSet_ll(ctx, ino, []byte(name), []byte(value)); err != nil {
 		log.LogErrorf("Setxattr: ino(%v) name(%v) err(%v)", ino, name, err)
 		return ParseError(err)
+	}
+	if flock != nil {
+		Sup.ic.Delete(ctx, ino)
+		time.Sleep(time.Duration(flock.WaitTime)*time.Second + 100*time.Millisecond)
 	}
 	log.LogDebugf("TRACE Setxattr: ino(%v) name(%v)", ino, name)
 	return nil
@@ -484,6 +511,89 @@ func (f *Node) fileSize(ctx context.Context, ino uint64) (size uint64, gen uint6
 			size = info.Size
 			gen = info.Generation
 		}
+	}
+	return
+}
+
+func (f *Node) havePermission(permBit int) bool {
+	if !Sup.Flock() {
+		return true
+	}
+	permBits, err := f.getPermBits()
+	log.LogDebugf("ino(%v) permBit(%v) permBits(%v) err(%v)", f.inode, permBit, permBits, err)
+	if err != nil {
+		return false
+	}
+	if permBits == 0 {
+		return true
+	} else if permBits < 0 {
+		return false
+	} else {
+		return permBits&permBit > 0
+	}
+}
+
+// 0: permitted, -1: not permitted, otherwise: permission bits
+func (f *Node) getPermBits() (bits int, err error) {
+	var msg string
+	defer func() {
+		if err != nil {
+			log.LogErrorf("ino(%v) err(%v)", f.inode, err)
+		} else {
+			log.LogDebugf("ino(%v) bits(%v) msg(%v) err(%v)", f.inode, bits, msg, err)
+		}
+	}()
+
+	var info *proto.InodeInfo
+	ino := f.inode
+	for {
+		if info != nil {
+			if info.Inode == Sup.rootIno {
+				return
+			}
+			if parentIno, ok := Sup.ic.GetParent(info.Inode); ok {
+				ino = parentIno
+			} else {
+				err = fmt.Errorf("cannot get parent of %v", info.Inode)
+				return
+			}
+		}
+		if info, err = Sup.InodeGet(nil, ino); err != nil {
+			return
+		}
+		flock := f.getValidFlock(info)
+		if flock == nil {
+			continue
+		}
+
+		ipPort := fmt.Sprintf("%s:%d", Sup.ec.LocalIp(), Sup.ProfPort)
+		if flock.IpPort != ipPort {
+			bits = -1
+			msg = fmt.Sprintf("ipPort(%v) flock ipPort(%v)", ipPort, flock.IpPort)
+		} else {
+			bits = int(flock.Flag)
+		}
+		return
+	}
+}
+
+func (f *Node) getValidFlock(info *proto.InodeInfo) (flock *proto.XAttrFlock) {
+	xattrs := info.XAttrs()
+	if xattrs == nil {
+		return
+	}
+	for _, xattr := range *xattrs {
+		if xattr.Name != proto.XATTR_FLOCK {
+			continue
+		}
+		tmpFlock, ok := xattr.Value.(proto.XAttrFlock)
+		if !ok || (tmpFlock.ValidTime > 0 && time.Now().Unix() > int64(tmpFlock.ValidTime)) {
+			continue
+		}
+		if f.inode != info.Inode && tmpFlock.Flag&proto.XATTR_FLOCK_FLAG_RECURSIVE == 0 {
+			continue
+		}
+		flock = &tmpFlock
 	}
 	return
 }

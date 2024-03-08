@@ -62,6 +62,7 @@ type Super struct {
 	notCacheNode             bool
 	rootIno                  uint64
 	readDirPlus              bool
+	ProfPort                 uint64
 
 	delProcessPath []string
 	wg             sync.WaitGroup
@@ -76,6 +77,7 @@ type SuperState struct {
 	RootIno           uint64
 	EnableReadDirPlus bool
 	NotCacheNode      bool
+	Parent            map[uint64]uint64
 }
 
 // Functions that Super needs to implement
@@ -113,7 +115,11 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 	if opt.IcacheTimeout >= 0 {
 		inodeExpiration = time.Duration(opt.IcacheTimeout) * time.Second
 	}
-	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval, true)
+	var parent map[uint64]uint64
+	if !first_start {
+		parent = superState.Parent
+	}
+	s.ic = cache.NewInodeCache(inodeExpiration, MaxInodeCache, cache.BgEvictionInterval, true, parent)
 
 	var extentConfig = &data.ExtentConfig{
 		Volume:              opt.Volname,
@@ -230,7 +236,7 @@ func (s *Super) ExtentClient() *data.ExtentClient {
 }
 
 func (s *Super) SaveSuperState() *SuperState {
-	return &SuperState{s.rootIno, s.readDirPlus, s.notCacheNode}
+	return &SuperState{s.rootIno, s.readDirPlus, s.notCacheNode, s.ic.Parent()}
 }
 
 // Root returns the root directory where it resides.
@@ -270,6 +276,10 @@ func (s *Super) VolName() string {
 
 func (s *Super) NotCacheNode() bool {
 	return s.notCacheNode
+}
+
+func (s *Super) Flock() bool {
+	return s.ec.Flock()
 }
 
 func (s *Super) GetRate(w http.ResponseWriter, r *http.Request) {
@@ -814,7 +824,8 @@ func (s *Super) ClearCache(w http.ResponseWriter, r *http.Request) {
 func (s *Super) GetConf(w http.ResponseWriter, r *http.Request) {
 	conf := struct {
 		NotCacheNode bool
-	}{NotCacheNode: s.notCacheNode}
+		Flock        bool
+	}{s.notCacheNode, s.Flock()}
 	str, _ := json.Marshal(conf)
 	w.Write(str)
 }

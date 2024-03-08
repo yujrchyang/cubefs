@@ -91,7 +91,7 @@ func (c *fClient) SetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	}
 	defer os.RemoveAll(tmpPath)
 
-	_, err = downloadAndCheck(c.mc, tmpPath, version, c.super.EnableReadDirPlus(), c.super.NotCacheNode())
+	_, err = downloadAndCheck(c.mc, tmpPath, version, c.super.EnableReadDirPlus(), c.super.NotCacheNode(), c.super.Flock())
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return

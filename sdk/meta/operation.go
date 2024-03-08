@@ -17,6 +17,7 @@ package meta
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -31,7 +32,6 @@ import (
 )
 
 // API implementations
-//
 type RequestInfo struct {
 	ClientID  uint64
 	ClientIP  uint32
@@ -418,10 +418,9 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 	status int, info *proto.InodeInfo, xattrs []*proto.ExtendAttrInfo, err error) {
 
 	req := &proto.InodeGetRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-
+		VolName:        mw.volname,
+		PartitionID:    mp.PartitionID,
+		Inode:          inode,
 		WithExtendAttr: withXattrs,
 	}
 
@@ -464,6 +463,7 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 		log.LogWarnf("iget: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
 		return
 	}
+	processInodeGetResponse(resp)
 	return statusOK, resp.Info, resp.ExtendAttrs, nil
 }
 
@@ -496,9 +496,11 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 			posEnd = len(inodes)
 		}
 		req := &proto.BatchInodeGetRequest{
-			VolName:     mw.volname,
-			PartitionID: mp.PartitionID,
-			Inodes:      inodes[posStart:posEnd],
+			VolName:        mw.volname,
+			PartitionID:    mp.PartitionID,
+			Inodes:         inodes[posStart:posEnd],
+			WithExtendAttr: true,
+			ExtendAttrKeys: []string{proto.XATTR_FLOCK},
 		}
 		packet := proto.NewPacketReqID(ctx)
 		packet.Opcode = proto.OpMetaBatchInodeGet
@@ -526,10 +528,65 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 		if log.IsDebugEnabled() {
 			log.LogDebugf("batchIget: packet(%v) mp(%v) result(%v) count(%v) pos start(%v) end(%v)", packet, mp, packet.GetResultMsg(), len(resp.Infos), posStart, posEnd)
 		}
+		processBatchInodeGetResponse(resp)
 		infoRes = append(infoRes, resp.Infos...)
 		posStart = posEnd
 	}
 
+}
+
+func processInodeGetResponse(resp *proto.InodeGetResponse) {
+	var xattrs []proto.InodeXAttrInfo
+	for _, attr := range resp.ExtendAttrs {
+		if attr == nil {
+			continue
+		}
+		if xattr, err := parseXattr(attr.Name, attr.Value); err == nil {
+			xattrs = append(xattrs, xattr)
+		}
+	}
+	if len(xattrs) > 0 {
+		resp.Info.SetXAttrs(&xattrs)
+	}
+}
+
+func processBatchInodeGetResponse(resp *proto.BatchInodeGetResponse) {
+	attrMap := make(map[uint64][]*proto.ExtendAttrInfo)
+	for _, attr := range resp.ExtendAttrs {
+		attrMap[attr.InodeID] = attr.ExtendAttrs
+	}
+	for _, info := range resp.Infos {
+		attrs, ok := attrMap[info.Inode]
+		if !ok {
+			continue
+		}
+		var xattrs []proto.InodeXAttrInfo
+		for _, attr := range attrs {
+			if attr == nil {
+				continue
+			}
+			if xattr, err := parseXattr(attr.Name, attr.Value); err == nil {
+				xattrs = append(xattrs, xattr)
+			}
+		}
+		if len(xattrs) > 0 {
+			info.SetXAttrs(&xattrs)
+		}
+	}
+}
+
+func parseXattr(name, value string) (attr proto.InodeXAttrInfo, err error) {
+	if name == proto.XATTR_FLOCK {
+		var flock proto.XAttrFlock
+		err = json.Unmarshal([]byte(value), &flock)
+		if err != nil {
+			return
+		}
+		attr = proto.InodeXAttrInfo{Name: name, Value: flock}
+	} else {
+		attr = proto.InodeXAttrInfo{Name: name, Value: value}
+	}
+	return
 }
 
 func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID uint64, prefix, marker string, count uint64) (status int, children []proto.Dentry, next string, err error) {

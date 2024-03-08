@@ -70,6 +70,7 @@ type Wrapper struct {
 	forceROW              bool
 	enableWriteCache      bool
 	notCacheNode          bool // only initialized for the first time, should not be updated, otherwise will cause chaos
+	flock                 bool // only initialized for the first time, should not be updated
 	extentCacheExpireSec  int64
 	dpSelectorChanged     bool
 	dpSelectorName        string
@@ -234,6 +235,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	w.nearRead = view.NearRead
 	w.forceROW = view.ForceROW
 	w.notCacheNode = view.NotCacheNode
+	w.flock = view.Flock
 	w.zoneName = view.ZoneName
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
@@ -365,6 +367,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.nearRead = view.NearRead
 	w.forceROW = view.ForceROW
 	w.notCacheNode = view.NotCacheNode
+	w.flock = view.Flock
 	w.zoneName = view.ZoneName
 	w.dpSelectorName = view.DpSelectorName
 	w.dpSelectorParm = view.DpSelectorParm
@@ -399,6 +402,7 @@ func (w *Wrapper) saveSimpleVolView() *proto.SimpleVolView {
 		NearRead:             w.nearRead,
 		ForceROW:             w.forceROW,
 		NotCacheNode:         w.notCacheNode,
+		Flock:                w.flock,
 		DpSelectorName:       w.dpSelectorName,
 		DpSelectorParm:       w.dpSelectorParm,
 		CrossRegionHAType:    w.crossRegionHAType,

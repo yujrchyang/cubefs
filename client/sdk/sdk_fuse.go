@@ -383,6 +383,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 			if err == nil {
 				gClient.profPort, _ = strconv.ParseUint(opt.Profport, 10, 64)
 				gClient.portWg.Done()
+				super.ProfPort = gClient.profPort
 				if err = server.Serve(ln); err != http.ErrServerClosed {
 					syslog.Printf("Start with config pprof[%v] failed, err: %v", gClient.profPort, err)
 				}
@@ -402,6 +403,7 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 				continue
 			}
 			gClient.profPort = uint64(port)
+			super.ProfPort = uint64(port)
 			gClient.portWg.Done()
 			if err = server.Serve(ln); err != http.ErrServerClosed {
 				syslog.Printf("Start with config pprof[%v] failed, err: %v", gClient.profPort, err)
@@ -721,11 +723,10 @@ func StopClient() (clientState []byte) {
 	gClient.super.ClosePrefetchWorker()
 
 	gClient.fuseServer.Stop()
+	gClient.super.Close()
 	close(gClient.stopC)
 	gClient.wg.Wait()
 	clientState = gClient.clientState
-
-	gClient.super.Close()
 	syslog.Printf("Stop fuse client successfully, cost[%v].\n", time.Since(start))
 
 	sysutil.RedirectFD(gClient.stderrFd, int(os.Stderr.Fd()))

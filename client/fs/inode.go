@@ -19,22 +19,16 @@ import (
 	"time"
 
 	"bazil.org/fuse"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
 
-const (
-	LogTimeFormat = "20060102150405000"
-)
-
 func (s *Super) InodeGet(ctx context.Context, ino uint64) (*proto.InodeInfo, error) {
-
 	if info := s.ic.Get(ctx, ino); info != nil {
 		return info, nil
 	}
 
-	info, err := s.mw.InodeGet_ll(ctx, ino)
+	info, _, err := s.mw.InodeGetWithXattrs(ctx, ino)
 	if err != nil || info == nil {
 		log.LogErrorf("InodeGet: ino(%v) err(%v) info(%v)", ino, err, info)
 		if err != nil {

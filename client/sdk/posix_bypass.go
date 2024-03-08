@@ -462,7 +462,7 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 		}
 	}
 
-	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache)
+	c.inodeCache = cache.NewInodeCache(inodeExpiration, maxInodeCache, inodeEvictionInterval, c.useMetaCache, nil)
 	c.readProcs = make(map[string]string)
 
 	// Just skip fd 0, 1, 2, to avoid confusion.

@@ -25,6 +25,7 @@ VolName=ltptest
 Owner=ltptest
 AccessKey=39bEF4RrAQgMj6RV
 SecretKey=TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd
+AuthKey="0e20229116d5a9a4a9e876806b514a85"
 TryTimes=5
 
 init_cli() {
@@ -94,14 +95,16 @@ create_volume() {
     # check volume exist
     ${cli} volume info ${VolName} &> /dev/null
     if [[ $? -eq 0 ]]; then
+        curl -s "${LeaderAddr}/vol/update?name=${VolName}&authKey=${AuthKey}&flock=true" &> /dev/null
         echo -e "\033[32m done\033[0m"
         return
     fi
-    ${cli} volume create ${VolName} ${Owner} --capacity=30 -y > /dev/null
+    ${cli} volume create ${VolName} ${Owner} --capacity=30 -y &> /dev/null
     if [[ $? -ne 0 ]]; then
         echo -e "\033[31m fail\033[0m"
         exit 1
     fi
+    curl -s "${LeaderAddr}/vol/update?name=${VolName}&authKey=${AuthKey}&flock=true" &> /dev/null
     echo -e "\033[32m done\033[0m"
 }
 

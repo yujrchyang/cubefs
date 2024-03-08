@@ -854,3 +854,11 @@ func (c *ExtentClient) servePrepareRequest(prepareReq *PrepareRequest) {
 func (c *ExtentClient) NotCacheNode() bool {
 	return c.dataWrapper.notCacheNode
 }
+
+func (c *ExtentClient) Flock() bool {
+	return c.dataWrapper.flock
+}
+
+func (c *ExtentClient) LocalIp() string {
+	return LocalIP
+}

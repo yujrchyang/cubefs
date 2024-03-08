@@ -71,15 +71,24 @@ type InodeInfo struct {
 	// most of the inodes don't have target, a pointer would save 16 bytes
 	Target *[]byte `json:"tgt"`
 
-	expiration int64
+	xattrs    *[]InodeXAttrInfo
+	cacheTime int64
 }
 
-func (info *InodeInfo) Expiration() int64 {
-	return info.expiration
+func (info *InodeInfo) XAttrs() *[]InodeXAttrInfo {
+	return info.xattrs
 }
 
-func (info *InodeInfo) SetExpiration(e int64) {
-	info.expiration = e
+func (info *InodeInfo) SetXAttrs(xattrs *[]InodeXAttrInfo) {
+	info.xattrs = xattrs
+}
+
+func (info *InodeInfo) CacheTime() int64 {
+	return info.cacheTime
+}
+
+func (info *InodeInfo) SetCacheTime(cacheTime int64) {
+	info.cacheTime = cacheTime
 }
 
 // String returns the string format of the inode.
@@ -136,6 +145,11 @@ func (t CubeFSTime) After(u CubeFSTime) bool {
 
 func (t CubeFSTime) AfterTime(u time.Time) bool {
 	return time.Unix(int64(t), 0).After(u)
+}
+
+type InodeXAttrInfo struct {
+	Name  string
+	Value interface{}
 }
 
 type XAttrInfo struct {

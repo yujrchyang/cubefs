@@ -37,9 +37,9 @@ const (
 	RemoveDupReq = "4.3.0"
 
 	/*
-		Client: support notCacheNode
+		Client: support notCacheNode & flock
 	*/
-	NotCacheNodeVersion = "4.6.0"
+	NotCacheNodeAndFlockVersion = "4.6.0"
 
 	/*
 

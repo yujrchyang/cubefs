@@ -26,7 +26,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-
 	"golang.org/x/net/context"
 )
 
@@ -37,6 +36,9 @@ func (d *Node) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.C
 	defer tpObject.Set(err)
 
 	start := time.Now()
+	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
+		return nil, nil, fuse.EPERM
+	}
 	info, err := Sup.mw.Create_ll(ctx, d.inode, req.Name, proto.Mode(req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Create: parent(%v) req(%v) err(%v)", d.inode, req, err)
@@ -44,6 +46,9 @@ func (d *Node) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.C
 	}
 
 	Sup.ic.Put(info)
+	if Sup.Flock() {
+		Sup.ic.PutParent(info.Inode, d.inode)
+	}
 	child := NewNode(info.Inode)
 	Sup.ec.OpenStream(info.Inode, false)
 
@@ -65,6 +70,9 @@ func (d *Node) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, erro
 	defer tpObject.Set(err)
 
 	start := time.Now()
+	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
+		return nil, fuse.EPERM
+	}
 	info, err := Sup.mw.Create_ll(ctx, d.inode, req.Name, proto.Mode(os.ModeDir|req.Mode.Perm()), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mkdir: parent(%v) req(%v) err(%v)", d.inode, req, err)
@@ -72,6 +80,9 @@ func (d *Node) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, erro
 	}
 
 	Sup.ic.Put(info)
+	if Sup.Flock() {
+		Sup.ic.PutParent(info.Inode, d.inode)
+	}
 	child := NewNode(info.Inode)
 	Sup.ic.Delete(ctx, d.inode)
 
@@ -100,6 +111,9 @@ func (d *Node) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) 
 	start := time.Now()
 	d.dcache.Delete(req.Name)
 
+	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
+		return fuse.EPERM
+	}
 	info, syserr := Sup.mw.Delete_ll(ctx, d.inode, req.Name, req.Dir)
 	if syserr != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.inode, req.Name, syserr)
@@ -113,10 +127,14 @@ func (d *Node) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) 
 	}
 
 	Sup.ic.Delete(ctx, d.inode)
-
-	if info != nil && info.Nlink == 0 && !proto.IsDir(info.Mode) {
-		Sup.orphan.Put(info.Inode)
-		log.LogDebugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
+	if info != nil {
+		if proto.IsDir(info.Mode) {
+			Sup.ic.DeleteParent(info.Inode)
+		}
+		if info.Nlink == 0 && !proto.IsDir(info.Mode) {
+			Sup.orphan.Put(info.Inode)
+			log.LogDebugf("Remove: add to orphan inode list, ino(%v)", info.Inode)
+		}
 	}
 
 	log.LogDebugf("TRACE Remove: parent(%v) req(%v) inode(%v) time(%v)", d.inode, req, info, time.Since(start))
@@ -158,6 +176,9 @@ func (d *Node) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.L
 	}
 
 	child := NewNode(ino)
+	if Sup.Flock() {
+		Sup.ic.PutParent(ino, d.inode)
+	}
 	resp.EntryValid = LookupValidDuration
 
 	if log.IsDebugEnabled() {
@@ -204,6 +225,9 @@ func (d *Node) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		infos := Sup.mw.BatchInodeGet(ctx, inodes)
 		for _, info := range infos {
 			Sup.ic.Put(info)
+			if Sup.Flock() {
+				Sup.ic.PutParent(info.Inode, d.inode)
+			}
 		}
 	}
 	d.dcache = dcache
@@ -234,6 +258,9 @@ func (d *Node) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusRespons
 	infoMap := make(map[uint64]*proto.InodeInfo, len(infos))
 	for _, info := range infos {
 		Sup.ic.Put(info)
+		if Sup.Flock() {
+			Sup.ic.PutParent(info.Inode, d.inode)
+		}
 		infoMap[info.Inode] = info
 	}
 
@@ -284,6 +311,9 @@ func (d *Node) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.No
 	tpObject := exporter.NewModuleTP("rename")
 	defer tpObject.Set(err)
 
+	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
+		return fuse.EPERM
+	}
 	err = Sup.mw.Rename_ll(ctx, d.inode, req.OldName, destDirIno, req.NewName, false)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.inode, req, err)
@@ -308,6 +338,9 @@ func (d *Node) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, erro
 	tpObject := exporter.NewModuleTP("mknod")
 	defer tpObject.Set(err)
 
+	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
+		return nil, fuse.EPERM
+	}
 	info, err := Sup.mw.Create_ll(ctx, d.inode, req.Name, proto.Mode(req.Mode), req.Uid, req.Gid, nil)
 	if err != nil {
 		log.LogErrorf("Mknod: parent(%v) req(%v) err(%v)", d.inode, req, err)
@@ -315,6 +348,9 @@ func (d *Node) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, erro
 	}
 
 	Sup.ic.Put(info)
+	if Sup.Flock() {
+		Sup.ic.PutParent(info.Inode, d.inode)
+	}
 	child := NewNode(info.Inode)
 
 	log.LogDebugf("TRACE Mknod: parent(%v) req(%v) ino(%v) time(%v)", d.inode, req, info.Inode, time.Since(start))
@@ -330,6 +366,9 @@ func (d *Node) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, 
 	tpObject := exporter.NewModuleTP("symlink")
 	defer tpObject.Set(err)
 
+	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
+		return nil, fuse.EPERM
+	}
 	info, err := Sup.mw.Create_ll(ctx, parentIno, req.NewName, proto.Mode(os.ModeSymlink|os.ModePerm), req.Uid, req.Gid, []byte(req.Target))
 	if err != nil {
 		log.LogErrorf("Symlink: parent(%v) NewName(%v) err(%v)", parentIno, req.NewName, err)
@@ -362,6 +401,9 @@ func (d *Node) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs
 	defer tpObject.Set(err)
 
 	start := time.Now()
+	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
+		return nil, fuse.EPERM
+	}
 	info, err := Sup.mw.Link(ctx, d.inode, req.NewName, oldInode)
 	if err != nil {
 		log.LogErrorf("Link: parent(%v) name(%v) ino(%v) err(%v)", d.inode, req.NewName, oldInode, err)

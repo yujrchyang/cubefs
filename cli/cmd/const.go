@@ -138,7 +138,8 @@ const (
 	CliFlagReadConnTimeout        = "readConnTimeout"
 	CliFlagWriteConnTimeout       = "writeConnTimeout"
 	CliFlagTruncateEKCount        = "truncateEKCount"
-    CliFlagNotCacheNode           = "notCacheNode"
+	CliFlagNotCacheNode           = "notCacheNode"
+	CliFlagFlock                  = "flock"
 
 	CliFlagBitMapSnapFrozenHour   = "bitMapSnapFrozenHour"
 

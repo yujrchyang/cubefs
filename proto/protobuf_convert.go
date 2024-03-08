@@ -338,6 +338,8 @@ func ConvertSimpleVolViewPb(vv *SimpleVolViewPb) *SimpleVolView {
 		RemoteCacheBoostPath:     vv.RemoteCacheBoostPath,
 		RemoteCacheTTL:           vv.RemoteCacheTTL,
 		EnableRemoveDupReq:       vv.EnableRemoveDupReq,
+		NotCacheNode:             vv.NotCacheNode,
+		Flock:                    vv.Flock,
 		TruncateEKCountEveryTime: int(vv.TruncateEKCount),
 		MpSplitStep:              vv.MpSplitStep,
 		InodeCountThreshold:      vv.InodeCountThreshold,
@@ -452,6 +454,7 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		TrashUsedSize:          vv.TrashUsedSize,
 		EnableCheckDeleteEK:    vv.EnableCheckDeleteEK,
 		NotCacheNode:           vv.NotCacheNode,
+		Flock:                  vv.Flock,
 	}
 }
 

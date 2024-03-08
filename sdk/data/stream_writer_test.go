@@ -3,7 +3,6 @@ package data
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -21,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 )
 
@@ -300,12 +300,12 @@ func creatHelper(t *testing.T) (mw *meta.MetaWrapper, ec *ExtentClient, err erro
 	}); err != nil {
 		t.Fatalf("NewMetaWrapper failed: err(%v) vol(%v)", err, ltptestVolume)
 	}
-	ic := cache.NewInodeCache(1 * time.Minute, 100, 1 * time.Second, true)
+	ic := cache.NewInodeCache(1*time.Minute, 100, 1*time.Second, true, nil)
 	if ec, err = NewExtentClient(&ExtentConfig{
 		Volume:            ltptestVolume,
 		Masters:           strings.Split(ltptestMaster, ","),
 		FollowerRead:      false,
-		MetaWrapper: 	   mw,
+		MetaWrapper:       mw,
 		OnInsertExtentKey: mw.InsertExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,
@@ -384,7 +384,7 @@ func TestROW(t *testing.T) {
 		}
 	}
 	ROWFile.Close()
-	time.Sleep(5*time.Second)
+	time.Sleep(5 * time.Second)
 	//ROWFile, _ = os.Open(testROWFilePath)
 	//readBytes := make([]byte, len(writeBytes))
 	//readOffset := int64(0)
@@ -694,7 +694,7 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	}
 }
 
-func TestStreamer_InitServer(t *testing.T)  {
+func TestStreamer_InitServer(t *testing.T) {
 	testFile := "/cfs/mnt/TestStreamer_InitServer"
 	file, _ := os.Create(testFile)
 	file.Close()
@@ -707,8 +707,8 @@ func TestStreamer_InitServer(t *testing.T)  {
 	err = ec.OpenStream(inodeID, false)
 	assert.Equal(t, nil, err, "open streamer")
 	var (
-		readSize, writeSize	int
-		hasHole				bool
+		readSize, writeSize int
+		hasHole             bool
 	)
 	writeSize, _, err = ec.Write(context.Background(), inodeID, 0, []byte("11111"), false)
 	assert.Equal(t, nil, err, "write streamer")
@@ -733,7 +733,7 @@ func TestStreamer_InitServer(t *testing.T)  {
 	assert.Equal(t, nil, err, "evict streamer")
 }
 
-func TestStreamer_NotInitServer(t *testing.T)  {
+func TestStreamer_NotInitServer(t *testing.T) {
 	testFile := "/cfs/mnt/TestStreamer_NotInitServer"
 	file, _ := os.Create(testFile)
 	file.WriteAt([]byte("11111"), 0)
@@ -751,8 +751,8 @@ func TestStreamer_NotInitServer(t *testing.T)  {
 	err = ec.OpenStream(inodeID, false)
 	assert.Equal(t, nil, err, "open streamer again")
 	var (
-		readSize	int
-		hasHole		bool
+		readSize int
+		hasHole  bool
 	)
 	readSize, hasHole, err = ec.Read(context.Background(), inodeID, make([]byte, fileSize), 0, int(fileSize))
 	assert.Equal(t, nil, err, "read streamer")

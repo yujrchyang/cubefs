@@ -38,24 +38,33 @@ type InodeCache struct {
 	sync.RWMutex
 	cache              map[uint64]*list.Element
 	lruList            *list.List
+	oldExpiration      time.Duration
 	expiration         time.Duration
 	maxElements        int
 	bgEvictionInterval time.Duration
 	useCache           bool
 	stopC              chan struct{}
 	wg                 sync.WaitGroup
+
+	parent     map[uint64]uint64
+	parentLock sync.RWMutex
 }
 
 // NewInodeCache returns a new inode cache.
-func NewInodeCache(exp time.Duration, maxElements int, bgEvictionInterval time.Duration, useCache bool) *InodeCache {
+func NewInodeCache(exp time.Duration, maxElements int, bgEvictionInterval time.Duration, useCache bool, parent map[uint64]uint64) *InodeCache {
 	ic := &InodeCache{
 		cache:              make(map[uint64]*list.Element),
 		lruList:            list.New(),
+		oldExpiration:      exp,
 		expiration:         exp,
 		maxElements:        maxElements,
 		bgEvictionInterval: bgEvictionInterval,
 		useCache:           useCache,
 		stopC:              make(chan struct{}),
+		parent:             parent,
+	}
+	if parent == nil {
+		ic.parent = make(map[uint64]uint64)
 	}
 	if useCache {
 		ic.wg.Add(1)
@@ -81,7 +90,7 @@ func (ic *InodeCache) Put(info *proto.InodeInfo) {
 		ic.evict(true)
 	}
 
-	inodeSetExpiration(info, ic.expiration)
+	info.SetCacheTime(time.Now().Unix())
 	element := ic.lruList.PushFront(info)
 	ic.cache[info.Inode] = element
 	ic.Unlock()
@@ -101,9 +110,8 @@ func (ic *InodeCache) Get(ctx context.Context, ino uint64) *proto.InodeInfo {
 	}
 
 	info := element.Value.(*proto.InodeInfo)
-	if inodeExpired(info) {
+	if ic.inodeExpired(info) {
 		ic.RUnlock()
-		//log.LogDebugf("InodeCache GetConnect expired: now(%v) inode(%v)", time.Now().Format(LogTimeFormat), inode)
 		return nil
 	}
 	ic.RUnlock()
@@ -152,7 +160,7 @@ func (ic *InodeCache) evict(foreground bool) {
 		// But for foreground eviction, we need to evict at least MinInodeCacheEvictNum inodes.
 		// The foreground eviction, does not need to care if the inode has expired or not.
 		info := element.Value.(*proto.InodeInfo)
-		if !foreground && !inodeExpired(info) {
+		if !foreground && !ic.inodeExpired(info) {
 			return
 		}
 
@@ -172,7 +180,7 @@ func (ic *InodeCache) evict(foreground bool) {
 			break
 		}
 		info := element.Value.(*proto.InodeInfo)
-		if !inodeExpired(info) {
+		if !ic.inodeExpired(info) {
 			break
 		}
 		ic.lruList.Remove(element)
@@ -211,10 +219,52 @@ func (ic *InodeCache) Stop() {
 	ic.wg.Wait()
 }
 
-func inodeExpired(info *proto.InodeInfo) bool {
-	return time.Now().Unix() > info.Expiration()
+func (ic *InodeCache) inodeExpired(info *proto.InodeInfo) bool {
+	expire := int64(ic.expiration / time.Second)
+	flock := getFlock(info)
+	if flock != nil {
+		expire = int64(flock.WaitTime)
+	}
+	return time.Now().Unix() >= info.CacheTime()+expire
 }
 
-func inodeSetExpiration(info *proto.InodeInfo, t time.Duration) {
-	info.SetExpiration(time.Now().Add(t).Unix())
+func getFlock(info *proto.InodeInfo) (flock *proto.XAttrFlock) {
+	xattrs := info.XAttrs()
+	if xattrs == nil {
+		return
+	}
+	for _, xattr := range *xattrs {
+		if xattr.Name != proto.XATTR_FLOCK {
+			continue
+		}
+		tmpFlock, ok := xattr.Value.(proto.XAttrFlock)
+		if !ok || (tmpFlock.ValidTime > 0 && time.Now().Unix() > int64(tmpFlock.ValidTime)) {
+			continue
+		}
+		flock = &tmpFlock
+	}
+	return
+}
+
+func (ic *InodeCache) Parent() map[uint64]uint64 {
+	return ic.parent
+}
+
+func (ic *InodeCache) PutParent(ino uint64, parentIno uint64) {
+	ic.parentLock.Lock()
+	ic.parent[ino] = parentIno
+	ic.parentLock.Unlock()
+}
+
+func (ic *InodeCache) GetParent(ino uint64) (parentIno uint64, ok bool) {
+	ic.parentLock.RLock()
+	parentIno, ok = ic.parent[ino]
+	ic.parentLock.RUnlock()
+	return
+}
+
+func (ic *InodeCache) DeleteParent(ino uint64) {
+	ic.parentLock.Lock()
+	delete(ic.parent, ino)
+	ic.parentLock.Unlock()
 }

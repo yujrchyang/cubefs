@@ -303,6 +303,7 @@ const (
 	ClientReqRemoveDupFlagKey        = "reqRemoveDupKey"
 	VolRemoveDupFlagKey              = "volRemoveDupReqKey"
 	NotCacheNodeKey                  = "notCacheNode"
+	FlockKey                         = "flock"
 	NetworkFlowRatioKey              = "networkFlowRatio"
 	MetaNodeDelEKZoneRateLimitKey    = "metaNodeDelEKZoneRateLimit"
 	MetaNodeDelEKVolRateLimitKey     = "metaNodeDelEKVolRateLimit"
@@ -1277,6 +1278,7 @@ type SimpleVolView struct {
 	EnableRemoveDupReq     bool
 	EnableCheckDeleteEK    bool
 	NotCacheNode           bool
+	Flock                  bool
 
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
