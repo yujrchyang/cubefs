@@ -137,7 +137,7 @@ func TestMetaPartition_mvToDeletedInodeTree(t *testing.T) {
 				t.Error(status)
 				t.FailNow()
 			}
-			res, _ := mp.getInode(ino)
+			res, _ := mp.getInode(ino, false)
 			if res.Status != proto.OpNotExistErr {
 				t.Error(status)
 				t.FailNow()
@@ -243,7 +243,7 @@ func TestMetaPartition_RecoverDeletedInodeCase01(t *testing.T) {
 				t.Error(p.ResultCode)
 				t.FailNow()
 			}
-			res, _ := mp.getInode(ino1)
+			res, _ := mp.getInode(ino1, false)
 			if res.Status != proto.OpOk {
 				t.Errorf("status: %v", res.Status)
 				t.FailNow()
@@ -266,7 +266,7 @@ func TestMetaPartition_RecoverDeletedInodeCase01(t *testing.T) {
 					t.Error(p.ResultCode)
 					t.FailNow()
 				}
-				res, _ = mp.getInode(ino1)
+				res, _ = mp.getInode(ino1, false)
 				if res.Status != proto.OpOk {
 					t.Error(res.Status)
 					t.FailNow()
@@ -293,7 +293,7 @@ func TestMetaPartition_RecoverDeletedInodeCase01(t *testing.T) {
 				t.Error(p.ResultCode)
 				t.FailNow()
 			}
-			res, _ = mp.getInode(ino2)
+			res, _ = mp.getInode(ino2, false)
 			if res.Status != proto.OpOk {
 				t.Error(res.Status)
 				t.FailNow()
@@ -315,7 +315,7 @@ func TestMetaPartition_RecoverDeletedInodeCase01(t *testing.T) {
 					t.Error(p.ResultCode)
 					t.FailNow()
 				}
-				res, _ = mp.getInode(ino2)
+				res, _ = mp.getInode(ino2, false)
 				if res.Status != proto.OpOk {
 					t.Error(res.Status)
 					t.FailNow()
@@ -431,7 +431,7 @@ func TestMetaPartition_RecoverDeletedInodeCase02(t *testing.T) {
 				t.Error(p.ResultCode)
 				t.FailNow()
 			}
-			res, _ := mp.getInode(ino1)
+			res, _ := mp.getInode(ino1, false)
 			if res.Status != proto.OpOk {
 				t.Errorf("status: %v", res.Status)
 				t.FailNow()
@@ -454,7 +454,7 @@ func TestMetaPartition_RecoverDeletedInodeCase02(t *testing.T) {
 					t.Error(p.ResultCode)
 					t.FailNow()
 				}
-				res, _ = mp.getInode(ino1)
+				res, _ = mp.getInode(ino1, false)
 				if res.Status != proto.OpOk {
 					t.Error(res.Status)
 					t.FailNow()
@@ -481,7 +481,7 @@ func TestMetaPartition_RecoverDeletedInodeCase02(t *testing.T) {
 				t.Error(p.ResultCode)
 				t.FailNow()
 			}
-			res, _ = mp.getInode(ino2)
+			res, _ = mp.getInode(ino2, false)
 			if res.Status != proto.OpOk {
 				t.Error(res.Status)
 				t.FailNow()
@@ -503,7 +503,7 @@ func TestMetaPartition_RecoverDeletedInodeCase02(t *testing.T) {
 					t.Error(p.ResultCode)
 					t.FailNow()
 				}
-				res, _ = mp.getInode(ino2)
+				res, _ = mp.getInode(ino2, false)
 				if res.Status != proto.OpOk {
 					t.Error(res.Status)
 					t.FailNow()

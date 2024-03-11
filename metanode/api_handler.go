@@ -583,7 +583,7 @@ func (m *MetaNode) getInodeNoModifyAccessTimeHandler(w http.ResponseWriter, r *h
 		Inode:       id,
 	}
 	p := NewPacket(r.Context())
-	err = mp.InodeGetNoModifyAT(req, p, proto.OpInodeGetCurVersion)
+	err = mp.InodeGet(req, p, proto.OpInodeGetCurVersion)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
@@ -793,7 +793,7 @@ func (m *MetaNode) getExtentsByInodeHandler(w http.ResponseWriter,
 		Inode:       id,
 	}
 	p := NewPacket(r.Context())
-	if err = mp.ExtentsList(req, p); err != nil {
+	if err = mp.ExtentsListNoModifyAT(req, p); err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = err.Error()
 		return

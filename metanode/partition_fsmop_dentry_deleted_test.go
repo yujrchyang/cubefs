@@ -545,7 +545,7 @@ func TestMetaPartition_RecoverDeletedDentry(t *testing.T) {
 				t.FailNow()
 			}
 
-			inoResp, _ := mp.getInode(ino)
+			inoResp, _ := mp.getInode(ino, false)
 			if inoResp.Status != proto.OpOk {
 				t.Error(inoResp.Status)
 				t.FailNow()
@@ -581,7 +581,7 @@ func TestMetaPartition_RecoverDeletedDentry(t *testing.T) {
 				t.FailNow()
 			}
 
-			inoResp, _ = mp.getInode(ino)
+			inoResp, _ = mp.getInode(ino, false)
 			if inoResp.Status != proto.OpOk {
 				t.Error(inoResp.Status)
 				t.FailNow()
@@ -614,7 +614,7 @@ func TestMetaPartition_RecoverDeletedDentry(t *testing.T) {
 				t.FailNow()
 			}
 
-			inoResp, _ = mp.getInode(ino)
+			inoResp, _ = mp.getInode(ino, false)
 			if inoResp.Status != proto.OpOk {
 				t.Error(inoResp.Status)
 				t.FailNow()
@@ -653,7 +653,7 @@ func TestMetaPartition_RecoverDeletedDentry(t *testing.T) {
 				t.FailNow()
 			}
 
-			inoResp, _ = mp.getInode(ino)
+			inoResp, _ = mp.getInode(ino, false)
 			if inoResp.Status != proto.OpOk {
 				t.Error(inoResp.Status)
 				t.FailNow()
@@ -708,7 +708,7 @@ func TestMetaPartition_RecoverDeletedDentry(t *testing.T) {
 				}
 			}
 
-			inoResp, _ = mp.getInode(ino)
+			inoResp, _ = mp.getInode(ino, false)
 			if inoResp.Status != proto.OpOk {
 				t.Error(inoResp.Status)
 				t.FailNow()
@@ -743,7 +743,7 @@ func TestMetaPartition_RecoverDeletedDentry(t *testing.T) {
 					t.FailNow()
 				}
 
-				inoResp, _ = mp.getInode(ino)
+				inoResp, _ = mp.getInode(ino, false)
 				if inoResp.Status != proto.OpOk {
 					t.Error(inoResp.Status)
 					t.FailNow()
@@ -930,7 +930,7 @@ func TestMetaPartition_BatchRecoverDeletedDentry(t *testing.T) {
 					mp.dentryTree.Count(), mp.dentryDeletedTree.Count())
 			}
 
-			resp, err := mp.getInode(parIno)
+			resp, err := mp.getInode(parIno, false)
 			if err != nil {
 				t.Errorf("get parent inode failed:%v", err)
 				return

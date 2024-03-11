@@ -210,7 +210,6 @@ type OpInode interface {
 	GetCompactInodeInfo(req *proto.GetCmpInodesRequest, p *Packet) (err error)
 	MergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error)
 	FileMigMergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error)
-	InodeGetNoModifyAT(req *InodeGetReq, p *Packet, version uint8) (err error)
 }
 
 type OpDeletedInode interface {
