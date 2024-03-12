@@ -6,6 +6,7 @@ import (
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/multirate"
+	"github.com/cubefs/cubefs/util/tokenmanager"
 	"math"
 	"math/rand"
 	"os"
@@ -58,6 +59,36 @@ func metaPartitionSchedule(mp *metaPartition) {
 			return
 		}
 	}
+}
+
+func mockMetaPartitionWithStartStoreSchedule(partitionID uint64, metaNodeID uint64, storeMode proto.StoreMode, rootDir string, applyFunc metamock.ApplyFunc) (*metaPartition, error) {
+	_ = os.RemoveAll(rootDir)
+	_ = os.MkdirAll(rootDir, 0777)
+	node := &MetaNode{nodeId: metaNodeID, metadataDir: rootDir, limitManager: &multirate.LimiterManager{}}
+	node.initFetchTopologyManager()
+	manager := &metadataManager{nodeId: metaNodeID, rocksDBDirs: []string{rootDir}, metaNode: node, tokenM: tokenmanager.NewTokenManager(10)}
+	conf := &MetaPartitionConfig{
+		RocksDBDir:  rootDir,
+		PartitionId: partitionID,
+		NodeId:      metaNodeID,
+		Start:       1,
+		End:         math.MaxUint64 - 100,
+		Peers:       []proto.Peer{{ID: metaNodeID, Addr: "127.0.0.1"}},
+		RootDir:     rootDir,
+		StoreMode:   storeMode,
+	}
+	tmp, err := CreateMetaPartition(conf, manager)
+	if err != nil {
+		fmt.Printf("create meta partition failed:%s", err.Error())
+		return nil, err
+	}
+	mp := tmp.(*metaPartition)
+	mp.applyID = 10000
+	mp.raftPartition = &metamock.MockPartition{Id: partitionID, Mp: []interface{}{mp}, Apply: applyFunc, ApplyId: mp.applyID}
+	mp.vol = NewVol()
+
+	go mp.startSchedule(mp.applyID)
+	return mp, nil
 }
 
 func releaseMetaPartition(mp *metaPartition) {

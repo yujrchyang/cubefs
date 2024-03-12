@@ -120,13 +120,11 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 		}
 	}
 	go func(stopC chan bool) {
-		var msgs []*storeMsg
+		var maxMsg *storeMsg
+		var maxIndex uint64
 		for {
 			select {
 			case <-stopC:
-				if len(msgs) != 0 {
-					log.LogCriticalf("[startSchedule]: partitionID(%v) stopCh receive close signal, msgCnt:%v", mp.config.PartitionId, len(msgs))
-				}
 				timer.Stop()
 				timerCursor.Stop()
 				storeTicker.Stop()
@@ -135,43 +133,22 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				return
 
 			case <-storeTicker.C:
-				if len(msgs) == 0 || time.Now().Unix() - atomic.LoadInt64(&mp.lastDumpTime) < int64(intervalToPersistData / time.Second){
+				if time.Now().Unix() - atomic.LoadInt64(&mp.lastDumpTime) < int64(intervalToPersistData / time.Second){
 					continue
 				}
 
 				if !mp.manager.tokenM.GetRunToken(mp.config.PartitionId) {
 					continue
 				}
-				var (
-					maxIdx uint64
-					maxMsg *storeMsg
-				)
-				for _, msg := range msgs {
-					if curIndex >= msg.applyIndex {
-						if msg.snap != nil {
-							msg.snap.Close()
-						}
-						continue
-					}
-					if maxIdx < msg.applyIndex {
-						if maxMsg != nil && maxMsg.snap != nil {
-							maxMsg.snap.Close()
-						}
-						maxIdx = msg.applyIndex
-						maxMsg = msg
-					} else {
-						if msg.snap != nil {
-							msg.snap.Close()
-						}
-					}
-				}
+
 				if maxMsg != nil {
-					go dumpFunc(maxMsg)
+					msg := maxMsg
+					go dumpFunc(msg)
+					maxMsg = nil
 				} else {
 					//no dump exe, release token
 					mp.manager.tokenM.ReleaseToken(mp.config.PartitionId)
 				}
-				msgs = msgs[:0]
 			case msg := <-mp.storeChan:
 				switch msg.command {
 				case startStoreTick:
@@ -179,7 +156,18 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				case stopStoreTick:
 					timer.Stop()
 				case opFSMStoreTick:
-					msgs = append(msgs, msg)
+					if curIndex >= msg.applyIndex || maxIndex > msg.applyIndex {
+						if msg.snap != nil {
+							msg.snap.Close()
+						}
+						continue
+					}
+
+					if maxMsg != nil && maxMsg.snap != nil {
+						maxMsg.snap.Close()
+					}
+					maxMsg = msg
+					maxIndex = msg.applyIndex
 				case resetStoreTick:
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)
