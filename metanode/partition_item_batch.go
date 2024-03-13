@@ -28,13 +28,17 @@ import (
 
 const DefaultBatchCount = 128
 
-var MetaBatchSnapshotVersionMap = map[string]SnapshotVersion{
-	RocksDBVersion:         BatchSnapshotV1,
-	Version3_3_0:           BatchSnapshotV1,
-	BitMapAllocatorVersion: BatchSnapshotV2,
-	Version4_0_0:           BatchSnapshotV2,
-	Version4_2_0:           BatchSnapshotV2,
-	RemoveDupReqVersion:    BatchSnapshotV3,
+var SnapshotVersionArr = []string{MinVersion, RocksDBVersion, BitMapAllocatorVersion, RemoveDupReqVersion}
+
+func GetMatchedSnapV(nodeVersion *MetaNodeVersion) (snapV SnapshotVersion) {
+	snapV = LatestSnapV
+	for index := len(SnapshotVersionArr)-1; index >= 0; index-- {
+		if nodeVersion.GreaterOrEqual(NewMetaNodeVersion(SnapshotVersionArr[index])) {
+			snapV = SnapshotVersion(index)
+			return
+		}
+	}
+	return
 }
 
 type EkData struct {

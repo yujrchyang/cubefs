@@ -498,7 +498,6 @@ func (mp *metaPartition) Snapshot(recoverNode uint64) (snap raftproto.Snapshot, 
 	var (
 		version *MetaNodeVersion
 		snapV   SnapshotVersion
-		ok      bool
 	)
 	version, err = mp.GetRecoverNodeVersion(recoverNode)
 	if err != nil {
@@ -507,21 +506,13 @@ func (mp *metaPartition) Snapshot(recoverNode uint64) (snap raftproto.Snapshot, 
 		return newBatchMetaItemIterator(mp, LatestSnapV)
 	}
 
-	if version.LessThan(NewMetaNodeVersion(RocksDBVersion)) {
-		log.LogInfof("Snapshot: mp[%v] get recover node[%v] version[%s], less than rocksdb version, so send base snap",
-			mp.config.PartitionId, recoverNode, version.VersionStr())
+	snapV = GetMatchedSnapV(version)
+	log.LogInfof("Snapshot: mp[%v] get recover node[%v] version[%s], snapshotV[%v]", mp.config.PartitionId, recoverNode, version.VersionStr(), snapV)
+	if snapV == BaseSnapshotV {
 		return newMetaItemIterator(mp)
+	} else {
+		return newBatchMetaItemIterator(mp, snapV)
 	}
-
-	//todo: change version map
-	if snapV, ok = MetaBatchSnapshotVersionMap[version.VersionStr()]; !ok {
-		log.LogErrorf("Snapshot: mp[%v] get recover node[%v] version[%s] mismatch, so send latest batch snap",
-			mp.config.PartitionId, recoverNode, version.VersionStr())
-		return newBatchMetaItemIterator(mp, LatestSnapV)
-	}
-	log.LogInfof("Snapshot: mp[%v] get recover node[%v] version[%s], equal or more than rocksdb version, so send batch snap",
-		mp.config.PartitionId, recoverNode, version.VersionStr())
-	return newBatchMetaItemIterator(mp, snapV)
 }
 
 func (mp *metaPartition) ResetDbByNewDir(newDBDir string) (err error) {

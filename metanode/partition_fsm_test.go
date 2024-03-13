@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/multipart"
+	"github.com/stretchr/testify/assert"
 	raftproto "github.com/tiglabs/raft/proto"
 	"io/ioutil"
 	"math/rand"
@@ -968,4 +969,38 @@ func TestMetaPartition_EvictReqRecords(t *testing.T) {
 				len(batchRecords), len(reqRecords), reqRecords, batchRecords)
 		}
 	}
+}
+
+func TestGetMatchedSnapV(t *testing.T) {
+	nodeVersion := MinVersion
+	snapV := GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(BaseSnapshotV), snapV, fmt.Sprintf("expect version: %v, actual: %v", BaseSnapshotV, snapV))
+
+	nodeVersion = proto.RocksDBVersion
+	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(BatchSnapshotV1), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV1, snapV))
+
+	nodeVersion = proto.Version_3_3_0
+	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(BatchSnapshotV1), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV1, snapV))
+
+	nodeVersion = proto.BitMapAllocator
+	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(BatchSnapshotV2), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV2, snapV))
+
+	nodeVersion = proto.Version_4_0_0
+	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(BatchSnapshotV2), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV2, snapV))
+
+	nodeVersion = proto.ReadDirPlusVersion
+	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(BatchSnapshotV2), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV2, snapV))
+
+	nodeVersion = proto.RemoveDupReq
+	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(BatchSnapshotV3), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV3, snapV))
+
+	nodeVersion = proto.BaseVersion
+	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(BatchSnapshotV3), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV3, snapV))
 }

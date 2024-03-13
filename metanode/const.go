@@ -289,11 +289,9 @@ const (
 )
 
 const (
+	MinVersion             = "0.0.0"
 	RocksDBVersion         = proto.RocksDBVersion
-	Version3_3_0           = proto.Version_3_3_0
 	BitMapAllocatorVersion = proto.BitMapAllocator
-	Version4_0_0           = proto.Version_4_0_0
-	Version4_2_0           = proto.ReadDirPlusVersion
 	RemoveDupReqVersion    = proto.RemoveDupReq
 	MetaNodeLatestVersion  = proto.BaseVersion
 )
