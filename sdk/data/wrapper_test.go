@@ -12,7 +12,7 @@ const (
 )
 
 func TestWrapper_getDataPartitionFromMaster(t *testing.T) {
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","))
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","), Normal)
 	if err != nil {
 		t.Fatalf("NewDataPartitionWrapper failed, err %v", err)
 	}

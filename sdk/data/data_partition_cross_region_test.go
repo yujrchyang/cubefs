@@ -18,7 +18,7 @@ var (
 )
 
 func TestCrossRegionHosts(t *testing.T) {
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","))
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","), Normal)
 	if err != nil {
 		t.Fatalf("TestCrossRegionHosts: NewDataPartitionWrapper failed, err %v", err)
 	}
@@ -84,7 +84,7 @@ func TestCrossRegionHosts(t *testing.T) {
 }
 
 func TestPingCrossRegionHosts(t *testing.T) {
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","))
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","), Normal)
 	if err != nil {
 		t.Fatalf("TestPingCrossRegionHosts: NewDataPartitionWrapper failed, err %v", err)
 	}
@@ -132,7 +132,7 @@ func TestPingCrossRegionHosts(t *testing.T) {
 }
 
 func TestMiddleStatCrossRegionHosts(t *testing.T) {
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","))
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","), Normal)
 	if err != nil {
 		t.Fatalf("TestCrossRegionHosts: NewDataPartitionWrapper failed, err %v", err)
 	}

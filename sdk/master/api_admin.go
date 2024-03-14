@@ -721,7 +721,7 @@ func (api *AdminAPI) ListVolsByKeywordsAndSmart(keywords, smart string) (volsInf
 	return
 }
 
-func (api *AdminAPI) GetHDDDataPartitions(volName string) (view *proto.DataPartitionsView, err error) {
+func (api *AdminAPI) GetHDDDataPartitions(volName string, dpIDs []uint64) (view *proto.DataPartitionsView, err error) {
 	path := proto.AdminHddPartitions
 	var request = newAPIRequest(http.MethodGet, path)
 	request.addParam("name", volName)

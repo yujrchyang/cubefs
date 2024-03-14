@@ -43,6 +43,12 @@ type EvictIcacheFunc func(ctx context.Context, inode uint64)
 type PutIcacheFunc func(inodeInfo proto.InodeInfo)
 type InodeMergeExtentsFunc func(ctx context.Context, inode uint64, oldEks []proto.ExtentKey, newEk []proto.ExtentKey) error
 
+type ExtentClientType uint8
+const (
+	Normal ExtentClientType = iota
+	Smart
+)
+
 const (
 	MaxMountRetryLimit = 5
 	MountRetryInterval = time.Second * 5
@@ -108,6 +114,7 @@ type ExtentConfig struct {
 	OnInodeMergeExtents      InodeMergeExtentsFunc
 	MetaWrapper              *meta.MetaWrapper
 	StreamerSegCount		 int64
+	ExtentClientType         ExtentClientType
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -159,11 +166,11 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	client.stopC = make(chan struct{})
 
 	if dataState != nil {
-		client.dataWrapper = RebuildDataPartitionWrapper(config.Volume, config.Masters, dataState)
+		client.dataWrapper = RebuildDataPartitionWrapper(config.Volume, config.Masters, dataState, config.ExtentClientType)
 	} else {
 		limit := MaxMountRetryLimit
 	retry:
-		client.dataWrapper, err = NewDataPartitionWrapper(config.Volume, config.Masters)
+		client.dataWrapper, err = NewDataPartitionWrapper(config.Volume, config.Masters, config.ExtentClientType)
 		if err != nil {
 			if limit <= 0 {
 				return nil, errors.Trace(err, "Init data wrapper failed!")
