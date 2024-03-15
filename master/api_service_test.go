@@ -4024,7 +4024,7 @@ func TestGetHddDataPartitions(t *testing.T) {
 	}
 
 	var view *proto.DataPartitionsView
-	if view, err = mc.AdminAPI().GetHDDDataPartitions(volName); err != nil {
+	if view, err = mc.AdminAPI().GetHDDDataPartitions(volName, nil); err != nil {
 		t.Log(err.Error())
 		t.FailNow()
 	}
