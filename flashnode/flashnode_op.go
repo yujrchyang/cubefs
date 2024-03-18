@@ -17,9 +17,9 @@ package flashnode
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/cache_engine"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
+	"github.com/cubefs/cubefs/storage/cache_engine"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"

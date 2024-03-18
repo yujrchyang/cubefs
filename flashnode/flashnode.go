@@ -24,10 +24,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/cubefs/cubefs/cache_engine"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/storage/cache_engine"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
