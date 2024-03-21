@@ -3,6 +3,7 @@ package cfs
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/robfig/cron"
@@ -493,9 +494,19 @@ func checkRaftStoppedReplica(host *ClusterHost, replicaRaftStatusMap map[string]
 			if partitionType == partitionTypeDP && isReplicaStatusUnavailable(replicaAddr, replicas) {
 				continue
 			}
-			//检查节点升级的状态，只有节点升级完成时，才进行告警
-			nodeStatus, err := checkNodeStartStatus(fmt.Sprintf("%v:%v", strings.Split(replicaAddr, ":")[0], port), 5)
-			if err == nil && nodeStatus.StartComplete == true {
+			//检查节点升级的状态，只有节点启动1分钟后，才进行告警，避免raft异步加载造成误报
+			client := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(replicaAddr, ":")[0], port), false)
+			stat, err := client.GetStatInfo()
+			if err != nil {
+				log.LogErrorf("host: %v, address: %v, get stat info failed, err:%v", host.host, replicaAddr, err)
+				continue
+			}
+			sTime, err := time.Parse("2006-01-02 15:04:05", stat.StartTime)
+			if err != nil {
+				log.LogErrorf("host: %v, address: %v, err:%v", host.host, replicaAddr, err)
+				continue
+			}
+			if time.Since(sTime) > time.Minute {
 				stoppedReplicas = append(stoppedReplicas, replicaAddr)
 			}
 		}
