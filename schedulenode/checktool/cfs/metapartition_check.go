@@ -640,12 +640,13 @@ func checkRaftReplicaStatusOfRaftAppliedDiff(host *ClusterHost, replicaRaftStatu
 	partitionApplied, ok := host.badPartitionAppliedMap[key]
 	if ok {
 		// 上次存在 且不大于24H，则告警
-		if reflect.DeepEqual(partitionApplied.lastDiffReplica, diffReplica) && time.Since(partitionApplied.lastCheckTime) < time.Hour*24 {
+		if reflect.DeepEqual(partitionApplied.lastDiffReplica, diffReplica) && time.Since(partitionApplied.lastCheckTime) < time.Hour*24 && minAppliedID == partitionApplied.lastMinApplyID {
 			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
 		}
 	}
 	pApplied := &PartitionApplied{
 		lastCheckTime:   time.Now(),
+		lastMinApplyID:  minAppliedID,
 		lastDiffReplica: diffReplica,
 		Sub:             sub,
 	}

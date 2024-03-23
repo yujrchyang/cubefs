@@ -377,6 +377,7 @@ type TargetUserInfo struct {
 
 type PartitionApplied struct {
 	Sub             int
+	lastMinApplyID  uint64
 	lastDiffReplica []string
 	lastCheckTime   time.Time
 }
