@@ -53,7 +53,7 @@ const (
 	noHeartBeatTimes                           = 3                                    // number of times that no heartbeat reported
 	defaultNodeTimeOutSec                      = noHeartBeatTimes * defaultIntervalToCheckHeartbeat
 	defaultDataPartitionTimeOutSec             = 10 * defaultIntervalToCheckHeartbeat
-	defaultMissingDataPartitionInterval        = 24 * 3600
+	defaultMissingDataPartitionInterval        = 1 * 3600
 
 	defaultIntervalToAlarmMissingDataPartition = 60 * 60
 	timeToWaitForResponse                      = 120         // time to wait for response by the master during loading partition
