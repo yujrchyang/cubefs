@@ -2027,6 +2027,7 @@ func validateCrossRegionMetaPartition(metaPartition *MetaPartition, t *testing.T
 	if len(metaPartitionHosts) != 5 || len(metaPartition.Peers) != 5 || len(metaPartition.Learners) != 2 {
 		t.Errorf("mp expect Hosts len,Peers len,Learners len is (5,5,2) but is (%v,%v,%v) ",
 			len(metaPartitionHosts), len(metaPartition.Peers), len(metaPartition.Learners))
+		metaPartition.RUnlock()
 		return
 	}
 	metaPartition.RUnlock()
