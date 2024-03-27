@@ -38,18 +38,18 @@ type MockMetaServer struct {
 	mc         *master.MasterClient
 	partitions map[uint64]*MockMetaPartition // Key: metaRangeId, Val: metaPartition
 	sync.RWMutex
-	stopC chan bool
+	stopC        chan bool
 	newRegEnable bool
-	metaDataDir string
+	metaDataDir  string
 }
 
 func NewMockMetaServer(addr string, zoneName string, metaDataDir string) *MockMetaServer {
 	mms := &MockMetaServer{
 		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0),
-		ZoneName: zoneName,
-		mc:       master.NewMasterClient([]string{hostAddr}, false),
-		stopC:    make(chan bool),
-		metaDataDir: path.Join(metaDataDir, "metanode_" + strings.Split(addr, ":")[1]),
+		ZoneName:    zoneName,
+		mc:          master.NewMasterClient([]string{hostAddr}, false),
+		stopC:       make(chan bool),
+		metaDataDir: path.Join(metaDataDir, "metanode_"+strings.Split(addr, ":")[1]),
 	}
 	os.MkdirAll(mms.metaDataDir, 06555)
 	return mms
@@ -59,7 +59,7 @@ func (mms *MockMetaServer) SetNewRegFlag(regFlag bool) {
 	mms.newRegEnable = regFlag
 }
 
-func (mms *MockMetaServer) Start() (err error){
+func (mms *MockMetaServer) Start() (err error) {
 	if err = mms.register(); err != nil {
 		return
 	}
@@ -72,19 +72,19 @@ func (mms *MockMetaServer) Stop() {
 }
 
 func (mms *MockMetaServer) WriteErrorAuthKey() {
-	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName + proto.RoleMeta), []byte("test"), 06555)
+	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName+proto.RoleMeta), []byte("test"), 06555)
 }
 
 func (mms *MockMetaServer) WriteRightAuthKey(authKey string) {
-	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName + proto.RoleMeta), []byte(authKey), 06555)
+	os.WriteFile(path.Join(mms.metaDataDir, master.AuthFileName+proto.RoleMeta), []byte(authKey), 06555)
 }
 
 func (mms *MockMetaServer) GetAuthKey() string {
-	buff, _ := os.ReadFile(path.Join(mms.metaDataDir, master.AuthFileName + proto.RoleMeta))
+	buff, _ := os.ReadFile(path.Join(mms.metaDataDir, master.AuthFileName+proto.RoleMeta))
 	return string(buff)
 }
 
-func (mms *MockMetaServer) oldRegister() (err error){
+func (mms *MockMetaServer) oldRegister() (err error) {
 
 	var nodeID uint64
 	var retry int
@@ -103,15 +103,15 @@ func (mms *MockMetaServer) oldRegister() (err error){
 	return
 }
 
-func (mms *MockMetaServer) newRegister() (err error){
+func (mms *MockMetaServer) newRegister() (err error) {
 	var rsp *proto.RegNodeRsp
 	regReq := &master.RegNodeInfoReq{
-		Role: proto.RoleMeta,
+		Role:     proto.RoleMeta,
 		ZoneName: mms.ZoneName,
-		Version: "2.0.0",
-		SrvPort: strings.Split(mms.TcpAddr, ":")[1],
+		Version:  "2.0.0",
+		SrvPort:  strings.Split(mms.TcpAddr, ":")[1],
 	}
-	if rsp, err = mms.mc.RegNodeInfoWithAddr(mms.metaDataDir, strings.Split(mms.TcpAddr, ":")[0],  regReq); err != nil {
+	if rsp, err = mms.mc.RegNodeInfoWithAddr(mms.metaDataDir, strings.Split(mms.TcpAddr, ":")[0], regReq); err != nil {
 		return
 	}
 
@@ -119,7 +119,7 @@ func (mms *MockMetaServer) newRegister() (err error){
 	return
 }
 
-func (mms *MockMetaServer) register() error{
+func (mms *MockMetaServer) register() error {
 	if mms.newRegEnable {
 		return mms.newRegister()
 	} else {
@@ -311,6 +311,12 @@ func (mms *MockMetaServer) handleHeartbeats(conn net.Conn, p *proto.Packet, admi
 			VolName:     partition.VolName,
 		}
 		mpr.Status = proto.ReadWrite
+		for _, learner := range partition.Learners {
+			if learner.ID == mms.NodeID {
+				mpr.IsLearner = true
+				break
+			}
+		}
 		mpr.IsLeader = true
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 	}
