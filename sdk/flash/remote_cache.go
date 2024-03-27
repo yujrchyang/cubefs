@@ -465,19 +465,19 @@ func (rc *RemoteCache) updateHostLatency(hosts []string) {
 }
 
 func (rc *RemoteCache) GetFlashGroupBySlot(slot uint32) *FlashGroup {
-	var item *SlotItem
+	var result *SlotItem
 
 	pivot := &SlotItem{slot: slot}
 	var rangeFunc = func(item btree.Item) bool {
-		item = item.(*SlotItem)
+		result = item.(*SlotItem)
 		return false
 	}
 	rc.rangeFlashGroups(pivot, rangeFunc)
 
-	if item == nil {
+	if result == nil {
 		return rc.getMinFlashGroup()
 	}
-	return item.FlashGroup
+	return result.FlashGroup
 }
 
 func (rc *RemoteCache) getFlashHostsMap() map[string]bool {
