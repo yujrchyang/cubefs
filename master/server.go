@@ -308,6 +308,7 @@ func (m *Server) initFsm() {
 	// register the handlers for the interfaces defined in the Raft library
 	m.fsm.registerApplySnapshotHandler(m.handleApplySnapshot)
 	m.fsm.registerCreateMpHandler(m.handleApply)
+	m.fsm.registerDeleteCmdHandler(m.handleDeleteCmdApply)
 	m.fsm.restore()
 }
 

@@ -38,16 +38,19 @@ type raftCmdApplyHandler func(cmdMap map[string]*RaftCmd) (err error)
 
 type raftApplySnapshotHandler func()
 
+type raftDeleteCmdApplyHandler func(cmd *RaftCmd) (err error)
+
 // MetadataFsm represents the finite state machine of a metadata partition
 type MetadataFsm struct {
-	store               *raftstore.RocksDBStore
-	rs                  *raft.RaftServer
-	applied             uint64
-	retainLogs          uint64
-	leaderChangeHandler raftLeaderChangeHandler
-	peerChangeHandler   raftPeerChangeHandler
-	snapshotHandler     raftApplySnapshotHandler
-	cmdApplyHandler     raftCmdApplyHandler
+	store                 *raftstore.RocksDBStore
+	rs                    *raft.RaftServer
+	applied               uint64
+	retainLogs            uint64
+	leaderChangeHandler   raftLeaderChangeHandler
+	peerChangeHandler     raftPeerChangeHandler
+	snapshotHandler       raftApplySnapshotHandler
+	cmdApplyHandler       raftCmdApplyHandler
+	deleteCmdApplyHandler raftDeleteCmdApplyHandler
 }
 
 func newMetadataFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *MetadataFsm) {
@@ -75,6 +78,10 @@ func (mf *MetadataFsm) registerApplySnapshotHandler(handler raftApplySnapshotHan
 
 func (mf *MetadataFsm) registerCreateMpHandler(handler raftCmdApplyHandler) {
 	mf.cmdApplyHandler = handler
+}
+
+func (mf *MetadataFsm) registerDeleteCmdHandler(handler raftDeleteCmdApplyHandler) {
+	mf.deleteCmdApplyHandler = handler
 }
 
 func (mf *MetadataFsm) restore() {
@@ -142,6 +149,9 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	case opSyncDeleteDataNode, opSyncDeleteMetaNode, opSyncDeleteVol, opSyncDeleteDataPartition, opSyncDeleteMetaPartition,
 		OpSyncDelToken, opSyncDeleteUserInfo, opSyncDeleteAKUser, opSyncDeleteVolUser, OpSyncDelRegion, OpSyncDelIDC, opSyncDeleteEcNode, opSyncDeleteCodecNode, opSyncDelEcPartition, opSyncDeleteMigrateTask,
 		opSyncDeleteFlashNode, opSyncDeleteFlashGroup:
+		if err = mf.deleteCmdApplyHandler(cmd); err != nil {
+			panic(err)
+		}
 		if err = mf.delKeyAndPutIndex(cmd.K, cmdMap); err != nil {
 			panic(err)
 		}

@@ -63,6 +63,30 @@ func TestVol(t *testing.T) {
 	vol.deleteVolFromStore(server.cluster)
 }
 
+func TestCreateVolAfterDeletedVol(t *testing.T) {
+	name := "create_deleted"
+	createVol(name, testZone2, t)
+	//report mp/dp info to master
+	server.cluster.doCheckDataNodeHeartbeat()
+	server.cluster.doCheckMetaNodeHeartbeat()
+	time.Sleep(5 * time.Second)
+	//check status
+	server.cluster.doCheckMetaPartitions()
+	server.cluster.checkDataPartitions()
+	server.cluster.doCheckLoadMetaPartitions()
+	vol, err := server.cluster.getVol(name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	oldDeleteMarkDelVolInterval := server.cluster.cfg.DeleteMarkDelVolInterval
+	server.cluster.cfg.DeleteMarkDelVolInterval = 0
+	markDeleteVol(name, t)
+	server.cluster.cfg.DeleteMarkDelVolInterval = oldDeleteMarkDelVolInterval
+	err = server.cluster.syncDeleteVol(vol)
+	assert.NoError(t, err)
+	createVol(name, testZone2, t)
+}
+
 func createVol(name, zone string, t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfs&mpCount=2&zoneName=%v", hostAddr, proto.AdminCreateVol, name, zone)
 	process(reqURL, t)

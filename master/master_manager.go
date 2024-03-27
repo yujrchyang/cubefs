@@ -182,6 +182,23 @@ func (m *Server) handleApply(cmdMap map[string]*RaftCmd) (err error) {
 	return
 }
 
+func (m *Server) handleDeleteCmdApply(cmd *RaftCmd) (err error) {
+
+	switch cmd.Op {
+	case opSyncDeleteVol:
+		vv := &volValue{}
+		if err = json.Unmarshal(cmd.V, vv); err != nil {
+			log.LogErrorf("acttion[handleDeleteCmdApply] cmd:%v,json.Unmarshal occurred err:%v ", cmd.K, err)
+			return
+		}
+		m.cluster.deleteVol(vv.Name)
+		log.LogInfof("acttion[handleDeleteCmdApply] delete vol[%v] from cache,volID[%v]", vv.Name, vv.ID)
+	default:
+
+	}
+	return
+}
+
 func (m *Server) restoreIDAlloc() {
 	m.cluster.idAlloc.restore()
 }
