@@ -90,7 +90,6 @@ func (checkEngine *CheckEngine) checkVol() {
 			log.LogErrorf("CheckFail-Volume: %s, err:%v", checkEngine.currentVol, err)
 		}
 	}()
-	checkEngine.checkedExtentsMap = new(sync.Map)
 	log.LogInfof("begin check, cluster:%s, vol:%s, path:%v\n", checkEngine.cluster, checkEngine.currentVol, checkEngine.path)
 	mps, err := checkEngine.mc.ClientAPI().GetMetaPartitions(checkEngine.currentVol)
 	if err != nil {

@@ -1044,9 +1044,14 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				sort.SliceStable(view.DataPartitions, func(i, j int) bool {
 					return view.DataPartitions[i].PartitionID < view.DataPartitions[j].PartitionID
 				})
+				var sumUsed uint64
+				var sumTotal uint64
 				for _, dp := range view.DataPartitions {
+					sumUsed += dp.Used
+					sumTotal += dp.Total
 					stdout("%v\n", formatDataPartitionTableRow(dp))
 				}
+				stdout("Summary: SumUsed(%v) SumTotal(%v)\n", formatSize(sumUsed), formatSize(sumTotal))
 			}
 
 			// print ec detail

@@ -76,6 +76,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionStopCmd(client),
 		newDataPartitionReloadCmd(client),
 		newDataPartitionCheckReplicaCmd(client),
+		newDataPartitionDiffExtentCmd(client),
 	)
 	return cmd
 }
@@ -102,6 +103,7 @@ const (
 	cmdStopMigratingEcByDataPartition    = "stop migrating task by data partition"
 	cmdDataPartitionResetRecoverShort    = "set the data partition IsRecover value to false"
 	cmdDataPartitionCheckReplicaShort    = "Check extents in this data partition"
+	cmdDataPartitionCompareExtentShort   = "Compare extents in this data partition"
 )
 
 func newDataPartitionTransferCmd(client *master.MasterClient) *cobra.Command {
@@ -1289,6 +1291,7 @@ func newGetCanEcMigrateCmd(client *master.MasterClient) *cobra.Command {
 			if partitions, err = client.AdminAPI().GetCanMigrateDataPartitions(); err != nil {
 				return
 			}
+			stdout("%v\n", dataPartitionTableHeader)
 			for _, partition := range partitions {
 				stdout(formatDataPartitionTableRow(partition))
 				stdout("\n")
@@ -1310,6 +1313,7 @@ func newGetCanEcDelCmd(client *master.MasterClient) *cobra.Command {
 			if partitions, err = client.AdminAPI().GetCanDelDataPartitions(); err != nil {
 				return
 			}
+			stdout("%v\n", dataPartitionTableHeader)
 			for _, partition := range partitions {
 				stdout(formatDataPartitionTableRow(partition))
 				stdout("\n")
@@ -1591,4 +1595,99 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 	cmd.Flags().StringVar(&fromTime, "from-time", "1970-01-01 00:00:00", "specify extent modify from time to check, format:yyyy-mm-dd hh:mm:ss")
 	cmd.Flags().BoolVar(&quickCheck, "quick-check", false, "quick check: check crc from meta data first, if not the same, then check md5")
 	return cmd
+}
+
+func newDataPartitionDiffExtentCmd(client *master.MasterClient) *cobra.Command {
+	var opHosts string
+	var cmd = &cobra.Command{
+		Use:   CliOpCompareExtent + " [DATA PARTITION ID]",
+		Short: cmdDataPartitionCompareExtentShort,
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var partitionID uint64
+			var err error
+			var partition *proto.DataPartitionInfo
+			var hosts []string
+			defer func() {
+				if err != nil {
+					stdout(err.Error())
+				}
+			}()
+			partitionID, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				return
+			}
+			partition, err = client.AdminAPI().GetDataPartition("", partitionID)
+			if err != nil {
+				return
+			}
+			if opHosts != "" {
+				hosts = strings.Split(opHosts, ",")
+				for _, h := range hosts {
+					if !existStr(h, partition.Hosts) {
+						err = fmt.Errorf("invalid host:%v", h)
+						return
+					}
+				}
+			} else {
+				hosts = partition.Hosts
+			}
+
+			extentCountMap := make(map[uint64]int, 0)
+			fileMap := make(map[string][]proto.ExtentInfoBlock, 0)
+			for _, h := range hosts {
+				var dp *proto.DNDataPartitionInfo
+				dataClient := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], client.DataNodeProfPort), false)
+				if dp, err = dataClient.GetPartitionFromNode(partitionID); err != nil {
+					return
+				}
+				fileMap[h] = dp.Files
+			}
+			for _, files := range fileMap {
+				for _, f := range files {
+					if _, ok := extentCountMap[f[proto.ExtentInfoFileID]]; !ok {
+						extentCountMap[f[proto.ExtentInfoFileID]] = 1
+					} else {
+						extentCountMap[f[proto.ExtentInfoFileID]] += 1
+					}
+				}
+			}
+			commonExtents := make([]int, 0)
+			for extentID, count := range extentCountMap {
+				if count == len(hosts) {
+					commonExtents = append(commonExtents, int(extentID))
+				}
+			}
+			stdout("common extent(%v):\n", len(commonExtents))
+			sort.Ints(commonExtents)
+			stdout("%v\n\n", commonExtents)
+			for host, files := range fileMap {
+				diffExtents := make([]proto.ExtentInfoBlock, 0)
+				var count int
+				for _, file := range files {
+					if extentCountMap[file[proto.ExtentInfoFileID]] == len(hosts) {
+						continue
+					}
+					count++
+					diffExtents = append(diffExtents, file)
+				}
+				stdout("host(%v), total(%v), diff(%v): \n", host, len(files), len(diffExtents))
+				stdout("%v\n\n", diffExtents)
+			}
+		},
+	}
+	cmd.Flags().StringVar(&opHosts, "hosts", "", "specify hosts to compare, split by ,")
+	return cmd
+}
+
+func existStr(str string, strs []string) bool {
+	if len(strs) == 0 {
+		return false
+	}
+	for _, s := range strs {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }

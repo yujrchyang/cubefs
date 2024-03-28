@@ -64,17 +64,12 @@ func (checkEngine *CheckEngine) checkInodeCrc(inode uint64, mp *proto.MetaPartit
 
 func (checkEngine *CheckEngine) checkInodeEk(ek proto.ExtentKey, ino uint64) {
 	var err error
-	var ekStr string
 	defer func() {
 		if err != nil {
 			checkEngine.onCheckFail(CheckFailExtent, fmt.Sprintf("%v %v %v", checkEngine.currentVol, ek.PartitionId, ek.ExtentId))
 			log.LogErrorf("CheckFail-Extent, cluster:%s, dp:%v, extent:%v, err:%v", checkEngine.cluster, ek.PartitionId, ek.ExtentId, err)
 		}
 	}()
-	ekStr = fmt.Sprintf("%d-%d-%d-%d", ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.Size)
-	if _, ok := checkEngine.checkedExtentsMap.LoadOrStore(ekStr, true); ok {
-		return
-	}
 	var partition *proto.DataPartitionInfo
 	for j := 0; j == 0 || j < 3 && err != nil; j++ {
 		partition, err = checkEngine.mc.AdminAPI().GetDataPartition(checkEngine.currentVol, ek.PartitionId)
@@ -86,8 +81,8 @@ func (checkEngine *CheckEngine) checkInodeEk(ek proto.ExtentKey, ino uint64) {
 		err = fmt.Errorf("partition not exists")
 		return
 	}
-	if len(partition.Replicas) < 3 {
-		err = fmt.Errorf("replica num less than 3")
+	if len(partition.Replicas) < int(partition.ReplicaNum) {
+		err = fmt.Errorf("replicas:%v, expected replica num %v", len(partition.Replicas), partition.ReplicaNum)
 		return
 	}
 	log.LogDebugf("action[checkInodeEk] cluster:%v, volume:%v, ino:%v, begin check extent key:%v", checkEngine.cluster, checkEngine.currentVol, ino, ek)

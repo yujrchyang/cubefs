@@ -25,17 +25,16 @@ type CheckEngine struct {
 	checkType int
 	path      string
 
-	currentVol        string
-	mc                *master.MasterClient
-	cluster           string
-	mnProf            uint16
-	dnProf            uint16
-	closed            bool
-	closeCh           chan bool
-	repairPersist     *BadExtentPersist
-	onCheckFail       func(uint32, string)
-	stopOnce          sync.Once
-	checkedExtentsMap *sync.Map
+	currentVol    string
+	mc            *master.MasterClient
+	cluster       string
+	mnProf        uint16
+	dnProf        uint16
+	closed        bool
+	closeCh       chan bool
+	repairPersist *BadExtentPersist
+	onCheckFail   func(uint32, string)
+	stopOnce      sync.Once
 }
 
 type BadExtentInfo struct {
@@ -85,7 +84,6 @@ func (checkEngine *CheckEngine) Start() (err error) {
 }
 
 func (checkEngine *CheckEngine) Reset() {
-	checkEngine.checkedExtentsMap = &sync.Map{}
 }
 
 func (checkEngine *CheckEngine) Close() {

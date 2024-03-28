@@ -172,6 +172,7 @@ const (
 	CliResourceEcNode          = "ecnode"
 	CliResourceCodecnodeNode   = "codecnode"
 	CliOpCheckReplica          = "check-replica"
+	CliOpCompareExtent         = "compare-extent"
 	CliOpResetLogLevel         = "reset-loglevel"
 	CliOpVolTrashCleanInterval = "trash-clean-interval"
 	CliOpVolMaxChildrenCnt     = "max-children-cnt"

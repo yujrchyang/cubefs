@@ -293,14 +293,14 @@ func formatVolDetailInfoTableRow(vv *proto.SimpleVolView, vi *proto.VolInfo) str
 
 // cfs-cli volume info [vol name] -m/-d/-e
 var (
-	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v    %-10v     %-18v    %-18v"
+	dataPartitionTablePattern = "%-8v    %-8v    %-10v    %-10v   %-10v    %-10v     %-18v    %-18v"
 	dataPartitionTableHeader  = fmt.Sprintf(dataPartitionTablePattern,
-		"ID", "REPLICAS", "STATUS", "EcMigrateStatus", "ISRECOVER", "LEADER", "MEMBERS")
+		"ID", "REPLICAS", "STATUS", "USED", "EcMigrateStatus", "ISRECOVER", "LEADER", "MEMBERS")
 )
 
 func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 	return fmt.Sprintf(dataPartitionTablePattern,
-		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), EcStatusMap[view.EcMigrateStatus], view.IsRecover, view.GetLeaderAddr(),
+		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), formatSize(view.Used), EcStatusMap[view.EcMigrateStatus], view.IsRecover, view.GetLeaderAddr(),
 		strings.Join(view.Hosts, ","))
 }
 
