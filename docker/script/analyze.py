@@ -49,7 +49,6 @@ def analyze_coverage():
         "datanode",
         "objectnode",
         "codecnode",
-        "cache_engine"
         "ecnode",
         "util",
     ]
