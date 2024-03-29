@@ -44,6 +44,7 @@ func StartChubaoFSDPReleaser(cfg *config.Config) (s *ChubaoFSDPReleaser) {
 		return
 	}
 	s.scheduleTask()
+
 	fmt.Println("StartChubaoFSDPReleaser finished")
 	return
 }
@@ -128,6 +129,35 @@ func (s *ChubaoFSDPReleaser) scheduleToReleaseDataNodeDp() {
 	}
 }
 
+func (s *ChubaoFSDPReleaser) releaseDataNodeDpOnHost(host string) (err error) {
+	var targetHost *ClusterReleaserHost
+	for _, h := range s.Hosts {
+		if h.host.host == host {
+			targetHost = h
+		}
+	}
+	if targetHost == nil {
+		return fmt.Errorf("host [%v] not exists", host)
+	}
+	go func(host *ClusterReleaserHost) {
+		if !host.IsEnable {
+			log.LogWarnf("action[releaseDataNodeDp] host:%v IsEnable false so stop", host.host)
+			return
+		}
+		log.LogInfof("releaseDataNodeDp [%v] begin", host.host)
+		startTime := time.Now()
+		cv, err := getCluster(host.host)
+		if err != nil {
+			msg := fmt.Sprintf("get cluster info from %v failed,err:%v ", host.host, err)
+			log.LogWarn(msg)
+			return
+		}
+		host.releaseDataNodeDp(cv)
+		log.LogInfof("releaseDataNodeDp [%v] end,cost[%v]", host.host, time.Since(startTime))
+	}(targetHost)
+	return
+}
+
 func (s *ChubaoFSDPReleaser) releaseDataNodeDp() {
 	defer checktool.HandleCrash()
 	wg := new(sync.WaitGroup)
@@ -203,7 +233,7 @@ func doReleaseDataNodePartitions(dataNodeHttpAddr, domain, timeLocation string, 
 }
 
 func (s *ChubaoFSDPReleaser) getChubaoFSDPReleaser(w http.ResponseWriter, r *http.Request) {
-	BuildSuccessResp(w, s)
+	BuildSuccessResp(w, r, s)
 }
 
 func (s *ChubaoFSDPReleaser) setChubaoFSDPReleaser(w http.ResponseWriter, r *http.Request) {
@@ -213,15 +243,15 @@ func (s *ChubaoFSDPReleaser) setChubaoFSDPReleaser(w http.ResponseWriter, r *htt
 		enable  bool
 	)
 	if err = r.ParseForm(); err != nil {
-		BuildFailureResp(w, http.StatusBadRequest, err.Error())
+		BuildFailureResp(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 	if hostStr = r.FormValue("host"); hostStr == "" {
-		BuildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("key host not found"))
+		BuildFailureResp(w, r, http.StatusBadRequest, fmt.Sprintf("key host not found"))
 		return
 	}
 	if enable, err = parseEnable(r); err != nil {
-		BuildFailureResp(w, http.StatusBadRequest, err.Error())
+		BuildFailureResp(w, r, http.StatusBadRequest, err.Error())
 		return
 	}
 	if strings.ToLower(hostStr) == "all" {
@@ -233,7 +263,7 @@ func (s *ChubaoFSDPReleaser) setChubaoFSDPReleaser(w http.ResponseWriter, r *htt
 			}
 		}
 	}
-	BuildSuccessResp(w, s)
+	BuildSuccessResp(w, r, s)
 }
 
 func generateAuthKey() string {

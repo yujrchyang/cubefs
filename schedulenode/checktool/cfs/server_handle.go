@@ -3,8 +3,10 @@ package cfs
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
+	"strings"
 )
 
 func registerChubaoFSHighLoadNodeSolver(s *ChubaoFSHighLoadNodeSolver) {
@@ -36,34 +38,12 @@ func parseEnable(r *http.Request) (enable bool, err error) {
 	return
 }
 
-func BuildSuccessResp(w http.ResponseWriter, data interface{}) {
-	BuildJSONResp(w, http.StatusOK, data, "")
+func BuildSuccessResp(w http.ResponseWriter, r *http.Request, data interface{}) {
+	buildJSONResp(w, r, http.StatusOK, data, "")
 }
 
-func BuildFailureResp(w http.ResponseWriter, code int, msg string) {
-	BuildJSONResp(w, code, nil, msg)
-}
-
-func BuildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
-	var (
-		jsonBody []byte
-		err      error
-	)
-	w.WriteHeader(code)
-	w.Header().Set("Content-Type", "application/json")
-	body := struct {
-		Code int         `json:"code"`
-		Data interface{} `json:"data"`
-		Msg  string      `json:"msg"`
-	}{
-		Code: code,
-		Data: data,
-		Msg:  msg,
-	}
-	if jsonBody, err = json.Marshal(body); err != nil {
-		return
-	}
-	w.Write(jsonBody)
+func BuildFailureResp(w http.ResponseWriter, r *http.Request, code int, msg string) {
+	buildJSONResp(w, r, code, nil, msg)
 }
 
 func BuildJSONRespWithDiffCode(w http.ResponseWriter, httpCode, code int, data interface{}, msg string) {
@@ -86,4 +66,53 @@ func BuildJSONRespWithDiffCode(w http.ResponseWriter, httpCode, code int, data i
 		return
 	}
 	w.Write(jsonBody)
+}
+
+func (s *ChubaoFSMonitor) registerHandler() {
+	http.HandleFunc("dp/release", s.releaseDp)
+}
+
+func (s *ChubaoFSMonitor) releaseDp(w http.ResponseWriter, r *http.Request) {
+	var err error
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		BuildFailureResp(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+	host := r.FormValue("host")
+	if strings.TrimSpace(host) == "" {
+		err = fmt.Errorf("host can't be empty")
+		BuildFailureResp(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err = s.dpReleaser.releaseDataNodeDpOnHost(host); err != nil {
+		BuildFailureResp(w, r, http.StatusBadRequest, err.Error())
+		return
+	}
+	buildJSONResp(w, r, http.StatusOK, nil, "start dp release success")
+}
+
+// Create response for the API request.
+func buildJSONResp(w http.ResponseWriter, r *http.Request, code int, data interface{}, msg string) {
+	var (
+		jsonBody []byte
+		err      error
+	)
+	w.WriteHeader(code)
+	w.Header().Set("Content-Type", "application/json")
+	body := struct {
+		Code int         `json:"code"`
+		Data interface{} `json:"data"`
+		Msg  string      `json:"msg"`
+	}{
+		Code: code,
+		Data: data,
+		Msg:  msg,
+	}
+	if jsonBody, err = json.Marshal(body); err != nil {
+		return
+	}
+	if _, err = w.Write(jsonBody); err != nil {
+		log.LogErrorf("write response failed,err:%v,url:%v", err, r.URL.String())
+	}
 }

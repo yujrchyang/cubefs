@@ -174,6 +174,7 @@ type ChubaoFSMonitor struct {
 	clusterConfigCheck                      *ClusterConfigCheck
 	ExpiredMetaRemainDaysCfg                int
 	ctx                                     context.Context
+	dpReleaser                              *ChubaoFSDPReleaser
 }
 
 func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
@@ -198,12 +199,18 @@ func (s *ChubaoFSMonitor) Start(cfg *config.Config) (err error) {
 	}
 	noLeaderMps = new(sync.Map)
 	s.scheduleTask(cfg)
-	StartChubaoFSDPReleaser(cfg)
+	releaser := StartChubaoFSDPReleaser(cfg)
+	if releaser == nil {
+		err = fmt.Errorf("init dp releaser failed")
+		return
+	}
+	s.dpReleaser = releaser
 	highLoadNodeSolver := StartChubaoFSHighLoadNodeSolver(cfg)
 	if highLoadNodeSolver != nil {
 		s.RestartNodeMaxCountIn24Hour = defaultRestartNodeMaxCountIn24Hour
 		s.highLoadNodeSolver = highLoadNodeSolver
 	}
+	s.registerHandler()
 	fmt.Println("starting ChubaoFSMonitor finished")
 	return
 }
