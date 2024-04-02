@@ -1099,6 +1099,9 @@ func (d *Disk) __flushInWindow(parallelism int, ew time.Duration) {
 		flushers = append(flushers, flusher)
 		return true
 	})
+	if total == 0 {
+		return
+	}
 	var opsLimiter = newFlushOpsLimiter(total, ew)                               // Limit operations per second
 	var bpsLimiter = newFlushBpsLimiter(uint64(parallelism), d.isSSDMediaType()) // Limit bytes per second
 	var flusherc = make(chan infra.Flusher, len(flushers))                       // 用于并发flush
