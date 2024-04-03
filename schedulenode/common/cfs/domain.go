@@ -114,6 +114,7 @@ type MetaPartition struct {
 	Replicas    []*MetaReplica
 	InodeCount  uint64
 	DentryCount uint64
+	VolName     string
 }
 
 type MetaReplica struct {

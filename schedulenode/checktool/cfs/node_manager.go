@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/schedulenode/common/cfs"
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
@@ -59,7 +60,7 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 			cv.checkMetaNodeDiskStat(host, defaultMNDiskMinWarnSize)
 			cv.checkMetaNodeDiskStatByMDCInfoFromSre(host, s)
 			cv.checkMetaNodeFailedMetaPartitions(host)
-			if time.Since(host.lastCleanExpiredMetaTime) > time.Hour * 4 {
+			if time.Since(host.lastCleanExpiredMetaTime) > time.Hour*4 {
 				host.lastCleanExpiredMetaTime = time.Now()
 				cv.cleanExpiredMetaPartitions(host, s.ExpiredMetaRemainDaysCfg)
 			}
@@ -693,7 +694,12 @@ func getDataNode(host *ClusterHost, addr string) (dn *DataNodeView, err error) {
 func offlineMetaPatition(host *ClusterHost, addr string, pid uint64) {
 	var reqURL string
 	if host.isReleaseCluster {
-		reqURL = fmt.Sprintf("http://%v/metaPartition/offline?id=%v&addr=%v", host, pid, addr)
+		mp, err := cfs.GetMetaPartition(host.host, pid, true)
+		if err != nil {
+			log.LogErrorf("action[offlineMetaPartition] reqURL[%v], get metapartition failed, err: %v", reqURL, err)
+			return
+		}
+		reqURL = fmt.Sprintf("http://%v/metaPartition/offline?id=%v&addr=%v&name=%v", host, pid, addr, mp.VolName)
 	} else {
 		reqURL = fmt.Sprintf("http://%v/metaPartition/decommission?id=%v&addr=%v", host, pid, addr)
 	}
