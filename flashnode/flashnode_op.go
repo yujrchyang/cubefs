@@ -15,7 +15,6 @@
 package flashnode
 
 import (
-	"context"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
@@ -28,10 +27,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
-	"time"
 )
-
-var cacheReadTimeoutMs = proto.DefaultReadCacheTimeoutMs
 
 func (f *FlashNode) preHandle(conn net.Conn, p *Packet) error {
 	if p.Opcode == proto.OpCachePrepare || p.Opcode == proto.OpCacheRead {
@@ -105,7 +101,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 			_ = respondToClient(conn, p)
 		}
 	}()
-	ctx := f.getContext()
+	ctx := gSingleContext.GetContextWithTimeout()
 	if req, err = UnMarshalPacketToCacheRead(p); err != nil {
 		return
 	}
@@ -133,8 +129,11 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 		}
 		go block.InitOnce(f.cacheEngine, req.CacheRequest.Sources)
 	}
-	if err = f.waitCacheReady(ctx, req, block); err != nil {
-		return err
+
+	if !f.isBlockReady(req.CacheRequest.Volume, block, req.Offset, req.Size_) {
+		if err = block.Wait(ctx); err != nil {
+			return err
+		}
 	}
 	if err = f.doStreamReadRequest(conn, req, p, block); err != nil {
 		return
@@ -142,15 +141,13 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 	return
 }
 
-func (f *FlashNode) waitCacheReady(ctx context.Context, req *proto.CacheReadRequest, block *cache_engine.CacheBlock) (err error) {
-	hitObject := f.BeforeTp(req.CacheRequest.Volume, proto.ActionCacheHit)
-	missObject := f.BeforeTp(req.CacheRequest.Volume, proto.ActionCacheMiss)
-	if err = block.Wait(ctx, int64(req.Offset), int64(req.Size_)); err != nil {
-		missObject.AfterTp(req.Size_)
-	} else {
-		hitObject.AfterTp(req.Size_)
+func (f *FlashNode) isBlockReady(volume string, block *cache_engine.CacheBlock, offset, size uint64) bool {
+	if block.IsReady(offset, size) {
+		f.UpdateMonitorData(volume, proto.ActionCacheHit, size)
+		return true
 	}
-	return
+	f.UpdateMonitorData(volume, proto.ActionCacheMiss, size)
+	return false
 }
 
 func (f *FlashNode) doStreamReadRequest(conn net.Conn, req *proto.CacheReadRequest, p *Packet, block *cache_engine.CacheBlock) (err error) {
@@ -330,26 +327,4 @@ func respondToClient(conn net.Conn, p *Packet) (err error) {
 			err.Error(), p.GetOpMsg(), p.GetResultMsg())
 	}
 	return
-}
-
-func (f *FlashNode) contextMaker() {
-	t := time.NewTicker(time.Duration(cacheReadTimeoutMs) * time.Millisecond)
-	f.currentCtx, _ = context.WithTimeout(context.Background(), time.Duration(cacheReadTimeoutMs)*time.Millisecond*2)
-	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			f.currentCtx, _ = context.WithTimeout(context.Background(), time.Duration(cacheReadTimeoutMs)*time.Millisecond*2)
-		case <-f.stopCh:
-			return
-		}
-	}
-}
-
-func (f *FlashNode) getContext() (ctx context.Context) {
-	ctx = f.currentCtx
-	if ctx == nil {
-		ctx, _ = context.WithTimeout(context.Background(), time.Duration(cacheReadTimeoutMs)*time.Millisecond)
-	}
-	return ctx
 }

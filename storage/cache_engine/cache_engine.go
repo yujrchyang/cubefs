@@ -21,7 +21,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/fastcrc32"
 	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/tmpfs"
 	"math"
 	"os"
@@ -33,7 +32,7 @@ import (
 	"time"
 )
 
-var enableStack = atomic.Bool{}
+var gEnableStack = atomic.Bool{}
 
 type cachePrepareTask struct {
 	request *proto.CacheRequest
@@ -61,7 +60,7 @@ type CacheEngine struct {
 	sync.Mutex
 }
 type ReadExtentData func(source *proto.DataSource, w func(data []byte, off, size int64) error) (readBytes int, err error)
-type MonitorFunc func(volume string, action int) *statistics.TpObject
+type MonitorFunc func(volume string, action int, dataSize uint64)
 
 func NewCacheEngine(rootPath string, totalSize int64, maxUseRatio float64, capacity int, expireTime time.Duration, readFunc ReadExtentData, monitorFunc MonitorFunc) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
@@ -223,8 +222,7 @@ func (c *CacheEngine) GetCacheBlockForRead(volume string, inode, offset uint64, 
 		return
 	}
 	if err == CacheExpireError {
-		toObject := c.monitorFunc(volume, proto.ActionCacheExpire)
-		toObject.AfterTp(size)
+		c.monitorFunc(volume, proto.ActionCacheExpire, size)
 	}
 	return nil, fmt.Errorf("GetCacheBlockForRead, key[%v], err:%v", key, err)
 }
@@ -271,8 +269,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	}
 	err = block.initCacheStore()
 	if n > 0 {
-		toObj := c.monitorFunc(volume, proto.ActionCacheEvict)
-		toObj.AfterTp(uint64(n))
+		c.monitorFunc(volume, proto.ActionCacheEvict, uint64(n))
 	}
 	return
 }
@@ -409,11 +406,11 @@ func (c *CacheEngine) EvictAllCache() {
 }
 
 func (c *CacheEngine) SetCacheStackEnable(enable bool) {
-	enableStack.Store(enable)
+	gEnableStack.Store(enable)
 }
 
 func (c *CacheEngine) GetCacheStackEnable() bool {
-	return enableStack.Load()
+	return gEnableStack.Load()
 }
 
 func (c *CacheEngine) lockAll() {

@@ -2,6 +2,7 @@ package flashnode
 
 import (
 	"github.com/cubefs/cubefs/util/statistics"
+	"sync/atomic"
 )
 
 func (f *FlashNode) BeforeTp(volume string, action int) *statistics.TpObject {
@@ -15,6 +16,20 @@ func (f *FlashNode) BeforeTp(volume string, action int) *statistics.TpObject {
 		return nil
 	}
 	return datas[action].BeforeTp()
+}
+
+func (f *FlashNode) UpdateMonitorData(volume string, action int, dataSize uint64) {
+	val, found := f.statistics.Load(volume)
+	if !found {
+		val, _ = f.statistics.LoadOrStore(volume, statistics.InitMonitorData(statistics.ModelFlashNode))
+	}
+	datas, is := val.([]*statistics.MonitorData)
+	if !is {
+		f.statistics.Delete(volume)
+		return
+	}
+	atomic.AddUint64(&datas[action].Count, 1)
+	atomic.AddUint64(&datas[action].Size, dataSize)
 }
 
 func (f *FlashNode) rangeMonitorData(deal func(data *statistics.MonitorData, vol, path string, pid uint64)) {
@@ -38,4 +53,3 @@ func (f *FlashNode) rangeMonitorData(deal func(data *statistics.MonitorData, vol
 		return
 	})
 }
-

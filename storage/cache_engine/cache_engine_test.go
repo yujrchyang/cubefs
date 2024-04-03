@@ -17,7 +17,6 @@ package cache_engine
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/stretchr/testify/assert"
 	"github.com/tiglabs/raft/util"
@@ -30,7 +29,7 @@ import (
 var bytesCommon = randTestData(1024)
 
 func TestCacheEngineTmpfsStore(t *testing.T) {
-	ce, err := NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, 1024, DefaultExpireTime, nil, func(volume string, action int) *statistics.TpObject { return nil })
+	ce, err := NewCacheEngine(testTmpFS, 200*util.MB, DefaultCacheMaxUsedRatio, 1024, DefaultExpireTime, nil, func(volume string, action int, size uint64) {})
 	assert.Nil(t, err)
 	defer func() {
 		assert.Nil(t, ce.Stop())
@@ -54,7 +53,7 @@ func TestCacheEngineTmpfsStore(t *testing.T) {
 func TestOverFlow(t *testing.T) {
 	var isNoSpace bool
 	var isErr bool
-	ce, err := NewCacheEngine(testTmpFS, unit.GB, 1.1, 1024, DefaultExpireTime, nil, func(volume string, action int) *statistics.TpObject { return nil })
+	ce, err := NewCacheEngine(testTmpFS, unit.GB, 1.1, 1024, DefaultExpireTime, nil, func(volume string, action int, size uint64) { return })
 	assert.Nil(t, err)
 	defer func() {
 		assert.Nil(t, ce.Stop())
@@ -119,7 +118,7 @@ func TestTTL(t *testing.T) {
 	inode := uint64(1)
 	fixedOffset := uint64(1024)
 	version := uint32(112358796)
-	ce, err := NewCacheEngine(testTmpFS, unit.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil, func(volume string, action int) *statistics.TpObject { return nil })
+	ce, err := NewCacheEngine(testTmpFS, unit.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil, func(volume string, action int, size uint64) {})
 	if err != nil {
 		t.Error(err)
 		return
@@ -171,7 +170,7 @@ func TestTTL(t *testing.T) {
 
 func TestLru(t *testing.T) {
 	lruCap := 10
-	ce, err := NewCacheEngine(testTmpFS, unit.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil, func(volume string, action int) *statistics.TpObject { return nil })
+	ce, err := NewCacheEngine(testTmpFS, unit.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, nil, func(volume string, action int, size uint64) {})
 	if err != nil {
 		t.Error(err)
 		return
@@ -223,7 +222,7 @@ func TestSparseFile(t *testing.T) {
 		}
 		return int(source.Size_), nil
 	}
-	ce, err := NewCacheEngine(testTmpFS, unit.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, readSourceFunc, func(volume string, action int) *statistics.TpObject { return nil })
+	ce, err := NewCacheEngine(testTmpFS, unit.GB, DefaultCacheMaxUsedRatio, lruCap, DefaultExpireTime, readSourceFunc, func(volume string, action int, size uint64) {})
 	if err != nil {
 		t.Error(err)
 		return

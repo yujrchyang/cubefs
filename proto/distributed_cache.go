@@ -9,11 +9,8 @@ import (
 )
 
 const (
-	CACHE_BLOCK_SIZE          = 1 << 20
-	DefaultReadCacheTimeoutMs = 4
-	MinReadCacheTimeoutMs     = 1
-	MaxReadCacheTimeoutMs     = 1000
-	DefaultCacheTTLSec        = 5 * 60
+	CACHE_BLOCK_SIZE   = 1 << 20
+	DefaultCacheTTLSec = 5 * 60
 )
 
 const (

@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/ping"
+	"github.com/cubefs/cubefs/util/single_context"
 	"net"
 	"strconv"
 	"strings"
@@ -41,6 +42,7 @@ import (
 )
 
 var ModuleName = "flashNode"
+var gSingleContext *single_context.SingleContext
 
 // The FlashNode manages the inode block cache to speed the file reading.
 type FlashNode struct {
@@ -132,7 +134,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	f.readSource = NewReadSource()
-	go f.contextMaker()
+	gSingleContext = single_context.NewSingleContextWithTimeout(single_context.DefaultTimeoutMs)
 	if err = f.startCacheEngine(); err != nil {
 		return
 	}
@@ -151,6 +153,7 @@ func doShutdown(s common.Server) {
 	f.stopServer()
 	f.stopCacheEngine()
 	ping.StopDefaultClient()
+	gSingleContext.Stop()
 }
 
 func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
@@ -224,7 +227,7 @@ func (f *FlashNode) stopCacheEngine() {
 }
 
 func (f *FlashNode) startCacheEngine() (err error) {
-	if f.cacheEngine, err = cache_engine.NewCacheEngine(f.tmpfsPath, int64(f.total), cache_engine.DefaultCacheMaxUsedRatio, LruCacheDefaultCapacity, time.Hour, f.readSource.ReadExtentData, f.BeforeTp); err != nil {
+	if f.cacheEngine, err = cache_engine.NewCacheEngine(f.tmpfsPath, int64(f.total), cache_engine.DefaultCacheMaxUsedRatio, LruCacheDefaultCapacity, time.Hour, f.readSource.ReadExtentData, f.UpdateMonitorData); err != nil {
 		log.LogErrorf("start CacheEngine failed: %v", err)
 		return
 	}

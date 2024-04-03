@@ -26,6 +26,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -46,6 +47,7 @@ type CacheBlock struct {
 	initOnce    sync.Once
 
 	stacks  *stackmerge.StackList
+	ready   atomic.Bool
 	readyCh chan struct{}
 	closeCh chan struct{}
 	sync.Mutex
@@ -247,11 +249,7 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, taskCh chan *proto.Data
 }
 
 // Wait better waiting no more than 4ms
-func (cb *CacheBlock) Wait(ctx context.Context, offset, size int64) (err error) {
-	if cb.IsStackReady(offset, size) {
-		return
-	}
-
+func (cb *CacheBlock) Wait(ctx context.Context) (err error) {
 	select {
 	case <-cb.readyCh:
 		log.LogInfof("action[Wait] cache block(%s) is ready", cb.blockKey)
@@ -263,13 +261,13 @@ func (cb *CacheBlock) Wait(ctx context.Context, offset, size int64) (err error) 
 	return
 }
 
-func (cb *CacheBlock) IsStackReady(offset, size int64) bool {
-	if !enableStack.Load() {
-		return false
+func (cb *CacheBlock) IsReady(offset, size uint64) bool {
+	if cb.ready.Load() {
+		return true
 	}
-	if cb.stacks.IsCover(uint64(offset), uint64(offset+size)) {
+	if gEnableStack.Load() && cb.stacks.IsCover(offset, offset+size) {
 		if log.IsDebugEnabled() {
-			log.LogDebugf("action[IsStackReady] cache block(%s) stacks{%v} cover range[%v, %v]", cb.blockKey, cb.stacks, uint64(offset), uint64(offset+size))
+			log.LogDebugf("action[IsReady] cache block(%s) stacks{%v} cover range[%v, %v]", cb.blockKey, cb.stacks, offset, offset+size)
 		}
 		return true
 	}
@@ -277,7 +275,7 @@ func (cb *CacheBlock) IsStackReady(offset, size int64) bool {
 }
 
 func (cb *CacheBlock) putStack(offset, size int64) (err error) {
-	if !enableStack.Load() {
+	if !gEnableStack.Load() {
 		return
 	}
 	_, err = cb.stacks.Put(&stackmerge.Stack{
@@ -288,6 +286,7 @@ func (cb *CacheBlock) putStack(offset, size int64) (err error) {
 }
 
 func (cb *CacheBlock) notifyReady() {
+	cb.ready.Store(true)
 	close(cb.readyCh)
 }
 

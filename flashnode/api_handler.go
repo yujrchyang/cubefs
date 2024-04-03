@@ -37,7 +37,6 @@ func (f *FlashNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/evictInode", f.evictInodeHandler)
 	http.HandleFunc("/stat/info", f.getStatInfo)
 	http.HandleFunc("/stack/set", f.setStackEnable)
-	http.HandleFunc("/setTimeout", f.setReadTimeout)
 	return
 }
 
@@ -57,7 +56,7 @@ func (f *FlashNode) getCacheStatHandler(w http.ResponseWriter, r *http.Request) 
 		CacheStatus:        f.cacheEngine.Status(),
 		EnableStack:        f.cacheEngine.GetCacheStackEnable(),
 		EnablePing:         ping.GetPingEnable(),
-		CacheReadTimeoutMs: cacheReadTimeoutMs,
+		CacheReadTimeoutMs: gSingleContext.GetTimeoutMs(),
 	}, Msg: "ok"})
 	return
 }
@@ -193,36 +192,6 @@ func (f *FlashNode) setStackEnable(w http.ResponseWriter, r *http.Request) {
 	}
 	f.cacheEngine.SetCacheStackEnable(enable)
 	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: fmt.Sprintf("set stack enable to:%v success", enable)})
-}
-
-func (f *FlashNode) setReadTimeout(w http.ResponseWriter, r *http.Request) {
-	val := r.FormValue("ms")
-	if val == "" {
-		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: "parameter ms is empty"})
-		return
-	}
-	ms, err := strconv.Atoi(val)
-	if err != nil {
-		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: err.Error()})
-		return
-	}
-	if ms > proto.MaxReadCacheTimeoutMs {
-		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: fmt.Sprintf("ms can not be more than %v", proto.MaxReadCacheTimeoutMs)})
-		return
-	}
-	if ms < proto.MinReadCacheTimeoutMs {
-		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: fmt.Sprintf("ms can not be less than %v", proto.MinReadCacheTimeoutMs)})
-		return
-	}
-	if f.cacheEngine == nil {
-		if err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusInternalServerError, Msg: "cache engine is nil"})
-			return
-		}
-	}
-	old := cacheReadTimeoutMs
-	cacheReadTimeoutMs = ms
-	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: fmt.Sprintf("set cache read timeout from %v to %v success", old, ms)})
 }
 
 func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {

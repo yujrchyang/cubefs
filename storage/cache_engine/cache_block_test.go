@@ -163,16 +163,6 @@ func TestCacheBlockTmpfsStore(t *testing.T) {
 	return
 }
 
-func TestCacheBlockMemoryStore(t *testing.T) {
-	cacheBlock := NewCacheBlock(testTmpFS, t.Name(), 1, 1024, 2568748711, proto.CACHE_BLOCK_SIZE, nil)
-	assert.Nil(t, cacheBlock.initCacheStore())
-	defer func() {
-		assert.Nil(t, cacheBlock.Delete())
-	}()
-	cacheBlockReadWrite(t, cacheBlock)
-	return
-}
-
 func TestParallelOperation(t *testing.T) {
 	for i := 0; i < 1; i++ {
 		testParallelOperation(t)
@@ -256,22 +246,33 @@ func cacheBlockReadWrite(t *testing.T, cacheBlock *CacheBlock) {
 		int64(dataLen),
 	}
 	writeBytes := randTestData(dataLen)
+	gEnableStack.Store(true)
 	for _, s := range sources {
 		assert.Nil(t, cacheBlock.WriteAt(writeBytes, s[offsetIndex]%proto.CACHE_BLOCK_SIZE, s[sizeIndex]))
 	}
 	bytesRead := make([]byte, dataLen)
 
 	t.Run("read_timeout", func(t *testing.T) {
-		_, err := cacheBlock.Read(bytesRead, lackSource[offsetIndex], lackSource[sizeIndex])
-		if !assert.Error(t, err) {
+		if !assert.False(t, cacheBlock.IsReady(uint64(lackSource[offsetIndex]), uint64(lackSource[sizeIndex]))) {
 			return
 		}
-		if !assert.Equal(t, err.Error(), context.DeadlineExceeded.Error()) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*100)
+		defer cancel()
+		err := cacheBlock.Wait(ctx)
+		if !assert.Error(t, err) || !assert.Equal(t, err.Error(), context.DeadlineExceeded.Error()) {
 			return
 		}
 	})
 
 	t.Run("range_data_ready", func(t *testing.T) {
+		gEnableStack.Store(false)
+		if !assert.False(t, cacheBlock.IsReady(uint64(sources[0][offsetIndex]), uint64(sources[0][sizeIndex]))) {
+			return
+		}
+		gEnableStack.Store(true)
+		if !assert.True(t, cacheBlock.IsReady(uint64(sources[0][offsetIndex]), uint64(sources[0][sizeIndex]))) {
+			return
+		}
 		_, err := cacheBlock.Read(bytesRead, sources[0][offsetIndex], sources[0][sizeIndex])
 		if !assert.NoError(t, err) {
 			return
@@ -285,6 +286,9 @@ func cacheBlockReadWrite(t *testing.T, cacheBlock *CacheBlock) {
 
 	t.Run("all_data_ready", func(t *testing.T) {
 		cacheBlock.notifyReady()
+		if !assert.True(t, cacheBlock.IsReady(uint64(lackSource[offsetIndex]), uint64(lackSource[sizeIndex]))) {
+			return
+		}
 		_, err := cacheBlock.Read(bytesRead, lackSource[offsetIndex], lackSource[sizeIndex])
 		if !assert.NoError(t, err) {
 			return
