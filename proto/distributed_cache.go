@@ -9,9 +9,11 @@ import (
 )
 
 const (
-	CACHE_BLOCK_SIZE   = 1 << 20
-	ReadCacheTimeoutMs = 10 // second
-	DefaultCacheTTLSec = 5 * 60
+	CACHE_BLOCK_SIZE          = 1 << 20
+	DefaultReadCacheTimeoutMs = 4
+	MinReadCacheTimeoutMs     = 1
+	MaxReadCacheTimeoutMs     = 1000
+	DefaultCacheTTLSec        = 5 * 60
 )
 
 const (
@@ -256,11 +258,12 @@ type FlashNodeViewInfo struct {
 	IsEnable     bool
 }
 type FlashNodeStat struct {
-	NodeLimit   uint64
-	VolLimit    map[string]uint64
-	EnableStack bool `json:"enableStack"`
-	EnablePing  bool `json:"enablePing"`
-	CacheStatus *CacheStatus
+	NodeLimit          uint64
+	VolLimit           map[string]uint64
+	EnableStack        bool `json:"enableStack"`
+	EnablePing         bool `json:"enablePing"`
+	CacheStatus        *CacheStatus
+	CacheReadTimeoutMs int
 }
 type CacheStatus struct {
 	MaxAlloc int64   `json:"max_alloc"`

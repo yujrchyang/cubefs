@@ -18,7 +18,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/stackmerge"
@@ -27,16 +26,7 @@ import (
 	"os"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
-)
-
-type CacheStat int
-
-const (
-	CacheNew = iota
-	CacheReady
-	CacheClose
 )
 
 type CacheBlock struct {
@@ -53,7 +43,6 @@ type CacheBlock struct {
 	sizeLock    sync.RWMutex
 	blockKey    string
 	readSource  ReadExtentData
-	cacheStat   int32
 	initOnce    sync.Once
 
 	stacks  *stackmerge.StackList
@@ -139,12 +128,9 @@ func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 }
 
 // Read reads data from an extent.
-func (cb *CacheBlock) Read(ctx context.Context, data []byte, offset, size int64) (hit bool, crc uint32, err error) {
-	if hit, err = cb.waitCacheReady(ctx, offset, size); err != nil {
-		return
-	}
+func (cb *CacheBlock) Read(data []byte, offset, size int64) (crc uint32, err error) {
 	if cb.getUsedSize() == 0 || offset >= cb.getAllocSize() || offset >= cb.getUsedSize() {
-		return false, 0, fmt.Errorf("invalid read, offset:%d, size:%v, allocSize:%d, usedSize:%d, stacks:%v", offset, size, cb.getAllocSize(), cb.getUsedSize(), cb.stacks)
+		return 0, fmt.Errorf("invalid read, offset:%d, size:%v, allocSize:%d, usedSize:%d, stacks:%v", offset, size, cb.getAllocSize(), cb.getUsedSize(), cb.stacks)
 	}
 	readSize := int64(math.Min(float64(cb.getUsedSize()-offset), float64(size)))
 	if log.IsDebugEnabled() {
@@ -186,10 +172,13 @@ func (cb *CacheBlock) initCacheStore() (err error) {
 	return
 }
 
-func (cb *CacheBlock) Init(sources []*proto.DataSource) {
+func (cb *CacheBlock) Init(sources []*proto.DataSource, engine *CacheEngine) {
 	var err error
 	metric := exporter.NewModuleTPUs("InitBlock")
 	defer func() {
+		if err != nil {
+			engine.deleteCacheBlock(cb.blockKey)
+		}
 		metric.Set(err)
 	}()
 	//parallel read source data
@@ -197,7 +186,7 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	wg := sync.WaitGroup{}
-	for i := 0; i < int(math.Min(float64(20), float64(len(sources)))); i++ {
+	for i := 0; i < int(math.Min(float64(8), float64(len(sources)))); i++ {
 		wg.Add(1)
 		go func() {
 			var e error
@@ -225,15 +214,13 @@ func (cb *CacheBlock) Init(sources []*proto.DataSource) {
 	}
 	close(sourceTaskCh)
 	wg.Wait()
-	err = ctx.Err()
-	if err != nil {
-		cb.markClose()
+	if err = ctx.Err(); err != nil {
 		return
 	}
 	if log.IsInfoEnabled() {
 		log.LogInfof("action[Init], cache block:%v, sources_len:%v, sources:\n%v", cb.blockKey, len(sources), sb.String())
 	}
-	cb.markReady()
+	cb.notifyReady()
 	return
 }
 
@@ -259,47 +246,32 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, taskCh chan *proto.Data
 	}
 }
 
-func (cb *CacheBlock) waitCacheReady(ctx context.Context, offset, size int64) (hit bool, err error) {
-	if atomic.LoadInt32(&cb.cacheStat) == CacheReady {
-		hit = true
+// Wait better waiting no more than 4ms
+func (cb *CacheBlock) Wait(ctx context.Context, offset, size int64) (err error) {
+	if cb.IsStackReady(offset, size) {
 		return
 	}
-	if cb.StackReady(offset, size) {
-		hit = true
-		return
+
+	select {
+	case <-cb.readyCh:
+		log.LogInfof("action[Wait] cache block(%s) is ready", cb.blockKey)
+	case <-cb.closeCh:
+		err = CacheClosedError
+	case <-ctx.Done():
+		err = ctx.Err()
 	}
-	if atomic.LoadInt32(&cb.cacheStat) == CacheNew {
-		select {
-		case <-cb.readyCh:
-			log.LogInfof("action[waitCacheReady] cache block(%s) is ready for all", cb.blockKey)
-		case <-cb.closeCh:
-			err = CacheClosedError
-		case <-ctx.Done():
-			err = ctx.Err()
-		}
-		return
-	}
-	if atomic.LoadInt32(&cb.cacheStat) == CacheClose {
-		return false, CacheClosedError
-	}
-	return false, errors.New("unknown cache status")
+	return
 }
 
-func (cb *CacheBlock) StackReady(offset, size int64) bool {
+func (cb *CacheBlock) IsStackReady(offset, size int64) bool {
 	if !enableStack.Load() {
 		return false
 	}
-	retry := 3
-	for i := 0; i < retry; i++ {
-		if cb.stacks.IsCover(uint64(offset), uint64(offset+size)) || atomic.LoadInt32(&cb.cacheStat) == CacheReady {
-			if log.IsDebugEnabled() {
-				log.LogDebugf("action[StackReady] cache block(%s) stacks{%v} is ready for range:[%v, %v] read, cacheStat:%v", cb.blockKey, cb.stacks, uint64(offset), uint64(offset+size), atomic.LoadInt32(&cb.cacheStat))
-			}
-			return true
+	if cb.stacks.IsCover(uint64(offset), uint64(offset+size)) {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("action[IsStackReady] cache block(%s) stacks{%v} cover range[%v, %v]", cb.blockKey, cb.stacks, uint64(offset), uint64(offset+size))
 		}
-		if i != retry-1 {
-			time.Sleep(time.Microsecond * 20)
-		}
+		return true
 	}
 	return false
 }
@@ -315,12 +287,7 @@ func (cb *CacheBlock) putStack(offset, size int64) (err error) {
 	return
 }
 
-func (cb *CacheBlock) markClose() {
-	atomic.StoreInt32(&cb.cacheStat, CacheClose)
-}
-
-func (cb *CacheBlock) markReady() {
-	atomic.StoreInt32(&cb.cacheStat, CacheReady)
+func (cb *CacheBlock) notifyReady() {
 	close(cb.readyCh)
 }
 
@@ -357,11 +324,8 @@ func (cb *CacheBlock) InitOnce(engine *CacheEngine, sources []*proto.DataSource)
 		}
 	}()
 	cb.initOnce.Do(func() {
-		cb.Init(sources)
+		cb.Init(sources, engine)
 	})
-	if atomic.LoadInt32(&cb.cacheStat) == CacheClose {
-		engine.deleteCacheBlock(cb.blockKey)
-	}
 }
 
 func (cb *CacheBlock) getUsedSize() int64 {

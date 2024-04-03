@@ -46,8 +46,8 @@ func TestCacheEngineTmpfsStore(t *testing.T) {
 		return
 	}
 	data := make([]byte, 1024)
-	cb.markReady()
-	_, _, err = cb.Read(context.Background(), data, 0, 1024)
+	cb.notifyReady()
+	_, err = cb.Read(data, 0, 1024)
 	assert.Nil(t, err)
 }
 
@@ -265,7 +265,7 @@ func TestSparseFile(t *testing.T) {
 		}
 	}
 	reader := make([]byte, unit.MB)
-	_, _, err = cb.Read(context.Background(), reader, 0, int64(offset2&(proto.CACHE_BLOCK_SIZE-1)+size2))
+	_, err = cb.Read(reader, 0, int64(offset2&(proto.CACHE_BLOCK_SIZE-1)+size2))
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -275,7 +275,7 @@ func TestSparseFile(t *testing.T) {
 
 	for _, source := range sources {
 		reader1 := make([]byte, source.Size_)
-		_, _, err = cb.Read(context.Background(), reader, int64(source.FileOffset&(proto.CACHE_BLOCK_SIZE-1)), int64(source.Size_))
+		_, err = cb.Read(reader, int64(source.FileOffset&(proto.CACHE_BLOCK_SIZE-1)), int64(source.Size_))
 		if !assert.NoError(t, err) {
 			return
 		}

@@ -194,7 +194,7 @@ func testParallelOperation(t *testing.T) {
 		time.Sleep(time.Second * 5)
 		assert.Nil(t, cacheBlock.Delete())
 	}()
-	cacheBlock.markReady()
+	cacheBlock.notifyReady()
 	//read func
 	go func() {
 		ticker := time.NewTicker(time.Millisecond * 50)
@@ -206,7 +206,7 @@ func testParallelOperation(t *testing.T) {
 				bytesRead := make([]byte, 1024)
 				rand.Seed(time.Now().Unix())
 				offset := rand.Intn(int(cacheBlock.allocSize))
-				cacheBlock.Read(context.Background(), bytesRead, int64(offset), 1024)
+				cacheBlock.Read(bytesRead, int64(offset), 1024)
 			}
 		}
 	}()
@@ -262,9 +262,7 @@ func cacheBlockReadWrite(t *testing.T, cacheBlock *CacheBlock) {
 	bytesRead := make([]byte, dataLen)
 
 	t.Run("read_timeout", func(t *testing.T) {
-		timeoutCtx, cancel := context.WithTimeout(context.Background(), proto.ReadCacheTimeoutMs*time.Millisecond)
-		defer cancel()
-		_, _, err := cacheBlock.Read(timeoutCtx, bytesRead, lackSource[offsetIndex], lackSource[sizeIndex])
+		_, err := cacheBlock.Read(bytesRead, lackSource[offsetIndex], lackSource[sizeIndex])
 		if !assert.Error(t, err) {
 			return
 		}
@@ -274,7 +272,7 @@ func cacheBlockReadWrite(t *testing.T, cacheBlock *CacheBlock) {
 	})
 
 	t.Run("range_data_ready", func(t *testing.T) {
-		_, _, err := cacheBlock.Read(context.Background(), bytesRead, sources[0][offsetIndex], sources[0][sizeIndex])
+		_, err := cacheBlock.Read(bytesRead, sources[0][offsetIndex], sources[0][sizeIndex])
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -286,8 +284,8 @@ func cacheBlockReadWrite(t *testing.T, cacheBlock *CacheBlock) {
 	})
 
 	t.Run("all_data_ready", func(t *testing.T) {
-		cacheBlock.markReady()
-		_, _, err := cacheBlock.Read(context.Background(), bytesRead, lackSource[offsetIndex], lackSource[sizeIndex])
+		cacheBlock.notifyReady()
+		_, err := cacheBlock.Read(bytesRead, lackSource[offsetIndex], lackSource[sizeIndex])
 		if !assert.NoError(t, err) {
 			return
 		}
@@ -301,14 +299,14 @@ func cacheBlockReadWrite(t *testing.T, cacheBlock *CacheBlock) {
 	t.Run("read_offset_usedsize_0", func(t *testing.T) {
 		offset := int64(0)
 		cacheBlock.usedSize = 0
-		_, _, err := cacheBlock.Read(context.Background(), bytesRead, offset, int64(dataLen))
+		_, err := cacheBlock.Read(bytesRead, offset, int64(dataLen))
 		assert.Error(t, err)
 	})
 
 	t.Run("read_offset_gt_usedsize", func(t *testing.T) {
 		offset := int64(dataLen + 1)
 		cacheBlock.usedSize = int64(dataLen)
-		_, _, err := cacheBlock.Read(context.Background(), bytesRead, offset, int64(dataLen))
+		_, err := cacheBlock.Read(bytesRead, offset, int64(dataLen))
 		assert.Error(t, err)
 	})
 
