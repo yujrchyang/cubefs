@@ -201,7 +201,7 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 			}
 			badReplicas = append(badReplicas, peerReplica)
 		} else if len(peerStrings) != len(dnPartition.Replicas) || len(diffPeerToHost)+len(diffHostToPeer) > 0 {
-			msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v] peerStrings: %v , hostStrings: %v ", ch.host, volName, dp.PartitionID, r.Addr, peerStrings, dnPartition.Replicas)
+			msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v, unknown] peerStrings: %v , hostStrings: %v ", ch.host, volName, dp.PartitionID, r.Addr, peerStrings, dnPartition.Replicas)
 			checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, msg)
 		}
 	}
@@ -224,7 +224,7 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 		repairDp(ch.isReleaseCluster, ch.host, badReplicas[0])
 	} else {
 		for _, item := range badReplicas {
-			msg := fmt.Sprintf("[Domain: %v, VolName: %v, ReplicationID: %v], nodeAddr: %v, PeerErrorInfo: %v, PeerAddr:%v ", ch.host, item.VolName, item.ReplicationID, item.nodeAddr, item.PeerErrorInfo, item.PeerAddr)
+			msg := fmt.Sprintf("[Domain: %v, VolName: %v, ReplicationID: %v, MultiError], nodeAddr: %v, PeerErrorInfo: %v, PeerAddr:%v ", ch.host, item.VolName, item.ReplicationID, item.nodeAddr, item.PeerErrorInfo, item.PeerAddr)
 			checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, msg)
 		}
 	}
@@ -282,14 +282,13 @@ func dataNodeGetPartition(ch *ClusterHost, addr string, id uint64) (node *DNData
 }
 
 func repairDp(release bool, host string, replica PeerReplica) {
-	var outputStr string
 	switch replica.PeerErrorInfo {
 	case "HOST3_PEER2":
 		if err := decommissionDp(release, host, replica.VolName, replica.ReplicationID, replica.PeerAddr); err != nil {
 			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] repair failed, err:%v", host, replica.ReplicationID, err)
 			return
 		}
-		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] has been automatically repaired, cmd[cfs-cli datapartition decommission %v %v]", host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
+		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] has been automatically repaired, cmd[cfs-cli datapartition decommission %v %v]", host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
 	case "PEER4_HOST3":
 		if err := addDpReplica(host, replica.ReplicationID, replica.PeerAddr); err != nil {
 			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-addDpReplica failed, err:%v", host, replica.ReplicationID, err)
@@ -300,16 +299,16 @@ func repairDp(release bool, host string, replica PeerReplica) {
 			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-delDpReplica failed, err:%v", host, replica.ReplicationID, err)
 			break
 		}
-		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli datapartition add-replica %v %v && sleep 3 && cfs-cli datapartition del-replica %v %v]",
+		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli datapartition add-replica %v %v && sleep 3 && cfs-cli datapartition del-replica %v %v]",
 			host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
 	case "HOST2_PEER3":
-		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] recommond cmd: cfs-cli datapartition add-replica %v %v",
+		outputStr := fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] recommond cmd: cfs-cli datapartition add-replica %v %v",
 			host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
+		checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, outputStr)
 	default:
 		log.LogErrorf("wrong error info, %v", replica.PeerErrorInfo)
 		return
 	}
-	checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, outputStr)
 }
 
 func decommissionDp(releaseDB bool, master string, vol string, partition uint64, addr string) (err error) {

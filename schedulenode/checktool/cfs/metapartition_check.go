@@ -197,7 +197,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 			badReplicas = append(badReplicas, peerReplica)
 		} else if len(peerStrings) != len(hostStrings) || len(diffPeerToHost)+len(diffHostToPeer) > 0 {
 			// ump alarm
-			msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v] peerStrings: %v , hostStrings: %v ", ch.host, mp.VolName, mp.PartitionID, r.Addr, peerStrings, hostStrings)
+			msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v, Unknown] peerStrings: %v , hostStrings: %v ", ch.host, mp.VolName, mp.PartitionID, r.Addr, peerStrings, hostStrings)
 			checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionPeerInconsistency, msg)
 		}
 	}
@@ -222,7 +222,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 		repairMp(ch.isReleaseCluster, ch.host, badReplicas[0])
 	} else {
 		for _, item := range badReplicas {
-			msg := fmt.Sprintf("[Domain: %v, VolName: %v, PartitionID: %v], nodeAddr: %v, PeerErrorInfo: %v, PeerAddr:%v ",
+			msg := fmt.Sprintf("[Domain: %v, VolName: %v, PartitionID: %v, MultiError], nodeAddr: %v, PeerErrorInfo: %v, PeerAddr:%v ",
 				ch.host, item.VolName, item.ReplicationID, item.nodeAddr, item.PeerErrorInfo, item.PeerAddr)
 			checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionPeerInconsistency, msg)
 		}
@@ -230,13 +230,12 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 }
 
 func repairMp(release bool, host string, rep PeerReplica) {
-	var outputStr string
 	switch rep.PeerErrorInfo {
 	case "PEER2_HOST3":
 		if err := decommissionMp(release, host, rep.VolName, rep.ReplicationID, rep.PeerAddr); err != nil {
 			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] repair failed, err:%v", host, rep.ReplicationID, err)
 		} else {
-			outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] has been automatically repaired, cmd[cfs-cli metapartition decommission %v %v]",
+			log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] has been automatically repaired, cmd[cfs-cli metapartition decommission %v %v]",
 				host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
 		}
 	case "PEER4_HOST3":
@@ -249,16 +248,16 @@ func repairMp(release bool, host string, rep PeerReplica) {
 			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-delMpReplica failed, err:%v", host, rep.ReplicationID, err)
 			break
 		}
-		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli metapartition add-replica %v %v && sleep 3 && cfs-cli metapartition del-replica %v %v]",
+		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli metapartition add-replica %v %v && sleep 3 && cfs-cli metapartition del-replica %v %v]",
 			host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
 	case "HOST2_PEER3":
-		outputStr = fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] cmd: cfs-cli metapartition add-replica %v %v",
+		outputStr := fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] cmd: cfs-cli metapartition add-replica %v %v",
 			host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
+		checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionPeerInconsistency, outputStr)
 	default:
 		log.LogErrorf("wrong error info, %v", rep.PeerErrorInfo)
 		return
 	}
-	checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionPeerInconsistency, outputStr)
 }
 
 func decommissionMp(releaseDB bool, master string, vol string, partition uint64, addr string) (err error) {
