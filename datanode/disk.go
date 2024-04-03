@@ -23,7 +23,6 @@ import (
 	"path"
 	"regexp"
 	"runtime"
-	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -209,23 +208,67 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 		return
 	}
 
-	async.RunWorker(d.managementScheduler, func(i interface{}) {
-		log.LogCriticalf("Disk %v: management scheduler occurred panic: %v\nCallstack:\n%v",
-			path, i, string(debug.Stack()))
-	})
-	async.RunWorker(d.flushDeleteScheduler, func(i interface{}) {
-		log.LogCriticalf("Disk %v: flush delete scheduler occurred panic: %v\nCallStack:\n%v",
-			path, i, string(debug.Stack()))
-	})
-	async.RunWorker(d.crcComputationScheduler, func(i interface{}) {
-		log.LogCriticalf("Disk %v: CRC computation scheduler occurred panic: %v\nCallStack:\n%v",
-			path, i, string(debug.Stack()))
-	})
-	async.RunWorker(d.flushFPScheduler, func(i interface{}) {
-		log.LogCriticalf("Disk %v: FD Flush scheduler occurred panic: %v\nCallStack:\n%v",
-			path, i, string(debug.Stack()))
-	})
+	d.startScheduler(d.managementScheduler)
+	d.startScheduler(d.flushDeleteScheduler)
+	d.startScheduler(d.crcComputationScheduler)
+	d.startScheduler(d.flushFPScheduler)
 	return
+}
+
+func (d *Disk) startScheduler(workerFunc async.WorkerFunc) {
+	const (
+		panicAlertInterval      = time.Minute * 10
+		pendingRelaunchInterval = time.Second * 10
+	)
+	var collectStack = func() string {
+		pc := make([]uintptr, 10)
+		n := runtime.Callers(3, pc)
+		if n == 0 {
+			return ""
+		}
+		pc = pc[:n]
+		frames := runtime.CallersFrames(pc)
+		var sb strings.Builder
+		for {
+			frame, more := frames.Next()
+			if !strings.HasPrefix(frame.Function, "runtime.") {
+				sb.WriteString(fmt.Sprintf("%s\n\t%s:%d\n", frame.Function, frame.File, frame.Line))
+			}
+			if !more {
+				break
+			}
+		}
+		return sb.String()
+	}
+	var pervAlertTime time.Time
+	// 为WorkerFunc的执行增加panic保护和Alert
+	var panicRecoverableWorkerFunc async.WorkerFunc = func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if now := time.Now(); now.Sub(pervAlertTime) > panicAlertInterval {
+					// 避免报警过于频繁
+					var stack = collectStack()
+					log.LogCriticalf("Disk %v: async scheduler occurred panic: %v\nCallstack:\n%v",
+						d.Path, r, stack)
+					exporter.Warning(fmt.Sprintf(
+						"Worker occurred panic!\n"+
+							"Message: %v\n"+
+							"Callstack:\n%v\n",
+						r, stack))
+					pervAlertTime = now
+				}
+			}
+		}()
+		workerFunc()
+	}
+	// 为WorkerFunc增加自动重启机制
+	var restartableWorkerFunc async.WorkerFunc = func() {
+		for {
+			panicRecoverableWorkerFunc()
+			time.Sleep(pendingRelaunchInterval)
+		}
+	}
+	async.RunWorker(restartableWorkerFunc)
 }
 
 func (d *Disk) initInterceptors() {
