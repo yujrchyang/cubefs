@@ -311,6 +311,8 @@ func (dp *DataPartition) IsEquareCreateDataPartitionRequst(request *proto.Create
 	}
 	sp := sortedPeers(dp.config.Peers)
 	sort.Sort(sp)
+	requestSP := sortedPeers(request.Members)
+	sort.Sort(requestSP)
 	for index, peer := range dp.config.Peers {
 		requestPeer := request.Members[index]
 		if requestPeer.ID != peer.ID || requestPeer.Addr != peer.Addr {
