@@ -481,6 +481,12 @@ func (o *ObjectNode) completeMultipartUploadHandler(w http.ResponseWriter, r *ht
 		errorCode = ObjectModeConflict
 		return
 	}
+	if err == syscall.EPERM {
+		log.LogWarnf("putObjectHandler: put object fail cause too many files in directory: requestID(%v) volume(%v) path(%v) remote(%v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
+		errorCode = TooManyFilesInDirectory
+		return
+	}
 	if err != nil {
 		log.LogErrorf("completeMultipartUploadHandler: complete multipart fail, requestID(%v) uploadID(%v) err(%v)",
 			GetRequestID(r), uploadId, err)

@@ -872,6 +872,12 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = TooManyLevelsOfSymlinks
 		return
 	}
+	if err == syscall.EPERM {
+		log.LogWarnf("putObjectHandler: put object fail cause too many files in directory: requestID(%v) volume(%v) path(%v) remote(%v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
+		errorCode = TooManyFilesInDirectory
+		return
+	}
 	if err != nil {
 		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
@@ -1282,6 +1288,12 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		log.LogWarnf("putObjectHandler: put object fail cause unexpected EOF: requestID(%v) volume(%v) path(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
 		errorCode = EntityTooSmall
+		return
+	}
+	if err == syscall.EPERM {
+		log.LogWarnf("putObjectHandler: put object fail cause too many files in directory: requestID(%v) volume(%v) path(%v) remote(%v) err(%v)",
+			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
+		errorCode = TooManyFilesInDirectory
 		return
 	}
 	if err != nil {
