@@ -226,6 +226,7 @@ const (
 	defaultCheckRecoverDuration                            = 10 * 60 * 60
 	defaultDecommissionDuration                            = 10 * 60
 	defaultInitDataPartitionCnt                            = 10
+	defaultInitRWDataPartitionCnt                          = 3
 	volExpansionRatio                                      = 0.1
 	maxNumberOfDataPartitionsForExpansion                  = 100
 	EmptyCrcValue                                   uint32 = 4045511210
