@@ -16,6 +16,7 @@ package datanode
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"math"
@@ -58,59 +59,7 @@ const (
 	TempLatestFlushTimeFile = ".LATEST_FLUSH"
 )
 
-var (
-	regexpDiskPath = regexp.MustCompile("^(/(\\w|-)+)+(:(\\d)+)?$")
-)
-
-type DiskPath struct {
-	path     string
-	reserved uint64
-}
-
-func (p *DiskPath) Path() string {
-	return p.path
-}
-
-func (p *DiskPath) Reserved() uint64 {
-	return p.reserved
-}
-
-func (p *DiskPath) SetReserved(reserved uint64) {
-	p.reserved = reserved
-}
-
-func (p *DiskPath) String() string {
-	return fmt.Sprintf("DiskPath(path=%v, reserved=%v)", p.path, p.reserved)
-}
-
-func ParseDiskPath(str string) (p *DiskPath, success bool) {
-	if !regexpDiskPath.MatchString(str) {
-		return
-	}
-	var parts = strings.Split(str, ":")
-	p = &DiskPath{
-		path: parts[0],
-		reserved: func() uint64 {
-			if len(parts) > 1 {
-				var val, _ = strconv.ParseUint(parts[1], 10, 64)
-				return val
-			}
-			return 0
-		}(),
-	}
-	success = true
-	return
-}
-
 type GetReservedRatioFunc func() float64
-
-type DiskConfig struct {
-	GetReservedRatio         GetReservedRatioFunc
-	MaxErrCnt                int
-	MaxFDLimit               uint64     // 触发强制FD淘汰策略的阈值
-	ForceFDEvictRatio        unit.Ratio // 强制FD淘汰比例
-	FixTinyDeleteRecordLimit uint64
-}
 
 // Disk represents the structure of the disk
 type Disk struct {
@@ -1310,4 +1259,99 @@ func (d *Disk) freeExtentLockInfo() {
 		partition.ExtentStore().FreeExtentLockInfo()
 	}
 	log.LogDebugf("action[freeExtentLockInfo] disk(%v) free end", d.Path)
+}
+
+func (d *Disk) createPartition(dpCfg *dataPartitionCfg, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {
+
+	if dp, err = newDataPartition(dpCfg, d, true, d.topoManager, d.interceptors); err != nil {
+		return
+	}
+	dp.ForceLoadHeader()
+
+	// persist file metadata
+	dp.DataPartitionCreateType = request.CreateType
+	err = dp.persistMetaDataOnly()
+	d.AddSize(uint64(dp.Size()))
+	if err = dp.initIssueProcessor(0); err != nil {
+		return
+	}
+	return
+}
+
+// LoadDataPartition loads and returns a partition instance based on the specified directory.
+// It reads the partition metadata file stored under the specified directory
+// and creates the partition instance.
+func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error) {
+	var (
+		metaFileData []byte
+	)
+	if metaFileData, err = ioutil.ReadFile(path.Join(partitionDir, DataPartitionMetadataFileName)); err != nil {
+		return
+	}
+	meta := &DataPartitionMetadata{}
+	if err = json.Unmarshal(metaFileData, meta); err != nil {
+		return
+	}
+	if err = meta.Validate(); err != nil {
+		return
+	}
+
+	dpCfg := &dataPartitionCfg{
+		VolName:       meta.VolumeID,
+		PartitionSize: meta.PartitionSize,
+		PartitionID:   meta.PartitionID,
+		ReplicaNum:    meta.ReplicaNum,
+		Peers:         meta.Peers,
+		Hosts:         meta.Hosts,
+		Learners:      meta.Learners,
+		RaftStore:     d.space.GetRaftStore(),
+		NodeID:        d.space.GetNodeID(),
+		ClusterID:     d.space.GetClusterID(),
+		CreationType:  meta.DataPartitionCreateType,
+
+		VolHAType: meta.VolumeHAType,
+		Mode:      meta.ConsistencyMode,
+	}
+	if dp, err = newDataPartition(dpCfg, d, false, d.topoManager, d.interceptors); err != nil {
+		return
+	}
+	// dp.PersistMetadata()
+
+	var appliedID uint64
+	if appliedID, err = dp.LoadAppliedID(); err != nil {
+		log.LogErrorf("action[loadApplyIndex] %v", err)
+	}
+	log.LogInfof("Action(LoadDataPartition) PartitionID(%v) meta(%v)", dp.partitionID, meta)
+	dp.DataPartitionCreateType = meta.DataPartitionCreateType
+	dp.isCatchUp = meta.IsCatchUp
+	dp.needServerFaultCheck = meta.NeedServerFaultCheck
+	dp.serverFaultCheckLevel = CheckAllCommitID
+
+	if !dp.applyStatus.Init(appliedID, meta.LastTruncateID) {
+		err = fmt.Errorf("action[loadApplyIndex] illegal metadata, appliedID %v, lastTruncateID %v", appliedID, meta.LastTruncateID)
+		return
+	}
+
+	d.AddSize(uint64(dp.Size()))
+	dp.ForceLoadHeader()
+
+	// 检查是否有需要更新Volume信息
+	var maybeNeedUpdateCrossRegionHAType = func() bool {
+		return (len(dp.config.Hosts) > 3 && dp.config.VolHAType == proto.DefaultCrossRegionHAType) ||
+			(len(dp.config.Hosts) <= 3 && dp.config.VolHAType == proto.CrossRegionHATypeQuorum)
+	}
+	var maybeNeedUpdateReplicaNum = func() bool {
+		return dp.config.ReplicaNum == 0 || len(dp.config.Hosts) != dp.config.ReplicaNum
+	}
+	if maybeNeedUpdateCrossRegionHAType() || maybeNeedUpdateReplicaNum() {
+		dp.proposeUpdateVolumeInfo()
+	}
+
+	dp.persistedApplied = appliedID
+	dp.persistedMetadata = meta
+	dp.maybeUpdateFaultOccurredCheckLevel()
+	if err = dp.initIssueProcessor(d.latestFlushTimeOnInit); err != nil {
+		return
+	}
+	return
 }
