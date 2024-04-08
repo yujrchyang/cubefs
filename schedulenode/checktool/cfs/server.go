@@ -35,6 +35,7 @@ const (
 	cfgKeyDataNodeUsedRatioMinThresholdSSD  = "dataNodeUsedRatioMinThresholdSSD"
 	domainSeparator                         = ","
 	UMPCFSNormalWarnKey                     = checktool.UmpKeyStorageBotPrefix + "cfs"
+	UMPCFSBadDiskWarnKey                    = UMPCFSNormalWarnKey + ".bad.disk"
 	UMPCFSZoneUsedRatioWarnKey              = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio"
 	UMPCFSZoneUsedRatioOPWarnKey            = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio.op"
 	UMPCFSRaftlogBackWarnKey                = checktool.UmpKeyStorageBotPrefix + "chubaofs.raft.log.backup"

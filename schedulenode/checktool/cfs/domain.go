@@ -170,6 +170,7 @@ type VolInfo struct {
 
 type DataNodeView struct {
 	Addr                      string
+	Zone                      string
 	Status                    bool
 	ReportTime                time.Time
 	PersistenceDataPartitions []uint64

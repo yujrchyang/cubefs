@@ -6,8 +6,13 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/common/xbp"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
+	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	badDiskCountToAlarm = 5
 )
 
 func (s *ChubaoFSMonitor) scheduleToCheckDiskError() {
@@ -42,6 +47,7 @@ func (s *ChubaoFSMonitor) checkDiskError() {
 				checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
 				return
 			}
+			s.doCheckBadDiskCount(cv, host)
 			s.doCheckDataNodeDiskError(cv, host)
 			log.LogDebugf("checkDiskError [%v] end,cost[%v]", host, time.Since(startTime))
 		}(host)
@@ -49,10 +55,29 @@ func (s *ChubaoFSMonitor) checkDiskError() {
 	wg.Wait()
 }
 
+func (s *ChubaoFSMonitor) doCheckBadDiskCount(cv *ClusterDataNodeBadDisks, host *ClusterHost) {
+
+	count := 0
+	for _, badDiskNode := range cv.DataNodeBadDisks {
+		count = count + len(badDiskNode.BadDiskPath)
+	}
+	if count > badDiskCountToAlarm {
+		msg := fmt.Sprintf("cluster:%v,bad disk count larger than %v,current bad disk count is:%v", cv.Name, badDiskCountToAlarm, count)
+		checktool.WarnBySpecialUmpKey(UMPCFSBadDiskWarnKey, msg)
+	}
+}
+
 func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, host *ClusterHost) {
 	var url string
 	newCheckedDataNodeBadDisk := make(map[string]time.Time, 0)
 	for _, badDiskOnNode := range cv.DataNodeBadDisks {
+		if strings.Contains(badDiskOnNode.Addr, "11.127") {
+			dv, err := getDataNode(host, badDiskOnNode.Addr)
+			if err != nil || strings.EqualFold("rh_hbase_hdd", dv.Zone) {
+				log.LogErrorf("%v ignored", badDiskOnNode.Addr)
+				continue
+			}
+		}
 		for _, badDisk := range badDiskOnNode.BadDiskPath {
 			log.LogDebugf("host:%v,badDisk%v,badDisk:%v", host.host, badDiskOnNode.Addr, badDisk)
 			dataNodeBadDiskKey := fmt.Sprintf("%s#%s", badDiskOnNode.Addr, badDisk)
