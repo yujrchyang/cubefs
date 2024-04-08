@@ -3070,7 +3070,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 		err = fmt.Errorf("action[createVol] initMetaPartitions failed,err[%v]", err)
 		goto errHandler
 	}
-	for retryCount := 0; readWriteDataPartitions < defaultInitDataPartitionCnt && retryCount < 3; retryCount++ {
+	for retryCount := 0; readWriteDataPartitions < defaultInitRWDataPartitionCnt && retryCount < 3; retryCount++ {
 		_ = vol.initDataPartitions(c)
 		readWriteDataPartitions = vol.getDpCnt()
 	}
