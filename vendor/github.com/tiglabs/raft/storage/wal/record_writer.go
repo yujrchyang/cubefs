@@ -112,7 +112,7 @@ func (w *recordWriter) Sync() error {
 
 // 关闭写
 func (w *recordWriter) Close() error {
-	if err := w.Sync(); err != nil {
+	if err := w.Flush(); err != nil {
 		return err
 	}
 	if w.buf != nil {

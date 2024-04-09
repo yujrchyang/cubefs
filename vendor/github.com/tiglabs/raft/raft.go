@@ -166,7 +166,6 @@ type raft struct {
 	statusc           chan chan *Status
 	resetPeersc       chan *resetPeerRequest
 	entryRequestC     chan *entryRequest
-	readyc            chan struct{}
 	propReadyc        chan struct{}
 	tickc             chan struct{}
 	electc            chan struct{}
@@ -212,7 +211,6 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		entryRequestC: make(chan *entryRequest, 16),
 		tickc:         make(chan struct{}, 64),
 		promtec:       make(chan struct{}, 64),
-		readyc:        make(chan struct{}, 1),
 		propReadyc:    make(chan struct{}, 1),
 		electc:        make(chan struct{}, 1),
 		stopc:         make(chan struct{}),
@@ -409,12 +407,9 @@ func (s *raft) run() {
 	s.prevHardSt.Vote = s.raftFsm.vote
 	s.prevHardSt.Commit = s.raftFsm.raftLog.committed
 	s.maybeChange(true)
-	loopCount := 0
-	var readyc chan struct{}
 	for {
-		if readyc == nil && s.containsUpdate() {
-			readyc = s.readyc
-			readyc <- struct{}{}
+		if s.containsUpdate() {
+			s.ready()
 		}
 
 		select {
@@ -514,60 +509,6 @@ func (s *raft) run() {
 
 		case snapReq := <-s.snapRecvc:
 			s.handleSnapshot(snapReq)
-
-		case <-readyc:
-			/*
-				s.persist()
-
-				s.apply()
-
-
-				s.advance()
-
-				// Send all messages.
-				for _, msg := range s.raftFsm.msgs {
-					if msg.Type == proto.ReqMsgSnapShot {
-						s.sendSnapshot(msg)
-						continue
-					}
-					s.sendMessage(msg)
-				}
-			*/
-			if s.isLeader() {
-				s.apply()
-				for _, msg := range s.raftFsm.msgs {
-					if msg.Type == proto.ReqMsgSnapShot {
-						s.sendSnapshot(msg)
-						continue
-					}
-					// MsgFilter 仅用于单测中制造异常场景，正式代码中不要赋值！
-					if s.raftConfig.MsgFilter(msg) {
-						proto.ReturnMessage(msg)
-						continue
-					}
-					s.sendMessage(msg)
-				}
-				s.persist()
-			} else {
-				s.persist()
-				for _, msg := range s.raftFsm.msgs {
-					if msg.Type == proto.ReqMsgSnapShot {
-						s.sendSnapshot(msg)
-						continue
-					}
-					s.sendMessage(msg)
-				}
-				s.apply()
-			}
-			s.advance()
-
-			s.raftFsm.msgs = nil
-			readyc = nil
-			loopCount = loopCount + 1
-			if loopCount >= 2 {
-				loopCount = 0
-				runtime.Gosched()
-			}
 
 		case <-s.electc:
 			msg := proto.GetMessage()
@@ -979,6 +920,30 @@ func (s *raft) maybeChange(respErr bool) {
 	}
 	if updated {
 		atomic.StorePointer(&s.curSoftSt, unsafe.Pointer(&softState{leader: s.raftFsm.leader, term: s.raftFsm.term}))
+	}
+}
+
+func (s *raft) ready() {
+	s.send()
+	s.persist()
+	s.apply()
+	s.advance()
+
+	s.raftFsm.msgs = nil
+}
+
+func (s *raft) send() {
+	for _, msg := range s.raftFsm.msgs {
+		if msg.Type == proto.ReqMsgSnapShot {
+			s.sendSnapshot(msg)
+			continue
+		}
+		// MsgFilter 仅用于单测中制造异常场景，正式代码中不要赋值！
+		if s.raftConfig.MsgFilter(msg) {
+			proto.ReturnMessage(msg)
+			continue
+		}
+		s.sendMessage(msg)
 	}
 }
 

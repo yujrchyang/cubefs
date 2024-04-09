@@ -16,7 +16,6 @@ package raft
 
 import (
 	"context"
-	"runtime"
 	"sync"
 	"time"
 
@@ -111,14 +110,7 @@ func (s *transportSender) loopSend(recvc chan *proto.Message) {
 			}
 		}
 
-		loopCount := 0
 		for {
-			loopCount = loopCount + 1
-			if loopCount > 8 {
-				loopCount = 0
-				runtime.Gosched()
-			}
-
 			select {
 			case <-s.stopc:
 				return
