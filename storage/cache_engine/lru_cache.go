@@ -22,14 +22,20 @@ import (
 	"time"
 )
 
+var (
+	CacheNotExistError = fmt.Errorf("cache not exist")
+	CacheExpireError   = fmt.Errorf("cache is expired")
+)
+
 type LruCache interface {
 	Get(key interface{}) (interface{}, error)
 	Peek(key interface{}) (interface{}, bool)
 	Set(key interface{}, value interface{}, expiration time.Duration) (int, error)
 	Evict(key interface{}) bool
-	EvictAll()
+	EvictAll() int
 	Close() error
 	Status() *Status
+	Keys() []interface{}
 	HitRate() float64
 	RecentEvict() int
 	Len() int
@@ -112,16 +118,21 @@ func NewCache(size int, maxAlloc int64, expiration time.Duration, onDelete OnDel
 func (c *fCache) Status() *Status {
 	c.RLock()
 	defer c.RUnlock()
+	return &Status{
+		Used: c.alloc,
+		Num:  c.lru.Len(),
+	}
+}
+
+func (c *fCache) Keys() []interface{} {
+	c.RLock()
+	defer c.RUnlock()
 	keys := make([]interface{}, 0)
 	for _, i := range c.items {
 		v := i.Value.(*entry)
 		keys = append(keys, v.key)
 	}
-	return &Status{
-		Used: c.alloc,
-		Num:  c.lru.Len(),
-		Keys: keys,
-	}
+	return keys
 }
 
 func (c *fCache) Set(key, value interface{}, expiration time.Duration) (n int, err error) {
@@ -188,11 +199,11 @@ func (c *fCache) Get(key interface{}) (interface{}, error) {
 		e := c.deleteElement(ent)
 		c.Unlock()
 		_ = c.onDelete(e)
-		return nil, fmt.Errorf("expired key[%v]", key)
+		return nil, CacheExpireError
 	}
 	c.misses++
 	c.Unlock()
-	return nil, fmt.Errorf("key[%s] not found", key)
+	return nil, CacheNotExistError
 }
 
 // Peek returns the key value (or undefined if not found) without updating
@@ -208,7 +219,7 @@ func (c *fCache) Peek(key interface{}) (interface{}, bool) {
 }
 
 // EvictAll is used to completely clear the cache.
-func (c *fCache) EvictAll() {
+func (c *fCache) EvictAll() int {
 	toEvicts := make([]interface{}, 0)
 	c.Lock()
 	for _, ent := range c.items {
@@ -218,7 +229,7 @@ func (c *fCache) EvictAll() {
 	for _, e := range toEvicts {
 		_ = c.onDelete(e)
 	}
-	return
+	return len(toEvicts)
 }
 
 func (c *fCache) Evict(key interface{}) bool {

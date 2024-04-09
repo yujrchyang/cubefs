@@ -2459,6 +2459,12 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 					break
 				}
 			}
+			for _, z := range m.cluster.flashNodeTopo.getAllZones() {
+				if zone == z.name {
+					err = nil
+					break
+				}
+			}
 			if err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return

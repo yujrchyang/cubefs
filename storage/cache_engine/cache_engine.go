@@ -28,9 +28,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
+
+var enableStack = atomic.Bool{}
 
 type cachePrepareTask struct {
 	request *proto.CacheRequest
@@ -44,7 +47,9 @@ type CacheConfig struct {
 }
 
 type CacheEngine struct {
-	dataPath           string
+	rootPath           string
+	initStore          func() error
+	dropStore          func() error
 	cachePrepareTaskCh chan *cachePrepareTask
 	lruCache           LruCache
 	locks              []*sync.RWMutex
@@ -58,11 +63,11 @@ type CacheEngine struct {
 type ReadExtentData func(source *proto.DataSource, w func(data []byte, off, size int64) error) (readBytes int, err error)
 type MonitorFunc func(volume string, action int) *statistics.TpObject
 
-func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64, capacity int, expireTime time.Duration, readFunc ReadExtentData, monitorFunc MonitorFunc) (s *CacheEngine, err error) {
+func NewCacheEngine(rootPath string, totalSize int64, maxUseRatio float64, capacity int, expireTime time.Duration, readFunc ReadExtentData, monitorFunc MonitorFunc) (s *CacheEngine, err error) {
 	s = new(CacheEngine)
-	s.dataPath = dataDir
-	if err = os.MkdirAll(dataDir, 0755); err != nil {
-		return nil, fmt.Errorf("NewCacheEngine [%v] err[%v]", dataDir, err)
+	s.rootPath = rootPath
+	if err = os.MkdirAll(rootPath, 0755); err != nil {
+		return nil, fmt.Errorf("NewCacheEngine [%v] err[%v]", rootPath, err)
 	}
 	s.cachePrepareTaskCh = make(chan *cachePrepareTask, 1024)
 	s.config = &CacheConfig{
@@ -79,11 +84,17 @@ func NewCacheEngine(dataDir string, totalSize int64, maxUseRatio float64, capaci
 		return nil
 	})
 	s.initCacheLock()
-	err = s.doMount()
-	if err != nil {
-		return
+
+	s.initStore = func() error {
+		return s.doMount()
+	}
+	s.dropStore = func() error {
+		return tmpfs.Umount(s.rootPath)
 	}
 
+	if err = s.initStore(); err != nil {
+		return
+	}
 	s.readSourceFunc = readFunc
 	s.monitorFunc = monitorFunc
 	s.closeC = make(chan bool, 1)
@@ -104,14 +115,13 @@ func (c *CacheEngine) Stop() (err error) {
 	close(c.closeC)
 	c.closed = true
 	time.Sleep(time.Second * 2)
-	log.LogInfof("CacheEngine stopped, umount tmpfs: %v.", c.dataPath)
-	err = tmpfs.Umount(c.dataPath)
-	return err
+	log.LogInfof("CacheEngine stopped, umount tmpfs: %v.", c.rootPath)
+	return c.dropStore()
 }
 
 func (c *CacheEngine) createInitFile() (err error) {
 	var fd *os.File
-	fd, err = os.OpenFile(c.dataPath+"/"+InitFileName, os.O_CREATE, 0666)
+	fd, err = os.OpenFile(c.rootPath+"/"+InitFileName, os.O_CREATE, 0666)
 	if err != nil {
 		return err
 	}
@@ -120,7 +130,7 @@ func (c *CacheEngine) createInitFile() (err error) {
 }
 
 func (c *CacheEngine) initFileExists() bool {
-	_, err := os.Stat(c.dataPath + "/" + InitFileName)
+	_, err := os.Stat(c.rootPath + "/" + InitFileName)
 	if err == nil {
 		return true
 	}
@@ -133,12 +143,12 @@ func (c *CacheEngine) scheduleCheckMount() {
 	for {
 		select {
 		case <-t.C:
-			mounted, err := tmpfs.IsMountPoint(c.dataPath)
+			mounted, err := tmpfs.IsMountPoint(c.rootPath)
 			if err != nil || !mounted {
 				exporter.WarningCritical(fmt.Sprintf("Mounted[%v], mount point error:%v", mounted, err))
 				continue
 			}
-			if mounted && !tmpfs.IsTmpfs(c.dataPath) {
+			if mounted && !tmpfs.IsTmpfs(c.rootPath) {
 				exporter.WarningCritical(fmt.Sprintf("Mounted[%v], mounted by other but not tmpfs!", mounted))
 			}
 		case <-c.closeC:
@@ -150,7 +160,7 @@ func (c *CacheEngine) scheduleCheckMount() {
 func (c *CacheEngine) doMount() (err error) {
 	var mounted bool
 	var fds []os.DirEntry
-	_, err = os.Stat(c.dataPath)
+	_, err = os.Stat(c.rootPath)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -158,22 +168,22 @@ func (c *CacheEngine) doMount() (err error) {
 		return c.initTmpfs()
 	}
 
-	mounted, err = tmpfs.IsMountPoint(c.dataPath)
+	mounted, err = tmpfs.IsMountPoint(c.rootPath)
 	if err != nil {
 		return err
 	}
-	if mounted && !tmpfs.IsTmpfs(c.dataPath) {
+	if mounted && !tmpfs.IsTmpfs(c.rootPath) {
 		err = fmt.Errorf("already mounted by another device")
 		return err
 	}
 	if mounted && c.initFileExists() {
-		err = tmpfs.Umount(c.dataPath)
+		err = tmpfs.Umount(c.rootPath)
 		if err != nil {
 			return err
 		}
 		return c.initTmpfs()
 	}
-	fds, err = os.ReadDir(c.dataPath)
+	fds, err = os.ReadDir(c.rootPath)
 	if err != nil {
 		return
 	}
@@ -185,7 +195,7 @@ func (c *CacheEngine) doMount() (err error) {
 }
 
 func (c *CacheEngine) initTmpfs() (err error) {
-	err = tmpfs.MountTmpfs(c.dataPath, c.config.Total)
+	err = tmpfs.MountTmpfs(c.rootPath, c.config.Total)
 	if err != nil {
 		return err
 	}
@@ -206,15 +216,17 @@ func (c *CacheEngine) GetCacheBlockForRead(volume string, inode, offset uint64, 
 	lock := c.getCacheLock(key)
 	lock.RLock()
 	defer lock.RUnlock()
-	if value, getErr := c.lruCache.Get(key); getErr == nil {
+	var value interface{}
+	value, err = c.lruCache.Get(key)
+	if err == nil {
 		block = value.(*CacheBlock)
-		toObj := c.monitorFunc(volume, proto.ActionCacheHit)
-		toObj.AfterTp(size)
 		return
 	}
-	toObj := c.monitorFunc(volume, proto.ActionCacheMiss)
-	toObj.AfterTp(0)
-	return nil, errors.New("cache block get failed")
+	if err == CacheExpireError {
+		toObject := c.monitorFunc(volume, proto.ActionCacheExpire)
+		toObject.AfterTp(size)
+	}
+	return nil, fmt.Errorf("GetCacheBlockForRead, key[%v], err:%v", key, err)
 }
 
 func (c *CacheEngine) PeekCacheBlock(key string) (block *CacheBlock, err error) {
@@ -247,7 +259,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		block = value.(*CacheBlock)
 		return
 	}
-	block = NewCacheBlock(c.dataPath, volume, inode, fixedOffset, version, allocSize, c.readSourceFunc)
+	block = NewCacheBlock(c.rootPath, volume, inode, fixedOffset, version, allocSize, c.readSourceFunc)
 	var n int
 	if ttl <= 0 {
 		ttl = proto.DefaultCacheTTLSec
@@ -257,7 +269,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	if err != nil {
 		return
 	}
-	err = block.initFilePath()
+	err = block.initCacheStore()
 	if n > 0 {
 		toObj := c.monitorFunc(volume, proto.ActionCacheEvict)
 		toObj.AfterTp(uint64(n))
@@ -267,7 +279,7 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 
 func (c *CacheEngine) usedSize() (size int64) {
 	stat := syscall.Statfs_t{}
-	err := syscall.Statfs(c.dataPath, &stat)
+	err := syscall.Statfs(c.rootPath, &stat)
 	if err != nil {
 		log.LogErrorf("compute used size of cache engine, err:%v", err)
 		return
@@ -344,19 +356,22 @@ func (c *CacheEngine) Status() *proto.CacheStatus {
 		Evicts:   c.lruCache.RecentEvict(),
 		Capacity: c.config.Capacity,
 	}
-	for _, k := range lruStat.Keys {
-		stat.Keys = append(stat.Keys, k.(string))
-	}
 	stat.Used = c.usedSize()
 	return stat
 }
 
-func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interface{}) {
-	stat := c.lruCache.Status()
+func (c *CacheEngine) Keys() []interface{} {
+	return c.lruCache.Keys()
+}
+
+func (c *CacheEngine) EvictVolumeCache(evictVol string) (failedKeys []interface{}) {
+	keys := c.lruCache.Keys()
 	failedKeys = make([]interface{}, 0)
-	for _, k := range stat.Keys {
-		vol := strings.Split(k.(string), "#")[0]
+	var count int
+	for _, k := range keys {
+		vol := strings.Split(k.(string), "/")[0]
 		if evictVol == vol {
+			count++
 			c.getCacheLock(k.(string)).Lock()
 			if !c.lruCache.Evict(k) {
 				failedKeys = append(failedKeys, k)
@@ -364,15 +379,41 @@ func (c *CacheEngine) EvictCacheByVolume(evictVol string) (failedKeys []interfac
 			c.getCacheLock(k.(string)).Unlock()
 		}
 	}
-	log.LogWarnf("action[EvictCacheByVolume] evict volume(%v) finish", evictVol)
+	log.LogWarnf("action[EvictVolumeCache] evict volume(%v) finish, all:%v, failed:%v", evictVol, count, len(failedKeys))
 	return
 }
 
-func (c *CacheEngine) EvictCacheAll() {
+func (c *CacheEngine) EvictInodeCache(vol string, inode uint64) (failedKeys []interface{}) {
+	keys := c.lruCache.Keys()
+	failedKeys = make([]interface{}, 0)
+	prefix := fmt.Sprintf("%v/%v", vol, inode)
+	for _, k := range keys {
+		pre := strings.Split(k.(string), "#")[0]
+		if prefix == pre {
+			c.getCacheLock(k.(string)).Lock()
+			if !c.lruCache.Evict(k) {
+				failedKeys = append(failedKeys, k)
+			}
+			c.getCacheLock(k.(string)).Unlock()
+		}
+	}
+	log.LogWarnf("action[EvictInodeCache] evict volume(%v) inode(%v) finish", vol, inode)
+	return
+}
+
+func (c *CacheEngine) EvictAllCache() {
 	c.lockAll()
 	defer c.unlockAll()
 	c.lruCache.EvictAll()
-	log.LogWarnf("action[EvictCacheAll] evict all finish")
+	log.LogWarnf("action[EvictAllCache] evict all finish")
+}
+
+func (c *CacheEngine) SetCacheStackEnable(enable bool) {
+	enableStack.Store(enable)
+}
+
+func (c *CacheEngine) GetCacheStackEnable() bool {
+	return enableStack.Load()
 }
 
 func (c *CacheEngine) lockAll() {
@@ -381,6 +422,7 @@ func (c *CacheEngine) lockAll() {
 		wg.Add(1)
 		go func(lock *sync.RWMutex) {
 			lock.Lock()
+			wg.Done()
 		}(l)
 	}
 	wg.Wait()
@@ -392,6 +434,7 @@ func (c *CacheEngine) unlockAll() {
 		wg.Add(1)
 		go func(lock *sync.RWMutex) {
 			lock.Unlock()
+			wg.Done()
 		}(l)
 	}
 	wg.Wait()

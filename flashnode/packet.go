@@ -58,9 +58,6 @@ func (p *Packet) ReadFromClient(reader io.Reader) (err error) {
 		return syscall.EBADMSG
 	}
 	size := p.Size
-	if (p.Opcode == proto.OpRead || p.Opcode == proto.OpStreamRead || p.Opcode == proto.OpExtentRepairRead || p.Opcode == proto.OpStreamFollowerRead) && p.ResultCode == proto.OpInitResultCode {
-		size = 0
-	}
 	p.Data = make([]byte, size)
 	if n, err = io.ReadFull(reader, p.Data[:size]); err != nil {
 		return err

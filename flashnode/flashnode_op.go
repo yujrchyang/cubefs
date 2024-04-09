@@ -31,6 +31,8 @@ import (
 	"time"
 )
 
+var cacheReadTimeoutMs = proto.DefaultReadCacheTimeoutMs
+
 func (f *FlashNode) preHandle(conn net.Conn, p *Packet) error {
 	if p.Opcode == proto.OpCachePrepare || p.Opcode == proto.OpCacheRead {
 		if f.cacheEngine == nil {
@@ -113,28 +115,45 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 		if log.IsWarnEnabled() {
 			log.LogWarnf("action[preHandle] %s, remote address:%s", err.Error(), remoteAddr)
 		}
-		metric := exporter.NewModuleTP("VolReqLimit")
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		_ = respondToClient(conn, p)
 		err = nil
-		metric.Set(nil)
 		return
 	}
-	toObj := f.BeforeTp(volume, proto.ActionCacheRead)
-	defer toObj.AfterTp(req.Size_)
+	volTp := exporter.NewModuleTP(fmt.Sprintf("%v_CacheRead", volume))
+	monitor := f.BeforeTp(volume, proto.ActionCacheRead)
+	defer func() {
+		volTp.Set(err)
+		monitor.AfterTp(req.Size_)
+	}()
+
 	if block, err = f.cacheEngine.GetCacheBlockForRead(volume, req.CacheRequest.Inode, req.CacheRequest.FixedFileOffset, req.CacheRequest.Version, req.Size_); err != nil {
 		if block, err = f.cacheEngine.CreateBlock(req.CacheRequest); err != nil {
 			return err
 		}
 		go block.InitOnce(f.cacheEngine, req.CacheRequest.Sources)
 	}
-	if err = f.doStreamReadRequest(ctx, conn, req, p, block); err != nil {
+	if err = f.waitCacheReady(ctx, req, block); err != nil {
+		return err
+	}
+	if err = f.doStreamReadRequest(conn, req, p, block); err != nil {
 		return
 	}
 	return
 }
 
-func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req *proto.CacheReadRequest, p *Packet, block *cache_engine.CacheBlock) (err error) {
+func (f *FlashNode) waitCacheReady(ctx context.Context, req *proto.CacheReadRequest, block *cache_engine.CacheBlock) (err error) {
+	hitObject := f.BeforeTp(req.CacheRequest.Volume, proto.ActionCacheHit)
+	missObject := f.BeforeTp(req.CacheRequest.Volume, proto.ActionCacheMiss)
+	if err = block.Wait(ctx, int64(req.Offset), int64(req.Size_)); err != nil {
+		missObject.AfterTp(req.Size_)
+	} else {
+		hitObject.AfterTp(req.Size_)
+	}
+	return
+}
+
+func (f *FlashNode) doStreamReadRequest(conn net.Conn, req *proto.CacheReadRequest, p *Packet, block *cache_engine.CacheBlock) (err error) {
 	needReplySize := uint32(req.Size_)
 	offset := int64(req.Offset)
 	defer func() {
@@ -160,12 +179,7 @@ func (f *FlashNode) doStreamReadRequest(ctx context.Context, conn net.Conn, req 
 		reply.ExtentOffset = offset
 		p.Size = currReadSize
 		p.ExtentOffset = offset
-
-		err = func() error {
-			var storeErr error
-			reply.CRC, storeErr = block.Read(ctx, reply.Data[0:currReadSize], offset, int64(currReadSize))
-			return storeErr
-		}()
+		reply.CRC, err = block.Read(reply.Data[0:currReadSize], offset, int64(currReadSize))
 		p.CRC = reply.CRC
 		if err != nil {
 			if currReadSize == unit.ReadBlockSize {
@@ -319,13 +333,13 @@ func respondToClient(conn net.Conn, p *Packet) (err error) {
 }
 
 func (f *FlashNode) contextMaker() {
-	t := time.NewTicker(proto.ReadCacheTimeout * time.Second)
-	f.currentCtx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second*2)
+	t := time.NewTicker(time.Duration(cacheReadTimeoutMs) * time.Millisecond)
+	f.currentCtx, _ = context.WithTimeout(context.Background(), time.Duration(cacheReadTimeoutMs)*time.Millisecond*2)
 	defer t.Stop()
 	for {
 		select {
 		case <-t.C:
-			f.currentCtx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second*2)
+			f.currentCtx, _ = context.WithTimeout(context.Background(), time.Duration(cacheReadTimeoutMs)*time.Millisecond*2)
 		case <-f.stopCh:
 			return
 		}
@@ -335,7 +349,7 @@ func (f *FlashNode) contextMaker() {
 func (f *FlashNode) getContext() (ctx context.Context) {
 	ctx = f.currentCtx
 	if ctx == nil {
-		ctx, _ = context.WithTimeout(context.Background(), proto.ReadCacheTimeout*time.Second)
+		ctx, _ = context.WithTimeout(context.Background(), time.Duration(cacheReadTimeoutMs)*time.Millisecond)
 	}
 	return ctx
 }

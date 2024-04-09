@@ -16,8 +16,13 @@ package flashnode
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/cpu"
+	"github.com/cubefs/cubefs/util/diskusage"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ping"
+	"github.com/cubefs/cubefs/util/unit"
 	"net/http"
 	"strconv"
 )
@@ -26,9 +31,13 @@ import (
 func (f *FlashNode) registerAPIHandler() (err error) {
 	http.HandleFunc(proto.VersionPath, f.getVersion)
 	http.HandleFunc("/stat", f.getCacheStatHandler)
+	http.HandleFunc("/keys", f.getKeysHandler)
 	http.HandleFunc("/evictVol", f.evictVolumeCacheHandler)
 	http.HandleFunc("/evictAll", f.evictAllCacheHandler)
-
+	http.HandleFunc("/evictInode", f.evictInodeHandler)
+	http.HandleFunc("/stat/info", f.getStatInfo)
+	http.HandleFunc("/stack/set", f.setStackEnable)
+	http.HandleFunc("/setTimeout", f.setReadTimeout)
 	return
 }
 
@@ -43,10 +52,18 @@ func (f *FlashNode) getVersion(w http.ResponseWriter, _ *http.Request) {
 
 func (f *FlashNode) getCacheStatHandler(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: &proto.FlashNodeStat{
-		NodeLimit:   f.nodeLimit,
-		VolLimit:    f.volLimitMap,
-		CacheStatus: f.cacheEngine.Status(),
+		NodeLimit:          f.nodeLimit,
+		VolLimit:           f.volLimitMap,
+		CacheStatus:        f.cacheEngine.Status(),
+		EnableStack:        f.cacheEngine.GetCacheStackEnable(),
+		EnablePing:         ping.GetPingEnable(),
+		CacheReadTimeoutMs: cacheReadTimeoutMs,
 	}, Msg: "ok"})
+	return
+}
+
+func (f *FlashNode) getKeysHandler(w http.ResponseWriter, r *http.Request) {
+	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: f.cacheEngine.Keys(), Msg: "ok"})
 	return
 }
 
@@ -61,21 +78,151 @@ func (f *FlashNode) evictVolumeCacheHandler(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: "volume name can not be empty"})
 		return
 	}
-	failedKeys = f.cacheEngine.EvictCacheByVolume(volume)
+	failedKeys = f.cacheEngine.EvictVolumeCache(volume)
 	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: failedKeys, Msg: "ok"})
 	return
 }
 
 func (f *FlashNode) evictAllCacheHandler(w http.ResponseWriter, r *http.Request) {
-	f.cacheEngine.EvictCacheAll()
+	f.cacheEngine.EvictAllCache()
 	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Msg: "ok"})
 	return
+}
+
+func (f *FlashNode) evictInodeHandler(w http.ResponseWriter, r *http.Request) {
+	var (
+		volume     string
+		inode      uint64
+		err        error
+		failedKeys []interface{}
+	)
+	r.ParseForm()
+	volume = r.FormValue(VolumePara)
+	if volume == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: "volume name can not be empty"})
+		return
+	}
+	inodeStr := r.FormValue(InodePara)
+	if inodeStr == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: "inode can not be empty"})
+		return
+	}
+	inode, err = strconv.ParseUint(inodeStr, 10, 64)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: err.Error()})
+		return
+	}
+	failedKeys = f.cacheEngine.EvictInodeCache(volume, inode)
+	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: failedKeys, Msg: "ok"})
 }
 
 func (f *FlashNode) stopHandler(w http.ResponseWriter, r *http.Request) {
 	f.stopServer()
 	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Msg: "ok"})
 	return
+}
+
+func (f *FlashNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
+	if f.processStatInfo == nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusInternalServerError, Msg: "flash node is not initialized"})
+		return
+	}
+	//get process stat info
+	cpuUsageList, maxCPUUsage := f.processStatInfo.GetProcessCPUStatInfo()
+	_, memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := f.processStatInfo.GetProcessMemoryStatInfo()
+
+	diskTotal, err := diskusage.GetDiskTotal(f.tmpfsPath)
+	if err != nil {
+		diskTotal = f.total
+	}
+
+	tmpfs := &struct {
+		Path     string  `json:"path"`
+		TotalGB  float64 `json:"totalGB"`
+		MaxUseGB float64 `json:"maxUseGB"`
+	}{
+		Path:     f.tmpfsPath,
+		TotalGB:  unit.FixedPoint(float64(diskTotal)/unit.GB, 1),
+		MaxUseGB: unit.FixedPoint(float64(f.cacheEngine.Status().MaxAlloc)/unit.GB, 1),
+	}
+
+	result := &struct {
+		Type           string      `json:"type"`
+		Zone           string      `json:"zone"`
+		Version        interface{} `json:"versionInfo"`
+		StartTime      string      `json:"startTime"`
+		CPUUsageList   []float64   `json:"cpuUsageList"`
+		MaxCPUUsage    float64     `json:"maxCPUUsage"`
+		CPUCoreNumber  int         `json:"cpuCoreNumber"`
+		MemoryUsedList []float64   `json:"memoryUsedGBList"`
+		MaxMemoryUsed  float64     `json:"maxMemoryUsedGB"`
+		MaxMemoryUsage float64     `json:"maxMemoryUsage"`
+		TmpfsInfo      interface{} `json:"tmpfsInfo"`
+	}{
+		Type:           ModuleName,
+		Zone:           f.zoneName,
+		Version:        proto.MakeVersion("FlashNode"),
+		StartTime:      f.processStatInfo.ProcessStartTime,
+		CPUUsageList:   cpuUsageList,
+		MaxCPUUsage:    maxCPUUsage,
+		CPUCoreNumber:  cpu.GetCPUCoreNumber(),
+		MemoryUsedList: memoryUsedGBList,
+		MaxMemoryUsed:  maxMemoryUsedGB,
+		MaxMemoryUsage: maxMemoryUsage,
+		TmpfsInfo:      tmpfs,
+	}
+	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: result})
+}
+
+func (f *FlashNode) setStackEnable(w http.ResponseWriter, r *http.Request) {
+	val := r.FormValue("enable")
+	if val == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusInternalServerError, Msg: "parameter enable is empty"})
+		return
+	}
+	enable, err := strconv.ParseBool(val)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusInternalServerError, Msg: err.Error()})
+		return
+	}
+	if f.cacheEngine == nil {
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusInternalServerError, Msg: "cache engine is nil"})
+			return
+		}
+	}
+	f.cacheEngine.SetCacheStackEnable(enable)
+	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: fmt.Sprintf("set stack enable to:%v success", enable)})
+}
+
+func (f *FlashNode) setReadTimeout(w http.ResponseWriter, r *http.Request) {
+	val := r.FormValue("ms")
+	if val == "" {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: "parameter ms is empty"})
+		return
+	}
+	ms, err := strconv.Atoi(val)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: err.Error()})
+		return
+	}
+	if ms > proto.MaxReadCacheTimeoutMs {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: fmt.Sprintf("ms can not be more than %v", proto.MaxReadCacheTimeoutMs)})
+		return
+	}
+	if ms < proto.MinReadCacheTimeoutMs {
+		sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusBadRequest, Msg: fmt.Sprintf("ms can not be less than %v", proto.MinReadCacheTimeoutMs)})
+		return
+	}
+	if f.cacheEngine == nil {
+		if err != nil {
+			sendErrReply(w, r, &proto.HTTPReply{Code: http.StatusInternalServerError, Msg: "cache engine is nil"})
+			return
+		}
+	}
+	old := cacheReadTimeoutMs
+	cacheReadTimeoutMs = ms
+	sendOkReply(w, r, &proto.HTTPReply{Code: http.StatusOK, Data: fmt.Sprintf("set cache read timeout from %v to %v success", old, ms)})
 }
 
 func sendOkReply(w http.ResponseWriter, r *http.Request, httpReply *proto.HTTPReply) (err error) {

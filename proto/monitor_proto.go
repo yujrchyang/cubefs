@@ -108,6 +108,7 @@ const (
 	ActionCacheEvict
 	ActionCacheHit
 	ActionCacheMiss
+	ActionCacheExpire
 )
 
 var ActionFlashMap = map[int]string{
@@ -116,4 +117,5 @@ var ActionFlashMap = map[int]string{
 	ActionCacheEvict:   "evict",
 	ActionCacheHit:     "hit",
 	ActionCacheMiss:    "miss",
+	ActionCacheExpire:  "expire",
 }

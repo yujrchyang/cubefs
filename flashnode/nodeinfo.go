@@ -15,7 +15,9 @@
 package flashnode
 
 import (
+	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/time/rate"
 	"reflect"
@@ -102,5 +104,12 @@ func (f *FlashNode) volLimitAllow(vol string) bool {
 	if !ok {
 		return true
 	}
-	return limiter.Allow()
+	allow := limiter.Allow()
+	if !allow {
+		metric := exporter.NewModuleTPUs("VolLimit")
+		metric.Set(nil)
+		volMetric := exporter.NewModuleTPUs(fmt.Sprintf("%v_VolLimit", vol))
+		volMetric.Set(nil)
+	}
+	return allow
 }

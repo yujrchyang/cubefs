@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/cubefs/cubefs/util/ping"
 	"net"
 	"strconv"
 	"strings"
@@ -39,6 +40,8 @@ import (
 	"golang.org/x/time/rate"
 )
 
+var ModuleName = "flashNode"
+
 // The FlashNode manages the inode block cache to speed the file reading.
 type FlashNode struct {
 	nodeId          uint64
@@ -47,7 +50,7 @@ type FlashNode struct {
 	cacheEngine     *cache_engine.CacheEngine
 	localAddr       string
 	clusterId       string
-	tmpPath         string
+	tmpfsPath       string
 	zoneName        string
 	total           uint64
 	monitorData     []*statistics.MonitorData
@@ -99,7 +102,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	f.stopCh = make(chan bool, 0)
-	f.tmpPath = TmpfsPath
+	f.tmpfsPath = TmpfsPath
 	if err = f.register(); err != nil {
 		return
 	}
@@ -110,6 +113,20 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 	go f.startUpdateScheduler()
 
+	err = ping.StartDefaultClient(func() ([]string, error) {
+		dataNodes := make([]string, 0)
+		cluster, e := masterClient.AdminAPI().GetCluster()
+		if e != nil {
+			return nil, e
+		}
+		for _, n := range cluster.DataNodes {
+			dataNodes = append(dataNodes, n.Addr)
+		}
+		return dataNodes, nil
+	})
+	if err != nil {
+		return
+	}
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(f.clusterId).WithModule(moduleName).WithZone(f.zoneName))
 	if err = f.startTcpServer(); err != nil {
 		return
@@ -120,6 +137,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		return
 	}
 	statistics.InitStatistics(cfg, f.clusterId, statistics.ModelFlashNode, f.zoneName, f.localAddr, f.rangeMonitorData)
+	f.startUpdateProcessStatInfo()
 	return
 }
 
@@ -132,6 +150,7 @@ func doShutdown(s common.Server) {
 	// shutdown node and release the resource
 	f.stopServer()
 	f.stopCacheEngine()
+	ping.StopDefaultClient()
 }
 
 func (f *FlashNode) parseConfig(cfg *config.Config) (err error) {
@@ -205,7 +224,7 @@ func (f *FlashNode) stopCacheEngine() {
 }
 
 func (f *FlashNode) startCacheEngine() (err error) {
-	if f.cacheEngine, err = cache_engine.NewCacheEngine(f.tmpPath, int64(f.total), cache_engine.DefaultCacheMaxUsedRatio, LruCacheDefaultCapacity, time.Hour, f.readSource.ReadExtentData, f.BeforeTp); err != nil {
+	if f.cacheEngine, err = cache_engine.NewCacheEngine(f.tmpfsPath, int64(f.total), cache_engine.DefaultCacheMaxUsedRatio, LruCacheDefaultCapacity, time.Hour, f.readSource.ReadExtentData, f.BeforeTp); err != nil {
 		log.LogErrorf("start CacheEngine failed: %v", err)
 		return
 	}
@@ -252,4 +271,10 @@ func (f *FlashNode) register() (err error) {
 		return
 	}
 	return
+}
+
+func (f *FlashNode) startUpdateProcessStatInfo() {
+	f.processStatInfo = statinfo.NewProcessStatInfo()
+	f.processStatInfo.ProcessStartTime = time.Now().Format("2006-01-02 15:04:05")
+	go f.processStatInfo.UpdateStatInfoSchedule()
 }

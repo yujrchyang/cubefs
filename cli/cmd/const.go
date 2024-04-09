@@ -47,6 +47,10 @@ const (
 	CliOpCheckSnapshot      = "check-snapshot"
 	CliOpSetClientPkgAddr   = "client-package-addr"
 	CliOpSetNodeSetCapacity = "node_set_capacity"
+	CliOpEvict              = "evict"
+	CliOpEvictAll           = "evict-all"
+	CliOpSetPing            = "setPing"
+	CliOpSetStack           = "setStack"
 
 	CliOpSetRocksDBDiskThreshold        = "rocksdb-threshold"
 	CliOpSetMemModeRocksDBDiskThreshold = "mem-rocksdb-threshold"
