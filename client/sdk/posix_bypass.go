@@ -35,6 +35,9 @@ package main
 #include <sys/uio.h>
 #include <unistd.h>
 
+// support libc versions before 2.14
+__asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+
 typedef struct {
     int ignore_sighup;
 	int ignore_sigterm;

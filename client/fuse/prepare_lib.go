@@ -20,8 +20,7 @@ import (
 var (
 	configFile       = flag.String("c", "", "FUSE client config file")
 	configForeground = flag.Bool("f", false, "run foreground")
-	configVersion    = flag.Bool("v", false, "Show client version")
-	configUseVersion = flag.String("u", "", "Use this client version, GLIBC_2.14 or newer is required")
+	configUseVersion = flag.String("u", "", "Use this client version")
 )
 
 const (

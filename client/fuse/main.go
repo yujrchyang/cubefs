@@ -15,6 +15,8 @@ import (
 )
 
 var (
+	configVersion = flag.Bool("v", false, "Show client version")
+
 	startClient func(string, *os.File, []byte) error
 	stopClient  func() []byte
 	getFuseFd   func() *os.File

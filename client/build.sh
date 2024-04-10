@@ -106,11 +106,11 @@ have_statx() {
 build_client_dynamic() {
     echo "building client (cfs-client cfs-client-inner cfs-client-static libcfsclient.so libcfsc.so libempty.so) ..."
 
-    # dynamic fuse client, for libc version >= 2.14
+    # dynamic fuse client
     go build -ldflags "${goflag}" -o ${bin}/cfs-client ${dir}/fuse/run_fuse_client.go ${dir}/fuse/prepare_lib.go
     go build -ldflags "${goflag} -r /usr/lib64" -linkshared -o ${bin}/cfs-client-inner ${dir}/fuse/main.go ${dir}/fuse/prepare_lib.go
 
-    # static fuse client, for libc version < 2.14
+    # static fuse client
     go build -ldflags "${goflag} -X main.BranchName=${BranchName} -X main.CommitID=${CommitID} -X 'main.BuildTime=${BuildTime}'" -o ${bin}/cfs-client-static ${dir}/sdk/sdk_fuse.go ${dir}/sdk/http_fuse.go ${dir}/sdk/http_common.go
 
     gcc ${gccflag} -std=c99 -fPIC -shared $(have_statx) -DDYNAMIC_UPDATE -o ${bin}/libcfsclient.so ${dir}/bypass/main.c ${dir}/bypass/libc_operation.c -ldl -lpthread -I ${dir}/bypass/include

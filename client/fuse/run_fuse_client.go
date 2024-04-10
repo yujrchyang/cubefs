@@ -4,33 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"runtime"
-	"strconv"
-	"strings"
 	"syscall"
 )
-
-const (
-	GLIBCRequired = 214
-)
-
-func getGLIBCVersion() int64 {
-	version, err := exec.Command("bash", "-c", "ldd --version |awk 'NR==1{print}' |awk '{print $NF}'").Output()
-	if err != nil {
-		fmt.Printf("get glibc version err: %v\n", err)
-		os.Exit(1)
-	}
-
-	verStr := strings.Replace(string(version), "\n", "", -1)
-	verStr = strings.Replace(verStr, ".", "", -1)
-	ver, err := strconv.ParseInt(verStr, 10, 64)
-	if err != nil {
-		fmt.Printf("parse glibc version err: %v\n", err)
-		os.Exit(1)
-	}
-	return ver
-}
 
 func main() {
 	flag.Parse()
@@ -70,13 +46,8 @@ func main() {
 		}
 	}
 
-	useDynamicLibs := getGLIBCVersion() >= GLIBCRequired
-	mainFile := MainBinary
-	if !useDynamicLibs {
-		mainFile = MainStaticBinary
-	}
 	exeFile := os.Args[0]
-	if err = moveFile(mainFile, exeFile+".tmp"); err != nil {
+	if err = moveFile(MainBinary, exeFile+".tmp"); err != nil {
 		fmt.Printf("%v\n", err.Error())
 		os.Exit(1)
 	}
@@ -85,8 +56,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	env := os.Environ()
-	execErr := syscall.Exec(exeFile, os.Args, env)
+	execErr := syscall.Exec(exeFile, os.Args, os.Environ())
 	if execErr != nil {
 		fmt.Printf("exec %s %v error: %v\n", exeFile, os.Args, execErr)
 		os.Exit(1)
