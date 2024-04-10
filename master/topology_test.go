@@ -163,6 +163,7 @@ func TestAllocZones(t *testing.T) {
 	}
 	cluster := new(Cluster)
 	cluster.t = topo
+	cluster.flashNodeTopo = newFlashNodeTopology()
 	cluster.cfg = newClusterConfig()
 	cluster.cfg.DataPartitionsRecoverPoolSize = maxDataPartitionsRecoverPoolSize
 	cluster.cfg.MetaPartitionsRecoverPoolSize = maxMetaPartitionsRecoverPoolSize

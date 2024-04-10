@@ -1,7 +1,6 @@
 package cache_engine
 
 import (
-	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"os"
 )
@@ -42,11 +41,6 @@ func (s *FileStore) ReadAt(data []byte, offset int64) (int, error) {
 }
 
 func (s *FileStore) WriteAt(data []byte, offset int64) (int, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogCriticalf("recover from panic, r:%v", r)
-		}
-	}()
 	return s.fd.WriteAt(data, offset)
 }
 
@@ -76,11 +70,6 @@ func (s *MemoryStore) ReadAt(data []byte, offset int64) (int, error) {
 }
 
 func (s *MemoryStore) WriteAt(data []byte, offset int64) (int, error) {
-	defer func() {
-		if r := recover(); r != nil {
-			log.LogCriticalf("recover from panic, r:%v", r)
-		}
-	}()
 	if int64(len(data))+offset > int64(len(s.data)) {
 		return 0, io.EOF
 	}

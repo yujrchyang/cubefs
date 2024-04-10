@@ -31,3 +31,7 @@ func ForceRefreshPing() {
 func GetPingEnable() bool {
 	return defaultPingClient.GetPingEnable()
 }
+
+func EnablePingSort(enable bool) {
+	defaultPingClient.SetPingEnable(enable)
+}

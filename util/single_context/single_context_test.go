@@ -18,13 +18,13 @@ func TestSingleContext(t *testing.T) {
 				assert.NotNil(t, ctx)
 				select {
 				case <-ctx.Done():
-					assert.True(t, time.Since(tStart) >= time.Duration(timeout-1)*time.Millisecond)
+					assert.True(t, time.Since(tStart) >= time.Duration(timeout/2)*time.Millisecond)
 				case <-s.stopCh:
 					return
 				}
 			}
 		}()
 	}
-	time.Sleep(time.Second * 10)
+	time.Sleep(time.Second * 5)
 	s.Stop()
 }

@@ -127,7 +127,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 		if block, err = f.cacheEngine.CreateBlock(req.CacheRequest); err != nil {
 			return err
 		}
-		go block.InitOnce(f.cacheEngine, req.CacheRequest.Sources)
+		go f.cacheEngine.InitBlock(block, req.CacheRequest.Sources)
 	}
 
 	if !f.isBlockReady(req.CacheRequest.Volume, block, req.Offset, req.Size_) {
@@ -274,6 +274,11 @@ func (f *FlashNode) dispatchRequestToFollowers(request *proto.CachePrepareReques
 
 func (f *FlashNode) sendPrepareRequest(req *proto.CachePrepareRequest, target string) (err error) {
 	var conn *net.TCPConn
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("recover from panic: %v", r)
+		}
+	}()
 	conn, err = f.connPool.GetConnect(target)
 	if err != nil {
 		return err

@@ -252,8 +252,8 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 	var key = GenCacheBlockKey(volume, inode, fixedOffset, version)
 	lock := c.getCacheLock(key)
 	lock.Lock()
+	defer lock.Unlock()
 	if value, get := c.lruCache.Peek(key); get {
-		lock.Unlock()
 		block = value.(*CacheBlock)
 		return
 	}
@@ -263,7 +263,6 @@ func (c *CacheEngine) createCacheBlock(volume string, inode, fixedOffset uint64,
 		ttl = proto.DefaultCacheTTLSec
 	}
 	n, err = c.lruCache.Set(key, block, time.Duration(ttl)*time.Second)
-	lock.Unlock()
 	if err != nil {
 		return
 	}
@@ -299,7 +298,7 @@ func (c *CacheEngine) startCachePrepareWorkers() {
 						log.LogWarnf("action[startCachePrepareWorkers] ReqID(%d) cache block not found, err:%v", task.reqID, err)
 						continue
 					}
-					block.InitOnce(c, task.request.Sources)
+					c.InitBlock(block, task.request.Sources)
 				}
 			}
 		}()
@@ -411,6 +410,20 @@ func (c *CacheEngine) SetCacheStackEnable(enable bool) {
 
 func (c *CacheEngine) GetCacheStackEnable() bool {
 	return gEnableStack.Load()
+}
+
+func (c *CacheEngine) InitBlock(block *CacheBlock, sources []*proto.DataSource) {
+	defer func() {
+		if r := recover(); r != nil {
+			warnMsg := fmt.Sprintf("cache block init occurred panic:%v", r)
+			log.LogErrorf(warnMsg)
+			exporter.Warning(warnMsg)
+		}
+	}()
+	block.initOnce.Do(func() {
+		block.Init(sources, c)
+	})
+	return
 }
 
 func (c *CacheEngine) lockAll() {

@@ -93,10 +93,10 @@ func (t *flashNodeTopology) putZoneIfAbsent(zone *FlashNodeZone) (beStoredZone *
 	return
 }
 
-func (t *flashNodeTopology) getAllZones() (zones []*Zone) {
-	zones = make([]*Zone, 0)
+func (t *flashNodeTopology) getAllZones() (zones []*FlashNodeZone) {
+	zones = make([]*FlashNodeZone, 0)
 	t.zoneMap.Range(func(zoneName, value interface{}) bool {
-		zone := value.(*Zone)
+		zone := value.(*FlashNodeZone)
 		zones = append(zones, zone)
 		return true
 	})

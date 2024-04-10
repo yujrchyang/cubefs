@@ -218,7 +218,7 @@ func (client *PingClient) refreshIPList() (err error) {
 	var hosts []string
 	hosts, err = client.getIpList()
 	if err != nil {
-		log.LogError("get hosts failed, err:%v", err)
+		log.LogErrorf("get hosts failed, err:%v", err)
 		return
 	}
 

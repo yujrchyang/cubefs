@@ -13,25 +13,25 @@ func TestBaseConcurrency(t *testing.T) {
 	mc := NewMultiConcurrency()
 	opread := 1
 	ctx := context.Background()
-	mc.addRule(opread, 1, 2*time.Millisecond)
-	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1"))
-	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk2"))
-	assert.NotNil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1"))
+	mc.addRule(opread, 1, 20*time.Millisecond)
+	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1"))    // no delay
+	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk2"))    // no delay
+	assert.NotNil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1")) // 20 ms delay
 	go func() {
-		time.Sleep(time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 		mc.Done(opread, "/disk1")
 	}()
-	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1"))
-	assert.NotNil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1"))
+	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1"))    // 10 ms delay, mc.done, get token
+	assert.NotNil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1")) // 20 ms delay
 
-	mc.addRule(opread, 2, time.Millisecond)
-	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1"))
-	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1"))
+	mc.addRule(opread, 2, 100*time.Millisecond)
+	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1")) // no delay
+	assert.Nil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1")) // no delay
 	go func() {
-		time.Sleep(1500 * time.Microsecond)
+		time.Sleep(200 * time.Millisecond)
 		mc.Done(opread, "/disk1")
 	}()
-	assert.NotNil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1"))
+	assert.NotNil(t, mc.WaitUseDefaultTimeout(ctx, opread, "/disk1")) // 100 ms delay, timeout
 }
 
 func TestCancelConcurrency(t *testing.T) {

@@ -46,10 +46,11 @@ type CacheBlock struct {
 	readSource  ReadExtentData
 	initOnce    sync.Once
 
-	stacks  *stackmerge.StackList
-	ready   atomic.Bool
-	readyCh chan struct{}
-	closeCh chan struct{}
+	stacks    *stackmerge.StackList
+	ready     atomic.Bool
+	closeOnce sync.Once
+	readyCh   chan struct{}
+	closeCh   chan struct{}
 	sync.Mutex
 }
 
@@ -76,21 +77,32 @@ func (cb *CacheBlock) String() string {
 }
 
 // Close this extent and release FD.
-func (cb *CacheBlock) Close() (err error) {
+func (cb *CacheBlock) Close() {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("key(%v) recover on close:%v", cb.blockKey, r)
 		}
 	}()
-	close(cb.closeCh)
-	return cb.store.Close()
+	cb.closeOnce.Do(func() {
+		if cb.closeCh != nil {
+			close(cb.closeCh)
+		}
+		if cb.store != nil {
+			cb.store.Close()
+		}
+	})
 }
 
 func (cb *CacheBlock) Delete() (err error) {
-	if !cb.Exist() {
+	var exist bool
+	exist, err = cb.Exist()
+	if err != nil {
+		return err
+	}
+	if !exist {
 		return
 	}
-	_ = cb.Close()
+	cb.Close()
 	err = os.Remove(cb.filePath)
 	if err != nil {
 		return err
@@ -98,22 +110,22 @@ func (cb *CacheBlock) Delete() (err error) {
 	return
 }
 
-func (cb *CacheBlock) Exist() (exsit bool) {
-	_, err := os.Stat(cb.filePath)
+func (cb *CacheBlock) Exist() (exsit bool, err error) {
+	_, err = os.Stat(cb.filePath)
 	if err != nil {
-		if os.IsExist(err) {
-			return true
+		if os.IsNotExist(err) {
+			return false, nil
 		}
-		return false
+		return false, err
 	}
-	return true
+	return true, nil
 }
 
 // WriteAt writes data to an cacheBlock, it is allowed to write at anywhere for sparse file
 func (cb *CacheBlock) WriteAt(data []byte, offset, size int64) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("write panic: %v", r)
+			err = fmt.Errorf("write panic: %v, blockKey:%v dataLen:%v offset:%v size:%v", r, cb.blockKey, len(data), offset, size)
 		}
 	}()
 	if err = cb.checkWriteOffsetAndSize(offset, size); err != nil {
@@ -163,9 +175,14 @@ func (cb *CacheBlock) initCacheStore() (err error) {
 		}
 		err = nil
 	}
+	_, err = os.Stat(cb.filePath)
+	if err == nil {
+		os.Remove(cb.filePath)
+		log.LogWarnf("an old version cache block:%v found, remove it", cb.filePath)
+	}
 	cb.store, err = NewFileStore(cb.filePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("open file err: %v", err)
 	}
 	cb.maybeUpdateUsedSize(0)
 	if log.IsDebugEnabled() {
@@ -312,19 +329,6 @@ func computeAllocSize(sources []*proto.DataSource) (alloc uint64, err error) {
 		alloc += proto.PageSize - alloc%proto.PageSize
 	}
 	return
-}
-
-func (cb *CacheBlock) InitOnce(engine *CacheEngine, sources []*proto.DataSource) {
-	defer func() {
-		if r := recover(); r != nil {
-			warnMsg := fmt.Sprintf("cache block init occurred panic:%v", r)
-			log.LogErrorf(warnMsg)
-			exporter.Warning(warnMsg)
-		}
-	}()
-	cb.initOnce.Do(func() {
-		cb.Init(sources, engine)
-	})
 }
 
 func (cb *CacheBlock) getUsedSize() int64 {
