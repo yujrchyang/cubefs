@@ -10,9 +10,10 @@ import (
 	"time"
 )
 
-func (rw *ReBalanceWorker) ReBalanceStart(clusterHost, zoneName string, highRatio, lowRatio, goalRatio float64,
-	maxBatchCount int, migrateLimitPerDisk int) error {
-	ctrl, err := rw.newZoneCtrl(clusterHost, zoneName, maxBatchCount, highRatio, lowRatio, goalRatio, migrateLimitPerDisk)
+func (rw *ReBalanceWorker) ReBalanceStart(clusterHost, zoneName string, rType RebalanceType, highRatio, lowRatio, goalRatio float64,
+	maxBatchCount int, migrateLimitPerDisk, dstMetaNodePartitionMaxCount int) error {
+	ctrl, err := rw.newZoneCtrl(clusterHost, zoneName, rType, maxBatchCount, highRatio, lowRatio, goalRatio, migrateLimitPerDisk,
+		dstMetaNodePartitionMaxCount)
 	if err != nil {
 		return err
 	}
@@ -24,15 +25,16 @@ func (rw *ReBalanceWorker) ReBalanceStart(clusterHost, zoneName string, highRati
 	return err
 }
 
-func (rw *ReBalanceWorker) ReSetControlParam(clusterHost, zoneName string, goalRatio float64, maxBatchCount, migrateLimitPerDisk int) (err error) {
+func (rw *ReBalanceWorker) ReSetControlParam(clusterHost, zoneName string, rType RebalanceType, goalRatio float64,
+	maxBatchCount, migrateLimitPerDisk, dstMNPartitionMaxCount int) (err error) {
 	var (
 		ctrl *ZoneReBalanceController
 		rInfo *RebalancedInfoTable
 	)
-	if ctrl, err = rw.getZoneCtrl(clusterHost, zoneName); err != nil {
+	if ctrl, err = rw.getZoneCtrl(clusterHost, zoneName, rType); err != nil {
 		return
 	}
-	if rInfo, err = rw.GetRebalancedInfoByHostAndZoneName(clusterHost, zoneName); err != nil {
+	if rInfo, err = rw.GetRebalancedInfoByHostAndZoneName(clusterHost, zoneName, rType); err != nil {
 		return
 	}
 	if goalRatio <= 0 {
@@ -47,17 +49,21 @@ func (rw *ReBalanceWorker) ReSetControlParam(clusterHost, zoneName string, goalR
 	if migrateLimitPerDisk <= 0 {
 		migrateLimitPerDisk = rInfo.MigrateLimitPerDisk
 	}
-	if rInfo, err = rw.insertOrUpdateRebalancedInfo(clusterHost, zoneName, maxBatchCount,
-		rInfo.HighRatio, rInfo.LowRatio, goalRatio, migrateLimitPerDisk, Status(rInfo.Status)); err != nil {
+	if dstMNPartitionMaxCount <= 0 || dstMNPartitionMaxCount > defaultDstMetaNodePartitionMaxCount {
+		dstMNPartitionMaxCount = defaultDstMetaNodePartitionMaxCount
+	}
+	if rInfo, err = rw.insertOrUpdateRebalancedInfo(clusterHost, zoneName, rType, maxBatchCount,
+		rInfo.HighRatio, rInfo.LowRatio, goalRatio, migrateLimitPerDisk, dstMNPartitionMaxCount, Status(rInfo.Status)); err != nil {
 		return
 	}
+	ctrl.dstMetaNodeMaxPartitionCount = dstMNPartitionMaxCount
 	ctrl.SetClusterMaxBatchCount(maxBatchCount)
 	ctrl.SetMigrateLimitPerDisk(migrateLimitPerDisk)
 	return
 }
 
-func (rw *ReBalanceWorker) ReBalanceStop(cluster, zoneName string) error {
-	ctrl, err := rw.getZoneCtrl(cluster, zoneName)
+func (rw *ReBalanceWorker) ReBalanceStop(cluster, zoneName string, rType RebalanceType) error {
+	ctrl, err := rw.getZoneCtrl(cluster, zoneName, rType)
 	if err != nil {
 		return err
 	}
@@ -68,8 +74,8 @@ func (rw *ReBalanceWorker) ReBalanceStop(cluster, zoneName string) error {
 	return nil
 }
 
-func (rw *ReBalanceWorker) ReBalanceStatus(cluster, zoneName string) (Status, error) {
-	ctrl, err := rw.getZoneCtrl(cluster, zoneName)
+func (rw *ReBalanceWorker) ReBalanceStatus(cluster, zoneName string, rType RebalanceType) (Status, error) {
+	ctrl, err := rw.getZoneCtrl(cluster, zoneName, rType)
 	if err != nil {
 		return -1, err
 	}
@@ -77,9 +83,9 @@ func (rw *ReBalanceWorker) ReBalanceStatus(cluster, zoneName string) (Status, er
 	return status, nil
 }
 
-func (rw *ReBalanceWorker) ReBalanceSet(cluster, zoneName string, highRatio, lowRatio, goalRatio float64,
+func (rw *ReBalanceWorker) ReBalanceSet(cluster, zoneName string, rType RebalanceType, highRatio, lowRatio, goalRatio float64,
 	maxBatchCount int, MigrateLimitPerDisk int) error {
-	ctrl, err := rw.getZoneCtrl(cluster, zoneName)
+	ctrl, err := rw.getZoneCtrl(cluster, zoneName, rType)
 	if err != nil {
 		return err
 	}
@@ -104,16 +110,18 @@ func (rw *ReBalanceWorker) ResetZoneMap() {
 	})
 }
 
-func (rw *ReBalanceWorker) newZoneCtrl(clusterHost, zoneName string, maxBatchCount int,
-	highRatio, lowRatio, goalRatio float64, migrateLimitPerDisk int) (ctrl *ZoneReBalanceController, err error) {
-	ctrl, err = rw.getZoneCtrl(clusterHost, zoneName)
+//type:meta or data
+func (rw *ReBalanceWorker) newZoneCtrl(clusterHost, zoneName string, rType RebalanceType, maxBatchCount int,
+	highRatio, lowRatio, goalRatio float64, migrateLimitPerDisk, dstMetaNodeMaxPartitionCount int) (ctrl *ZoneReBalanceController, err error) {
+	ctrl, err = rw.getZoneCtrl(clusterHost, zoneName, rType)
 	var rInfo *RebalancedInfoTable
 	if err == nil {
 		if err = ctrl.UpdateRatio(highRatio, lowRatio, goalRatio); err != nil {
 			return
 		}
-		if rInfo, err = rw.insertOrUpdateRebalancedInfo(clusterHost, zoneName, maxBatchCount,
-			highRatio, lowRatio, goalRatio, migrateLimitPerDisk, StatusRunning); err != nil {
+		ctrl.dstMetaNodeMaxPartitionCount = dstMetaNodeMaxPartitionCount
+		if rInfo, err = rw.insertOrUpdateRebalancedInfo(clusterHost, zoneName, rType, maxBatchCount,
+			highRatio, lowRatio, goalRatio, migrateLimitPerDisk, dstMetaNodeMaxPartitionCount, StatusRunning); err != nil {
 			return
 		}
 		//ctrl, err = rw.getZoneCtrl(clusterHost, zoneName)
@@ -123,7 +131,7 @@ func (rw *ReBalanceWorker) newZoneCtrl(clusterHost, zoneName string, maxBatchCou
 		ctrl.Id = rInfo.ID
 		return
 	}
-	rInfo, err = rw.GetRebalancedInfoByHostAndZoneName(clusterHost, zoneName)
+	rInfo, err = rw.GetRebalancedInfoByHostAndZoneName(clusterHost, zoneName, rType)
 	if err != nil && err.Error() != RECORD_NOT_FOUND {
 		return
 	}
@@ -131,21 +139,21 @@ func (rw *ReBalanceWorker) newZoneCtrl(clusterHost, zoneName string, maxBatchCou
 	//	err = fmt.Errorf("rebalance already exists")
 	//	return
 	//}
-	if rInfo, err = rw.insertOrUpdateRebalancedInfo(clusterHost, zoneName, maxBatchCount,
-		highRatio, lowRatio, goalRatio, migrateLimitPerDisk, StatusRunning); err != nil {
+	if rInfo, err = rw.insertOrUpdateRebalancedInfo(clusterHost, zoneName, rType, maxBatchCount,
+		highRatio, lowRatio, goalRatio, migrateLimitPerDisk, dstMetaNodeMaxPartitionCount, StatusRunning); err != nil {
 		return
 	}
-	ctrl, err = NewZoneReBalanceController(rInfo.ID, clusterHost, zoneName, highRatio, lowRatio, goalRatio, rw)
+	ctrl, err = NewZoneReBalanceController(rInfo.ID, clusterHost, zoneName, rType, highRatio, lowRatio, goalRatio, dstMetaNodeMaxPartitionCount, rw)
 	if err != nil {
 		return
 	}
 	ctrl.SetCreatedUpdatedAt(rInfo.CreatedAt, rInfo.UpdatedAt)
-	rw.reBalanceCtrlMap.Store(path.Join(clusterHost, zoneName), ctrl)
+	rw.reBalanceCtrlMap.Store(path.Join(clusterHost, zoneName, rType.String()), ctrl)
 	return
 }
 
-func (rw *ReBalanceWorker) getZoneCtrl(clusterHost, zoneName string) (*ZoneReBalanceController, error) {
-	if res, ok := rw.reBalanceCtrlMap.Load(path.Join(clusterHost, zoneName)); !ok {
+func (rw *ReBalanceWorker) getZoneCtrl(clusterHost, zoneName string, rType RebalanceType) (*ZoneReBalanceController, error) {
+	if res, ok := rw.reBalanceCtrlMap.Load(path.Join(clusterHost, zoneName, rType.String())); !ok {
 		return nil, fmt.Errorf("get zone rebalance controller error with cluster:%v zoneName:%v", clusterHost, zoneName)
 	} else {
 		ctrl := res.(*ZoneReBalanceController)

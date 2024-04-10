@@ -10,6 +10,7 @@ import (
 
 // DNReBalanceController 用于控制每台机器(DataNode)上数据的迁移
 type DNReBalanceController struct {
+	zoneCtrl *ZoneReBalanceController
 	proto.DataNodeInfo
 	*master.MasterClient
 	dataClient *http_client.DataClient
@@ -25,10 +26,12 @@ type DNReBalanceController struct {
 	isFinished           bool
 }
 
-func NewDNReBalanceController(info proto.DataNodeInfo, masterClient *master.MasterClient, masterAddr string,
+func NewDNReBalanceController(zoneCtrl *ZoneReBalanceController, info proto.DataNodeInfo, masterClient *master.MasterClient, masterAddr string,
 	minWritableDPNum, clusterMaxBatchCount, migrateLimitPerDisk int) (*DNReBalanceController, error) {
-	dataClient := getDataHttpClient(info.Addr, masterAddr)
+	dataNodeProfPort := zoneCtrl.rw.getDataNodePProfPort(masterAddr)
+	dataClient := getDataHttpClient(info.Addr, dataNodeProfPort)
 	dnCtrl := &DNReBalanceController{
+		zoneCtrl:             zoneCtrl,
 		DataNodeInfo:         info,
 		MasterClient:         masterClient,
 		dataClient:           dataClient,
@@ -137,7 +140,7 @@ func (dnCtrl *DNReBalanceController) updateDisks() error {
 		if diskInfo.Total == 0 {
 			continue
 		}
-		disk := NewDiskReBalanceController(diskInfo, dnCtrl.masterAddr, dnCtrl.Addr, dnCtrl.minWritableDPNum, dnCtrl.migrateLimitPerDisk, dnCtrl.MasterClient)
+		disk := NewDiskReBalanceController(dnCtrl.dataClient, diskInfo, dnCtrl.masterAddr, dnCtrl.Addr, dnCtrl.minWritableDPNum, dnCtrl.migrateLimitPerDisk, dnCtrl.MasterClient)
 		dnCtrl.disks[diskInfo.Path] = disk
 	}
 	return nil

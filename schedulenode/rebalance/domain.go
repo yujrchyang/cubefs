@@ -9,19 +9,14 @@ type DiskView struct {
 	MigrateLimit     int
 }
 
-type DstDataNode struct {
-	Addr string
-	UsageRatio float64
-}
-
-type SrcDataNode struct {
-	Addr       string
-	UsageRatio float64
-	Disk       []DiskView
+type NodeUsageInfo struct {
+	Addr       string     `json:"addr"`
+	UsageRatio float64    `json:"usage_ratio"`
+	Disk       []DiskView `json:"disks,omitempty"`
 }
 
 type ReBalanceInfo struct {
 	RebalancedInfoTable
-	SrcNodesUsageRatio []SrcDataNode
-	DstNodesUsageRatio []DstDataNode
+	SrcNodesUsageRatio []NodeUsageInfo
+	DstNodesUsageRatio []NodeUsageInfo
 }

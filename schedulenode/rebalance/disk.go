@@ -3,6 +3,7 @@ package rebalance
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 	"gorm.io/gorm/utils"
@@ -12,6 +13,7 @@ import (
 type Disk struct {
 	*master.MasterClient
 
+	dataClient       *data.DataHttpClient
 	masterAddr       string
 	nodeAddr         string // DataNode Addr
 	path             string
@@ -25,8 +27,9 @@ type Disk struct {
 	migrateLimit     int
 }
 
-func NewDiskReBalanceController(disk *proto.DataNodeDiskInfo, masterAddr, nodeAddr string, minWritableDPNum, migrateLimitPerDisk int, masterClient *master.MasterClient) *Disk {
+func NewDiskReBalanceController(dataClient *data.DataHttpClient, disk *proto.DataNodeDiskInfo, masterAddr, nodeAddr string, minWritableDPNum, migrateLimitPerDisk int, masterClient *master.MasterClient) *Disk {
 	return &Disk{
+		dataClient:       dataClient,
 		masterAddr:       masterAddr,
 		nodeAddr:         nodeAddr,
 		path:             disk.Path,
@@ -135,7 +138,7 @@ func (d *Disk) checkAvailable(dp *proto.PartitionReport) (bool, *proto.DataParti
 	}
 	//检测所有副本的raft status是否都正常
 	for _, host := range dataPartition.Hosts {
-		stopped, err := checkRaftStatus(dataPartition.PartitionID, host, d.masterAddr)
+		stopped, err := checkRaftStatus(d.dataClient, dataPartition.PartitionID, host)
 		if err != nil || stopped {
 			log.LogWarnf("GetTargetReplicaRaftStatus partition:%v host:%v err:%v stopped:%v", dataPartition.PartitionID, host, err, stopped)
 			return false, nil
@@ -155,8 +158,7 @@ func (d *Disk) checkAvailable(dp *proto.PartitionReport) (bool, *proto.DataParti
 	return true, dataPartition
 }
 
-func checkRaftStatus(id uint64, host, masterAddr string) (stopped bool, err error) {
-	dataHttpClient := getDataHttpClient(host, masterAddr)
+func checkRaftStatus(dataHttpClient *data.DataHttpClient, id uint64, host string) (stopped bool, err error) {
 	raftStatus, err := dataHttpClient.GetRaftStatus(id)
 	if err != nil {
 		return

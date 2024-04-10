@@ -2,6 +2,7 @@ package rebalance
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/worker"
@@ -13,10 +14,19 @@ import (
 	"sync"
 )
 
+type ClusterConfig struct {
+	ClusterName  string   `json:"clusterName"`
+	MasterAddrs  []string `json:"mastersAddr"`
+	MetaProfPort uint16   `json:"mnProfPort"`
+	DataProfPort uint16   `json:"dnProfPort"`
+	IsDBBack     bool     `json:"isDBBack"`
+}
+
 type ReBalanceWorker struct {
 	worker.BaseWorker
 	mcwRWMutex       sync.RWMutex
 	reBalanceCtrlMap sync.Map
+	clusterConfigMap sync.Map
 	dbHandle         *gorm.DB
 }
 
@@ -72,6 +82,70 @@ func (rw *ReBalanceWorker) Sync() {
 
 func (rw *ReBalanceWorker) parseConfig(cfg *config.Config) (err error) {
 	err = rw.ParseBaseConfig(cfg)
+
+	clustersInfoData := cfg.GetJsonObjectSlice(config.ConfigKeyClusterInfo)
+	for _, clusterInfoData := range clustersInfoData {
+		clusterConf := new(ClusterConfig)
+		if err = json.Unmarshal(clusterInfoData, clusterConf); err != nil {
+			err = fmt.Errorf("parse cluster info failed:%v", err)
+			return
+		}
+		rw.clusterConfigMap.Store(clusterConf.ClusterName, clusterConf)
+	}
+	return
+}
+
+func (rw *ReBalanceWorker) getClusterHost(cluster string) (host string, err error) {
+	clusterInfo, ok := rw.clusterConfigMap.Load(cluster)
+	if ok {
+		clusterConf := clusterInfo.(*ClusterConfig)
+		if len(clusterConf.MasterAddrs) > 0 {
+			host = clusterInfo.(*ClusterConfig).MasterAddrs[0]
+			return
+		}
+	}
+
+	switch cluster {
+	case SPARK:
+		host = "cn.chubaofs.jd.local"
+	case DBBAK:
+		host = "cn.chubaofs-seqwrite.jd.local"
+		err = fmt.Errorf("cluster:%v Not supported", cluster)
+	case ELASTICDB:
+		host = "cn.elasticdb.jd.local"
+		//err = fmt.Errorf("cluster:%v Not supported", cluster)
+	case TEST:
+		host = "11.60.241.50:17010"
+	}
+	if len(host) == 0 {
+		err = fmt.Errorf("cluster:%v Not supported", cluster)
+	}
+	return
+}
+
+func (rw *ReBalanceWorker) getDataNodePProfPort(host string) (port string) {
+	rw.clusterConfigMap.Range(func(key, value interface{}) bool {
+		clusterConfig := value.(*ClusterConfig)
+		for _, addr := range clusterConfig.MasterAddrs {
+			if addr == host {
+				port = fmt.Sprintf("%v", clusterConfig.DataProfPort)
+				return false
+			}
+		}
+		return true
+	})
+	if port != "" {
+		return
+	}
+
+	switch host {
+	case "cn.chubaofs.jd.local", "cn.elasticdb.jd.local", "cn.chubaofs-seqwrite.jd.local", "nl.chubaofs.jd.local", "nl.chubaofs.ochama.com":
+		port = "6001"
+	case "192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010":
+		port = "17320"
+	default:
+		port = "6001"
+	}
 	return
 }
 
@@ -81,7 +155,11 @@ func (rw *ReBalanceWorker) loadInRunningRebalanced() (err error) {
 		return
 	}
 	for _, info := range rInfos {
-		err = rw.ReBalanceStart(info.Host, info.ZoneName, info.HighRatio, info.LowRatio, info.GoalRatio, info.MaxBatchCount, info.MigrateLimitPerDisk)
+		if info.dstMetaNodePartitionMaxCount == 0 || info.dstMetaNodePartitionMaxCount > defaultDstMetaNodePartitionMaxCount {
+			info.dstMetaNodePartitionMaxCount = defaultDstMetaNodePartitionMaxCount
+		}
+		err = rw.ReBalanceStart(info.Host, info.ZoneName, info.RType, info.HighRatio, info.LowRatio, info.GoalRatio,
+			info.MaxBatchCount, info.MigrateLimitPerDisk, info.dstMetaNodePartitionMaxCount)
 		if err != nil {
 			log.LogErrorf("start rebalance info:%v err:%v", info, err)
 		}

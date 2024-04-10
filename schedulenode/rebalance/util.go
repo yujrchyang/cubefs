@@ -9,23 +9,10 @@ import (
 	"time"
 )
 
-func getDataHttpClient(nodeAddr, masterAddr string) *http_client.DataClient {
+func getDataHttpClient(nodeAddr, port string) *http_client.DataClient {
 	strs := strings.Split(nodeAddr, ":")
 	host := strs[0]
-	port := getDataNodePProfPort(masterAddr)
 	return http_client.NewDataClient(fmt.Sprintf("%s:%s", host, port), false)
-}
-
-func getDataNodePProfPort(host string) (port string) {
-	switch host {
-	case "cn.chubaofs.jd.local", "cn.elasticdb.jd.local", "cn.chubaofs-seqwrite.jd.local", "nl.chubaofs.jd.local", "nl.chubaofs.ochama.com":
-		port = "6001"
-	case "192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010":
-		port = "17320"
-	default:
-		port = "6001"
-	}
-	return
 }
 
 func checkRatio(highRatio, lowRatio, goalRatio float64) error {

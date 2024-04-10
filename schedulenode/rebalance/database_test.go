@@ -34,7 +34,7 @@ func TestInsertOrUpdateRebalancedInfo(t *testing.T) {
 	goalRatio := 0.6
 	migrateLimitPerDisk := 11
 	status := StatusRunning
-	rInfo, err := rw.insertOrUpdateRebalancedInfo(clusterHost, zoneName, maxBatchCount, highRatio, lowRatio, goalRatio, migrateLimitPerDisk, status)
+	rInfo, err := rw.insertOrUpdateRebalancedInfo(clusterHost, zoneName, RebalanceData, maxBatchCount, highRatio, lowRatio, goalRatio, migrateLimitPerDisk, defaultDstMetaNodePartitionMaxCount, status)
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}
@@ -44,7 +44,7 @@ func TestInsertOrUpdateRebalancedInfo(t *testing.T) {
 func TestStopRebalanced(t *testing.T) {
 	clusterHost := "cn.chubaofs.jd.local"
 	zoneName := "default"
-	err := rw.stopRebalanced(clusterHost, zoneName)
+	err := rw.stopRebalanced(clusterHost, zoneName, RebalanceData)
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}

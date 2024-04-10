@@ -42,18 +42,19 @@ const (
 type MigrateRecordTable struct {
 	ID int `gorm:"column:id;"`
 
-	ClusterName  string  `gorm:"column:cluster_name;"`
-	ZoneName     string  `gorm:"column:zone_name;"`
-	VolName      string  `gorm:"column:vol_name;"`
-	PartitionID  uint64  `gorm:"column:partition_id;"`
-	SrcAddr      string  `gorm:"column:src_addr;"`
-	SrcDisk      string  `gorm:"column:src_disk"`
-	DstAddr      string  `gorm:"column:dst_addr;"`
-	OldUsage     float64 `gorm:"column:old_usage"`
-	NewUsage     float64 `gorm:"column:new_usage"`
-	OldDiskUsage float64 `gorm:"column:old_disk_usage"`
-	NewDiskUsage float64 `gorm:"column:new_disk_usage"`
-	TaskId       uint64  `gorm:"column:task_id;"`
+	ClusterName  string        `gorm:"column:cluster_name;"`
+	ZoneName     string        `gorm:"column:zone_name;"`
+	RType        RebalanceType `gorm:"column:rebalance_type;"`
+	VolName      string        `gorm:"column:vol_name;"`
+	PartitionID  uint64        `gorm:"column:partition_id;"`
+	SrcAddr      string        `gorm:"column:src_addr;"`
+	SrcDisk      string        `gorm:"column:src_disk"`
+	DstAddr      string        `gorm:"column:dst_addr;"`
+	OldUsage     float64       `gorm:"column:old_usage"`
+	NewUsage     float64       `gorm:"column:new_usage"`
+	OldDiskUsage float64       `gorm:"column:old_disk_usage"`
+	NewDiskUsage float64       `gorm:"column:new_disk_usage"`
+	TaskId       uint64        `gorm:"column:task_id;"`
 
 	CreatedAt time.Time `gorm:"column:created_at"`
 }
@@ -83,18 +84,20 @@ func (rw *ReBalanceWorker) GetMigrateRecordsBySrcNode(host string) (migrateRecor
 }
 
 type RebalancedInfoTable struct {
-	ID                  uint64    `gorm:"column:id;"`
-	Host                string    `gorm:"column:host;"`
-	ZoneName            string    `gorm:"column:zone_name;"`
-	VolName             string    `gorm:"column:vol_name;"`
-	Status              int       `gorm:"column:status;"`
-	MaxBatchCount       int       `gorm:"column:max_batch_count"`
-	HighRatio           float64   `gorm:"column:high_ratio;"`
-	LowRatio            float64   `gorm:"column:low_ratio;"`
-	GoalRatio           float64   `gorm:"column:goal_ratio;"`
-	MigrateLimitPerDisk int       `gorm:"column:migrate_limit_per_disk;"`
-	CreatedAt           time.Time `gorm:"column:created_at"`
-	UpdatedAt           time.Time `gorm:"column:updated_at"`
+	ID                           uint64        `gorm:"column:id;"`
+	Host                         string        `gorm:"column:host;"`
+	ZoneName                     string        `gorm:"column:zone_name;"`
+	VolName                      string        `gorm:"column:vol_name;"`
+	RType                        RebalanceType `gorm:"column:rebalance_type;"`
+	Status                       int           `gorm:"column:status;"`
+	MaxBatchCount                int           `gorm:"column:max_batch_count"`
+	HighRatio                    float64       `gorm:"column:high_ratio;"`
+	LowRatio                     float64       `gorm:"column:low_ratio;"`
+	GoalRatio                    float64       `gorm:"column:goal_ratio;"`
+	MigrateLimitPerDisk          int           `gorm:"column:migrate_limit_per_disk;"`
+	dstMetaNodePartitionMaxCount int           `gorm:"column:dst_metanode_partition_max_count"`
+	CreatedAt                    time.Time     `gorm:"column:created_at"`
+	UpdatedAt                    time.Time     `gorm:"column:updated_at"`
 }
 
 func (RebalancedInfoTable) TableName() string {
@@ -120,10 +123,10 @@ func (rw *ReBalanceWorker) GetAllRebalancedInfo() (rebalancedInfo []*RebalancedI
 	return
 }
 
-func (rw *ReBalanceWorker) GetRebalancedInfoByHostAndZoneName(host, zoneName string) (rebalancedInfo *RebalancedInfoTable, err error) {
+func (rw *ReBalanceWorker) GetRebalancedInfoByHostAndZoneName(host, zoneName string, rType RebalanceType) (rebalancedInfo *RebalancedInfoTable, err error) {
 	rebalancedInfo = &RebalancedInfoTable{}
 	err = rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).
-		Where("host=? and zone_name=?", host, zoneName).
+		Where("host=? and zone_name=? and rebalance_type=?", host, zoneName, rType).
 		First(rebalancedInfo).Error
 	return
 }
@@ -136,9 +139,10 @@ func (rw *ReBalanceWorker) UpdateRebalancedInfo(info *RebalancedInfoTable) (affe
 	return
 }
 
-func (rw *ReBalanceWorker) insertOrUpdateRebalancedInfo(clusterHost, zoneName string, maxBatchCount int,
-	highRatio, lowRatio, goalRatio float64, migrateLimitPerDisk int, status Status) (rInfo *RebalancedInfoTable, err error) {
-	rInfo, err = rw.GetRebalancedInfoByHostAndZoneName(clusterHost, zoneName)
+func (rw *ReBalanceWorker) insertOrUpdateRebalancedInfo(clusterHost, zoneName string, rType RebalanceType, maxBatchCount int,
+	highRatio, lowRatio, goalRatio float64, migrateLimitPerDisk, dstMNPartitionMaxCount int, status Status) (
+	rInfo *RebalancedInfoTable, err error) {
+	rInfo, err = rw.GetRebalancedInfoByHostAndZoneName(clusterHost, zoneName, rType)
 	if err != nil {
 		if err.Error() != RECORD_NOT_FOUND {
 			return nil, err
@@ -152,6 +156,8 @@ func (rw *ReBalanceWorker) insertOrUpdateRebalancedInfo(clusterHost, zoneName st
 	rInfo.LowRatio = lowRatio
 	rInfo.GoalRatio = goalRatio
 	rInfo.MigrateLimitPerDisk = migrateLimitPerDisk
+	rInfo.RType = rType
+	rInfo.dstMetaNodePartitionMaxCount = dstMNPartitionMaxCount
 	if rInfo.ID > 0 {
 		rInfo.UpdatedAt = time.Now()
 		_, err = rw.UpdateRebalancedInfo(rInfo)
@@ -165,11 +171,11 @@ func (rw *ReBalanceWorker) insertOrUpdateRebalancedInfo(clusterHost, zoneName st
 	return
 }
 
-func (rw *ReBalanceWorker) stopRebalanced(clusterHost, zoneName string) (err error) {
+func (rw *ReBalanceWorker) stopRebalanced(clusterHost, zoneName string, rType RebalanceType) (err error) {
 	var (
 		rInfo *RebalancedInfoTable
 	)
-	if rInfo, err = rw.GetRebalancedInfoByHostAndZoneName(clusterHost, zoneName); err != nil {
+	if rInfo, err = rw.GetRebalancedInfoByHostAndZoneName(clusterHost, zoneName, rType); err != nil {
 		return
 	}
 	rInfo.Status = int(StatusStop)
@@ -181,7 +187,7 @@ func (rw *ReBalanceWorker) stopRebalanced(clusterHost, zoneName string) (err err
 	return
 }
 
-func (rw *ReBalanceWorker) GetRebalancedInfoTotalCount(host, zoneName string, statusNum int) (count int64, err error) {
+func (rw *ReBalanceWorker) GetRebalancedInfoTotalCount(host, zoneName string, rType RebalanceType, statusNum int) (count int64, err error) {
 	tx := rw.dbHandle.Table(RebalancedInfoTable{}.TableName())
 	if len(host) > 0 && len(zoneName) > 0 {
 		tx.Where("host=? AND zone_name like ?", host, fmt.Sprintf("%v%%", zoneName))
@@ -190,6 +196,7 @@ func (rw *ReBalanceWorker) GetRebalancedInfoTotalCount(host, zoneName string, st
 	} else if len(zoneName) > 0 {
 		tx.Where("zone_name like ?", fmt.Sprintf("%v%%", zoneName))
 	}
+	tx.Where("rebalance_type=?", rType)
 	if statusNum > 0 {
 		tx.Where("status=?", statusNum)
 	}
@@ -197,7 +204,7 @@ func (rw *ReBalanceWorker) GetRebalancedInfoTotalCount(host, zoneName string, st
 	return
 }
 
-func (rw *ReBalanceWorker) GetRebalancedInfoList(host, zoneName string, page, pageSize, statusNum int) (rebalancedInfo []*RebalancedInfoTable, err error) {
+func (rw *ReBalanceWorker) GetRebalancedInfoList(host, zoneName string, rType RebalanceType, page, pageSize, statusNum int) (rebalancedInfo []*RebalancedInfoTable, err error) {
 	limit := pageSize
 	offset := (page - 1) * pageSize
 	tx := rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).
@@ -210,6 +217,7 @@ func (rw *ReBalanceWorker) GetRebalancedInfoList(host, zoneName string, page, pa
 	} else if len(zoneName) > 0 {
 		tx.Where("zone_name like ?", fmt.Sprintf("%v%%", zoneName))
 	}
+	tx.Where("rebalance_type=?", rType)
 	if statusNum > 0 {
 		tx.Where("status=?", statusNum)
 	}

@@ -17,17 +17,19 @@ const (
 )
 
 const (
-	ParamId                   = "id"
-	ParamCluster              = "cluster"
-	ParamZoneName             = "zoneName"
-	ParamStatus               = "status"
-	ParamHighRatio            = "highRatio"
-	ParamLowRatio             = "lowRatio"
-	ParamGoalRatio            = "goalRatio"
-	ParamClusterMaxBatchCount = "maxBatchCount"
-	ParamMigrateLimitPerDisk  = "migrateLimit"
-	ParamPage                 = "page"
-	ParamPageSize             = "pageSize"
+	ParamId                           = "id"
+	ParamCluster                      = "cluster"
+	ParamZoneName                     = "zoneName"
+	ParamStatus                       = "status"
+	ParamHighRatio                    = "highRatio"
+	ParamLowRatio                     = "lowRatio"
+	ParamGoalRatio                    = "goalRatio"
+	ParamClusterMaxBatchCount         = "maxBatchCount"
+	ParamMigrateLimitPerDisk          = "migrateLimit"
+	ParamDstMetaNodePartitionMaxCount = "dstMetaNodeMaxPartitionCount"
+	ParamPage                         = "page"
+	ParamPageSize                     = "pageSize"
+	ParamRebalanceType                = "type"
 )
 
 const (
@@ -38,14 +40,20 @@ const (
 )
 
 const (
-	defaultMinWritableDPNum     = 2
-	defaultClusterMaxBatchCount = 50
-	defaultMigrateLimitPerDisk  = 10
-	defaultInterval             = time.Minute * 5
+	defaultMinWritableDPNum             = 2
+	defaultClusterMaxBatchCount         = 50
+	defaultMigrateLimitPerDisk          = 10
+	defaultInterval                     = time.Minute * 5
+	defaultDstMetaNodePartitionMaxCount = 10000
 )
 
 const (
 	ReadOnly    = 1
 	ReadWrite   = 2
 	Unavailable = -1
+)
+
+const (
+	RebalanceData RebalanceType = iota
+	RebalanceMeta
 )

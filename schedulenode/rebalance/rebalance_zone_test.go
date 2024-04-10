@@ -24,7 +24,7 @@ func printMigrate(info *MigrateRecordTable) error {
 
 func TestReBalanceZone(t *testing.T) {
 	rw := &ReBalanceWorker{}
-	ctrl, err := NewZoneReBalanceController(1, cluster, zoneName, highRatio, lowRatio, goalRatio, rw)
+	ctrl, err := NewZoneReBalanceController(1, cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, defaultDstMetaNodePartitionMaxCount, rw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,13 +38,13 @@ func TestReBalanceZone(t *testing.T) {
 
 func TestReBalanceStart(t *testing.T) {
 	rw := ReBalanceWorker{}
-	err := rw.ReBalanceStart(cluster, zoneName, highRatio, lowRatio, goalRatio, 50, 10)
+	err := rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for {
 		time.Sleep(time.Second * 15)
-		status, err := rw.ReBalanceStatus(cluster, zoneName)
+		status, err := rw.ReBalanceStatus(cluster, zoneName, RebalanceData)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -59,23 +59,23 @@ func TestReBalanceStart(t *testing.T) {
 
 func TestReBalanceStop(t *testing.T) {
 	rw := ReBalanceWorker{}
-	err := rw.ReBalanceStart(cluster, zoneName, highRatio, lowRatio, goalRatio, 50, 10)
+	err := rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Second * 30)
-	status, err := rw.ReBalanceStatus(cluster, zoneName)
+	status, err := rw.ReBalanceStatus(cluster, zoneName, RebalanceData)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fmt.Println("++++++++++++++++++++++++status++++++++++++++++++++++++")
 	fmt.Println(status)
-	err = rw.ReBalanceStop(cluster, zoneName)
+	err = rw.ReBalanceStop(cluster, zoneName, RebalanceData)
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Second * 5)
-	status, err = rw.ReBalanceStatus(cluster, zoneName)
+	status, err = rw.ReBalanceStatus(cluster, zoneName, RebalanceData)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,35 +85,35 @@ func TestReBalanceStop(t *testing.T) {
 
 func TestReBalanceReStart(t *testing.T) {
 	rw := ReBalanceWorker{}
-	err := rw.ReBalanceStart(cluster, zoneName, highRatio, lowRatio, goalRatio, 50, 10)
+	err := rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Second * 30)
-	status, err := rw.ReBalanceStatus(cluster, zoneName)
+	status, err := rw.ReBalanceStatus(cluster, zoneName, RebalanceData)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fmt.Println("++++++++++++++++++++++++status++++++++++++++++++++++++")
 	fmt.Println(status)
-	err = rw.ReBalanceStop(cluster, zoneName)
+	err = rw.ReBalanceStop(cluster, zoneName, RebalanceData)
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Second * 5)
-	status, err = rw.ReBalanceStatus(cluster, zoneName)
+	status, err = rw.ReBalanceStatus(cluster, zoneName, RebalanceData)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fmt.Println("++++++++++++++++++++++++status++++++++++++++++++++++++")
 	fmt.Println(status)
-	err = rw.ReBalanceStart(cluster, zoneName, highRatio, lowRatio, goalRatio, 50, 10)
+	err = rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for {
 		time.Sleep(time.Second * 15)
-		status, err := rw.ReBalanceStatus(cluster, zoneName)
+		status, err := rw.ReBalanceStatus(cluster, zoneName, RebalanceData)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -128,18 +128,18 @@ func TestReBalanceReStart(t *testing.T) {
 
 func TestReBalanceDupStart(t *testing.T) {
 	rw := ReBalanceWorker{}
-	err := rw.ReBalanceStart(cluster, zoneName, highRatio, lowRatio, goalRatio, 50, 10)
+	err := rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Second)
-	err = rw.ReBalanceStart(cluster, zoneName, highRatio, lowRatio, goalRatio, 50, 10)
+	err = rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for {
 		time.Sleep(time.Second * 15)
-		status, err := rw.ReBalanceStatus(cluster, zoneName)
+		status, err := rw.ReBalanceStatus(cluster, zoneName, RebalanceData)
 		if err != nil {
 			t.Fatal(err)
 		}

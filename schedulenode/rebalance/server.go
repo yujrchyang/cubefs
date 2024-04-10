@@ -26,6 +26,8 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 	goalRatioStr := req.URL.Query().Get(ParamGoalRatio)
 	maxBatchCountStr := req.URL.Query().Get(ParamClusterMaxBatchCount)
 	migrateLimitPerDiskStr := req.URL.Query().Get(ParamMigrateLimitPerDisk)
+	dstMetaNodePartitionMaxCountStr := req.URL.Query().Get(ParamDstMetaNodePartitionMaxCount)
+	rTypeStr := req.URL.Query().Get(ParamRebalanceType)
 	highRatio, err := strconv.ParseFloat(highRatioStr, 64)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
@@ -50,11 +52,25 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 			migrateLimitPerDisk = tmp
 		}
 	}
-	host, err := getClusterHost(cluster)
+	dstMetaNodePartitionMaxCount := defaultDstMetaNodePartitionMaxCount
+	if dstMetaNodePartitionMaxCountStr != "" {
+		if tmp, err := strconv.Atoi(dstMetaNodePartitionMaxCountStr); err == nil && tmp < defaultDstMetaNodePartitionMaxCount {
+			dstMetaNodePartitionMaxCount = tmp
+		}
+	}
+	host, err := rw.getClusterHost(cluster)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
 	}
-	err = rw.ReBalanceStart(host, zoneName, highRatio, lowRatio, goalRatio, maxBatchCount, migrateLimitPerDisk)
+	var rType = RebalanceData
+	if rTypeStr != "" {
+		rType, err = ConvertRebalanceTypeStr(rTypeStr)
+		if err != nil {
+			return http.StatusBadRequest, nil, err
+		}
+	}
+	err = rw.ReBalanceStart(host, zoneName, rType, highRatio, lowRatio, goalRatio, maxBatchCount, migrateLimitPerDisk,
+		dstMetaNodePartitionMaxCount)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
 	}
@@ -68,12 +84,16 @@ func (rw *ReBalanceWorker) handleReSetControlParam(w http.ResponseWriter, req *h
 	goalRatioStr := req.URL.Query().Get(ParamGoalRatio)
 	maxBatchCountStr := req.URL.Query().Get(ParamClusterMaxBatchCount)
 	migrateLimitPerDiskStr := req.URL.Query().Get(ParamMigrateLimitPerDisk)
+	dstMetaNodePartitionMaxCountStr := req.URL.Query().Get(ParamDstMetaNodePartitionMaxCount)
+	rTypeStr := req.URL.Query().Get(ParamRebalanceType)
 	var (
-		goalRatio           float64
-		maxBatchCount       int
-		migrateLimitPerDisk int
-		host                string
-		err                 error
+		goalRatio              float64
+		maxBatchCount          int
+		migrateLimitPerDisk    int
+		dstMNPartitionMaxCount int
+		host                   string
+		err                    error
+		rType                  = RebalanceData //default
 	)
 	if goalRatioStr != "" {
 		goalRatio, err = strconv.ParseFloat(goalRatioStr, 64)
@@ -93,11 +113,23 @@ func (rw *ReBalanceWorker) handleReSetControlParam(w http.ResponseWriter, req *h
 			return http.StatusBadRequest, nil, err
 		}
 	}
-	host, err = getClusterHost(cluster)
+	if rTypeStr != "" {
+		rType, err = ConvertRebalanceTypeStr(rTypeStr)
+		if err != nil {
+			return http.StatusBadRequest, nil, err
+		}
+	}
+	if dstMetaNodePartitionMaxCountStr != "" {
+		dstMNPartitionMaxCount, err = strconv.Atoi(dstMetaNodePartitionMaxCountStr)
+		if err != nil {
+			return http.StatusBadRequest, nil, err
+		}
+	}
+	host, err = rw.getClusterHost(cluster)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
 	}
-	err = rw.ReSetControlParam(host, zoneName, goalRatio, maxBatchCount, migrateLimitPerDisk)
+	err = rw.ReSetControlParam(host, zoneName, rType, goalRatio, maxBatchCount, migrateLimitPerDisk, dstMNPartitionMaxCount)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
 	}
@@ -107,15 +139,23 @@ func (rw *ReBalanceWorker) handleReSetControlParam(w http.ResponseWriter, req *h
 func (rw *ReBalanceWorker) handleStop(w http.ResponseWriter, req *http.Request) (int, interface{}, error) {
 	cluster := req.URL.Query().Get(ParamCluster)
 	zoneName := req.URL.Query().Get(ParamZoneName)
-	host, err := getClusterHost(cluster)
+	rTypeStr := req.URL.Query().Get(ParamRebalanceType)
+	host, err := rw.getClusterHost(cluster)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
 	}
-	err = rw.ReBalanceStop(host, zoneName)
+	var rType = RebalanceData
+	if rTypeStr != "" {
+		rType, err = ConvertRebalanceTypeStr(rTypeStr)
+		if err != nil {
+			return http.StatusBadRequest, nil, err
+		}
+	}
+	err = rw.ReBalanceStop(host, zoneName, rType)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
 	}
-	err = rw.stopRebalanced(host, zoneName)
+	err = rw.stopRebalanced(host, zoneName, rType)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
 	}
@@ -125,11 +165,19 @@ func (rw *ReBalanceWorker) handleStop(w http.ResponseWriter, req *http.Request) 
 func (rw *ReBalanceWorker) handleStatus(w http.ResponseWriter, req *http.Request) (int, interface{}, error) {
 	cluster := req.URL.Query().Get(ParamCluster)
 	zoneName := req.URL.Query().Get(ParamZoneName)
-	host, err := getClusterHost(cluster)
+	rTypeStr := req.URL.Query().Get(ParamRebalanceType)
+	host, err := rw.getClusterHost(cluster)
 	if err != nil {
 		return http.StatusBadRequest, nil, err
 	}
-	status, err := rw.ReBalanceStatus(host, zoneName)
+	var rType = RebalanceData
+	if rTypeStr != "" {
+		rType, err = ConvertRebalanceTypeStr(rTypeStr)
+		if err != nil {
+			return http.StatusBadRequest, nil, err
+		}
+	}
+	status, err := rw.ReBalanceStatus(host, zoneName, rType)
 	if err != nil {
 		return http.StatusBadRequest, -1, err
 	}
@@ -162,42 +210,7 @@ func (rw *ReBalanceWorker) handleRebalancedInfo(w http.ResponseWriter, req *http
 		if idNum != ctrl.Id {
 			return true
 		}
-		var (
-			srcNodesUsageRatio []SrcDataNode
-			dstNodesUsageRatio []DstDataNode
-		)
-		for _, node := range ctrl.srcNodes {
-			diskView := convertDiskView(node.disks)
-			srcNodesUsageRatio = append(srcNodesUsageRatio, SrcDataNode{
-				Addr:       node.Addr,
-				UsageRatio: node.Usage(),
-				Disk:       diskView,
-			})
-		}
-		for _, node := range ctrl.dstNodes {
-			dstNodesUsageRatio = append(dstNodesUsageRatio, DstDataNode{
-				Addr:       node.Addr,
-				UsageRatio: node.UsageRatio,
-			})
-		}
-		reBalanceInfo := &ReBalanceInfo{
-			RebalancedInfoTable: RebalancedInfoTable{
-				ID:                  ctrl.Id,
-				Host:                ctrl.cluster,
-				ZoneName:            ctrl.zoneName,
-				Status:              int(ctrl.status),
-				MaxBatchCount:       ctrl.clusterMaxBatchCount,
-				HighRatio:           ctrl.highRatio,
-				LowRatio:            ctrl.lowRatio,
-				GoalRatio:           ctrl.goalRatio,
-				MigrateLimitPerDisk: ctrl.migrateLimitPerDisk,
-				CreatedAt:           ctrl.createdAt,
-				UpdatedAt:           ctrl.updatedAt,
-			},
-			SrcNodesUsageRatio: srcNodesUsageRatio,
-			DstNodesUsageRatio: dstNodesUsageRatio,
-		}
-		rInfo = reBalanceInfo
+		rInfo = ctrl.formatToReBalanceInfo()
 		return false
 	})
 	return http.StatusOK, rInfo, nil
@@ -211,7 +224,7 @@ func (rw *ReBalanceWorker) handleRebalancedList(w http.ResponseWriter, req *http
 		err  error
 	)
 	if len(cluster) > 0 {
-		host, err = getClusterHost(cluster)
+		host, err = rw.getClusterHost(cluster)
 		if err != nil {
 			buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
@@ -222,6 +235,15 @@ func (rw *ReBalanceWorker) handleRebalancedList(w http.ResponseWriter, req *http
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
+	}
+	rTypeStr := req.URL.Query().Get(ParamRebalanceType)
+	var rType = RebalanceData
+	if rTypeStr != "" {
+		rType, err = ConvertRebalanceTypeStr(rTypeStr)
+		if err != nil {
+			buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
 	}
 	page := req.URL.Query().Get(ParamPage)
 	pageNum, err := strconv.Atoi(page)
@@ -235,12 +257,12 @@ func (rw *ReBalanceWorker) handleRebalancedList(w http.ResponseWriter, req *http
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	totalCount, err := rw.GetRebalancedInfoTotalCount(host, zoneName, statusNum)
+	totalCount, err := rw.GetRebalancedInfoTotalCount(host, zoneName, rType, statusNum)
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	infoList, err := rw.GetRebalancedInfoList(host, zoneName, pageNum, PageSizeNum, statusNum)
+	infoList, err := rw.GetRebalancedInfoList(host, zoneName, rType, pageNum, PageSizeNum, statusNum)
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
@@ -251,15 +273,81 @@ func (rw *ReBalanceWorker) handleRebalancedList(w http.ResponseWriter, req *http
 func (rw *ReBalanceWorker) handleZoneUsageRatio(w http.ResponseWriter, req *http.Request) {
 	cluster := req.URL.Query().Get(ParamCluster)
 	zoneName := req.URL.Query().Get(ParamZoneName)
-	host, err := getClusterHost(cluster)
+	host, err := rw.getClusterHost(cluster)
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	typeStr := req.URL.Query().Get(ParamRebalanceType)
+	var nodeInfo []*NodeUsageInfo
+	switch typeStr {
+	case "meta":
+		nodeInfo, err = loadMetaNodeUsageRatio(host, zoneName)
+	default:
+		nodeInfo, err = loadDataNodeUsageRatio(host, zoneName)
+	}
+	if err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	sort.Slice(nodeInfo, func(i, j int) bool {
+		return nodeInfo[i].UsageRatio > nodeInfo[j].UsageRatio
+	})
+	buildSuccessResp(w, nodeInfo)
+}
+
+func loadMetaNodeUsageRatio(host, zoneName string) (metaNodeInfo []*NodeUsageInfo, err error) {
 	mc := master.NewMasterClient([]string{host}, false)
 	topologyView, err := mc.AdminAPI().GetTopology()
 	if err != nil {
-		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var zoneMetaNodes []string
+	for _, zone := range topologyView.Zones {
+		if zone.Name != zoneName {
+			continue
+		}
+		for _, nodeSetView := range zone.NodeSet {
+			for _, metaNode := range nodeSetView.MetaNodes {
+				zoneMetaNodes = append(zoneMetaNodes, metaNode.Addr)
+			}
+		}
+	}
+	var (
+		wg           sync.WaitGroup
+		ch           = make(chan struct{}, 10)
+		mu           sync.Mutex
+	)
+	for _, metaNodeAddr := range zoneMetaNodes {
+		wg.Add(1)
+		ch <- struct{}{}
+		go func(metaNodeAddr string) {
+			defer func() {
+				<-ch
+				wg.Done()
+			}()
+			node, errForGet := mc.NodeAPI().GetMetaNode(metaNodeAddr)
+			if errForGet != nil {
+				log.LogErrorf("handleZoneUsageRatio get dataNode:%v err:%v", metaNodeAddr, errForGet)
+				return
+			}
+			mu.Lock()
+			metaNodeInfo = append(metaNodeInfo, &NodeUsageInfo{
+				Addr:       metaNodeAddr,
+				UsageRatio: node.Ratio,
+			})
+			mu.Unlock()
+		}(metaNodeAddr)
+	}
+	wg.Wait()
+	return
+}
+
+func loadDataNodeUsageRatio(host, zoneName string) (dataNodeInfo []*NodeUsageInfo, err error) {
+	mc := master.NewMasterClient([]string{host}, false)
+	topologyView, err := mc.AdminAPI().GetTopology()
+	if err != nil {
 		return
 	}
 	var zoneDataNodes []string
@@ -274,7 +362,6 @@ func (rw *ReBalanceWorker) handleZoneUsageRatio(w http.ResponseWriter, req *http
 		}
 	}
 	var (
-		dataNodeInfo []*DstDataNode
 		wg           sync.WaitGroup
 		ch           = make(chan struct{}, 10)
 		mu           sync.Mutex
@@ -287,9 +374,9 @@ func (rw *ReBalanceWorker) handleZoneUsageRatio(w http.ResponseWriter, req *http
 				<-ch
 				wg.Done()
 			}()
-			node, err := mc.NodeAPI().GetDataNode(dataNodeAddr)
-			if err != nil {
-				log.LogErrorf("handleZoneUsageRatio get dataNode:%v err:%v", dataNodeAddr, err)
+			node, errForGet := mc.NodeAPI().GetDataNode(dataNodeAddr)
+			if errForGet != nil {
+				log.LogErrorf("handleZoneUsageRatio get dataNode:%v err:%v", dataNodeAddr, errForGet)
 				return
 			}
 			var used uint64
@@ -297,7 +384,7 @@ func (rw *ReBalanceWorker) handleZoneUsageRatio(w http.ResponseWriter, req *http
 				used += partitionReport.Used
 			}
 			mu.Lock()
-			dataNodeInfo = append(dataNodeInfo, &DstDataNode{
+			dataNodeInfo = append(dataNodeInfo, &NodeUsageInfo{
 				Addr:       dataNodeAddr,
 				UsageRatio: float64(used) / float64(node.Total),
 			})
@@ -305,10 +392,7 @@ func (rw *ReBalanceWorker) handleZoneUsageRatio(w http.ResponseWriter, req *http
 		}(dataNodeAddr)
 	}
 	wg.Wait()
-	sort.Slice(dataNodeInfo, func(i, j int) bool {
-		return dataNodeInfo[i].UsageRatio > dataNodeInfo[j].UsageRatio
-	})
-	buildSuccessResp(w, dataNodeInfo)
+	return
 }
 
 func convertDiskView(diskMap map[string]*Disk) (diskView []DiskView) {
@@ -399,23 +483,4 @@ func buildPagingJSONResp(w http.ResponseWriter, code int, totalCount int64, data
 		return
 	}
 	w.Write(jsonBody)
-}
-
-func getClusterHost(cluster string) (host string, err error) {
-	switch cluster {
-	case SPARK:
-		host = "cn.chubaofs.jd.local"
-	case DBBAK:
-		host = "cn.chubaofs-seqwrite.jd.local"
-		err = fmt.Errorf("cluster:%v Not supported", cluster)
-	case ELASTICDB:
-		host = "cn.elasticdb.jd.local"
-		//err = fmt.Errorf("cluster:%v Not supported", cluster)
-	case TEST:
-		host = "test.chubaofs.jd.local"
-	}
-	if len(host) == 0 {
-		err = fmt.Errorf("cluster:%v Not supported", cluster)
-	}
-	return
 }
