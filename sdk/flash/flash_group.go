@@ -56,7 +56,7 @@ func (fg *FlashGroup) getFlashHost() (host string) {
 	fg.epoch.Add(1)
 
 	classifyHost := fg.rankedHost
-	if sameZoneHosts, ok := classifyHost[SameZoneRank]; ok {
+	if sameZoneHosts, ok := classifyHost[SameZoneRank]; ok && len(sameZoneHosts) > 0 {
 		host = sameZoneHosts[epoch%uint64(len(sameZoneHosts))]
 	} else {
 		return ""
