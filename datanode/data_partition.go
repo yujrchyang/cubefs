@@ -20,10 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/http_client"
-	"github.com/cubefs/cubefs/util/async"
-	"github.com/cubefs/cubefs/util/infra"
-	"golang.org/x/time/rate"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -39,6 +35,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/http_client"
+	"github.com/cubefs/cubefs/util/async"
+	"github.com/cubefs/cubefs/util/infra"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/util/topology"
 
@@ -1353,20 +1354,20 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 		return err
 	}
 
-	val, err := MarshalRandWriteRaftLog(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[:pkg.Size], pkg.CRC)
+	var cmd []byte
+	cmd, err = MarshalRandWriteRaftLog(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[:pkg.Size], pkg.CRC)
 	if err != nil {
 		return
 	}
-	var (
-		resp interface{}
-	)
-	if resp, err = dp.Put(pkg.Ctx(), nil, val); err != nil {
+	if err = dp.submitToRaft(cmd); err != nil {
 		return
 	}
 
-	pkg.ResultCode = resp.(uint8)
+	pkg.PacketOkReply()
 
-	log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
+	if log.IsDebugEnabled() {
+		log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
+	}
 
 	return
 }
@@ -1382,17 +1383,15 @@ func (dp *DataPartition) RandomWriteSubmitV3(pkg *repl.Packet) (err error) {
 	//		"RandomWriteRaftLogV3HeaderSize(%v)",len(pkg.Data),pkg.Size,proto.RandomWriteRaftLogV3HeaderSize)
 	//	return
 	//}
-	val, err := MarshalRandWriteRaftLogV3(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[0:int(pkg.Size)+proto.RandomWriteRaftLogV3HeaderSize], pkg.CRC)
+	var cmd []byte
+	cmd, err = MarshalRandWriteRaftLogV3(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[0:int(pkg.Size)+proto.RandomWriteRaftLogV3HeaderSize], pkg.CRC)
 	if err != nil {
 		return
 	}
-	var (
-		resp interface{}
-	)
-	if resp, err = dp.Put(pkg.Ctx(), nil, val); err != nil {
+	if err = dp.submitToRaft(cmd); err != nil {
 		return
 	}
-	pkg.ResultCode = resp.(uint8)
+	pkg.PacketOkReply()
 	if log.IsDebugEnabled() {
 		log.LogDebugf("[RandomWrite] SubmitRaft: %v", pkg.GetUniqueLogId())
 	}
@@ -4270,23 +4269,16 @@ func (dp *DataPartition) handleRaftAskRollback(original []byte, index uint64) (r
 }
 
 // Put submits the raft log to the raft store.
-func (dp *DataPartition) Put(ctx context.Context, key interface{}, val interface{}) (resp interface{}, err error) {
+func (dp *DataPartition) submitToRaft(cmd []byte) (err error) {
 	if dp.raftPartition == nil {
-		err = fmt.Errorf("%s key=%v", RaftNotStarted, key)
+		err = fmt.Errorf("%s", RaftNotStarted)
 		return
 	}
-	resp, err = dp.raftPartition.SubmitWithCtx(ctx, val.([]byte))
+	const op = "SubmitToRaft"
+	var tp = exporter.NewModuleTPUs(op)
+	_, err = dp.raftPartition.Submit(cmd, raftProto.AckTypeCommitted)
+	tp.Set(err)
 	return
-}
-
-// Get returns the raft log based on the given key. It is not needed for replicating data partition.
-func (dp *DataPartition) Get(key interface{}) (interface{}, error) {
-	return nil, nil
-}
-
-// Del deletes the raft log based on the given key. It is not needed for replicating data partition.
-func (dp *DataPartition) Del(key interface{}) (interface{}, error) {
-	return nil, nil
 }
 
 func (dp *DataPartition) advanceApplyID(applyID uint64) {

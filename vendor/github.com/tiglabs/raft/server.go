@@ -15,7 +15,6 @@
 package raft
 
 import (
-	"context"
 	"errors"
 	"math/rand"
 	"sync"
@@ -200,19 +199,18 @@ func (rs *RaftServer) Has(id uint64) (ok bool) {
 	return
 }
 
-func (rs *RaftServer) Submit(ctx context.Context, id uint64, cmd []byte) (future *Future) {
+func (rs *RaftServer) Submit(id uint64, cmd []byte, ack proto.AckType) (future *Future) {
 
 	rs.mu.RLock()
 	raft, ok := rs.rafts[id]
 	rs.mu.RUnlock()
 
 	future = newFuture()
-	future.ctx = ctx
 	if !ok {
 		future.respond(nil, ErrRaftNotExists)
 		return
 	}
-	raft.propose(cmd, future)
+	raft.propose(cmd, future, ack)
 	return
 }
 
@@ -483,7 +481,7 @@ func (rs *RaftServer) IsAllEmptyMsg(id, end uint64) (bool, error) {
 	return r.raftFsm.isAllEmptyMsg(end), nil
 }
 
-func (rs *RaftServer) GetLastIndex(id uint64) (li uint64,err error) {
+func (rs *RaftServer) GetLastIndex(id uint64) (li uint64, err error) {
 	rs.mu.RLock()
 	r, ok := rs.rafts[id]
 	rs.mu.RUnlock()
@@ -492,7 +490,7 @@ func (rs *RaftServer) GetLastIndex(id uint64) (li uint64,err error) {
 		err = ErrRaftNotExists
 		return
 	}
-	return r.raftFsm.raftLog.lastIndex(),nil
+	return r.raftFsm.raftLog.lastIndex(), nil
 }
 
 func (rs *RaftServer) sendHeartbeat() {

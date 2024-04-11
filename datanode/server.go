@@ -18,8 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
 	"io/ioutil"
 	"net"
 	"os"
@@ -34,10 +32,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cubefs/cubefs/util/iputil"
-
-	"github.com/cubefs/cubefs/util/topology"
-
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -49,11 +43,15 @@ import (
 	"github.com/cubefs/cubefs/util/cpu"
 	utilErrors "github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/statinfo"
 	"github.com/cubefs/cubefs/util/statistics"
+	"github.com/cubefs/cubefs/util/topology"
 	"github.com/cubefs/cubefs/util/unit"
+	"golang.org/x/net/context"
+	"golang.org/x/time/rate"
 )
 
 var (

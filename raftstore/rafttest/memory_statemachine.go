@@ -227,7 +227,7 @@ func (ms *memoryStatemachine) Put(key, value, lastKey, lastVal string) error {
 	if data, err := json.Marshal(kv); err != nil {
 		return err
 	} else {
-		resp := ms.raft.Submit(nil, ms.id, data)
+		resp := ms.raft.Submit(ms.id, data, proto.AckTypeApplied)
 		_, err = resp.Response()
 		if err != nil {
 			return errors.New(fmt.Sprintf("Put error[%v].", err))
@@ -241,7 +241,7 @@ func (ms *memoryStatemachine) PutAsync(key, value, lastKey, lastVal string) (fut
 	if data, err := json.Marshal(kv); err != nil {
 		return nil, err
 	} else {
-		resp := ms.raft.Submit(nil, ms.id, data)
+		resp := ms.raft.Submit(ms.id, data, proto.AckTypeApplied)
 		return resp, nil
 	}
 }
@@ -251,7 +251,7 @@ func (ms *memoryStatemachine) constructBigData(bitSize int) error {
 	for i := 0; i < bitSize; i++ {
 		bArray[i] = 1
 	}
-	resp := ms.raft.Submit(nil, ms.id, bArray)
+	resp := ms.raft.Submit(ms.id, bArray, proto.AckTypeApplied)
 	_, err := resp.Response()
 	if err != nil {
 		return errors.New(fmt.Sprintf("Put error[%v].", err))
@@ -286,7 +286,7 @@ func (ms *memoryStatemachine) localConstructBigData(bitSize int, exeMin int, res
 		default:
 		}
 
-		resp := ms.raft.Submit(nil, ms.id, bArray)
+		resp := ms.raft.Submit(ms.id, bArray, proto.AckTypeApplied)
 		_, err := resp.Response()
 		if err != nil {
 			//return errors.New(fmt.Sprintf("Put error[%v].\r\n", err))

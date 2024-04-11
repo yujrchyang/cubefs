@@ -1,8 +1,6 @@
 package mock
 
 import (
-	"context"
-
 	cfsproto "github.com/cubefs/cubefs/proto"
 
 	"github.com/cubefs/cubefs/raftstore"
@@ -19,11 +17,7 @@ func (m mockRaftPartition) Start() error {
 	return nil
 }
 
-func (m mockRaftPartition) Submit(cmd []byte) (resp interface{}, err error) {
-	return nil, err
-}
-
-func (m mockRaftPartition) SubmitWithCtx(ctx context.Context, cmd []byte) (resp interface{}, err error) {
+func (m mockRaftPartition) Submit(cmd []byte, ack proto.AckType) (resp interface{}, err error) {
 	return nil, err
 }
 

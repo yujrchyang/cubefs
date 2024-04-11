@@ -1181,7 +1181,7 @@ func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, dat
 	}
 
 	// submit to the raft store
-	resp, err = mp.raftPartition.SubmitWithCtx(ctx, cmd)
+	resp, err = mp.raftPartition.Submit(cmd, raftproto.AckTypeApplied)
 
 	atomic.StoreInt64(&mp.lastSubmit, 0)
 	return
@@ -1204,7 +1204,7 @@ func (mp *metaPartition) submitTrash(ctx context.Context, op uint32, from string
 	}
 
 	// submit to the raft store
-	resp, err = mp.raftPartition.SubmitWithCtx(ctx, cmd)
+	resp, err = mp.raftPartition.Submit(cmd, raftproto.AckTypeApplied)
 
 	return
 }

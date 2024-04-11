@@ -15,7 +15,6 @@
 package raftstore
 
 import (
-	"context"
 	"math"
 	"os"
 	"path"
@@ -50,9 +49,7 @@ type Partition interface {
 	Start() error
 
 	// Submit submits command data to raft log.
-	Submit(cmd []byte) (resp interface{}, err error)
-
-	SubmitWithCtx(ctx context.Context, cmd []byte) (resp interface{}, err error)
+	Submit(cmd []byte, ack proto.AckType) (resp interface{}, err error)
 
 	// ChangeMember submits member change event and information to raft log.
 	ChangeMember(changeType proto.ConfChangeType, peer proto.Peer, context []byte) (resp interface{}, err error)
@@ -242,22 +239,12 @@ func (p *partition) CommittedIndex() (applied uint64) {
 }
 
 // Submit submits command data to raft log.
-func (p *partition) Submit(cmd []byte) (resp interface{}, err error) {
+func (p *partition) Submit(cmd []byte, ack proto.AckType) (resp interface{}, err error) {
 	if !p.IsRaftLeader() {
 		err = raft.ErrNotLeader
 		return
 	}
-	future := p.raft.Submit(nil, p.id, cmd)
-	resp, err = future.Response()
-	return
-}
-
-func (p *partition) SubmitWithCtx(ctx context.Context, cmd []byte) (resp interface{}, err error) {
-	if !p.IsRaftLeader() {
-		err = raft.ErrNotLeader
-		return
-	}
-	future := p.raft.Submit(ctx, p.id, cmd)
+	future := p.raft.Submit(p.id, cmd, ack)
 	resp, err = future.Response()
 	return
 }

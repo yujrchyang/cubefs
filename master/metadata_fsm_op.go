@@ -754,7 +754,7 @@ func (c *Cluster) submit(metadata *RaftCmd) (err error) {
 	if c.leaderHasChanged() {
 		return fmt.Errorf("acition[metadata_submit] leader has changed")
 	}
-	if _, err = c.partition.Submit(cmd); err != nil {
+	if _, err = c.partition.Submit(cmd, proto.AckTypeApplied); err != nil {
 		msg := fmt.Sprintf("action[metadata_submit] err:%v", err.Error())
 		return errors.New(msg)
 	}

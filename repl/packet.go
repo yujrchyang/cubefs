@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/storage"
 	"io"
 	"math/rand"
 	"net"
@@ -27,6 +26,8 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/storage"
 
 	"github.com/cubefs/cubefs/util/log"
 
@@ -282,9 +283,9 @@ func copyReplPacket(src *Packet, dst *Packet) {
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
 	if p.IsForwardPkt() && !p.IsRandomWrite() {
-		p.TpObject = exporter.NewModuleTP(fmt.Sprintf("PrimaryBackUp_%v", p.GetOpMsg()))
+		p.TpObject = exporter.NewModuleTPUs(fmt.Sprintf("PrimaryBackUp_%v", p.GetOpMsg()))
 	} else if p.IsRandomWrite() {
-		p.TpObject = exporter.NewModuleTP(fmt.Sprintf("Raft_%v", p.GetOpMsg()))
+		p.TpObject = exporter.NewModuleTPUs(fmt.Sprintf("Raft_%v", p.GetOpMsg()))
 	}
 
 	return

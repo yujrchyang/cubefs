@@ -17,6 +17,7 @@ package master
 import (
 	"encoding/json"
 	"fmt"
+	raftproto "github.com/tiglabs/raft/proto"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
@@ -28,7 +29,7 @@ func (u *User) submit(metadata *RaftCmd) (err error) {
 	if err != nil {
 		return errors.New(err.Error())
 	}
-	if _, err = u.partition.Submit(cmd); err != nil {
+	if _, err = u.partition.Submit(cmd, raftproto.AckTypeApplied); err != nil {
 		msg := fmt.Sprintf("action[user_submit] err:%v", err.Error())
 		return errors.New(msg)
 	}

@@ -37,6 +37,7 @@ type proposal struct {
 	cmdType proto.EntryType
 	respond respondFunc
 	data    []byte
+	ack     proto.AckType
 }
 
 type askRollback struct {
@@ -140,6 +141,7 @@ func (s *peerState) get() (nodes []uint64) {
 type pending struct {
 	respond respondFunc
 	typ     proto.EntryType
+	ack     proto.AckType
 }
 
 type raft struct {
@@ -662,7 +664,7 @@ func (s *raft) promote() {
 	}
 }
 
-func (s *raft) propose(cmd []byte, future *Future) {
+func (s *raft) propose(cmd []byte, future *Future, ack proto.AckType) {
 
 	if !s.isLeader() {
 		future.respond(nil, ErrNotLeader)
@@ -678,6 +680,7 @@ func (s *raft) propose(cmd []byte, future *Future) {
 	pr.cmdType = proto.EntryNormal
 	pr.data = cmd
 	pr.respond = future.respond
+	pr.ack = ack
 
 	select {
 	case <-s.stopc:
@@ -991,7 +994,13 @@ func (s *raft) apply() {
 		apply.index = entry.Index
 		if pending, ok := s.pending[entry.Index]; ok {
 			if pending.respond != nil {
-				apply.respond = pending.respond
+				switch pending.ack {
+				case proto.AckTypeCommitted:
+					pending.respond(nil, nil)
+				case proto.AckTypeApplied:
+					apply.respond = pending.respond
+				default:
+				}
 			}
 			delete(s.pending, entry.Index)
 			pool.returnPending(pending)
@@ -1337,6 +1346,7 @@ func (s *raft) handleProposal(pr *proposal, nextIndex uint64, entries []*proto.E
 		pending := pool.getPending()
 		pending.typ = pr.cmdType
 		pending.respond = pr.respond
+		pending.ack = pr.ack
 		s.pending[nextIndex] = pending
 		var e = &proto.Entry{Term: s.raftFsm.term, Index: nextIndex, Type: pr.cmdType, Data: pr.data}
 		entries = append(entries, e)

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/tiglabs/raft/proto"
 	"testing"
 	"time"
 )
@@ -32,7 +33,7 @@ func Benchmark_Raft(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		resp := leadServer.raft.Submit(nil, 1, dataBytes)
+		resp := leadServer.raft.Submit(1, dataBytes, proto.AckTypeApplied)
 		_, err := resp.Response()
 		if err != nil {
 			b.Fatalf("Benchmark_Raft: err(%v)", err)

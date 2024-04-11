@@ -26,6 +26,7 @@ type (
 	EntryType      byte
 	ConfChangeType byte
 	PeerType       byte
+	AckType        byte
 )
 
 const (
@@ -62,6 +63,11 @@ const (
 	PeerArbiter PeerType = 1
 
 	LearnerProgress = 90
+)
+
+const (
+	AckTypeCommitted AckType = 0
+	AckTypeApplied   AckType = 1
 )
 
 // The Snapshot interface is supplied by the application to access the snapshot data of application.

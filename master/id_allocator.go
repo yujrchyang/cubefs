@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/tiglabs/raft/proto"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -129,7 +130,7 @@ func (alloc *IDAllocator) allocateDataPartitionID() (partitionID uint64, err err
 	if err != nil {
 		goto errHandler
 	}
-	if _, err = alloc.partition.Submit(cmd); err != nil {
+	if _, err = alloc.partition.Submit(cmd, proto.AckTypeApplied); err != nil {
 		goto errHandler
 	}
 	alloc.setDataPartitionID(partitionID)
@@ -153,7 +154,7 @@ func (alloc *IDAllocator) allocateMetaPartitionID() (partitionID uint64, err err
 	if err != nil {
 		goto errHandler
 	}
-	if _, err = alloc.partition.Submit(cmd); err != nil {
+	if _, err = alloc.partition.Submit(cmd, proto.AckTypeApplied); err != nil {
 		goto errHandler
 	}
 	alloc.setMetaPartitionID(partitionID)
@@ -177,7 +178,7 @@ func (alloc *IDAllocator) allocateCommonID() (id uint64, err error) {
 	if err != nil {
 		goto errHandler
 	}
-	if _, err = alloc.partition.Submit(cmd); err != nil {
+	if _, err = alloc.partition.Submit(cmd, proto.AckTypeApplied); err != nil {
 		goto errHandler
 	}
 	alloc.setCommonID(id)

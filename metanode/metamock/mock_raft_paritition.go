@@ -27,7 +27,7 @@ func NewMockPartition(id uint64) *MockPartition {
 	return mock
 }
 
-func (m *MockPartition) Submit(cmd []byte) (resp interface{}, err error) {
+func (m *MockPartition) Submit(cmd []byte, ack proto.AckType) (resp interface{}, err error) {
 	m.ApplyId++
 	for i := 1; i < len(m.Mp); i++ {
 		m.Apply(m.Mp[i], cmd, m.ApplyId)
