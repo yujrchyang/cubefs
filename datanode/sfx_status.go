@@ -8,54 +8,14 @@ import (
 	"syscall"
 	"unsafe"
 )
-type nvmePassthruCmd struct {
-	opcode      uint8
-	flags       uint8
-	rsvd1       uint16
-	nsid        uint32
-	cdw2        uint32
-	cdw3        uint32
-	metadata    uint64
-	addr        uint64
-	metadataLen uint32
-	dataLen     uint32
-	cdw10       uint32
-	cdw11       uint32
-	cdw12       uint32
-	cdw13       uint32
-	cdw14       uint32
-	cdw15       uint32
-	timeoutMs   uint32
-	result      uint32
-}
-type nvmeExtendedHealthInfo struct {
-	softReadRecoverableErrs     uint32
-	flashDieRaidRecoverableErrs uint32
-	pcieRxCorrectErrs           uint32
-	pcieRxUncorrectErrs         uint32
-	dataReadFromFlash           uint32
-	dataWriteToFlash            uint32
-	tempThrottleInfo            uint32
-	powerConsumption            uint32
-	pfBbdReadCnt                uint32
-	sfxCriticalWarning          uint32
-	raidRecoveryTotalCount      uint32
-	rvd                         uint32
-	opn                         [32]uint8
-	totalPhysicalCapability     uint64
-	freePhysicalCapability      uint64 //unit is sectorCount and the sector size is 512
-	physicalUsageRatio          uint32
-	compRatio                   uint32
-	otpRsaEn                    uint32
-	powerMwConsumption          uint32
-	ioSpeed                     uint32
-}
+
 type sfxStatus struct {
 	totalPhysicalCapability uint64
 	freePhysicalCapability  uint64 //unit is sectorCount and the sector size is 512
 	physicalUsageRatio      uint32
 	compRatio               uint32
 }
+
 const (
 	//nvme ioctl cmd
 	NVME_IOCTL_ADMIN_CMD = 0xc0484e41 //NVME_IOCTL_ADMIN_CMD	_IOWR('N', 0x41, struct nvme_admin_cmd)
@@ -67,17 +27,7 @@ const (
 	//VID
 	PCI_VENDOR_ID_SFX = 0xcc53
 )
-type nvmeIdCtrl struct {
-	vId        uint16 //Only the first two bytes of vid are used, so there is no complete description of the struct. The vme_id_ctrl struct can be found in linux/nvme.h
-	ignoreWord [2047]uint16
-}
-func nvmeAdminPassthru(fd int, cmd nvmePassthruCmd) error {
-	_, _, err := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), NVME_IOCTL_ADMIN_CMD, uintptr(unsafe.Pointer(&cmd)))
-	if err != 0 {
-		return syscall.Errno(err)
-	}
-	return nil
-}
+
 /**
  * @brief GetDevCheckSfx get devName form file path and check if it is sfx csd
  *
@@ -124,6 +74,7 @@ func GetDevCheckSfx(path string) (isSfx bool, devName string) {
 	isSfx = err == nil && PCI_VENDOR_ID_SFX == idctl.vId
 	return
 }
+
 /**
  * @brief GetCSDStatus get sfx status by devName
  *
