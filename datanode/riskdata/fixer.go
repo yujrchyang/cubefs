@@ -62,11 +62,6 @@ var (
 	}
 )
 
-type fragmentIndex struct {
-	fragment *Fragment
-	offset   int64
-}
-
 type FixResult int
 
 const (
@@ -85,27 +80,6 @@ func (r FixResult) String() string {
 		return "Failed"
 	}
 	return "Unknown"
-}
-
-type FixTask struct {
-	WorkingDir  string
-	PartitionID uint64
-	Remotes     []string
-	HAType      proto.CrossRegionHAType
-	Fragment    *Fragment
-	GetLocalCRC func() (uint32, error)
-	GetLocalFGP func() (storage.Fingerprint, error)
-}
-
-type fixHandler struct {
-	name   string
-	handle func() FixResult
-}
-
-type FixerStatus struct {
-	Fragments []*Fragment
-	Count     int
-	Running   bool
 }
 
 type WriterAtFunc func(b []byte, off int64) (n int, err error)
