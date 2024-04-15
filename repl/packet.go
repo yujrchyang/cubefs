@@ -767,22 +767,46 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBuff
 	if p.Size < 0 {
 		return
 	}
-	return p.allocateBufferFromPoolForReadConnnectBody(c)
+	return p.allocateBufferFromPoolForReadConnectBody(c)
 }
 
-func (p *Packet) allocateBufferFromPoolForReadConnnectBody(c net.Conn) (isUseBufferPool bool, err error) {
+func (p *Packet) allocateBufferFromPoolForReadConnectBody(c net.Conn) (isUseBufferPool bool, err error) {
 	readSize := p.Size
 	if p.IsReadOperation() && p.ResultCode == proto.OpInitResultCode {
 		readSize = 0
 		return
 	}
 	p.OrgSize = int32(readSize)
-	if p.IsWriteOperation() && readSize <= unit.BlockSize {
+	switch {
+	case p.IsRandomWrite():
+		// Pre-build random write raft command data
+		var cmdSize = int(unit.RandomWriteRaftCommandHeaderSize + p.Size)
+		var cmd, getErr = proto.Buffers.Get(cmdSize)
+		if getErr != nil {
+			cmd = make([]byte, cmdSize)
+		}
+		isUseBufferPool = getErr == nil
+		var off uint32
+		binary.BigEndian.PutUint32(cmd[off:off+4], uint32(0xFF))
+		off += 4
+		cmd[off] = p.Opcode
+		off += 1
+		binary.BigEndian.PutUint64(cmd[off:off+8], p.ExtentID)
+		off += 8
+		binary.BigEndian.PutUint64(cmd[off:off+8], uint64(p.ExtentOffset))
+		off += 8
+		binary.BigEndian.PutUint64(cmd[off:off+8], uint64(p.Size))
+		off += 8
+		binary.BigEndian.PutUint32(cmd[off:off+4], p.CRC)
+		off += 4
+		_, err = io.ReadFull(c, cmd[off:off+p.Size])
+		p.Data = cmd
+	case p.IsWriteOperation() && readSize <= unit.BlockSize:
 		p.Data, _ = proto.Buffers.Get(unit.BlockSize)
 		_, err = io.ReadFull(c, p.Data[:readSize])
 		atomic.StoreInt64(&p.useDataPoolFlag, PacketUseDataPool)
 		isUseBufferPool = true
-	} else {
+	default:
 		p.Data = make([]byte, readSize)
 		_, err = io.ReadFull(c, p.Data[:readSize])
 	}

@@ -3,15 +3,28 @@ package buf
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/cubefs/cubefs/util/unit"
 )
 
+var (
+	bufferPoolSizes = []int{
+		unit.PacketHeaderSize,
+		unit.BlockSize,
+		unit.BlockSize + unit.RandomWriteRaftCommandHeaderSize,
+		unit.MySQLInnoDBBlockSize, +unit.RandomWriteRaftCommandHeaderSize,
+		unit.DefaultTinySizeLimit,
+	}
+)
+
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
+<<<<<<< HEAD
 	pools                  [3]*sync.Pool
 	tinyPool               *sync.Pool
+=======
+	pools                  []*sync.Pool
+>>>>>>> cfc9abf8e (Pre-build random write command when decoding packet from connection)
 	blockSizeGetNum        uint64
 	avaliBlockSizePutNum   uint64
 	unavaliBlockSizePutNum uint64
@@ -19,41 +32,26 @@ type BufferPool struct {
 
 // NewBufferPool returns a new buffered pool.
 func NewBufferPool() (bufferP *BufferPool) {
-	bufferP = &BufferPool{}
-	bufferP.pools[0] = &sync.Pool{
-		New: func() interface{} {
-			return make([]byte, unit.PacketHeaderSizeForDbbak)
-		},
+	bufferP = &BufferPool{
+		pools: make([]*sync.Pool, len(bufferPoolSizes)),
 	}
-	bufferP.pools[1] = &sync.Pool{
-		New: func() interface{} {
-			return make([]byte, unit.PacketHeaderSize)
-		},
-	}
-	bufferP.pools[2] = &sync.Pool{
-		New: func() interface{} {
-			return make([]byte, unit.BlockSize)
-		},
-	}
-	bufferP.tinyPool = &sync.Pool{
-		New: func() interface{} {
-			return make([]byte, unit.DefaultTinySizeLimit)
-		},
+	for i, size := range bufferPoolSizes {
+		var bufferSize = size
+		bufferP.pools[i] = &sync.Pool{
+			New: func() interface{} {
+				return make([]byte, bufferSize)
+			},
+		}
 	}
 	return bufferP
 }
 
 // Get returns the data based on the given size. Different size corresponds to different object in the pool.
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
-	if size == unit.PacketHeaderSizeForDbbak {
-		return bufferP.pools[0].Get().([]byte), nil
-	} else if size == unit.PacketHeaderSize {
-		return bufferP.pools[1].Get().([]byte), nil
-	} else if size == unit.BlockSize {
-		atomic.AddUint64(&bufferP.blockSizeGetNum, 1)
-		return bufferP.pools[2].Get().([]byte), nil
-	} else if size == unit.DefaultTinySizeLimit {
-		return bufferP.tinyPool.Get().([]byte), nil
+	for i := 0; i < len(bufferPoolSizes); i++ {
+		if size == bufferPoolSizes[i] {
+			return bufferP.pools[i].Get().([]byte), nil
+		}
 	}
 	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
@@ -61,20 +59,13 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 // Put puts the given data into the buffer pool.
 func (bufferP *BufferPool) Put(data []byte) {
 	if data == nil {
-		atomic.AddUint64(&bufferP.unavaliBlockSizePutNum, 1)
 		return
 	}
 	size := len(data)
-	if size == unit.PacketHeaderSizeForDbbak {
-		bufferP.pools[0].Put(data)
-	} else if size == unit.PacketHeaderSize {
-		bufferP.pools[1].Put(data)
-	} else if size == unit.BlockSize {
-		atomic.AddUint64(&bufferP.avaliBlockSizePutNum, 1)
-		bufferP.pools[2].Put(data)
-	} else if size == unit.DefaultTinySizeLimit {
-		bufferP.tinyPool.Put(data)
-	} else {
-		atomic.AddUint64(&bufferP.unavaliBlockSizePutNum, 1)
+	for i, bufferSize := range bufferPoolSizes {
+		if bufferSize == size {
+			bufferP.pools[i].Put(data)
+			return
+		}
 	}
 }

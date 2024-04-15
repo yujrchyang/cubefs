@@ -1068,6 +1068,16 @@ func (s *ExtentStore) ReadTinyDeleteRecords(offset, size int64, data []byte) (cr
 }
 
 func (s *ExtentStore) CheckIsAvaliRandomWrite(extentID uint64, offset, size int64) (err error) {
+	if s.IsFinishLoad() {
+		var info, exist = s.infoStore.Load(extentID)
+		if !exist {
+			return proto.ExtentNotFoundError
+		}
+		if offset > int64(info[Size]) {
+			return NewParameterMismatchErr(fmt.Sprintf("%v: offset=%v size=%v extentsize=%v", IllegalOverWriteError, offset, size, info[Size]))
+		}
+		return nil
+	}
 	var e *Extent
 	e, err = s.extentWithHeaderByExtentID(extentID)
 	if err != nil {

@@ -1345,6 +1345,7 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 
 // RandomWriteSubmit submits the proposal to raft.
 func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
+
 	if !dp.ExtentStore().IsExists(pkg.ExtentID) || dp.ExtentStore().IsDeleted(pkg.ExtentID) {
 		err = proto.ExtentNotFoundError
 		return
@@ -1354,7 +1355,12 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 		return err
 	}
 
-	var cmd = NewRandomWriteCommand(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[:pkg.Size], pkg.CRC)
+	var cmd []byte
+	if IsPrebuildRandomWritePacket(pkg) {
+		cmd = pkg.Data
+	} else {
+		cmd = NewRandomWriteCommand(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[:pkg.Size], pkg.CRC)
+	}
 	if err = dp.submitToRaft(cmd); err != nil {
 		return
 	}
@@ -4270,10 +4276,7 @@ func (dp *DataPartition) submitToRaft(cmd []byte) (err error) {
 		err = fmt.Errorf("%s", RaftNotStarted)
 		return
 	}
-	const op = "SubmitToRaft"
-	var tp = exporter.NewModuleTPUs(op)
 	_, err = dp.raftPartition.Submit(cmd, raftProto.AckTypeCommitted)
-	tp.Set(err)
 	return
 }
 

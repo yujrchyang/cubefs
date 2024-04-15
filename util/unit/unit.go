@@ -43,6 +43,9 @@ const (
 	BlockHeaderSize          = 4096
 	OverWritePacketSizeLimit = 512 * 1024 // Write up to 1MB of data at a time in MySQL
 	EcBlockSize              = 2 * MB
+
+	RandomWriteRaftCommandHeaderSize = 4 + 1 + 8 + 8 + 8 + 4
+	MySQLInnoDBBlockSize             = 16 * KB
 )
 
 const (

@@ -9,6 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/util/unit"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -103,6 +106,16 @@ func NewRandomWriteCommand(opcode uint8, extentID uint64, offset, size int64, da
 	off += 4
 	copy(cmd[off:off+size], data[:size])
 	return
+}
+
+func IsPrebuildRandomWritePacket(packet *repl.Packet) bool {
+	return len(packet.Data) == int(unit.RandomWriteRaftCommandHeaderSize+packet.Size) && // Validate command length
+		binary.BigEndian.Uint32(packet.Data[0:4]) == uint32(BinaryMarshalMagicVersion) && // Validate codec MAGIC bytes
+		packet.Data[4] == packet.Opcode && // Validate opcode
+		binary.BigEndian.Uint64(packet.Data[5:13]) == packet.ExtentID && // Validate extentID
+		binary.BigEndian.Uint64(packet.Data[13:21]) == uint64(packet.ExtentOffset) && // Validate offset
+		binary.BigEndian.Uint64(packet.Data[21:29]) == uint64(packet.Size) && // Validate size
+		binary.BigEndian.Uint32(packet.Data[29:33]) == packet.CRC // Valida crc
 }
 
 var (
