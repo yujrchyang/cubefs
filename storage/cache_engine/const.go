@@ -18,4 +18,5 @@ const (
 	DefaultExpireTime        = 60 * 60
 	InitFileName             = "flash.init"
 	DefaultCacheMaxUsedRatio = 0.9
+	CacheLockNum             = 1024
 )

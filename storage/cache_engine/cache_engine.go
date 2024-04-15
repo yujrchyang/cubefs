@@ -452,11 +452,11 @@ func (c *CacheEngine) unlockAll() {
 
 func (c *CacheEngine) getCacheLock(key string) *sync.RWMutex {
 	crc := fastcrc32.Checksum([]byte(key))
-	return c.locks[crc&3]
+	return c.locks[crc&(CacheLockNum-1)]
 }
 
 func (c *CacheEngine) initCacheLock() {
-	for i := 0; i < 4; i++ {
+	for i := 0; i < CacheLockNum; i++ {
 		c.locks = append(c.locks, new(sync.RWMutex))
 	}
 }
