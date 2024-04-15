@@ -5,11 +5,12 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 type rndWrtOpItem struct {
@@ -82,6 +83,25 @@ func MarshalRandWriteRaftLog(opcode uint8, extentID uint64, offset, size int64, 
 		return
 	}
 	result = buff.Bytes()
+	return
+}
+
+func NewRandomWriteCommand(opcode uint8, extentID uint64, offset, size int64, data []byte, crc uint32) (cmd []byte) {
+	cmd = make([]byte, 4+1+8+8+8+4+size)
+	var off int64
+	binary.BigEndian.PutUint32(cmd[off:off+4], uint32(BinaryMarshalMagicVersion))
+	off += 4
+	cmd[off] = opcode
+	off += 1
+	binary.BigEndian.PutUint64(cmd[off:off+8], extentID)
+	off += 8
+	binary.BigEndian.PutUint64(cmd[off:off+8], uint64(offset))
+	off += 8
+	binary.BigEndian.PutUint64(cmd[off:off+8], uint64(size))
+	off += 8
+	binary.BigEndian.PutUint32(cmd[off:off+4], crc)
+	off += 4
+	copy(cmd[off:off+size], data[:size])
 	return
 }
 

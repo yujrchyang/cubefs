@@ -1354,11 +1354,7 @@ func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 		return err
 	}
 
-	var cmd []byte
-	cmd, err = MarshalRandWriteRaftLog(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[:pkg.Size], pkg.CRC)
-	if err != nil {
-		return
-	}
+	var cmd = NewRandomWriteCommand(pkg.Opcode, pkg.ExtentID, pkg.ExtentOffset, int64(pkg.Size), pkg.Data[:pkg.Size], pkg.CRC)
 	if err = dp.submitToRaft(cmd); err != nil {
 		return
 	}
