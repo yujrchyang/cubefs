@@ -120,6 +120,17 @@ func (client *FlashClient) SetFlashNodePing(enable bool) (err error) {
 	return
 }
 
+func (client *FlashClient) SetFlashNodeReadTimeout(ms int) (err error) {
+	resp, err := doGet(fmt.Sprintf("http://%v/SingleContext/?setTimeout=%v", client.host, ms))
+	if err != nil {
+		return
+	}
+	if !strings.Contains(string(resp), "success") {
+		err = fmt.Errorf("SetFlashNodeReadTimeout failed: %v", string(resp))
+	}
+	return
+}
+
 func (client *FlashClient) SetFlashNodeStack(enable bool) (err error) {
 	params := make(map[string]string)
 	params["enable"] = strconv.FormatBool(enable)

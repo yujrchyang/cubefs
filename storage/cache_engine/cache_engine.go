@@ -280,7 +280,9 @@ func (c *CacheEngine) usedSize() (size int64) {
 		log.LogErrorf("compute used size of cache engine, err:%v", err)
 		return
 	}
-	return int64(stat.Blocks) * int64(stat.Bsize)
+	total := float64(stat.Blocks) * float64(stat.Bsize)
+	avail := float64(stat.Bavail) * float64(stat.Bsize)
+	return int64(total - avail)
 }
 
 func (c *CacheEngine) startCachePrepareWorkers() {
