@@ -59,7 +59,7 @@ type CacheEngine struct {
 	config             *CacheConfig
 	sync.Mutex
 }
-type ReadExtentData func(source *proto.DataSource, w func(data []byte, off, size int64) error) (readBytes int, err error)
+type ReadExtentData func(source *proto.DataSource, w func(data []byte, off, size int64) error, init func()) (readBytes int, err error)
 type MonitorFunc func(volume string, action int, dataSize uint64)
 
 func NewCacheEngine(rootPath string, totalSize int64, maxUseRatio float64, capacity int, expireTime time.Duration, readFunc ReadExtentData, monitorFunc MonitorFunc) (s *CacheEngine, err error) {
