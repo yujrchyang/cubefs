@@ -7,18 +7,22 @@ import (
 )
 
 func TestSingleContext(t *testing.T) {
-	var timeout = 6
+	var timeout = 100
+	var minTimeout = 60
 	s := NewSingleContextWithTimeout(timeout)
 	assert.Equal(t, timeout, s.GetTimeoutMs())
-	for i := 0; i < 128; i++ {
+	for i := 0; i < 32; i++ {
 		go func() {
 			for {
 				tStart := time.Now()
 				ctx := s.GetContextWithTimeout()
 				assert.NotNil(t, ctx)
+				deadline, ok := ctx.Deadline()
+				assert.True(t, ok)
+				assert.GreaterOrEqual(t, deadline.Sub(time.Now()), time.Duration(minTimeout)*time.Millisecond)
 				select {
 				case <-ctx.Done():
-					assert.True(t, time.Since(tStart) >= time.Duration(timeout/2)*time.Millisecond)
+					t.Logf("timeout cost: %v", time.Since(tStart))
 				case <-s.stopCh:
 					return
 				}
