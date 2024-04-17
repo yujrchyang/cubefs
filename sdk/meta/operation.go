@@ -40,7 +40,9 @@ type RequestInfo struct {
 }
 
 func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
-
+	if proto.IsDbBack {
+		mode = proto.ToDbbakMode(mode)
+	}
 	req := &proto.CreateInodeRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
@@ -84,6 +86,9 @@ func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid
 		err = errors.New(fmt.Sprintf("icreate: info is nil, packet(%v) mp(%v) req(%v) PacketData(%v)", packet, mp, *req, string(packet.Data)))
 		log.LogWarn(err)
 		return
+	}
+	if proto.IsDbBack {
+		resp.Info.Mode = uint32(proto.ConvertDbbakMode(resp.Info.Mode))
 	}
 	log.LogDebugf("icreate: packet(%v) mp(%v) req(%v) info(%v)", packet, mp, *req, resp.Info)
 	return statusOK, resp.Info, nil
@@ -138,7 +143,9 @@ func (mw *MetaWrapper) iunlink(ctx context.Context, mp *MetaPartition, inode uin
 		log.LogWarnf("iunlink: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
 		return
 	}
-
+	if proto.IsDbBack && resp.Info != nil {
+		resp.Info.Mode = uint32(proto.ConvertDbbakMode(resp.Info.Mode))
+	}
 	log.LogDebugf("iunlink: packet(%v) mp(%v) req(%v)", packet, mp, *req)
 	return statusOK, resp.Info, nil
 }
@@ -192,7 +199,9 @@ func (mw *MetaWrapper) dcreate(ctx context.Context, mp *MetaPartition, parentID 
 	if parentID == inode {
 		return statusExist, nil
 	}
-
+	if proto.IsDbBack {
+		mode = proto.ToDbbakMode(mode)
+	}
 	req := &proto.CreateDentryRequest{
 		VolName:         mw.volname,
 		PartitionID:     mp.PartitionID,
@@ -410,6 +419,9 @@ func (mw *MetaWrapper) lookup(ctx context.Context, mp *MetaPartition, parentID u
 		log.LogWarnf("lookup: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
 	}
+	if proto.IsDbBack {
+		resp.Mode = uint32(proto.ConvertDbbakMode(resp.Mode))
+	}
 	log.LogDebugf("lookup exit: packet(%v) mp(%v) req(%v) ino(%v) mode(%v)", packet, mp, *req, resp.Inode, resp.Mode)
 	return statusOK, resp.Inode, resp.Mode, nil
 }
@@ -426,8 +438,11 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 
 	packet := proto.NewPacketReqID(ctx)
 	// add new opcode for 'InodeGet' to be compatible with old clients that can only judge 'statusNoent'
-	//packet.Opcode = proto.OpMetaInodeGet
-	packet.Opcode = proto.OpMetaInodeGetV2
+	if proto.IsDbBack {
+		packet.Opcode = proto.OpMetaInodeGet
+	} else {
+		packet.Opcode = proto.OpMetaInodeGetV2
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -536,6 +551,9 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 }
 
 func processInodeGetResponse(resp *proto.InodeGetResponse) {
+	if proto.IsDbBack {
+		resp.Info.Mode = uint32(proto.ConvertDbbakMode(resp.Info.Mode))
+	}
 	var xattrs []proto.InodeXAttrInfo
 	for _, attr := range resp.ExtendAttrs {
 		if attr == nil {
@@ -556,6 +574,9 @@ func processBatchInodeGetResponse(resp *proto.BatchInodeGetResponse) {
 		attrMap[attr.InodeID] = attr.ExtendAttrs
 	}
 	for _, info := range resp.Infos {
+		if proto.IsDbBack {
+			info.Mode = uint32(proto.ConvertDbbakMode(info.Mode))
+		}
 		attrs, ok := attrMap[info.Inode]
 		if !ok {
 			continue
@@ -692,52 +713,6 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 	return statusOK, children, next, nil
 }
 
-//func (mw *MetaWrapper) appendExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, extent proto.ExtentKey) (status int, err error) {
-//	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.appendExtentKey")
-//	defer tracer.Finish()
-//	ctx = tracer.Context()
-//
-//	req := &proto.AppendExtentKeyRequest{
-//		VolName:     mw.volname,
-//		PartitionID: mp.PartitionID,
-//		Inode:       inode,
-//		Extent:      extent,
-//	}
-//
-//	packet := proto.NewPacketReqID(ctx)
-//	packet.Opcode = proto.OpMetaExtentsAdd
-//	packet.PartitionID = mp.PartitionID
-//	err = packet.MarshalData(req)
-//	if err != nil {
-//		log.LogWarnf("appendExtentKey: req(%v) err(%v)", *req, err)
-//		return
-//	}
-//
-//	metric := exporter.NewModuleTP(packet.GetOpMsg())
-//	defer metric.Set(err)
-//
-//	var needCheckRead bool
-//	packet, needCheckRead, err = mw.sendWriteToMP(ctx, mp, packet)
-//	if err != nil {
-//		if needCheckRead {
-//			log.LogWarnf("appendExtentKey: check results, mp(%v) req(%v)", mp, *req)
-//			newStatus, _, _, newExtents, newErr := mw.getExtents(ctx, mp, inode)
-//			if newErr == nil && newStatus == statusOK && containsExtent(newExtents, extent) {
-//				log.LogWarnf("appendExtentKey: check results successfully, mp(%v) req(%v)", mp, *req)
-//				return statusOK, nil
-//			}
-//		}
-//		log.LogWarnf("appendExtentKey: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-//		return
-//	}
-//
-//	status = parseStatus(packet.ResultCode)
-//	if status != statusOK {
-//		log.LogWarnf("appendExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-//	}
-//	return status, nil
-//}
-
 func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey, isPreExtent bool) (status int, err error) {
 
 	req := &proto.InsertExtentKeyRequest{
@@ -751,7 +726,11 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 	}
 
 	packet := proto.NewPacketReqID(ctx)
-	packet.Opcode = proto.OpMetaExtentsInsert
+	if proto.IsDbBack {
+		packet.Opcode = proto.OpMetaExtentsAdd
+	} else {
+		packet.Opcode = proto.OpMetaExtentsInsert
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -836,6 +815,14 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 	if err != nil {
 		log.LogWarnf("getExtents: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return
+	}
+	if proto.IsDbBack {
+		var size uint64
+		for i := range resp.Extents {
+			resp.Extents[i].FileOffset = size
+			size += uint64(resp.Extents[i].Size)
+		}
+		resp.Size = size
 	}
 	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
 }

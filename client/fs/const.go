@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"bazil.org/fuse"
-
 	"github.com/cubefs/cubefs/proto"
 )
 
@@ -72,6 +71,17 @@ func ParseError(err error) fuse.Errno {
 
 // ParseType returns the dentry type.
 func ParseType(t uint32) fuse.DirentType {
+	if proto.IsDbBack {
+		switch t {
+		case proto.ModeDirForDbbak:
+			return fuse.DT_Dir
+		case proto.ModeSymlinkForDbbak:
+			return fuse.DT_Link
+		default:
+			return fuse.DT_File
+		}
+	}
+
 	if proto.IsDir(t) {
 		return fuse.DT_Dir
 	} else if proto.IsSymlink(t) {

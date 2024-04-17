@@ -17,12 +17,13 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
-	pb "github.com/gogo/protobuf/proto"
 	"net/http"
 	"net/url"
 	"strconv"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
+	pb "github.com/gogo/protobuf/proto"
 )
 
 type Decoder func([]byte) ([]byte, error)
@@ -147,7 +148,19 @@ func (api *ClientAPI) GetMetaPartition(partitionID uint64, volName string) (part
 	return
 }
 
-func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPartitionView, err error) {
+func (api *ClientAPI) GetMetaPartitions(volName string) ([]*proto.MetaPartitionView, error) {
+	if proto.IsDbBack {
+		if vv, err := api.GetVolumeWithoutAuthKey(volName); err != nil {
+			return nil, err
+		} else {
+			return vv.MetaPartitions, nil
+		}
+	} else {
+		return api.getMetaPartitions(volName)
+	}
+}
+
+func (api *ClientAPI) getMetaPartitions(volName string) (views []*proto.MetaPartitionView, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.ClientMetaPartitions)
 	request.addParam("name", volName)
 	request.addHeader(proto.AcceptFormat, proto.ProtobufType)
@@ -170,7 +183,7 @@ func (api *ClientAPI) GetMetaPartitions(volName string) (views []*proto.MetaPart
 	return
 }
 
-//dpIDs为空时获取vol全量的dp信息
+// dpIDs为空时获取vol全量的dp信息
 func (api *ClientAPI) GetDataPartitions(volName string, dpIDs []uint64) (view *proto.DataPartitionsView, err error) {
 	path := proto.ClientDataPartitions
 	if proto.IsDbBack || api.mc.IsDbBack {
@@ -182,7 +195,7 @@ func (api *ClientAPI) GetDataPartitions(volName string, dpIDs []uint64) (view *p
 		var dpIDsStr string
 		for index, id := range dpIDs {
 			dpIDsStr += fmt.Sprintf("%v", id)
-			if index != len(dpIDs) - 1 {
+			if index != len(dpIDs)-1 {
 				dpIDsStr += ","
 			}
 		}

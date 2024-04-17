@@ -253,7 +253,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 		w.convertDataPartition(dataState.DpView, true)
 	}
 
-	w._updateDataNodeStatus(dataState.ClusterView)
+	w.updateDataNodeStatus(&dataState.ClusterView.DataNodes, &dataState.ClusterView.EcNodes)
 
 	StreamConnPoolInitOnce.Do(func() {
 		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(w.connConfig.IdleTimeoutSec)*time.Second, time.Duration(w.connConfig.ConnectTimeoutNs))
@@ -333,6 +333,9 @@ func (w *Wrapper) InitFollowerRead(clientConfig bool) {
 }
 
 func (w *Wrapper) FollowerRead() bool {
+	if proto.IsDbBack {
+		return true
+	}
 	return w.followerRead
 }
 
@@ -861,11 +864,6 @@ func (w *Wrapper) GetDataPartition(partitionID uint64) (dp *DataPartition, err e
 	return dp, nil
 }
 
-//// WarningMsg returns the warning message that contains the cluster name.
-//func (w *Wrapper) WarningMsg() string {
-//	return fmt.Sprintf("%s_client_warning", w.clusterName)
-//}
-
 func (w *Wrapper) fetchClusterView() (cv *proto.ClusterView, err error) {
 	cv, err = w.mc.AdminAPI().GetCluster()
 	if err != nil {
@@ -883,11 +881,35 @@ func (w *Wrapper) fetchClientClusterView() (cf *proto.ClientClusterConf, err err
 }
 
 func (w *Wrapper) updateClientClusterView() (err error) {
-	var cf *proto.ClientClusterConf
-	if cf, err = w.fetchClientClusterView(); err != nil {
+	var (
+		dataNodes *[]proto.NodeView
+		ecNodes   *[]proto.NodeView
+		cv        *proto.ClusterView
+		cf        *proto.ClientClusterConf
+	)
+	if proto.IsDbBack {
+		if cv, err = w.fetchClusterView(); err != nil {
+			return
+		}
+		dataNodes = &cv.DataNodes
+		ecNodes = &cv.EcNodes
+	} else {
+		if cf, err = w.fetchClientClusterView(); err != nil {
+			return
+		}
+		dataNodes = &cf.DataNodes
+		ecNodes = &cf.EcNodes
+	}
+	w.updateDataNodeStatus(dataNodes, ecNodes)
+	if proto.IsDbBack {
 		return
 	}
-	w._updateDataNodeStatus(cf)
+
+	if w.dpMetricsReportDomain != cf.SchedulerDomain {
+		log.LogInfof("updateDataNodeStatus: update scheduler domain from old(%v) to new(%v)", w.dpMetricsReportDomain, cf.SchedulerDomain)
+		w.dpMetricsReportDomain = cf.SchedulerDomain
+		w.schedulerClient.UpdateSchedulerDomain(w.dpMetricsReportDomain)
+	}
 
 	w.umpJmtpAddr = cf.UmpJmtpAddr
 	exporter.SetUMPJMTPAddress(w.umpJmtpAddr)
@@ -911,13 +933,13 @@ func (w *Wrapper) updateClientClusterView() (err error) {
 	return
 }
 
-func (w *Wrapper) _updateDataNodeStatus(cf *proto.ClientClusterConf) {
+func (w *Wrapper) updateDataNodeStatus(dataNodes *[]proto.NodeView, ecNodes *[]proto.NodeView) {
 	newHostsStatus := make(map[string]bool)
-	for _, node := range cf.DataNodes {
+	for _, node := range *dataNodes {
 		newHostsStatus[node.Addr] = node.Status
 	}
 
-	for _, node := range cf.EcNodes {
+	for _, node := range *ecNodes {
 		newHostsStatus[node.Addr] = node.Status
 	}
 	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
@@ -925,12 +947,6 @@ func (w *Wrapper) _updateDataNodeStatus(cf *proto.ClientClusterConf) {
 	w.Lock()
 	w.HostsStatus = newHostsStatus
 	w.Unlock()
-
-	if w.dpMetricsReportDomain != cf.SchedulerDomain {
-		log.LogInfof("updateDataNodeStatus: update scheduler domain from old(%v) to new(%v)", w.dpMetricsReportDomain, cf.SchedulerDomain)
-		w.dpMetricsReportDomain = cf.SchedulerDomain
-		w.schedulerClient.UpdateSchedulerDomain(w.dpMetricsReportDomain)
-	}
 	return
 }
 

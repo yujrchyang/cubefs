@@ -151,27 +151,6 @@ func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name stri
 	}
 
 	// Create Inode
-
-	//	mp = mw.getLatestPartition()
-	//	if mp != nil {
-	//		status, info, err = mw.icreate(mp, mode, target)
-	//		if err == nil {
-	//			if status == statusOK {
-	//				goto create_dentry
-	//			} else if status == statusFull {
-	//				mw.UpdateMetaPartitions()
-	//			}
-	//		}
-	//	}
-	//
-	//	rwPartitions = mw.getRWPartitions()
-	//	for _, mp = range rwPartitions {
-	//		status, info, err = mw.icreate(mp, mode, target)
-	//		if err == nil && status == statusOK {
-	//			goto create_dentry
-	//		}
-	//	}
-
 	var icreateFunc operatePartitionFunc = func(mp1 *MetaPartition) (bool, int) {
 		status, info, err = mw.icreate(ctx, mp1, mode, uid, gid, target)
 		if err == nil && status == statusOK {
@@ -662,26 +641,6 @@ func (mw *MetaWrapper) DentryUpdate_ll(ctx context.Context, parentID uint64, nam
 	}
 	return
 }
-
-// Used as a callback by stream sdk
-//func (mw *MetaWrapper) AppendExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey) error {
-//	var tracer = tracing.TracerFromContext(ctx).ChildTracer("MetaWrapper.AppendExtentKey")
-//	defer tracer.Finish()
-//	ctx = tracer.Context()
-//
-//	mp := mw.getPartitionByInode(ctx, inode)
-//	if mp == nil {
-//		return syscall.ENOENT
-//	}
-//
-//	status, err := mw.appendExtentKey(ctx, mp, inode, ek)
-//	if err != nil || status != statusOK {
-//		log.LogErrorf("AppendExtentKey: inode(%v) ek(%v) err(%v) status(%v)", inode, ek, err, status)
-//		return statusToErrno(status)
-//	}
-//	log.LogDebugf("AppendExtentKey: ino(%v) ek(%v)", inode, ek)
-//	return nil
-//}
 
 // AppendExtentKeys append multiple extent key into specified inode with single request.
 func (mw *MetaWrapper) AppendExtentKeys(ctx context.Context, inode uint64, eks []proto.ExtentKey) error {

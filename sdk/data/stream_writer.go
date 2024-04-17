@@ -1098,6 +1098,10 @@ func (s *Streamer) tinySizeLimit() int {
 }
 
 func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
+	if !s.client.useLastExtent {
+		return false
+	}
+
 	preEk := s.extents.Pre(uint64(offset))
 	if preEk == nil ||
 		s.dirtylist.Len() != 0 ||

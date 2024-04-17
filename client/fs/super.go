@@ -131,6 +131,7 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		ExtentSize:          int(opt.ExtentSize),
 		AutoFlush:           opt.AutoFlush,
 		UpdateExtentsOnRead: opt.UpdateExtentsOnRead,
+		UseLastExtent:       opt.UseLastExtent,
 		OnInodeGet:          s.InodeGet,
 		OnInsertExtentKey:   s.mw.InsertExtentKey,
 		OnGetExtents:        s.mw.GetExtents,
@@ -166,7 +167,7 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 	s.orphan = NewOrphanInodeList()
 	s.disableDcache = opt.DisableDcache
 	s.fsyncOnClose = opt.FsyncOnClose
-	s.enableXattr = opt.EnableXattr
+	s.enableXattr = opt.EnableXattr && !proto.IsDbBack
 	s.noBatchGetInodeOnReaddir = opt.NoBatchGetInodeOnReaddir
 	if opt.DelProcessPath != "" {
 		s.delProcessPath = strings.Split(opt.DelProcessPath, ",")

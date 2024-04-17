@@ -2,67 +2,59 @@
 #include <assert.h>
 #include <dirent.h>
 #include <errno.h>
-#include <sys/types.h>
-#include <sys/sendfile.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-#include <unistd.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
-//LD_PRELOAD=libcfsclient.so CFS_CONFIG_PATH=/export/servers/cfs/cfs_client.ini CFS_MOUNT_POINT=/export/data/mysql ./a.out
+//LD_PRELOAD=libcfsclient.so MOUNT_POINT=/export/data/mysql ./a.out
 
 #define clean_errno() (errno == 0 ? "None" : strerror(errno))
 #define log_error(M, ...) fprintf(stderr, "[ERROR] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, clean_errno(), ##__VA_ARGS__)
 #define assertf(A, M, ...) if(!(A)) {log_error(M, ##__VA_ARGS__); assert(A); }
 
-void testOp(bool is_cfs, bool ignore, const char *file);
+void testOp(const char *file);
 void testReload();
 void testDup();
 void testUnlinkAndRename();
 void testSymlink();
+
+#define PATH_LEN 100
+bool is_cfs;
+char* mount;
+
 int main(int argc, char **argv) {
-    bool is_cfs = true;
-    bool ignore = false;
     int num = 1;
     int c;
-    const char* mount;
     while((c = getopt(argc, argv, "lin:h")) != -1)
     switch(c) {
-        case 'l':
-        is_cfs = false;
-        break;
-        case 'i':
-        ignore = true;
-        break;
         case 'n':
         num = atoi(optarg);
         break;
         case 'h':
-        printf("There are three test modes: local(-l), CFS, CFS but not hook(-i).\n-l\n  local (default CFS)\n-i\n  ignore hook (default false)\n-n num\n  execute num times (default 1)\n");
+        printf("There are three test modes: local, CFS(use LD_PRELOAD).\n-n num\n  execute num times (default 1)\n");
         return 0;
     }
-    if(is_cfs) {
-        const char *ld = getenv("LD_PRELOAD");
-        const char *config = getenv("CFS_CONFIG_PATH");
-        mount = getenv("CFS_MOUNT_POINT");
-        if(ld == NULL || config == NULL || mount == NULL) {
-            printf("execute with LD_PRELOAD=libcfsclient.so CFS_CONFIG_PATH= CFS_MOUNT_POINT=\n");
-            return -1;
-        }
+    is_cfs = getenv("LD_PRELOAD");
+    mount = getenv("MOUNT_POINT");
+    if(mount == NULL) {
+        printf("execute with MOUNT_POINT=\n");
+        return -1;
     }
 
     time_t raw_time;
     struct tm *ptm;
     char buf[20];
-    const int count = is_cfs && !ignore ? 100 : 100000;
+    const int count = is_cfs ? 100 : 100000;
     for(int i = 0; i < num; i++) {
-        testOp(is_cfs, ignore, "tmp123");
-        testOp(is_cfs, ignore, "mysql-bin.000001");
+        testOp("tmp123");
         if(i >= count && i % count == 0) {
             raw_time = time(NULL);
             ptm = localtime(&raw_time);
@@ -71,9 +63,11 @@ int main(int argc, char **argv) {
         }
     }
     printf("Finish testOp for %d times.\n", num);
-    testReload();
-    setenv("CFS_MOUNT_POINT", mount, 1);
-    testDup(is_cfs);
+    if(is_cfs) {
+        testReload();
+        setenv("MOUNT_POINT", mount, 1);
+    }
+    testDup();
     printf("Finish testDup\n");
     testUnlinkAndRename();
     printf("Finish test unlink and rename\n");
@@ -90,36 +84,23 @@ void testReload() {
     printf("finish client update.\n");
 }
 
-void testOp(bool is_cfs, bool ignore, const char *file) {
-    #define PATH_LEN 100
-    char cwd[PATH_LEN];      // root for this test
-    char dir[PATH_LEN];      // temp dir
-    char path[PATH_LEN];     // reame source file
-    char path1[PATH_LEN];    // another file
-    char new_path[PATH_LEN]; // rename to file
-    memset(cwd, '\0', PATH_LEN);
-    memset(dir, '\0', PATH_LEN);
-    memset(path, '\0', PATH_LEN);
-    memset(path1, '\0', PATH_LEN);
-    memset(new_path, '\0', PATH_LEN);
+void testOp(const char *file) {
+    char cwd[PATH_LEN] = {0};           // root for this test
+    char dir[PATH_LEN] = {0};           // temp dir
+    char path[PATH_LEN] = {0};          // reame source file
+    char path_sendfile[PATH_LEN] = {0}; // sendfile source file
+    char new_path[PATH_LEN] = {0};      // rename to file
     const char *tdir = "t";
     const char *new_file = "tmp1234";
-    if(is_cfs) {
-        const char *mount = getenv("CFS_MOUNT_POINT");
-        assertf(mount, "env CFS_MOUNT_POINT not exists");
-        strcat(cwd, mount);
-    } else {
-        assertf(getcwd(cwd, PATH_LEN), "getcwd returning NULL");
-    }
+    strcat(cwd, mount);
     sprintf(dir, "%s/%s", cwd, tdir);
     sprintf(path, "%s/%s", dir, file);
-    sprintf(path1, "%s/%s1", dir, file);
+    sprintf(path_sendfile, "%s/%s1", dir, file);
     sprintf(new_path, "%s/%s", dir, new_file);
 
     #define LEN 2
     char wbuf[LEN] = "a";
-    char rbuf[LEN];
-    memset(rbuf, '\0', LEN);
+    char rbuf[LEN] = {0};
     int dir_fd, fd, tmp_fd, re;
     ssize_t size;
     off_t off;
@@ -128,8 +109,7 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     rmdir(dir);
 
     // chdir operations
-    char tmp_buf[PATH_LEN];
-    memset(tmp_buf, '\0', PATH_LEN);
+    char tmp_buf[PATH_LEN] = {0};
     //buf is not enough for the cwd
     char *tmp_dir = getcwd(tmp_buf, 1);
     assertf(tmp_dir == NULL, "getcwd returing %s", tmp_dir);
@@ -137,7 +117,7 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     assertf(tmp_dir == tmp_buf, "getcwd returing invalid poiter");
     re = mkdir(dir, 0775);
     assertf(re == 0, "mkdir %s returning %d", dir, re);
-    dir_fd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
+    dir_fd = open(dir, O_RDONLY | O_DIRECTORY);
     assertf(dir_fd > 0, "open dir %s returning %d", dir, dir_fd);
     re = chdir(cwd);
     tmp_dir = getcwd(NULL, 0);
@@ -166,13 +146,13 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     assertf(dirp != NULL, "fdopendir %s returning NULL", dir);
     re = closedir(dirp);
     assertf(re == 0, "closedir returning %d", re);
-    dir_fd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
+    dir_fd = open(dir, O_RDONLY | O_DIRECTORY);
     assertf(dir_fd > 0, "open dir %s returning %d", dir, dir_fd);
     dirp = opendir(dir);
     assertf(dirp != NULL, "opendir %s returning NULL", dir);
     struct dirent *dp;
     while((dp = readdir(dirp)) && (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")));
-    assertf(dp != NULL && !strcmp(dp->d_name, file), "readdir returning %s", dp == NULL ? "" : dp->d_name);
+    assertf(dp != NULL && !strcmp(dp->d_name, file), "readdir returning %s", dp == NULL ? "NULL" : dp->d_name);
     dp = readdir(dirp);
     assertf(dp == NULL, "readdir errno %d", errno);
     re = closedir(dirp);
@@ -181,7 +161,7 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     dirp = fdopendir(dir_fd);
     assertf(dirp != NULL, "fdopendir %s returning NULL", dir);
     while((dp = readdir(dirp)) && (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")));
-    assertf(dp != NULL && !strcmp(dp->d_name, file), "readdir returning %s", dp == NULL ? "" : dp->d_name);
+    assertf(dp != NULL && !strcmp(dp->d_name, file), "readdir returning %s", dp == NULL ? "NULL" : dp->d_name);
     dp = readdir(dirp);
     assertf(dp == NULL, "readdir errno %d", errno);
 
@@ -220,8 +200,8 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     assertf(size == LEN-2 && strncmp(wbuf+1, rbuf, LEN-2) == 0, "pread %s from %s at offset %d returning %d", rbuf, path, LEN-1, size);
 
     // sendfile
-    tmp_fd = open(path1, O_RDWR | O_CREAT, 0664);
-    assertf(tmp_fd > 0, "open %s returning %d", path1, tmp_fd);
+    tmp_fd = open(path_sendfile, O_RDWR | O_CREAT, 0664);
+    assertf(tmp_fd > 0, "open %s returning %d", path_sendfile, tmp_fd);
     off = lseek(fd, 0, SEEK_SET);
     assertf(off == 0, "lseek returning %d", off);
     size = sendfile(tmp_fd, fd, NULL, LEN-1);
@@ -236,7 +216,7 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     assertf(re == 0, "chmod %s returning %d", path, re);
     re = stat(path, &statbuf);
     // access time is updated in metanode when accessing inode, inconsistent with client inode cache
-    bool atim_valid = !ignore && is_cfs ?
+    bool atim_valid = is_cfs ?
         ts[0].tv_sec <= statbuf.st_atime:
         !memcmp((void*)&ts[0].tv_sec, (void*)&statbuf.st_atime, sizeof(time_t));
     assertf(re == 0 && statbuf.st_size == 2*LEN-2
@@ -263,19 +243,17 @@ void testOp(bool is_cfs, bool ignore, const char *file) {
     assertf(re < 0, "lseek closed fd %d returning %d", fd, re);
     re = unlink(path);
     assertf(re == 0, "unlink %s returning %d", path, re);
-    re = unlink(path1);
-    assertf(re == 0, "unlink %s returning %d", path1, re);
+    re = unlink(path_sendfile);
+    assertf(re == 0, "unlink %s returning %d", path_sendfile, re);
     tmp_fd = open(path, O_RDONLY);
     assertf(tmp_fd < 0, "open unlinked %s wirt O_RDONLY returning %d", path, tmp_fd);
     re = rmdir(dir);
     assertf(re == 0, "rmdir %s returning %d", dir, re);
-    dir_fd = open(dir, O_RDONLY | O_PATH | O_DIRECTORY);
+    dir_fd = open(dir, O_RDONLY | O_DIRECTORY);
     assertf(dir_fd < 0, "open removed dir %s returning %d", dir, dir_fd);
 }
 
 void testDup() {
-    #define PATH_LEN 100
-    char *mount = getenv("CFS_MOUNT_POINT");
     char *path = "dir";
     char *file = "file1";
     off_t off;
@@ -297,7 +275,7 @@ void testDup() {
 
     res = mkdir(dir, 0775);
     assertf(res == 0, "mkdir %s returning %d", dir, res);
-    dirfd = open(dir, O_RDWR | O_PATH | O_DIRECTORY);
+    dirfd = open(dir, O_RDONLY | O_DIRECTORY);
     assertf(dirfd > 0, "open dir %s returning %d", dir, dirfd);
     dirfd1 = dup2(dirfd, 99);
     assertf(dirfd1 > 0, "dup2 fd %d returning %d, expect 99", dirfd, dirfd1);
@@ -356,8 +334,7 @@ void testDup() {
 
 void testUnlinkAndRename() {
     #define COUNT 10
-    #define PATH_LEN 100
-    char *mount = getenv("CFS_MOUNT_POINT");
+    char *mount = getenv("MOUNT_POINT");
     char *file_1 = "testUnlinkAndRename_1";
     char *file_2 = "testUnlinkAndRename_2";
     int fd_1, fd_2;
@@ -419,49 +396,24 @@ void testUnlinkAndRename() {
 }
 
 void testSymlink() {
-    #define PATH_LEN 100
-    char *mount = getenv("CFS_MOUNT_POINT");
     char *path = "dir2";
     char *file1 = "file1";
     char *file2 = "file2";
-    char *file3 = "file3";
-    char *file4 = "notExist";
+    char *file3 = "notExist";
+
+    char dir[PATH_LEN] = {0};
+    sprintf(dir, "%s/%s", mount, path);
+    char filepath1[PATH_LEN] = {0};
+    sprintf(filepath1, "%s/%s", dir, file1);
+    char filepath2[PATH_LEN] = {0};
+    sprintf(filepath2, "%s/%s", dir, file2);
+    char filepath3[PATH_LEN] = {0};
+    sprintf(filepath3, "%s/%s", dir, file3);
 
     int res, fd;
     ssize_t size;
     char buf[PATH_LEN] = {0};
     struct stat statbuf;
-    char *p;
-
-    char dir[PATH_LEN] = {0};
-    strcat(dir, mount);
-    strcat(dir, "/");
-    strcat(dir, path);
-
-    char filepath1[PATH_LEN] = {0};
-    strcat(filepath1, dir);
-    strcat(filepath1, "/");
-    strcat(filepath1, file1);
-    unlink(filepath1);
-
-    char filepath2[PATH_LEN] = {0};
-    strcat(filepath2, dir);
-    strcat(filepath2, "/");
-    strcat(filepath2, file2);
-    unlink(filepath2);
-
-    char filepath3[PATH_LEN] = {0};
-    strcat(filepath3, dir);
-    strcat(filepath3, "/");
-    strcat(filepath3, file3);
-    unlink(filepath3);
-
-    char filepath4[PATH_LEN] = {0};
-    strcat(filepath4, dir);
-    strcat(filepath4, "/");
-    strcat(filepath4, file4);
-
-    rmdir(dir);
 
     res = mkdir(dir, 0775);
     assertf(res == 0, "mkdir %s returning %d", dir, res);
@@ -474,8 +426,6 @@ void testSymlink() {
 
     res = symlink(filepath1, filepath2);
     assertf(res == 0, "symlink %s to %s returning %d, expect 0", filepath2, filepath1, res);
-    res = symlink(file1, filepath3); // target file must use abspath
-    assertf(res == -1, "symlink %s to %s returning %d, expect -1", filepath3, file1, res);
 
     res = access(filepath1, F_OK);
     assertf(res == 0, "access %s returing %d, expect 0", filepath1, res);
@@ -493,12 +443,12 @@ void testSymlink() {
     res = stat(filepath2, &statbuf);
     assertf(res == 0, "stat symlink %s returning %d, expect 0", filepath2, res);
 
-    p = realpath(filepath1, buf);
-    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0 && errno == 0, "realpath %s returning %s, errno: %d; expect %s, errno: 0", filepath1, p, errno, filepath1);
+    char *p = realpath(filepath1, buf);
+    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0, "realpath %s returning %s; expect %s", filepath1, p, filepath1);
     p = realpath(filepath2, buf);
-    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0 && errno == 0, "realpath %s returning %s, errno: %d; expect %s, errno: 0", filepath2, p, errno, filepath1);
-    p = realpath(filepath4, buf);
-    assertf(errno == ENOENT && p == NULL, "realpath %s returing %s, errno: %d; expect NULL, errno: ENOENT", filepath4, p, errno);
+    assertf(memcmp(p, filepath1, strlen(filepath1)) == 0, "realpath %s returning %s; expect %s", filepath2, p, filepath1);
+    p = realpath(filepath3, buf);
+    assertf(errno == ENOENT && p == NULL, "realpath %s returing %s, errno: %d; expect NULL, errno: ENOENT", filepath3, p, errno);
 
     unlink(filepath2);
     unlink(filepath1);

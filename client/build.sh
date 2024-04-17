@@ -147,7 +147,7 @@ fi
 if [[ ${build_test} -eq 1 ]]; then
     echo "building test (cfs-client test-bypass libcfsclient.so libempty.so) ..."
     go test -c -covermode=atomic -coverpkg="../..." -ldflags "-r /usr/lib64" -linkshared -o ${bin}/cfs-client ${dir}/fuse/main.go ${dir}/fuse/prepare_lib.go ${dir}/fuse/fuse_test.go
-    gcc -std=c99 -g ${dir}/bypass/client_test.c -o ${bin}/test-bypass
+    gcc -std=c99 -g ${dir}/client_test.c -o ${bin}/test-bypass
 fi
 
 if [[ ${pack_libs} -eq 1 ]]; then

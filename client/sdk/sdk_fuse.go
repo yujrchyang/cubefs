@@ -160,6 +160,9 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 	if opt.Modulename == "" {
 		opt.Modulename = "fuseclient"
 	}
+	if opt.SeqWriteCluster || strings.Contains(opt.Master, "dbbak.") || strings.Contains(opt.Master, "seqwrite.") {
+		proto.IsDbBack = true
+	}
 	gClient = &fClient{
 		configFile: configFile,
 		moduleName: opt.Modulename,
@@ -566,6 +569,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.StreamerSegCount = GlobalMountOptions[proto.StreamerSegCount].GetInt64()
 	opt.UpdateExtentsOnRead = GlobalMountOptions[proto.UpdateExtentsOnRead].GetBool()
 	opt.NotCacheNode = GlobalMountOptions[proto.NotCacheNode].GetBool()
+	opt.UseLastExtent = GlobalMountOptions[proto.UseLastExtent].GetBool()
+	opt.SeqWriteCluster = GlobalMountOptions[proto.SeqWriteCluster].GetBool()
 
 	opt.Profile = GlobalMountOptions[proto.Profile].GetString()
 	if opt.Profile == proto.ProfileAiPrefetch {

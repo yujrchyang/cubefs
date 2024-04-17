@@ -26,6 +26,33 @@ const (
 	RootIno = uint64(1)
 )
 
+const (
+	ModeRegularForDbbak uint32 = iota
+	ModeDirForDbbak
+	ModeSymlinkForDbbak
+)
+
+func ConvertDbbakMode(mode uint32) os.FileMode {
+	switch mode {
+	case ModeDirForDbbak:
+		return os.ModeDir | os.ModePerm
+	case ModeSymlinkForDbbak:
+		return os.ModeSymlink | os.ModePerm
+	default:
+		return os.ModePerm
+	}
+}
+
+func ToDbbakMode(mode uint32) uint32 {
+	if IsDir(mode) {
+		return ModeDirForDbbak
+	} else if IsSymlink(mode) {
+		return ModeSymlinkForDbbak
+	} else {
+		return ModeRegularForDbbak
+	}
+}
+
 // Mode returns the fileMode.
 func Mode(osMode os.FileMode) uint32 {
 	return uint32(osMode)

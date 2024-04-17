@@ -611,10 +611,31 @@ func (eh *ExtentHandler) recoverPacket(packet *common.Packet, errmsg string) err
 		handler = NewExtentHandler(eh.stream, packet.KernelOffset, proto.NormalExtentType)
 		handler.setClosed()
 	}
-	// packet.Data will be released in original handler flush
-	p := packet.Copy()
-	copy(p.Data, packet.Data)
-	handler.pushToRequest(p.Ctx(), p)
+	if proto.IsDbBack && packet.Size > unit.BlockSize {
+		count := packet.Size / unit.BlockSize
+		if packet.Size-count*unit.BlockSize > 0 {
+			count++
+		}
+		var err error
+		for i := 0; i < int(count); i++ {
+			p := packet.Copy(false)
+			p.KernelOffset += uint64(i * unit.BlockSize)
+			p.ExtentOffset += int64(i * unit.BlockSize)
+			if p.Data, err = proto.Buffers.Get(unit.BlockSize); err != nil {
+				p.Data = make([]byte, unit.BlockSize)
+			}
+			if i > 0 {
+				p.Size = packet.Size - uint32((i-1)*unit.BlockSize)
+			}
+			if p.Size > unit.BlockSize {
+				p.Size = unit.BlockSize
+			}
+			copy(p.Data, packet.Data[i*unit.BlockSize:i*unit.BlockSize+int(p.Size)])
+			handler.pushToRequest(p.Ctx(), p)
+		}
+	} else {
+		handler.pushToRequest(packet.Ctx(), packet)
+	}
 	if eh.recoverHandler == nil {
 		eh.recoverHandler = handler
 		// Note: put it to dirty list after packet is sent, so this

@@ -249,7 +249,7 @@ func (f *Node) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 
 	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) filesize(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, filesize, req.Flags, req.FileFlags, req)
 
-	if req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
+	if !proto.IsDbBack && req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
 		err = Sup.ec.Truncate(ctx, ino, filesize, uint64(req.Offset)+uint64(reqlen))
 		if err == nil {
@@ -267,7 +267,11 @@ func (f *Node) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	enSyncWrite = Sup.enSyncWrite
 	start := time.Now()
 
-	size, _, err := Sup.ec.Write(ctx, ino, uint64(req.Offset), req.Data, enSyncWrite)
+	offset := uint64(req.Offset)
+	if proto.IsDbBack {
+		offset = filesize
+	}
+	size, _, err := Sup.ec.Write(ctx, ino, offset, req.Data, enSyncWrite)
 	if err != nil {
 		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
 		Sup.handleErrorWithGetInode("Write", msg, ino)
@@ -363,7 +367,7 @@ func (f *Node) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse
 		return ParseError(err)
 	}
 
-	if req.Valid.Size() {
+	if req.Valid.Size() && (req.Size == 0 || !proto.IsDbBack) {
 		if !f.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
 			return fuse.EPERM
 		}

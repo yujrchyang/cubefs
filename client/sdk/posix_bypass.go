@@ -144,6 +144,7 @@ var (
 	statusOK = C.int(0)
 	// error status must be minus value
 	statusEPERM   = errorToStatus(syscall.EPERM)
+	statusENOENT  = errorToStatus(syscall.ENOENT)
 	statusEIO     = errorToStatus(syscall.EIO)
 	statusEINVAL  = errorToStatus(syscall.EINVAL)
 	statusEEXIST  = errorToStatus(syscall.EEXIST)
@@ -611,7 +612,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 			err = syscall.Errno(-re)
 		}
 		r := recover()
-		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT) && re != statusEEXIST)
+		hasErr := r != nil || (re < 0 && re != statusENOENT && re != statusEEXIST)
 		if !hasErr && !log.IsDebugEnabled() {
 			return
 		}
@@ -764,7 +765,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	)
 	defer func() {
 		r := recover()
-		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT))
+		hasErr := r != nil || (re < 0 && re != statusENOENT)
 		if !hasErr && !log.IsDebugEnabled() {
 			return
 		}
@@ -872,7 +873,7 @@ func cfs_truncate(id C.int64_t, path *C.char, len C.off_t) (re C.int) {
 	)
 	defer func() {
 		r := recover()
-		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT))
+		hasErr := r != nil || (re < 0 && re != statusENOENT)
 		if !hasErr && !log.IsDebugEnabled() {
 			return
 		}
@@ -926,7 +927,7 @@ func cfs_ftruncate(id C.int64_t, fd C.int, len C.off_t) (re C.int) {
 	)
 	defer func() {
 		r := recover()
-		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT))
+		hasErr := r != nil || (re < 0 && re != statusENOENT)
 		if !hasErr && !log.IsDebugEnabled() {
 			return
 		}
@@ -1292,7 +1293,7 @@ func cfs_rmdir(id C.int64_t, path *C.char) (re C.int) {
 	)
 	defer func() {
 		r := recover()
-		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOTEMPTY))
+		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOTEMPTY) && re != statusENOENT)
 		if !hasErr && !log.IsDebugEnabled() {
 			return
 		}
@@ -1690,7 +1691,7 @@ func cfs_unlink(id C.int64_t, path *C.char) (re C.int) {
 		err error
 	)
 	defer func() {
-		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		if r := recover(); r != nil || (re < 0 && re != statusENOENT) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
@@ -1772,7 +1773,7 @@ func cfs_readlink(id C.int64_t, path *C.char, buf *C.char, size C.size_t) (re C.
 	)
 	defer func() {
 		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) size(%v) re(%v) err(%v)", id, C.GoString(path), ino, size, re, err)
-		if r := recover(); r != nil || (re < 0 && re != C.ssize_t(errorToStatus(syscall.ENOENT)) && re != C.ssize_t(statusEINVAL)) {
+		if r := recover(); r != nil || (re < 0 && re != C.ssize_t(statusENOENT) && re != C.ssize_t(statusEINVAL)) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
@@ -1852,7 +1853,7 @@ func _cfs_stat(id C.int64_t, path *C.char, stat *C.struct_stat, flags C.int) (re
 	)
 	defer func() {
 		r := recover()
-		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT))
+		hasErr := r != nil || (re < 0 && re != statusENOENT)
 		if !hasErr && !log.IsDebugEnabled() {
 			return
 		}
@@ -1942,7 +1943,7 @@ func _cfs_stat64(id C.int64_t, path *C.char, stat *C.struct_stat64, flags C.int)
 	)
 	defer func() {
 		r := recover()
-		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT))
+		hasErr := r != nil || (re < 0 && re != statusENOENT)
 		if !hasErr && !log.IsDebugEnabled() {
 			return
 		}
@@ -2390,7 +2391,7 @@ func cfs_faccessat(id C.int64_t, dirfd C.int, path *C.char, mode C.int, flags C.
 		err error
 	)
 	defer func() {
-		if r := recover(); r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT)) {
+		if r := recover(); r != nil || (re < 0 && re != statusENOENT) {
 			var stack string
 			if r != nil {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))

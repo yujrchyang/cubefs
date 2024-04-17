@@ -170,10 +170,10 @@ func NewReadPacket(ctx context.Context, key *proto.ExtentKey, extentOffset, size
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(extentOffset)
 	p.Size = uint32(size)
-	if followerRead {
-		p.Opcode = proto.OpStreamFollowerRead
-	} else {
+	if proto.IsDbBack || !followerRead {
 		p.Opcode = proto.OpStreamRead
+	} else {
+		p.Opcode = proto.OpStreamFollowerRead
 	}
 	p.ExtentType = proto.NormalExtentType
 	p.ReqID = proto.GenerateRequestID()
@@ -261,7 +261,10 @@ func (p *Packet) ReadFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 	if deadlineTimeNs != proto.NoReadDeadlineTime {
 		c.SetReadDeadline(time.Now().Add(time.Duration(deadlineTimeNs) * time.Nanosecond))
 	}
-	header, _ := proto.Buffers.Get(unit.PacketHeaderSize)
+	header, err := proto.Buffers.Get(proto.PacketHeaderSize())
+	if err != nil {
+		header = make([]byte, proto.PacketHeaderSize())
+	}
 	defer proto.Buffers.Put(header)
 	if _, err = io.ReadFull(c, header); err != nil {
 		return
@@ -276,10 +279,6 @@ func (p *Packet) ReadFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 		}
 	}
 
-	if p.Size < 0 {
-		return
-	}
-
 	size := int(p.Size)
 	if size > len(p.Data) {
 		size = len(p.Data)
@@ -289,7 +288,7 @@ func (p *Packet) ReadFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 	return
 }
 
-func (p *Packet) Copy() *Packet {
+func (p *Packet) Copy(allocateData bool) *Packet {
 	packet := new(Packet)
 	packet.ReqID = p.ReqID
 	packet.PartitionID = p.PartitionID
@@ -304,9 +303,11 @@ func (p *Packet) Copy() *Packet {
 	packet.inode = p.inode
 	packet.KernelOffset = p.KernelOffset
 	packet.Size = p.Size
-	var err error
-	if packet.Data, err = proto.Buffers.Get(len(p.Data)); err != nil {
-		packet.Data = make([]byte, len(p.Data))
+	if allocateData {
+		var err error
+		if packet.Data, err = proto.Buffers.Get(len(p.Data)); err != nil {
+			packet.Data = make([]byte, len(p.Data))
+		}
 	}
 	packet.SetCtx(p.Ctx())
 	packet.ErrCount = p.ErrCount

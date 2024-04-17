@@ -39,6 +39,7 @@ const (
 	ExtentSize               = BlockCount * BlockSize
 	MinExtentSize            = BlockSize
 	PacketHeaderSize         = 57
+	PacketHeaderSizeForDbbak = 45
 	BlockHeaderSize          = 4096
 	OverWritePacketSizeLimit = 512 * 1024 // Write up to 1MB of data at a time in MySQL
 	EcBlockSize              = 2 * MB

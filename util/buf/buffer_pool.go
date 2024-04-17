@@ -10,7 +10,7 @@ import (
 
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
-	pools                  [2]*sync.Pool
+	pools                  [3]*sync.Pool
 	tinyPool               *sync.Pool
 	blockSizeGetNum        uint64
 	avaliBlockSizePutNum   uint64
@@ -22,10 +22,15 @@ func NewBufferPool() (bufferP *BufferPool) {
 	bufferP = &BufferPool{}
 	bufferP.pools[0] = &sync.Pool{
 		New: func() interface{} {
-			return make([]byte, unit.PacketHeaderSize)
+			return make([]byte, unit.PacketHeaderSizeForDbbak)
 		},
 	}
 	bufferP.pools[1] = &sync.Pool{
+		New: func() interface{} {
+			return make([]byte, unit.PacketHeaderSize)
+		},
+	}
+	bufferP.pools[2] = &sync.Pool{
 		New: func() interface{} {
 			return make([]byte, unit.BlockSize)
 		},
@@ -40,11 +45,13 @@ func NewBufferPool() (bufferP *BufferPool) {
 
 // Get returns the data based on the given size. Different size corresponds to different object in the pool.
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
-	if size == unit.PacketHeaderSize {
+	if size == unit.PacketHeaderSizeForDbbak {
 		return bufferP.pools[0].Get().([]byte), nil
+	} else if size == unit.PacketHeaderSize {
+		return bufferP.pools[1].Get().([]byte), nil
 	} else if size == unit.BlockSize {
 		atomic.AddUint64(&bufferP.blockSizeGetNum, 1)
-		return bufferP.pools[1].Get().([]byte), nil
+		return bufferP.pools[2].Get().([]byte), nil
 	} else if size == unit.DefaultTinySizeLimit {
 		return bufferP.tinyPool.Get().([]byte), nil
 	}
@@ -58,15 +65,16 @@ func (bufferP *BufferPool) Put(data []byte) {
 		return
 	}
 	size := len(data)
-	if size == unit.PacketHeaderSize {
+	if size == unit.PacketHeaderSizeForDbbak {
 		bufferP.pools[0].Put(data)
+	} else if size == unit.PacketHeaderSize {
+		bufferP.pools[1].Put(data)
 	} else if size == unit.BlockSize {
 		atomic.AddUint64(&bufferP.avaliBlockSizePutNum, 1)
-		bufferP.pools[1].Put(data)
+		bufferP.pools[2].Put(data)
 	} else if size == unit.DefaultTinySizeLimit {
 		bufferP.tinyPool.Put(data)
 	} else {
 		atomic.AddUint64(&bufferP.unavaliBlockSizePutNum, 1)
 	}
-	return
 }

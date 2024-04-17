@@ -99,6 +99,7 @@ func (d *Node) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) 
 		tpObject1.Set(err)
 	}()
 
+	start := time.Now()
 	if len(Sup.delProcessPath) > 0 {
 		delProcPath, errStat := os.Readlink(fmt.Sprintf("/proc/%v/exe", req.Pid))
 		if errStat != nil || !contains(Sup.delProcessPath, delProcPath) {
@@ -107,17 +108,49 @@ func (d *Node) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) 
 		}
 		log.LogDebugf("Remove: allow process pid(%v) path(%v) to delete file, parent(%v) name(%v)", req.Pid, delProcPath, d.inode, req.Name)
 	}
-
-	start := time.Now()
-	d.dcache.Delete(req.Name)
-
 	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
 		return fuse.EPERM
 	}
+
+	// dbbak doesn't maitain nlink in directory inode, shouldn't rely on it when deleting
+	if req.Dir && proto.IsDbBack {
+		var err2 error
+		target, ok := d.dcache.Get(req.Name)
+		if !ok {
+			target, _, err2 = Sup.mw.Lookup_ll(ctx, d.inode, req.Name)
+			if err2 != nil {
+				if err2 != syscall.ENOENT {
+					msg := fmt.Sprintf("Remove: parent(%v) name(%v) err(%v)", d.inode, req.Name, err2)
+					log.LogErrorf(msg)
+					Sup.handleError("Remove", msg)
+				}
+				err = ParseError(err2)
+				return
+			}
+		}
+
+		children, err2 := Sup.mw.ReadDir_ll(ctx, target)
+		if err2 != nil {
+			msg := fmt.Sprintf("Remove: readdir failed, parent(%v), name(%v), err(%v)", d.inode, req.Name, err2)
+			log.LogErrorf(msg)
+			if err2 != syscall.ENOENT {
+				Sup.handleError("Remove", msg)
+			}
+			err = ParseError(err2)
+			return
+		}
+
+		if len(children) != 0 {
+			log.LogWarnf("Remove: dir not empty, parent(%v), name(%v), ino(%v), numOfChildren(%v)", d.inode, req.Name, target, len(children))
+			err = ParseError(syscall.ENOTEMPTY)
+			return
+		}
+	}
+
+	d.dcache.Delete(req.Name)
 	info, syserr := Sup.mw.Delete_ll(ctx, d.inode, req.Name, req.Dir)
 	if syserr != nil {
 		log.LogErrorf("Remove: parent(%v) name(%v) err(%v)", d.inode, req.Name, syserr)
-		//if errors.Is(err, syscall.EIO) {
 		if syserr == syscall.EIO {
 			msg := fmt.Sprintf("parent(%v) name(%v) err(%v)", d.inode, req.Name, syserr)
 			Sup.handleError("Remove", msg)

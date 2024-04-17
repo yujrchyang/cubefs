@@ -18,7 +18,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -28,6 +27,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/util/buf"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/unit"
 	pb "github.com/gogo/protobuf/proto"
 )
@@ -673,6 +673,14 @@ func (p *Packet) GetRespData() (msg string) {
 
 // MarshalHeader marshals the packet header.
 func (p *Packet) MarshalHeader(out []byte) {
+	if IsDbBack {
+		p.marshalHeaderForDbbak(out)
+	} else {
+		p.marshalHeader(out)
+	}
+}
+
+func (p *Packet) marshalHeader(out []byte) {
 	out[0] = p.Magic
 	out[1] = p.ExtentType
 	out[2] = p.Opcode
@@ -686,7 +694,21 @@ func (p *Packet) MarshalHeader(out []byte) {
 	binary.BigEndian.PutUint64(out[33:41], uint64(p.ExtentOffset))
 	binary.BigEndian.PutUint64(out[41:49], uint64(p.ReqID))
 	binary.BigEndian.PutUint64(out[49:unit.PacketHeaderSize], p.KernelOffset)
-	return
+}
+
+func (p *Packet) marshalHeaderForDbbak(out []byte) {
+	out[0] = p.Magic
+	out[1] = p.ExtentType
+	out[2] = p.Opcode
+	out[3] = p.ResultCode
+	out[4] = p.RemainingFollowers
+	binary.BigEndian.PutUint32(out[5:9], p.CRC)
+	binary.BigEndian.PutUint32(out[9:13], p.Size)
+	binary.BigEndian.PutUint32(out[13:17], p.ArgLen)
+	binary.BigEndian.PutUint32(out[17:21], uint32(p.PartitionID))
+	binary.BigEndian.PutUint64(out[21:29], p.ExtentID)
+	binary.BigEndian.PutUint64(out[29:37], uint64(p.ExtentOffset))
+	binary.BigEndian.PutUint64(out[37:unit.PacketHeaderSizeForDbbak], uint64(p.ReqID))
 }
 
 // UnmarshalHeader unmarshals the packet header.
@@ -695,7 +717,14 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	if p.Magic != ProtoMagic {
 		return errors.New("Bad Magic " + strconv.Itoa(int(p.Magic)))
 	}
+	if IsDbBack {
+		return p.unmarshalHeaderForDbbak(in)
+	} else {
+		return p.unmarshalHeader(in)
+	}
+}
 
+func (p *Packet) unmarshalHeader(in []byte) error {
 	p.ExtentType = in[1]
 	p.Opcode = in[2]
 	p.ResultCode = in[3]
@@ -708,6 +737,22 @@ func (p *Packet) UnmarshalHeader(in []byte) error {
 	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[33:41]))
 	p.ReqID = int64(binary.BigEndian.Uint64(in[41:49]))
 	p.KernelOffset = binary.BigEndian.Uint64(in[49:unit.PacketHeaderSize])
+
+	return nil
+}
+
+func (p *Packet) unmarshalHeaderForDbbak(in []byte) error {
+	p.ExtentType = in[1]
+	p.Opcode = in[2]
+	p.ResultCode = in[3]
+	p.RemainingFollowers = in[4]
+	p.CRC = binary.BigEndian.Uint32(in[5:9])
+	p.Size = binary.BigEndian.Uint32(in[9:13])
+	p.ArgLen = binary.BigEndian.Uint32(in[13:17])
+	p.PartitionID = uint64(binary.BigEndian.Uint32(in[17:21]))
+	p.ExtentID = binary.BigEndian.Uint64(in[21:29])
+	p.ExtentOffset = int64(binary.BigEndian.Uint64(in[29:37]))
+	p.ReqID = int64(binary.BigEndian.Uint64(in[37:unit.PacketHeaderSizeForDbbak]))
 
 	return nil
 }
@@ -743,9 +788,9 @@ func (p *Packet) UnmarshalDataPb(m pb.Message) error {
 
 // WriteToNoDeadLineConn writes through the connection without deadline.
 func (p *Packet) WriteToNoDeadLineConn(c net.Conn) (err error) {
-	header, err := Buffers.Get(unit.PacketHeaderSize)
+	header, err := Buffers.Get(PacketHeaderSize())
 	if err != nil {
-		header = make([]byte, unit.PacketHeaderSize)
+		header = make([]byte, PacketHeaderSize())
 	}
 	defer Buffers.Put(header)
 
@@ -780,9 +825,9 @@ func (p *Packet) WriteToConnNs(c net.Conn, timeoutNs int64) (err error) {
 }
 
 func (p *Packet) writeToConn(c net.Conn) (err error) {
-	header, err := Buffers.Get(unit.PacketHeaderSize)
+	header, err := Buffers.Get(PacketHeaderSize())
 	if err != nil {
-		header = make([]byte, unit.PacketHeaderSize)
+		header = make([]byte, PacketHeaderSize())
 	}
 	defer Buffers.Put(header)
 	p.MarshalHeader(header)
@@ -824,16 +869,16 @@ func (p *Packet) ReadFromConnNs(c net.Conn, timeoutNs int64) (err error) {
 }
 
 func (p *Packet) readFromConn(c net.Conn) (err error) {
-	header, err := Buffers.Get(unit.PacketHeaderSize)
+	header, err := Buffers.Get(PacketHeaderSize())
 	if err != nil {
-		header = make([]byte, unit.PacketHeaderSize)
+		header = make([]byte, PacketHeaderSize())
 	}
 	defer Buffers.Put(header)
 	var n int
 	if n, err = io.ReadFull(c, header); err != nil {
 		return
 	}
-	if n != unit.PacketHeaderSize {
+	if n != PacketHeaderSize() {
 		return syscall.EBADMSG
 	}
 	if err = p.UnmarshalHeader(header); err != nil {
@@ -847,9 +892,6 @@ func (p *Packet) readFromConn(c net.Conn) (err error) {
 		}
 	}
 
-	if p.Size < 0 {
-		return syscall.EBADMSG
-	}
 	size := p.Size
 	if (p.Opcode == OpRead || p.Opcode == OpStreamRead || p.Opcode == OpExtentRepairRead || p.Opcode == OpStreamFollowerRead) && p.ResultCode == OpInitResultCode {
 		size = 0
@@ -1018,6 +1060,14 @@ func (p *Packet) ShallTryToLeader() bool {
 	}
 
 	return true
+}
+
+func PacketHeaderSize() int {
+	if IsDbBack {
+		return unit.PacketHeaderSizeForDbbak
+	} else {
+		return unit.PacketHeaderSize
+	}
 }
 
 func NewPacketToGetAllExtentInfo(ctx context.Context, partitionID uint64) (p *Packet) {

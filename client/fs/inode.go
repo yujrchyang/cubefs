@@ -43,6 +43,10 @@ func (s *Super) InodeGet(ctx context.Context, ino uint64) (*proto.InodeInfo, err
 }
 
 func setattr(info *proto.InodeInfo, req *fuse.SetattrRequest) (valid uint32) {
+	if proto.IsDbBack {
+		return
+	}
+
 	if req.Valid.Mode() {
 		info.Mode = proto.Mode(req.Mode)
 		valid |= proto.AttrMode

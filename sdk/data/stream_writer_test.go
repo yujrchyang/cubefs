@@ -166,6 +166,7 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 	}
 
 	testClient := new(ExtentClient)
+	testClient.useLastExtent = true
 	if testClient.dataWrapper, err = NewDataPartitionWrapper("test", []string{"127.0.0.1:9999"}, Normal); err != nil {
 		t.Errorf("prepare test falied, err(%v)", err)
 		t.FailNow()
@@ -311,6 +312,7 @@ func creatHelper(t *testing.T) (mw *meta.MetaWrapper, ec *ExtentClient, err erro
 		OnTruncate:        mw.Truncate,
 		OnPutIcache:       ic.Put,
 		TinySize:          NoUseTinyExtent,
+		UseLastExtent:     true,
 	}, nil); err != nil {
 		t.Fatalf("NewExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
 	}

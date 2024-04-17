@@ -35,11 +35,11 @@ var (
 	InvalidKey               = errors.New("invalid key error")
 	DelEKRecordLen           = 32
 
-	DelEkSrcTypeFromTruncate = 0
-	DelEkSrcTypeFromInsert   = 1
-	DelEkSrcTypeFromAppend   = 2
-	DelEkSrcTypeFromMerge    = 3
-	DelEkSrcTypeFromDelInode = 4
+	DelEkSrcTypeFromTruncate     = 0
+	DelEkSrcTypeFromInsert       = 1
+	DelEkSrcTypeFromAppend       = 2
+	DelEkSrcTypeFromMerge        = 3
+	DelEkSrcTypeFromDelInode     = 4
 	DelEkSrcTypeFromFileMigMerge = 5
 )
 
@@ -178,7 +178,7 @@ func (k *ExtentKey) Marshal() (m string) {
 }
 
 // MarshalDbKey marshals the binary format of the extent for db key.
-//file offset(8) + pid(8) + extent Id(8) + extent offset(8) + extent size(4) + crc(4)
+// file offset(8) + pid(8) + extent Id(8) + extent offset(8) + extent size(4) + crc(4)
 func (k *ExtentKey) MarshalDbKey() ([]byte, error) {
 	buf := bytes.NewBuffer(make([]byte, 0, ExtentLength))
 	if err := binary.Write(buf, binary.BigEndian, k.FileOffset); err != nil {
@@ -202,7 +202,7 @@ func (k *ExtentKey) MarshalDbKey() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-//file offset(8) + pid(8) + extent Id(8) + extent offset(8) + extent size(4) + crc(4)
+// file offset(8) + pid(8) + extent Id(8) + extent offset(8) + extent size(4) + crc(4)
 func (k *ExtentKey) UnmarshalDbKey(buffer []byte) (err error) {
 	buf := bytes.NewBuffer(buffer)
 	if err = binary.Read(buf, binary.BigEndian, &k.FileOffset); err != nil {
@@ -226,7 +226,7 @@ func (k *ExtentKey) UnmarshalDbKey(buffer []byte) (err error) {
 	return nil
 }
 
-//pid(8) + extent Id(8) + extent offset(4) + extent size(4)
+// pid(8) + extent Id(8) + extent offset(4) + extent size(4)
 func (k *ExtentKey) UnmarshalDbKeyByBuffer(buf *bytes.Buffer) (err error) {
 	var ekOffset uint32
 	if err = binary.Read(buf, binary.BigEndian, &k.PartitionId); err != nil {
@@ -342,9 +342,10 @@ func (k *ExtentKey) GetExtentKey() (m string) {
 // 每个 ExtentKey 表示的文件数据范围可以表示为 {x| FileOffset <= x < FileOffset + Size } = [ FileOffset, FileOffset + Size )
 // 这里使用数据上判断两个数轴存在交集的方式，及两者的最后一个元素(last)必须大于等于对方的下边界(first).
 // 表达式为:
-//     last1 >= first2 && last2 >= first1
-//     last = FileOffset + Size - 1
-//     first = FileOffset
+//
+//	last1 >= first2 && last2 >= first1
+//	last = FileOffset + Size - 1
+//	first = FileOffset
 func (k *ExtentKey) Overlap(o *ExtentKey) bool {
 	return k.FileOffset+uint64(k.Size) > o.FileOffset && o.FileOffset+uint64(o.Size) > k.FileOffset
 }
@@ -401,11 +402,17 @@ func PutExtentKeyToPool(ek *ExtentKey) {
 }
 
 const (
-	TinyExtentCount   = 64
-	TinyExtentStartID = 1
+	TinyExtentCount           = 64
+	TinyExtentStartID         = 1
+	TinyExtentCountForDbbak   = 128
+	TinyExtentStartIDForDbbak = 50000000
 )
 
 // IsTinyExtent checks if the given extent is tiny extent.
 func IsTinyExtent(extentID uint64) bool {
-	return extentID >= TinyExtentStartID && extentID < TinyExtentStartID+TinyExtentCount
+	if IsDbBack {
+		return extentID >= TinyExtentStartIDForDbbak && extentID < TinyExtentStartIDForDbbak+TinyExtentCountForDbbak
+	} else {
+		return extentID >= TinyExtentStartID && extentID < TinyExtentStartID+TinyExtentCount
+	}
 }

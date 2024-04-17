@@ -107,6 +107,7 @@ type ExtentConfig struct {
 	ExtentSize          int
 	AutoFlush           bool
 	UpdateExtentsOnRead bool
+	UseLastExtent       bool
 	OnInodeGet          InodeGetFunc
 	OnInsertExtentKey   InsertExtentKeyFunc
 	OnGetExtents        GetExtentsFunc
@@ -149,6 +150,7 @@ type ExtentClient struct {
 	extentSize          int
 	autoFlush           bool
 	updateExtentsOnRead bool
+	useLastExtent       bool
 
 	stopC chan struct{}
 	wg    sync.WaitGroup
@@ -210,6 +212,7 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	client.SetExtentSize(config.ExtentSize)
 	client.autoFlush = config.AutoFlush
 	client.updateExtentsOnRead = config.UpdateExtentsOnRead
+	client.useLastExtent = config.UseLastExtent
 	client.inodeGet = config.OnInodeGet
 
 	if client.tinySize == NoUseTinyExtent {
