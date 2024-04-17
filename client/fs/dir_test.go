@@ -21,6 +21,8 @@ type createInfo struct {
 }
 
 func Test_ReaddirPlus(t *testing.T) {
+	os.RemoveAll("/cfs/mnt/Test_ReaddirPlus")
+
 	opt := &proto.MountOptions{Modulename: "fuseclient", Volname: ltptestVol, Owner: ltptestVol, Master: ltptestMasterStr}
 	s, err := NewSuper(opt, true, nil, nil, nil)
 	if err != nil {
