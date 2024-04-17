@@ -259,6 +259,11 @@ func setFlashNodeStack(host string, port uint16, enable bool) error {
 	return fnClient.SetFlashNodeStack(enable)
 }
 
+func setFlashNodeReadTimeout(host string, port uint16, ms int) error {
+	fnClient := http_client.NewFlashClient(fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], port), false)
+	return fnClient.SetFlashNodeReadTimeout(ms)
+}
+
 func newFlashGroupSetCmd(client *master.MasterClient) *cobra.Command {
 	var (
 		flashGroupID uint64

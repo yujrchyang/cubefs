@@ -51,6 +51,7 @@ const (
 	CliOpEvictAll           = "evict-all"
 	CliOpSetPing            = "setPing"
 	CliOpSetStack           = "setStack"
+	CliOpSetTimeout         = "setTimeout"
 
 	CliOpSetRocksDBDiskThreshold        = "rocksdb-threshold"
 	CliOpSetMemModeRocksDBDiskThreshold = "mem-rocksdb-threshold"

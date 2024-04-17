@@ -31,6 +31,7 @@ func NewSingleContextWithTimeout(timeoutMs int) (s *SingleContext) {
 	}
 	s.ctx, _ = context.WithTimeout(context.Background(), time.Duration(s.timeoutMs)*time.Millisecond*2)
 	go s.scheduleGenContext()
+	http.HandleFunc("/singleContext/setTimeout", s.handleSetTimeout)
 	return
 }
 
@@ -45,7 +46,6 @@ func (s *SingleContext) scheduleGenContext() {
 			return
 		}
 	}
-	http.HandleFunc("/singleContext/setTimeout", s.handleSetTimeout)
 }
 
 func (s *SingleContext) GetContextWithTimeout() (ctx context.Context) {

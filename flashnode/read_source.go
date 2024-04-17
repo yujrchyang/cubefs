@@ -40,8 +40,9 @@ const (
 )
 
 type blockWriteHandle struct {
-	writer func(data []byte, off, size int64) error
-	offset int64
+	initWriter func()
+	writer     func(data []byte, off, size int64) error
+	offset     int64
 }
 
 var extentReaderConnPool *connpool.ConnectPool
@@ -53,10 +54,11 @@ func NewReadSource() *ReadSource {
 	return &ReadSource{}
 }
 
-func (reader *ReadSource) ReadExtentData(source *proto.DataSource, writer func(data []byte, off, size int64) error) (readBytes int, err error) {
+func (reader *ReadSource) ReadExtentData(source *proto.DataSource, writer func(data []byte, off, size int64) error, init func()) (readBytes int, err error) {
 	wh := &blockWriteHandle{
-		writer: writer,
-		offset: int64(source.CacheBlockOffset()),
+		initWriter: init,
+		writer:     writer,
+		offset:     int64(source.CacheBlockOffset()),
 	}
 	ek := &proto.ExtentKey{PartitionId: source.PartitionID, ExtentId: source.ExtentID}
 	req := newStreamFollowerReadPacket(context.Background(), ek, int(source.ExtentOffset), int(source.Size_), source.FileOffset)
@@ -126,6 +128,7 @@ func (reader *ReadSource) getReadReply(conn *net.TCPConn, req *proto.Packet, w *
 	readBytes = 0
 	tmpData := make([]byte, req.Size)
 	offset := w.offset
+	w.initWriter()
 	for readBytes < int(req.Size) {
 		replyPacket := newReplyPacket(req.Ctx(), req.ReqID, req.PartitionID, req.ExtentID)
 		bufSize := unit.Min(unit.ReadBlockSize, int(req.Size)-readBytes)

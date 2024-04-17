@@ -1274,7 +1274,7 @@ func formatFlashNodeSimpleViewTableHeader() string {
 	return fmt.Sprintf(flashNodeViewTableSimpleRowPattern, "ZONE", "ID", "ADDRESS", "VERSION", "COMMIT", "IsActive", "FlashGroupID", "ReportTime", "IsEnable", "EnablePing", "EnableStack")
 }
 
-func formatFlashNodeDetail(fn *proto.FlashNodeViewInfo) string {
+func formatFlashNodeDetail(fn *proto.FlashNodeViewInfo, stat *proto.FlashNodeStat) string {
 	var sb = strings.Builder{}
 	sb.WriteString(fmt.Sprintf("  ID                  : %v\n", fn.ID))
 	sb.WriteString(fmt.Sprintf("  ADDRESS             : %v\n", fn.Addr))
@@ -1284,6 +1284,20 @@ func formatFlashNodeDetail(fn *proto.FlashNodeViewInfo) string {
 	sb.WriteString(fmt.Sprintf("  ReportTime          : %v\n", fn.ReportTime))
 	sb.WriteString(fmt.Sprintf("  ZONE                : %v\n", fn.ZoneName))
 	sb.WriteString(fmt.Sprintf("  IsEnable            : %v\n", fn.IsEnable))
+	sb.WriteString(fmt.Sprintf("  CacheReadTimeOutMs  : %v\n", stat.CacheReadTimeoutMs))
+	sb.WriteString(fmt.Sprintf("  EnablePing          : %v\n", stat.EnablePing))
+	sb.WriteString(fmt.Sprintf("  EnableStack         : %v\n", stat.EnableStack))
+	if stat.CacheStatus != nil {
+		sb.WriteString(fmt.Sprintf("  Used                : %v\n", stat.CacheStatus.Used))
+		sb.WriteString(fmt.Sprintf("  Total               : %v\n", stat.CacheStatus.Total))
+		sb.WriteString(fmt.Sprintf("  Num                 : %v\n", stat.CacheStatus.Num))
+		sb.WriteString(fmt.Sprintf("  Capacity            : %v\n", stat.CacheStatus.Capacity))
+		sb.WriteString(fmt.Sprintf("  HasAlloc            : %v\n", stat.CacheStatus.HasAlloc))
+		sb.WriteString(fmt.Sprintf("  MaxAlloc            : %v\n", stat.CacheStatus.MaxAlloc))
+		sb.WriteString(fmt.Sprintf("  HitRate             : %v\n", stat.CacheStatus.HitRate))
+		sb.WriteString(fmt.Sprintf("  Evicts              : %v\n", stat.CacheStatus.Evicts))
+	}
+
 	return sb.String()
 }
 

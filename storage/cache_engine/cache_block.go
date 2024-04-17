@@ -253,7 +253,9 @@ func (cb *CacheBlock) prepareSource(ctx context.Context, taskCh chan *proto.Data
 				return
 			}
 			tStart := time.Now()
-			if _, err = cb.readSource(task, cb.WriteAt); err != nil {
+			if _, err = cb.readSource(task, cb.WriteAt, func() {
+				cb.stacks = stackmerge.NewStackList()
+			}); err != nil {
 				log.LogErrorf("action[prepareSource] cache block(%s), dp:%d, extent:%d, ExtentOffset:%v, FileOffset:%d, size:%v, readSource err:%v", cb.blockKey, task.PartitionID, task.ExtentID, task.ExtentOffset, task.FileOffset, task.Size_, err)
 				return
 			}

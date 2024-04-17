@@ -59,7 +59,7 @@ type CacheEngine struct {
 	config             *CacheConfig
 	sync.Mutex
 }
-type ReadExtentData func(source *proto.DataSource, w func(data []byte, off, size int64) error) (readBytes int, err error)
+type ReadExtentData func(source *proto.DataSource, w func(data []byte, off, size int64) error, init func()) (readBytes int, err error)
 type MonitorFunc func(volume string, action int, dataSize uint64)
 
 func NewCacheEngine(rootPath string, totalSize int64, maxUseRatio float64, capacity int, expireTime time.Duration, readFunc ReadExtentData, monitorFunc MonitorFunc) (s *CacheEngine, err error) {
@@ -280,7 +280,9 @@ func (c *CacheEngine) usedSize() (size int64) {
 		log.LogErrorf("compute used size of cache engine, err:%v", err)
 		return
 	}
-	return int64(stat.Blocks) * int64(stat.Bsize)
+	total := float64(stat.Blocks) * float64(stat.Bsize)
+	avail := float64(stat.Bavail) * float64(stat.Bsize)
+	return int64(total - avail)
 }
 
 func (c *CacheEngine) startCachePrepareWorkers() {

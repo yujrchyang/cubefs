@@ -116,7 +116,7 @@ func (f *FlashNode) opCacheRead(conn net.Conn, p *Packet, remoteAddr string) (er
 		err = nil
 		return
 	}
-	volTp := exporter.NewModuleTP(fmt.Sprintf("%v_CacheRead", volume))
+	volTp := exporter.NewModuleTPUs(fmt.Sprintf("%v_CacheRead", volume))
 	monitor := f.BeforeTp(volume, proto.ActionCacheRead)
 	defer func() {
 		volTp.Set(err)
