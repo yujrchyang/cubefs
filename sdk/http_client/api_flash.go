@@ -121,7 +121,7 @@ func (client *FlashClient) SetFlashNodePing(enable bool) (err error) {
 }
 
 func (client *FlashClient) SetFlashNodeReadTimeout(ms int) (err error) {
-	resp, err := doGet(fmt.Sprintf("http://%v/SingleContext/?setTimeout=%v", client.host, ms))
+	resp, err := doGet(fmt.Sprintf("http://%v/singleContext/setTimeout?ms=%v", client.host, ms))
 	if err != nil {
 		return
 	}
