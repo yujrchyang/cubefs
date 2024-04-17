@@ -11,19 +11,23 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"math/rand"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
 )
 
 const (
-	cfgFixBadPartition = "fixBadPartition"
-	cfgUmpAPiToken     = "umpToken"
-	endPoint           = "spark_master_warning"
-	umpOpenAPiDomain   = "open.ump.jd.com"
-	alarmRecordsMethod = "/alarm/records"
-	cfsDomain          = "sparkchubaofs.jd.local"
+	cfgFixBadPartition         = "fixBadPartition"
+	cfgUmpAPiToken             = "umpToken"
+	dpNotRecoverEndPoint       = "spark_master_dp_has_not_recover"
+	dpFixBadReplicaNumEndPoint = "spark_master_dp_replica_num"
+	umpOpenAPiDomain           = "open.ump.jd.com"
+	alarmRecordsMethod         = "/alarm/records"
+	cfsDomain                  = "sparkchubaofs.jd.local"
 )
+
+var notRecoverDpRegex = regexp.MustCompile("#[1-9][0-9]*:")
 
 var fixPartitionMap = make(map[uint64]time.Time, 0)
 
@@ -42,14 +46,14 @@ func (s *ChubaoFSMonitor) scheduleToFixBadDataPartition(cfg *config.Config) {
 	for {
 		select {
 		case <-fixTick.C:
-			s.fixPartitions(parseBadReplicaNumPartition, fixBadReplicaNumPartition)
-			s.fixPartitions(parseNotRecoverPartition, fix24HourNotRecoverPartition)
+			s.fixPartitions(dpFixBadReplicaNumEndPoint, parseBadReplicaNumPartition, fixBadReplicaNumPartition)
+			s.fixPartitions(dpNotRecoverEndPoint, parseNotRecoverPartition, fix24HourNotRecoverPartition)
 			fixTick.Reset(time.Minute)
 		}
 	}
 }
 
-func (s *ChubaoFSMonitor) fixPartitions(parseFunc func(string) []uint64, fixPartitionFunc func(partition uint64)) {
+func (s *ChubaoFSMonitor) fixPartitions(endPoint string, parseFunc func(string) []uint64, fixPartitionFunc func(partition uint64)) {
 	var err error
 	var badPartitions []uint64
 	defer func() {
@@ -61,7 +65,7 @@ func (s *ChubaoFSMonitor) fixPartitions(parseFunc func(string) []uint64, fixPart
 		}
 	}()
 	log.LogInfo("action[fixPartitions] start")
-	badPartitions, err = s.parseBadPartitionIDsFromUmpRecord(parseFunc)
+	badPartitions, err = s.parseBadPartitionIDsFromUmpRecord(endPoint, parseFunc)
 	if err != nil {
 		return
 	}
@@ -83,7 +87,7 @@ func (s *ChubaoFSMonitor) fixPartitions(parseFunc func(string) []uint64, fixPart
 	return
 }
 
-func (s *ChubaoFSMonitor) parseBadPartitionIDsFromUmpRecord(parseFunc func(string) []uint64) (ids []uint64, err error) {
+func (s *ChubaoFSMonitor) parseBadPartitionIDsFromUmpRecord(endPoint string, parseFunc func(string) []uint64) (ids []uint64, err error) {
 	var alarmRecords *ump.AlarmRecordResponse
 	ids = make([]uint64, 0)
 	idsMap := make(map[uint64]bool, 0)
@@ -126,30 +130,26 @@ func parseBadReplicaNumPartition(content string) (pids []uint64) {
 }
 
 // eg. action[checkDiskRecoveryProgress] clusterID[spark],has[1] has offlined more than 24 hours,still not recovered,ids[map[72392:1700900266]]
-func parseNotRecoverPartition(content string) (pids []uint64) {
+func parseNotRecoverPartition(content string) (dps []uint64) {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogErrorf("recover from panic:%v", r)
 		}
 	}()
-	pids = make([]uint64, 0)
 	log.LogWarnf("action[parseNotRecoverPartition] content:%v", content)
 	if !strings.Contains(content, "has offlined more than 24 hours") && !strings.Contains(content, "has migrated more than 24 hours") {
+		fmt.Printf("1")
 		return
 	}
-	tmp := strings.Split(content, "map[")[1]
-	pidsStr := strings.Split(tmp, " ")
-	for _, pidStr := range pidsStr {
-		pStr := strings.Split(pidStr, ":")[0]
-		if pStr == "" {
-			continue
-		}
-		pid, err := strconv.ParseUint(pStr, 10, 64)
+	dpStrArr := notRecoverDpRegex.FindAllString(content, -1)
+	dps = make([]uint64, 0)
+	for _, s := range dpStrArr {
+		dp, err := strconv.ParseUint(strings.TrimSuffix(strings.TrimPrefix(s, "#"), ":"), 10, 64)
 		if err != nil {
-			log.LogErrorf("action[parseNotRecoverPartition] parse partition id failed:%v", err)
+			log.LogErrorf("action[parseNotRecoverPartition] err:%v, dp string:%v", err, s)
 			continue
 		}
-		pids = append(pids, pid)
+		dps = append(dps, dp)
 	}
 	return
 }

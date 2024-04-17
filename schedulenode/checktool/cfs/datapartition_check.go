@@ -94,6 +94,8 @@ func (s *ChubaoFSMonitor) scheduleToCheckDpPeerCorrupt() {
 	}()
 }
 
+var badPeerPartitionMap sync.Map
+
 func (s *ChubaoFSMonitor) checkDpPeerCorrupt() {
 	dpCheckStartTime := time.Now()
 	log.LogInfof("check all dataPartitions corrupt start")
@@ -201,12 +203,18 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 			}
 			badReplicas = append(badReplicas, peerReplica)
 		} else if len(peerStrings) != len(dnPartition.Replicas) || len(diffPeerToHost)+len(diffHostToPeer) > 0 {
-			msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v, unknown] peerStrings: %v , hostStrings: %v ", ch.host, volName, dp.PartitionID, r.Addr, peerStrings, dnPartition.Replicas)
-			checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, msg)
+			if val, ok := badPeerPartitionMap.Load(dp.PartitionID); ok {
+				msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v, unknown] peerStrings: %v , hostStrings: %v ", ch.host, volName, dp.PartitionID, r.Addr, peerStrings, dnPartition.Replicas)
+				checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, msg)
+				badPeerPartitionMap.Store(dp.PartitionID, val.(int)+1)
+			} else {
+				badPeerPartitionMap.Store(dp.PartitionID, 1)
+			}
 		}
 	}
 	checkRaftReplicaStatus(ch, replicaRaftStatusMap, dp.PartitionID, dp.VolName, partitionTypeDP, dp.Hosts, dp.IsRecover, dp.Replicas, nil)
 	if len(badReplicas) == 0 {
+		badPeerPartitionMap.Delete(dp.PartitionID)
 		return
 	}
 	//check if this partition has a simple replica error, if simple, auto repair it
