@@ -90,7 +90,7 @@ func newFlashNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 }
 
 func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
-	var detail, showAllFlashNodes bool
+	var detail, showAll, showInFlashGroup bool
 	var cmd = &cobra.Command{
 		Use:   CliOpList,
 		Short: "list all flash nodes",
@@ -102,7 +102,7 @@ func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 					errout("Error: %v", err)
 				}
 			}()
-			zoneFlashNodes, err := client.AdminAPI().GetAllFlashNodes(showAllFlashNodes)
+			zoneFlashNodes, err := client.AdminAPI().GetAllFlashNodes(showAll)
 			if err != nil {
 				return
 			}
@@ -117,12 +117,16 @@ func newFlashNodeListCmd(client *master.MasterClient) *cobra.Command {
 					return flashNodeViewInfos[i].ID < flashNodeViewInfos[j].ID
 				})
 				for _, fn := range flashNodeViewInfos {
+					if showInFlashGroup && fn.FlashGroupID == 0 {
+						continue
+					}
 					stdout("%v\n", formatFlashNodeRowInfo(fn, detail))
 				}
 			}
 		},
 	}
-	cmd.Flags().BoolVar(&showAllFlashNodes, "showAllFlashNodes", true, fmt.Sprintf("show all flashNodes contain notActive or notEnable"))
+	cmd.Flags().BoolVar(&showInFlashGroup, "in-group", true, fmt.Sprintf("only show flashNodes in a flash group"))
+	cmd.Flags().BoolVar(&showAll, "all", true, fmt.Sprintf("show all, including inactive and disabled nodes"))
 	cmd.Flags().BoolVar(&detail, "detail", false, "show detail info")
 	return cmd
 }
@@ -190,17 +194,24 @@ func newFlashNodeSetPingCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
+			if len(zoneFlashNodes) == 0 {
+				stdout("no flashnode found")
+				return
+			}
 			errHosts := make([]string, 0)
+			var count int
 			for _, flashNodeViewInfos := range zoneFlashNodes {
 				for _, fn := range flashNodeViewInfos {
 					err = setFlashNodePing(fn.Addr, client.FlashNodeProfPort, enable)
 					if err != nil {
 						errHosts = append(errHosts, fn.Addr)
 						fmt.Printf("Error: %v", err)
+						continue
 					}
+					count++
 				}
 			}
-			stdout("set flashNodes ping finished, failed:%v\n", errHosts)
+			stdout("set flashNodes ping finished, success:%v, failed:%v\n", count, errHosts)
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "", "node address")
@@ -248,17 +259,25 @@ func newFlashNodeSetStackCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
+			if len(zoneFlashNodes) == 0 {
+				stdout("no flashnode found")
+				return
+			}
 			errHosts := make([]string, 0)
+			var count int
 			for _, flashNodeViewInfos := range zoneFlashNodes {
 				for _, fn := range flashNodeViewInfos {
 					err = setFlashNodeStack(fn.Addr, client.FlashNodeProfPort, enable)
 					if err != nil {
 						errHosts = append(errHosts, fn.Addr)
 						fmt.Printf("Error: %v", err)
+						continue
 					}
+					count++
 				}
 			}
-			stdout("set flashNodes stack finished, failed:%v\n", errHosts)
+
+			stdout("set flashNodes stack finished, success:%v, errHosts:%v\n", count, errHosts)
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "", "node address")
@@ -310,17 +329,24 @@ func newFlashNodeSetTimeoutCmd(client *master.MasterClient) *cobra.Command {
 			if err != nil {
 				return
 			}
+			if len(zoneFlashNodes) == 0 {
+				stdout("no flashnode found")
+				return
+			}
 			errHosts := make([]string, 0)
+			var count int
 			for _, flashNodeViewInfos := range zoneFlashNodes {
 				for _, fn := range flashNodeViewInfos {
 					err = setFlashNodeReadTimeout(fn.Addr, client.FlashNodeProfPort, ms)
 					if err != nil {
 						errHosts = append(errHosts, fn.Addr)
 						fmt.Printf("Error: %v", err)
+						continue
 					}
+					count++
 				}
 			}
-			stdout("set flashNodes read timeout finished, failed:%v\n", errHosts)
+			stdout("set flashNodes read timeout finished, success:%v, failed:%v\n", count, errHosts)
 		},
 	}
 	cmd.Flags().StringVar(&addr, "addr", "", "node address")

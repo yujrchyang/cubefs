@@ -1262,16 +1262,16 @@ func formatTrashVolInfoTableRow(svv *proto.SimpleVolView, vi *proto.VolInfo) str
 		time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
-var flashNodeViewTableRowPattern = "%-12v    %-10v    %-20v    %-10v   %-8v     %-8v    %-12v    %-8v    %-12v    %-10v    %-20v    %-18v     %-10v     %-12v"
+var flashNodeViewTableRowPattern = "%-12v    %-10v    %-20v    %-10v   %-8v     %-8v    %-12v    %-8v    %-12v    %-20v    %-18v     %-10v     %-12v      %-10v"
 
 func formatFlashNodeViewTableHeader() string {
-	return fmt.Sprintf(flashNodeViewTableRowPattern, "ZONE", "ID", "ADDRESS", "VERSION", "COMMIT", "IsActive", "FlashGroupID", "HitRate", "Evicts", "Limit", "ReportTime", "IsEnable", "EnablePing", "EnableStack")
+	return fmt.Sprintf(flashNodeViewTableRowPattern, "ZONE", "ID", "ADDRESS", "VERSION", "COMMIT", "IsActive", "FlashGroupID", "HitRate", "Evicts", "ReportTime", "IsEnable", "EnablePing", "EnableStack", "TimeoutMS")
 }
 
-var flashNodeViewTableSimpleRowPattern = "%-12v    %-10v    %-20v    %-10v    %-10v    %-8v    %-12v   %-20v    %-18v     %-10v     %-12v"
+var flashNodeViewTableSimpleRowPattern = "%-12v    %-10v    %-20v    %-8v    %-12v   %-20v    %-18v"
 
 func formatFlashNodeSimpleViewTableHeader() string {
-	return fmt.Sprintf(flashNodeViewTableSimpleRowPattern, "ZONE", "ID", "ADDRESS", "VERSION", "COMMIT", "IsActive", "FlashGroupID", "ReportTime", "IsEnable", "EnablePing", "EnableStack")
+	return fmt.Sprintf(flashNodeViewTableSimpleRowPattern, "ZONE", "ID", "ADDRESS", "IsActive", "FlashGroupID", "ReportTime", "IsEnable")
 }
 
 func formatFlashNodeDetail(fn *proto.FlashNodeViewInfo, stat *proto.FlashNodeStat) string {

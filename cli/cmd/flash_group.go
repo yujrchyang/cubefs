@@ -201,20 +201,24 @@ func formatFlashNodeRowInfo(fn *proto.FlashNodeViewInfo, detail bool) string {
 	var (
 		hitRate     = "N/A"
 		evicts      = "N/A"
-		limit       = "N/A"
 		version     = "N/A"
 		commit      = "N/A"
 		enablePing  = "N/A"
 		enableStack = "N/A"
+		timeoutMs   = "N/A"
 	)
+	if !detail {
+		return fmt.Sprintf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr, formatYesNo(fn.IsActive),
+			fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), fn.IsEnable)
+	}
 	if fn.IsActive {
 		stat, err1 := getFlashNodeStat(fn.Addr, client.FlashNodeProfPort)
 		if err1 == nil {
 			hitRate = fmt.Sprintf("%.2f%%", stat.CacheStatus.HitRate*100)
 			evicts = strconv.Itoa(stat.CacheStatus.Evicts)
-			limit = strconv.FormatUint(stat.NodeLimit, 10)
 			enablePing = fmt.Sprintf("%v", stat.EnablePing)
 			enableStack = fmt.Sprintf("%v", stat.EnableStack)
+			timeoutMs = fmt.Sprintf("%v", stat.CacheReadTimeoutMs)
 		}
 		versionInfo, e := getFlashNodeVersion(fn.Addr, client.FlashNodeProfPort)
 		if e == nil {
@@ -225,13 +229,8 @@ func formatFlashNodeRowInfo(fn *proto.FlashNodeViewInfo, detail bool) string {
 	if len(commit) > 7 && "N/A" != commit {
 		commit = commit[:7]
 	}
-	if detail {
-		return fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
-			formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, limit, formatTime(fn.ReportTime.Unix()), fn.IsEnable, enablePing, enableStack)
-	} else {
-		return fmt.Sprintf(flashNodeViewTableSimpleRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
-			formatYesNo(fn.IsActive), fn.FlashGroupID, formatTime(fn.ReportTime.Unix()), fn.IsEnable, enablePing, enableStack)
-	}
+	return fmt.Sprintf(flashNodeViewTableRowPattern, fn.ZoneName, fn.ID, fn.Addr, version, commit,
+		formatYesNo(fn.IsActive), fn.FlashGroupID, hitRate, evicts, formatTime(fn.ReportTime.Unix()), fn.IsEnable, enablePing, enableStack, timeoutMs)
 }
 
 func getFlashNodeStat(host string, port uint16) (*proto.FlashNodeStat, error) {
