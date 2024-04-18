@@ -156,7 +156,7 @@ func BeforeTP(key string) (o *TpObject) {
 	//tp.HostName = HostName
 	//tp.currTime = o.StartTime
 	tp.Key = key
-	tp.ProcessState = "0"
+	//tp.ProcessState = "0"
 	o.UmpType = tp
 
 	return
@@ -171,7 +171,7 @@ func BeforeTPWithStartTime(key string, start time.Time) (o *TpObject) {
 	o.StartTime = start
 	tp := FunctionTpGroupByPool.Get().(*FunctionTpGroupBy)
 	tp.Key = key
-	tp.ProcessState = "0"
+	//tp.ProcessState = "0"
 	o.UmpType = tp
 
 	return
@@ -228,9 +228,9 @@ func AfterTP(o *TpObject, err error) {
 	}
 	tp := o.UmpType.(*FunctionTpGroupBy)
 	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e6)
-	tp.ProcessState = "0"
+	//tp.ProcessState = "0"
 	if err != nil {
-		tp.ProcessState = "1"
+		//tp.ProcessState = "1"
 		tp.elapsedTime = -1
 	}
 	tp.count = 1
@@ -244,9 +244,9 @@ func AfterTPWithCount(o *TpObject, value int64, err error) {
 	}
 	tp := o.UmpType.(*FunctionTpGroupBy)
 	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e6)
-	tp.ProcessState = "0"
+	//tp.ProcessState = "0"
 	if err != nil {
-		tp.ProcessState = "1"
+		//tp.ProcessState = "1"
 		tp.elapsedTime = -1
 	}
 	tp.count = value
@@ -260,9 +260,9 @@ func AfterTPWithCostUS(o *TpObject, value int64, err error) {
 	}
 	tp := o.UmpType.(*FunctionTpGroupBy)
 	tp.elapsedTime = (int64)(value)
-	tp.ProcessState = "0"
+	//tp.ProcessState = "0"
 	if err != nil {
-		tp.ProcessState = "1"
+		//tp.ProcessState = "1"
 		tp.elapsedTime = -1
 	}
 	tp.count = 1
@@ -278,9 +278,9 @@ func AfterTPWithCost(o *TpObject, value int64, err error) {
 	}
 	tp := o.UmpType.(*FunctionTpGroupBy)
 	tp.elapsedTime = (int64)(value)
-	tp.ProcessState = "0"
+	//tp.ProcessState = "0"
 	if err != nil {
-		tp.ProcessState = "1"
+		//tp.ProcessState = "1"
 		tp.elapsedTime = -1
 	}
 	tp.count = 1
@@ -296,9 +296,9 @@ func AfterTPUs(o *TpObject, err error) {
 	}
 	tp := o.UmpType.(*FunctionTpGroupBy)
 	tp.elapsedTime = (int64)(time.Since(o.StartTime) / 1e3)
-	tp.ProcessState = "0"
+	//tp.ProcessState = "0"
 	if err != nil {
-		tp.ProcessState = "1"
+		//tp.ProcessState = "1"
 		tp.elapsedTime = -1
 	}
 	tp.count = 1

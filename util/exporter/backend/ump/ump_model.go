@@ -26,7 +26,7 @@ type FunctionTpGroupBy struct {
 	//Time         string
 	Key string
 	//HostName     string
-	ProcessState string
+	//ProcessState string
 	//ElapsedTime  string
 	//Count        string
 
