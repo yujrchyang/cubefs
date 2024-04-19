@@ -543,6 +543,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/partitions", s.getPartitionsAPI)
 	http.HandleFunc("/partition", s.getPartitionAPI)
 	http.HandleFunc("/partitionSimple", s.getPartitionSimpleAPI)
+	http.HandleFunc("/triggerPartitionError", s.triggerPartitionError)
 	http.HandleFunc("/partitionRaftHardState", s.getPartitionRaftHardStateAPI)
 	http.HandleFunc("/extent", s.getExtentAPI)
 	http.HandleFunc("/block", s.getBlockCrcAPI)
@@ -1196,11 +1197,7 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 				partition.ID(), p.ExtentID, inode, err)
 		}
 	}
-	if err != nil {
-		p.PackErrorBody(ActionMarkDelete, err.Error())
-	} else {
-		p.PacketOkReply()
-	}
+	p.PacketOkReply()
 	return
 }
 
@@ -1212,8 +1209,6 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf(fmt.Sprintf("(%v) error(%v) data(%v)", p.GetUniqueLogId(), err, string(p.Data)))
-			p.PackErrorBody(ActionBatchDeleteExtent, err.Error())
-			return
 		}
 		p.PacketOkReply()
 	}()
@@ -1273,7 +1268,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 
 	if p.Size <= unit.BlockSize {
 		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data[0:p.Size], p.CRC, storage.AppendWriteType, p.IsSyncWrite())
-		partition.checkIsDiskError(err)
+		partition.checkIsPartitionError(err)
 	} else {
 		size := p.Size
 		offset := 0
@@ -1285,7 +1280,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
 			err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data[0:currSize], crc, storage.AppendWriteType, p.IsSyncWrite())
-			partition.checkIsDiskError(err)
+			partition.checkIsPartitionError(err)
 			if err != nil {
 				break
 			}
@@ -1517,7 +1512,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 			reply.CRC, storeErr = store.Read(reply.ExtentID, offset, int64(currReadSize), reply.Data[0:currReadSize], isRepairRead)
 			return storeErr
 		}()
-		partition.checkIsDiskError(err)
+		partition.checkIsPartitionError(err)
 		p.CRC = reply.CRC
 		if err != nil {
 			return
@@ -3246,6 +3241,57 @@ func (s *DataNode) getPartitionAPI(w http.ResponseWriter, r *http.Request) {
 	dpInfo.Files = files
 	dpInfo.FileCount = len(files)
 	s.buildSuccessResp(w, dpInfo)
+}
+
+func (s *DataNode) triggerPartitionError(w http.ResponseWriter, r *http.Request) {
+	const (
+		paramPartitionID = "id"
+		paramIsDiskError = "isDiskError"
+		paramAuthCode    = "authCode"
+	)
+	var (
+		err         error
+		partitionID uint64
+		authCode    string
+		isDiskError bool
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse from fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue(paramPartitionID), 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	authCode = r.FormValue(paramAuthCode)
+	if val := r.FormValue(paramIsDiskError); val != "" {
+		var bVal bool
+		if bVal, err = strconv.ParseBool(val); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse param %v fail: %v", paramIsDiskError, err))
+			return
+		}
+		isDiskError = bVal
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	if authCode != hex.EncodeToString(md5.New().Sum([]byte(partition.volumeID))) {
+		s.buildFailureResp(w, http.StatusBadRequest, "authCode mismatch")
+		return
+	}
+
+	var partitionErr error
+	if isDiskError {
+		partitionErr = syscall.EIO
+	} else {
+		partitionErr = storage.NewParameterMismatchErr("parameter mismatch")
+	}
+	partition.checkIsPartitionError(partitionErr)
+	s.buildSuccessResp(w, nil)
 }
 
 func (s *DataNode) getPartitionSimpleAPI(w http.ResponseWriter, r *http.Request) {

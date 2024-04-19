@@ -566,6 +566,10 @@ func (dp *DataPartition) Size() int {
 	return dp.partitionSize
 }
 
+func (dp *DataPartition) SetUnAvailable() {
+	dp.partitionStatus = proto.Unavailable
+}
+
 // Used returns the used space.
 func (dp *DataPartition) Used() int {
 	return dp.used
@@ -704,7 +708,7 @@ func (dp *DataPartition) ExtentStore() *storage.ExtentStore {
 	return dp.extentStore
 }
 
-func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
+func (dp *DataPartition) checkIsPartitionError(err error) (partitionError bool) {
 	if err == nil {
 		return
 	}
@@ -712,13 +716,10 @@ func (dp *DataPartition) checkIsDiskError(err error) (diskError bool) {
 		mesg := fmt.Sprintf("disk path %v error on %v", dp.Path(), LocalIP)
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
+		dp.SetUnAvailable()
 		dp.stopRaft()
-		dp.disk.incReadErrCnt()
-		dp.disk.incWriteErrCnt()
-		dp.disk.Status = proto.Unavailable
 		dp.statusUpdate()
-		dp.disk.ForceExitRaftStore()
-		diskError = true
+		partitionError = true
 	}
 	return
 }
@@ -1316,7 +1317,7 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		if err == nil {
 			break
 		}
-		if dp.checkIsDiskError(err) {
+		if dp.checkIsPartitionError(err) {
 			return
 		}
 		if strings.Contains(err.Error(), storage.IllegalOverWriteError) {
@@ -1398,6 +1399,7 @@ func (dp *DataPartition) RandomWriteSubmitV3(pkg *repl.Packet) (err error) {
 
 	return
 }
+
 // partition persist
 type PersistFlag int
 
@@ -1614,7 +1616,6 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 func (dp *DataPartition) forceFlushAllFD(limiter *rate.Limiter) (error error) {
 	return dp.extentStore.Flush(limiter)
 }
-
 
 func (dp *DataPartition) raftPort() (heartbeat, replica int, err error) {
 	raftConfig := dp.config.RaftStore.RaftConfig()
@@ -2299,8 +2300,6 @@ func (dp *DataPartition) GetConsistencyMode() proto.ConsistencyMode {
 	}
 	return dp.config.Mode
 }
-
-
 
 func (dp *DataPartition) findMinID(allIDs map[string]uint64) (minID uint64, host string) {
 	minID = math.MaxUint64
@@ -4218,7 +4217,7 @@ func (dp *DataPartition) handleRaftApplySnapshot(peers []raftProto.Peer, iterato
 
 // HandleFatalEvent notifies the application when panic happens.
 func (dp *DataPartition) handleRaftFatalEvent(err *raft.FatalError) {
-	dp.checkIsDiskError(err.Err)
+	dp.checkIsPartitionError(err.Err)
 	log.LogErrorf("action[HandleFatalEvent] err(%v).", err)
 }
 
