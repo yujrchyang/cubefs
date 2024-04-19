@@ -363,6 +363,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optRemoteCacheTTL           int64
 		optEnableRemoveDup          string
 		optDelRemoteCacheBoostPath  string
+		optConnTimeoutMs            int64
 		optReadConnTimeoutMs        int64
 		optWriteConnTimeoutMs       int64
 		optTruncateEKCountEveryTime int
@@ -761,6 +762,13 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			if vv.ConnConfig == nil {
 				vv.ConnConfig = &proto.ConnConfig{}
 			}
+			if optConnTimeoutMs > 0 {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  ConnTimeout         : %v ms -> %v ms\n", vv.ConnConfig.ConnectTimeoutNs/int64(time.Millisecond), optConnTimeoutMs))
+				vv.ConnConfig.ConnectTimeoutNs = optConnTimeoutMs * int64(time.Millisecond)
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  ReadConnTimeout     : %v ms\n", vv.ConnConfig.ReadTimeoutNs/int64(time.Millisecond)))
+			}
 			if optReadConnTimeoutMs > 0 {
 				isChange = true
 				confirmString.WriteString(fmt.Sprintf("  ReadConnTimeout     : %v ms -> %v ms\n", vv.ConnConfig.ReadTimeoutNs/int64(time.Millisecond), optReadConnTimeoutMs))
@@ -841,7 +849,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
 				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator,
 				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL,
-				vv.EnableRemoveDupReq, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode, vv.Flock)
+				vv.EnableRemoveDupReq, vv.ConnConfig.ConnectTimeoutNs, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode, vv.Flock)
 			if err != nil {
 				return
 			}
@@ -892,6 +900,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optRemoteCacheTTL, CliFlagRemoteCacheTTL, 0, "Cache TTL")
 	cmd.Flags().StringVar(&optEnableRemoveDup, CliFlagEnableRemoveDup, "", "Enable remove dup")
 	cmd.Flags().StringVar(&optDelRemoteCacheBoostPath, CliFlagDelRemoteCachePath, "", "del cache boost path rules")
+	cmd.Flags().Int64Var(&optConnTimeoutMs, CliFlagConnTimeout, 0, "set client connection timeout, unit: ms")
 	cmd.Flags().Int64Var(&optReadConnTimeoutMs, CliFlagReadConnTimeout, 0, "set client read connection timeout, unit: ms")
 	cmd.Flags().Int64Var(&optWriteConnTimeoutMs, CliFlagWriteConnTimeout, 0, "set client write connection timeout, unit: ms")
 	cmd.Flags().IntVar(&optTruncateEKCountEveryTime, CliFlagTruncateEKCount, -1, "truncate EK count every time when del inode")

@@ -3858,60 +3858,73 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 func (c *Cluster) setClusterConnConfig(params map[string]interface{}) (err error) {
 	// map[zoneName]proto.ConnConfig, cluster zoneName is ""
 	var (
+		newConnTimeoutMs      int64
 		newReadConnTimeoutMs  int64
 		newWriteConnTimeoutMs int64
 	)
+	if val, ok := params[proto.ConnTimeoutMsKey]; ok {
+		newConnTimeoutMs = val.(int64)
+	}
 	if val, ok := params[proto.ReadConnTimeoutMsKey]; ok {
 		newReadConnTimeoutMs = val.(int64)
 	}
 	if val, ok := params[proto.WriteConnTimeoutMsKey]; ok {
 		newWriteConnTimeoutMs = val.(int64)
 	}
-	if newReadConnTimeoutMs > 0 || newWriteConnTimeoutMs > 0 {
-		newConfig := proto.ConnConfig{
-			ReadTimeoutNs:  newReadConnTimeoutMs * int64(time.Millisecond),
-			WriteTimeoutNs: newWriteConnTimeoutMs * int64(time.Millisecond),
+	if newConnTimeoutMs <= 0 && newReadConnTimeoutMs <= 0 && newWriteConnTimeoutMs <= 0 {
+		return
+	}
+
+	newConfig := proto.ConnConfig{
+		ConnectTimeoutNs: newConnTimeoutMs * int64(time.Millisecond),
+		ReadTimeoutNs:    newReadConnTimeoutMs * int64(time.Millisecond),
+		WriteTimeoutNs:   newWriteConnTimeoutMs * int64(time.Millisecond),
+	}
+	if val, ok := params[zoneNameKey]; ok {
+		zone := val.(string)
+		if zone != "" {
+			err = proto.ErrZoneNotExists
+			for _, z := range c.t.getAllZones() {
+				if zone == z.name {
+					err = nil
+					break
+				}
+			}
+			if err != nil {
+				return
+			}
 		}
-		if val, ok := params[zoneNameKey]; ok {
-			zone := val.(string)
-			if zone != "" {
-				err = proto.ErrZoneNotExists
-				for _, z := range c.t.getAllZones() {
-					if zone == z.name {
-						err = nil
-						break
-					}
+		if oldCfg, ok := c.cfg.ZoneNetConnConfig.Load(zone); ok {
+			newConfig, ok = oldCfg.(proto.ConnConfig)
+			if ok {
+				if newConnTimeoutMs > 0 {
+					newConfig.ConnectTimeoutNs = newConnTimeoutMs * int64(time.Millisecond)
 				}
-				if err != nil {
-					return
+				if newWriteConnTimeoutMs > 0 {
+					newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
 				}
-			}
-			if oldCfg, ok := c.cfg.ZoneNetConnConfig.Load(zone); ok {
-				newConfig, ok = oldCfg.(proto.ConnConfig)
-				if ok {
-					if newWriteConnTimeoutMs > 0 {
-						newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
-					}
-					if newReadConnTimeoutMs > 0 {
-						newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
-					}
+				if newReadConnTimeoutMs > 0 {
+					newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
 				}
 			}
-			c.cfg.ZoneNetConnConfig.Store(zone, newConfig)
-		} else {
-			if oldCfg, ok := c.cfg.ZoneNetConnConfig.Load(""); ok {
-				newConfig, ok = oldCfg.(proto.ConnConfig)
-				if ok {
-					if newWriteConnTimeoutMs > 0 {
-						newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
-					}
-					if newReadConnTimeoutMs > 0 {
-						newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
-					}
-				}
-			}
-			c.cfg.ZoneNetConnConfig.Store("", newConfig)
 		}
+		c.cfg.ZoneNetConnConfig.Store(zone, newConfig)
+	} else {
+		if oldCfg, ok := c.cfg.ZoneNetConnConfig.Load(""); ok {
+			newConfig, ok = oldCfg.(proto.ConnConfig)
+			if ok {
+				if newConnTimeoutMs > 0 {
+					newConfig.ConnectTimeoutNs = newConnTimeoutMs * int64(time.Millisecond)
+				}
+				if newWriteConnTimeoutMs > 0 {
+					newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
+				}
+				if newReadConnTimeoutMs > 0 {
+					newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
+				}
+			}
+		}
+		c.cfg.ZoneNetConnConfig.Store("", newConfig)
 	}
 	return nil
 }

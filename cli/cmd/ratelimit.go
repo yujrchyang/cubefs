@@ -301,6 +301,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.RemoteReadConnTimeoutMs >= 0 {
 				msg += fmt.Sprintf("RemoteReadConnTimeoutMs      : %v, ", info.RemoteReadConnTimeoutMs)
 			}
+			if info.ConnTimeoutMs >= 0 {
+				msg += fmt.Sprintf("ConnTimeoutMs                : %v, ", info.ConnTimeoutMs)
+			}
 			if info.ReadConnTimeoutMs >= 0 {
 				msg += fmt.Sprintf("ReadConnTimeoutMs            : %v, ", info.ReadConnTimeoutMs)
 			}
@@ -419,6 +422,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint32Var(&info.ClientReqRecordsReservedMin, "clientReqReservedMin", 0, "client req records reserved min")
 	cmd.Flags().Int32Var(&info.ClientReqRemoveDupFlag, "clientReqRemoveDupFlag", -1, "client req remove dup flag")
 	cmd.Flags().Int64Var(&info.RemoteReadConnTimeoutMs, "RemoteReadConnTimeoutMs", -1, "set remoteCache client read/write connection timeout, unit: ms")
+	cmd.Flags().Int64Var(&info.ConnTimeoutMs, "ConnTimeoutMs", -1, "set zone or cluster(omit zone acts on cluster) connection timeout, unit: ms")
 	cmd.Flags().Int64Var(&info.ReadConnTimeoutMs, "ReadConnTimeoutMs", -1, "set zone or cluster(omit zone acts on cluster) read connection timeout, unit: ms")
 	cmd.Flags().Int64Var(&info.WriteConnTimeoutMs, "WriteConnTimeoutMs", -1, "set zone or cluster(omit zone acts on cluster) write connection timeout, unit: ms")
 	cmd.Flags().Int64Var(&info.MetaNodeDelEKVolumeRate, "metaNodeDelEKVolRate", -1, "del ek rate limit for volume")
@@ -497,7 +501,6 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  TrashCleanMaxCountEachTime       : %v\n", info.TrashItemCleanMaxCountEachTime))
 	sb.WriteString(fmt.Sprintf("  DeleteMarkDelVolInterval         : %v(%v sec)\n", formatTimeInterval(info.DeleteMarkDelVolInterval), info.DeleteMarkDelVolInterval))
 	sb.WriteString(fmt.Sprintf("  RemoteCacheBoostEnable           : %v\n", info.RemoteCacheBoostEnable))
-	sb.WriteString(fmt.Sprintf("  ClientConnTimeoutUs              : %v(us)\n", info.ClientConnTimeoutUs))
 	sb.WriteString(fmt.Sprintf("  DataPartitionConsistencyMode     : %v\n", info.DataPartitionConsistencyMode.String()))
 	sb.WriteString(fmt.Sprintf("  DpTimeoutCntThreshold            : %v\n", info.DpTimeoutCntThreshold))
 	sb.WriteString(fmt.Sprintf("  RemoveDupReq                     : %v\n", formatEnabledDisabled(info.ClientReqRemoveDupFlag)))

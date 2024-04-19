@@ -4070,9 +4070,17 @@ func parseConnConfigToUpdateVol(r *http.Request, vol *Vol) (config proto.ConnCon
 	}
 
 	config = proto.ConnConfig{}
+	connTimeoutNs := vol.ConnConfig.ConnectTimeoutNs
 	readTimeoutNs := vol.ConnConfig.ReadTimeoutNs
 	writeTimeoutNs := vol.ConnConfig.WriteTimeoutNs
 
+	connStr := r.FormValue(volConnTimeoutKey)
+	if connStr != "" {
+		connTimeoutNs, err = strconv.ParseInt(connStr, 10, 64)
+		if err != nil {
+			return
+		}
+	}
 	readStr := r.FormValue(volReadConnTimeoutKey)
 	if readStr != "" {
 		readTimeoutNs, err = strconv.ParseInt(readStr, 10, 64)
@@ -4087,6 +4095,7 @@ func parseConnConfigToUpdateVol(r *http.Request, vol *Vol) (config proto.ConnCon
 			return
 		}
 	}
+	config.ConnectTimeoutNs = connTimeoutNs
 	config.ReadTimeoutNs = readTimeoutNs
 	config.WriteTimeoutNs = writeTimeoutNs
 	return
@@ -5058,7 +5067,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
 		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.DpTimeoutCntThreshold,
-		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey,
+		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ConnTimeoutMsKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey,
 		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey, apiReqBwRateLimitKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {

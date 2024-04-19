@@ -480,8 +480,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
 	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod, trashCleanDuration, trashCleanMaxCount int32,
 	enableBitMapAllocator bool, remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool,
-	remoteCacheTTL int64, enableRemoveDupReq bool, readConnTimeout, writeConnTimeout int64, truncateEKCount int,
-	bitMapSnapFrozenHour int64, notCacheNode bool, flock bool) (err error) {
+	remoteCacheTTL int64, enableRemoveDupReq bool, connTimeout, readConnTimeout, writeConnTimeout int64, truncateEKCount int, bitMapSnapFrozenHour int64, notCacheNode bool, flock bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -526,6 +525,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam("remoteCacheAutoPrepare", strconv.FormatBool(remoteCacheAutoPrepare))
 	request.addParam("remoteCacheTTL", strconv.FormatInt(remoteCacheTTL, 10))
 	request.addParam(proto.VolRemoveDupFlagKey, strconv.FormatBool(enableRemoveDupReq))
+	request.addParam("connTimeout", strconv.FormatInt(connTimeout, 10))
 	request.addParam("readConnTimeout", strconv.FormatInt(readConnTimeout, 10))
 	request.addParam("writeConnTimeout", strconv.FormatInt(writeConnTimeout, 10))
 	request.addParam(proto.MetaNodeTruncateEKCountKey, strconv.FormatInt(int64(truncateEKCount), 10))
@@ -950,6 +950,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.RemoteReadConnTimeoutMs >= 0 {
 		request.addParam(proto.RemoteReadConnTimeoutKey, strconv.FormatInt(info.RemoteReadConnTimeoutMs, 10))
+	}
+	if info.ConnTimeoutMs >= 0 {
+		request.addParam(proto.ConnTimeoutMsKey, strconv.FormatInt(info.ConnTimeoutMs, 10))
 	}
 	if info.ReadConnTimeoutMs >= 0 {
 		request.addParam(proto.ReadConnTimeoutMsKey, strconv.FormatInt(info.ReadConnTimeoutMs, 10))

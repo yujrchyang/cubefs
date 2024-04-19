@@ -155,6 +155,7 @@ const (
 	addSlaveKey                         = "addslave"
 	newNameKey                          = "newName"
 	fgSlotsKey                          = "slots"
+	volConnTimeoutKey                   = "connTimeout"
 	volReadConnTimeoutKey               = "readConnTimeout"
 	volWriteConnTimeoutKey              = "writeConnTimeout"
 	paraBandWidth                       = "bw"
