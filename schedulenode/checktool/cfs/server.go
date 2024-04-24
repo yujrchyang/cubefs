@@ -289,6 +289,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.scheduleToCheckZoneMnDnWriteAbilityRate()
 	go s.scheduleToCheckCFSHighIncreaseMemNodes()
 	go s.scheduleToCheckClusterConfig()
+	go s.scheduleToReloadDP()
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
