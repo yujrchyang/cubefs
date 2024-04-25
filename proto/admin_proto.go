@@ -320,7 +320,8 @@ const (
 	ReadWriteToken = 2
 )
 const (
-	DefaultMetaPartitionInodeIDStep uint64 = 1 << 24
+	DefaultMetaPartitionInodeIDStep         uint64 = 1 << 24
+	DefaultMetaPartitionInodeCountThreshold uint64 = 10000000
 )
 
 var IsDbBack bool = false

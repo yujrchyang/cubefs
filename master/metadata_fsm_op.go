@@ -387,6 +387,8 @@ type volValue struct {
 	RemoveDupReqEnable     bool
 
 	TruncateEKCountEveryTime int
+	MpSplitStep              uint64
+	InodeCountThreshold      uint64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -475,6 +477,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoveDupReqEnable:     vol.enableRemoveDupReq,
 
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
+		MpSplitStep:              vol.MpSplitStep,
+		InodeCountThreshold:      vol.InodeCountThreshold,
 	}
 	return
 }

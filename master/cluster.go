@@ -2826,7 +2826,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod,
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
 	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
-	enableRemoveDupReq bool, truncateEKCountEveryTime int) (err error) {
+	enableRemoveDupReq bool, truncateEKCountEveryTime int, mpSplitStep, inodeCountThreshold uint64) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -2992,7 +2992,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.RemoteCacheAutoPrepare = remoteCacheAutoPrepare
 	vol.RemoteCacheTTL = remoteCacheTTL
 	vol.ConnConfig = connConfig
-
+	vol.MpSplitStep = mpSplitStep
+	vol.InodeCountThreshold = inodeCountThreshold
 	if err = c.syncUpdateVol(vol); err != nil {
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
@@ -3008,13 +3009,13 @@ errHandler:
 }
 
 // Create a new volume.
-// By default we create 3 meta partitions and 10 data partitions during initialization.
+// By default, we create 3 meta partitions and 10 data partitions during initialization.
 func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity,
 	trashDays int, ecDataNum, ecParityNum uint8, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
 	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	childFileMaxCnt uint32, storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
 	compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32,
-	bitMapAllocatorEnable bool) (vol *Vol, err error) {
+	bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -3058,7 +3059,8 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
 		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
-		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocatorEnable); err != nil {
+		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocatorEnable,
+		mpSplitStep, inodeCountThreshold); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -3092,7 +3094,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8,
 	dpWriteableThreshold float64, childFileMaxCnt uint32, storeMode proto.StoreMode, convertSt proto.VolConvertState,
 	mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
-	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnable bool) (vol *Vol, err error) {
+	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64) (vol *Vol, err error) {
 	var (
 		id              uint64
 		smartEnableTime int64
@@ -3129,7 +3131,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime,
 		smartEnableTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum,
 		dpWriteableThreshold, uint32(trashDays), childFileMaxCnt, storeMode, convertSt, mpLayout, smartRules, compactTag,
-		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval)
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, mpSplitStep, inodeCountThreshold)
 	vol.EcDataNum = dataNum
 	vol.EcParityNum = parityNum
 	vol.EcEnable = enableEc
@@ -3185,7 +3187,11 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 	if adjustStart < partition.MaxInodeID {
 		adjustStart = partition.MaxInodeID
 	}
-	adjustStart = adjustStart + proto.DefaultMetaPartitionInodeIDStep
+	step := proto.DefaultMetaPartitionInodeIDStep
+	if vol.MpSplitStep != 0 {
+		step = vol.MpSplitStep
+	}
+	adjustStart = adjustStart + step
 	log.LogWarnf("vol[%v],maxMp[%v],start[%v],adjustStart[%v]", volName, maxPartitionID, start, adjustStart)
 	if err = vol.splitMetaPartition(c, partition, adjustStart, ctx); err != nil {
 		log.LogErrorf("action[updateInodeIDRange] splits  mp[%v] err[%v]", partition.PartitionID, err)

@@ -284,15 +284,10 @@ func (vol *Vol) autoCreateMetaPartitions(c *Cluster, createMpContext context.Con
 			log.LogWarnf("action[autoCreateMetaPartitions],cluster[%v],vol[%v],err[%v],create it later", c.Name, vol.Name, err)
 			return
 		}
-		var nextStart uint64
-		if mp.MaxInodeID <= 0 {
-			nextStart = mp.Start + proto.DefaultMetaPartitionInodeIDStep
-		} else {
-			nextStart = mp.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
-		}
+		end := mp.calculateEnd(vol.MpSplitStep)
 		log.LogDebugf("action[autoCreateMetaPartitions],cluster[%v],vol[%v],writableMPCount[%v] less than %v, do split.",
 			c.Name, vol.Name, writableMpCount, vol.MinWritableMPNum)
-		if err = vol.splitMetaPartition(c, mp, nextStart, createMpContext); err != nil {
+		if err = vol.splitMetaPartition(c, mp, end, createMpContext); err != nil {
 			msg := fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]",
 				c.Name, vol.Name, mp.PartitionID, err)
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)

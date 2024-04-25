@@ -1647,15 +1647,10 @@ func (c *Cluster) updateInodeIDUpperBound(mp *MetaPartition, mr *proto.MetaParti
 	if mr.PartitionID != maxPartitionID {
 		return
 	}
-	var end uint64
-	if mr.MaxInodeID <= 0 {
-		end = mp.Start + proto.DefaultMetaPartitionInodeIDStep
-	} else {
-		end = mr.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
-	}
+	end := mp.calculateEnd(vol.MpSplitStep)
 	log.LogWarnf("mpId[%v],start[%v],end[%v],addr[%v],used[%v]", mp.PartitionID, mp.Start, mp.End, metaNode.Addr, metaNode.Used)
 	if err = vol.splitMetaPartition(c, mp, end, ctx); err != nil {
-		log.LogErrorf("action[updateInodeIDUpperBound] splits failed,volume[%v],mp[%v],err:%v", mp.volName, mp.PartitionID, err)
+		log.LogErrorf("action[updateInodeIDUpperBound] splits failed,volume[%v],mp[%v],step[%v],err:%v", mp.volName, mp.PartitionID, vol.MpSplitStep, err)
 	}
 	return
 }

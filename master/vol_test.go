@@ -260,7 +260,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 	maxPartitionID := vol.maxPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
 	//after check meta partitions ,the status must be writable
-	maxMp.checkStatus(server.cluster.Name, false, int(vol.mpReplicaNum), maxPartitionID)
+	maxMp.checkStatus(false, int(vol.mpReplicaNum), maxPartitionID, 0)
 	if !assert.Equalf(t, proto.ReadWrite, int(maxMp.Status), "expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status) {
 		return
 	}
@@ -364,7 +364,7 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 		false, true, false, false, false, false, createTime, createTime, "", "", "", 0,
 		0, 0, 0.0, 30, 0, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0},
-		0, 0)
+		0, 0, 0, 0)
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, 0, name, volID)
 	vol.addMetaPartition(mp1, server.cluster.Name)

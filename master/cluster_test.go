@@ -29,7 +29,7 @@ func buildPanicVol() *Vol {
 		true, false, false, false, false, createTime, createTime, "", "", "", 0, 0, 0, 0.0, 30,
 		0, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0},
-		0, 0)
+		0, 0, 0, 0)
 
 	vol.dataPartitions = nil
 	return vol

@@ -240,7 +240,8 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.doCheckAvailSpace()
 	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, true, false, false, false, 0, 0, defaultChildFileMaxCount,
-		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0}, 0, 0, false)
+		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0}, 0,
+		0, false, 0, 0)
 	if err != nil {
 		panic(err)
 	}
@@ -4448,5 +4449,35 @@ func printDpNodeSet(dp *DataPartition, t *testing.T) {
 		} else {
 			fmt.Printf("replica %v in nodeSet %v\n", addr, id)
 		}
+	}
+}
+
+func TestInodeCountThresholdAndMpSplitStep(t *testing.T) {
+	inodeCountThreshold := 1
+	mpSplitStep := 1
+	reqURL := fmt.Sprintf("%v%v?name=%v&inodeCountThreshold=%v&mpSplitStep=%v&authKey=%v",
+		hostAddr, proto.AdminUpdateVol, commonVol.Name, inodeCountThreshold, mpSplitStep, buildAuthKey("cfs"))
+	process(reqURL, t)
+	vol, err := server.cluster.getVol(commonVolName)
+	if !assert.NoError(t, err) {
+		t.FailNow()
+	}
+	if !assert.Equal(t, inodeCountThreshold, 0) {
+		t.FailNow()
+	}
+	if !assert.Equal(t, mpSplitStep, 0) {
+		t.FailNow()
+	}
+
+	inodeCountThreshold = 1 << 25
+	mpSplitStep = 1 << 20
+	reqURL = fmt.Sprintf("%v%v?name=%v&inodeCountThreshold=%v&mpSplitStep=%v&authKey=%v",
+		hostAddr, proto.AdminUpdateVol, commonVol.Name, inodeCountThreshold, mpSplitStep, buildAuthKey("cfs"))
+	process(reqURL, t)
+	if !assert.Equal(t, inodeCountThreshold, vol.InodeCountThreshold) {
+		t.FailNow()
+	}
+	if !assert.Equal(t, mpSplitStep, vol.MpSplitStep) {
+		t.FailNow()
 	}
 }

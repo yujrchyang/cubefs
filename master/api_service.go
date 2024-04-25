@@ -1893,13 +1893,19 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mpSplitStep, inodeCountThreshold, err := parseMPSplitStepAndInodeCountThresholdToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
-		truncateEKCountEveryTime); err != nil {
+		truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1994,13 +2000,15 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		batchDelInodeCnt     uint32
 		delInodeInterval     uint32
 		bitMapAllocator      bool
+		mpSplitStep          uint64
+		inodeCountThreshold  uint64
 	)
 
 	metrics := exporter.NewModuleTP(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
 		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
-		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, err = parseRequestToCreateVol(r); err != nil {
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2044,7 +2052,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
 		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval,
-		bitMapAllocator); err != nil {
+		bitMapAllocator, mpSplitStep, inodeCountThreshold); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -4030,6 +4038,39 @@ func parseConnConfigToUpdateVol(r *http.Request, vol *Vol) (config proto.ConnCon
 	return
 }
 
+func parseMPSplitStepAndInodeCountThresholdToUpdateVol(r *http.Request, vol *Vol) (splitStep, inodeCountThreshold uint64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	splitStepStr := r.FormValue(mpSplitStepKey)
+	if splitStepStr == "" {
+		splitStep = vol.MpSplitStep
+	} else {
+		if splitStep, err = strconv.ParseUint(splitStepStr, 10, 64); err != nil {
+			err = unmatchedKey(mpSplitStepKey)
+			return
+		}
+		if splitStep < proto.DefaultMetaPartitionInodeIDStep {
+			err = fmt.Errorf("splitStep must be larger than %d", proto.DefaultMetaPartitionInodeIDStep)
+			return
+		}
+	}
+	inodeCountThresholdStr := r.FormValue(inodeCountThresholdKey)
+	if inodeCountThresholdStr == "" {
+		inodeCountThreshold = vol.InodeCountThreshold
+	} else {
+		if inodeCountThreshold, err = strconv.ParseUint(inodeCountThresholdStr, 10, 64); err != nil {
+			err = unmatchedKey(inodeCountThresholdKey)
+			return
+		}
+		if inodeCountThreshold < minInodeCountThreshold {
+			err = fmt.Errorf("inodeCountThreshold must be larger than 100000")
+			return
+		}
+	}
+	return
+}
+
 func parseTruncateEKCountEveryTimeToUpdateVol(r *http.Request, vol *Vol) (truncateEkCount int, err error) {
 	err = r.ParseForm()
 	if err != nil {
@@ -4056,7 +4097,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
-	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnableState bool, err error) {
+	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnableState bool, mpSplitStep, inodeCountThreshold uint64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -4248,6 +4289,29 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		return
 	}
 	delInodeInterval = uint32(tmpDelInodeInterval)
+	splitStepStr := r.FormValue(mpSplitStepKey)
+	if splitStepStr != "" {
+		if mpSplitStep, err = strconv.ParseUint(splitStepStr, 10, 64); err != nil {
+			err = unmatchedKey(mpSplitStepKey)
+			return
+		}
+		if mpSplitStep < proto.DefaultMetaPartitionInodeIDStep {
+			err = fmt.Errorf("splitStep must be larger than %d", proto.DefaultMetaPartitionInodeIDStep)
+			return
+		}
+	}
+	inodeCountThresholdStr := r.FormValue(inodeCountThresholdKey)
+	if inodeCountThresholdStr != "" {
+		if inodeCountThreshold, err = strconv.ParseUint(inodeCountThresholdStr, 10, 64); err != nil {
+			err = unmatchedKey(inodeCountThresholdKey)
+			return
+		}
+		if inodeCountThreshold < minInodeCountThreshold {
+			err = fmt.Errorf("inodeCountThreshold must be larger than %d", minInodeCountThreshold)
+			return
+		}
+	}
+
 	return
 }
 

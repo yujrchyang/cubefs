@@ -159,6 +159,8 @@ const (
 	volWriteConnTimeoutKey              = "writeConnTimeout"
 	paraBandWidth                       = "bw"
 	apiReqBwRateLimitKey                = "apiReqBwRate"
+	mpSplitStepKey                      = "mpSplitStep"
+	inodeCountThresholdKey              = "inodeCountThreshold"
 )
 
 const (
@@ -289,6 +291,7 @@ const (
 	maxRetryTimes                                          = 2
 	maxBw                                                  = 1800 * 1024 * 1024
 	minBw                                                  = 500 * 1024 * 1024
+	minInodeCountThreshold                                 = 5000000
 )
 
 const (

@@ -131,6 +131,8 @@ type Vol struct {
 	RemoteCacheBoostEnable     bool
 	RemoteCacheAutoPrepare     bool
 	RemoteCacheTTL             int64
+	MpSplitStep                uint64 // the step of split meta partition，0：used default step; if larger than the default step, used the value
+	InodeCountThreshold        uint64 // the threshold of inode count, if the inode count of a meat replica is larger than this value, the meta partition will be readonly,default 1000w
 	ConnConfig                 proto.ConnConfig
 	sync.RWMutex
 }
@@ -140,7 +142,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	createTime, smartEnableTime int64, description, dpSelectorName, dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType,
 	dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
 	convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
-	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32) (vol *Vol) {
+	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32, mpSplitStep, inodeCountThreshold uint64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.ecDataPartitions = newEcDataPartitionCache(vol)
@@ -219,6 +221,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.BatchDelInodeCnt = batchDelInodeCnt
 	vol.DelInodeInterval = delInodeInterval
 	vol.ConnConfig = proto.ConnConfig{}
+	vol.MpSplitStep = mpSplitStep
+	vol.InodeCountThreshold = inodeCountThreshold
 	return
 }
 
@@ -258,7 +262,9 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.CompactTag,
 		vv.FollowerReadDelayCfg,
 		vv.BatchDelInodeCnt,
-		vv.DelInodeInterval)
+		vv.DelInodeInterval,
+		vv.MpSplitStep,
+		vv.InodeCountThreshold)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -629,9 +635,9 @@ func (vol *Vol) checkMetaPartitions(c *Cluster, ctx context.Context) (writableMp
 		err     error
 	)
 	for _, mp := range mps {
-		doSplit = mp.checkStatus(c.Name, true, int(vol.mpReplicaNum), maxPartitionID)
+		doSplit = mp.checkStatus(true, int(vol.mpReplicaNum), maxPartitionID, vol.InodeCountThreshold)
 		if doSplit && mp.MaxInodeID != 0 {
-			nextStart := mp.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
+			nextStart := mp.calculateEnd(vol.MpSplitStep)
 			if err = vol.splitMetaPartition(c, mp, nextStart, ctx); err != nil {
 				msg := fmt.Sprintf("cluster[%v],vol[%v],meta partition[%v] splits failed,err[%v]", c.Name, vol.Name, mp.PartitionID, err)
 				WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)
@@ -659,26 +665,10 @@ func (vol *Vol) checkSplitMetaPartition(c *Cluster, ctx context.Context) {
 	if !ok {
 		return
 	}
-	liveReplicas := partition.getLiveReplicas()
-	foundReadonlyReplica := false
-	var readonlyReplica *MetaReplica
-	for _, replica := range liveReplicas {
-		if replica.Status == proto.ReadOnly {
-			foundReadonlyReplica = true
-			readonlyReplica = replica
-			break
-		}
-	}
-	if !foundReadonlyReplica {
+	if partition.needSpitCauseReadonly() == false && partition.needSplitCauseInodeCount(vol.InodeCountThreshold) == false {
 		return
 	}
-	if readonlyReplica.metaNode.isWritable(readonlyReplica.StoreMode) {
-		msg := fmt.Sprintf("action[checkSplitMetaPartition] vol[%v],max meta parition[%v] status is readonly\n",
-			vol.Name, partition.PartitionID)
-		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)
-		return
-	}
-	end := partition.MaxInodeID + proto.DefaultMetaPartitionInodeIDStep
+	end := partition.calculateEnd(vol.MpSplitStep)
 	if err := vol.splitMetaPartition(c, partition, end, ctx); err != nil {
 		msg := fmt.Sprintf("action[checkSplitMetaPartition],split meta partition[%v] failed,err[%v]\n",
 			partition.PartitionID, err)
@@ -1379,6 +1369,8 @@ func (vol *Vol) backupConfig() *Vol {
 		RemoteCacheTTL:             vol.RemoteCacheTTL,
 		ConnConfig:                 vol.ConnConfig,
 		TruncateEKCountEveryTime:   vol.TruncateEKCountEveryTime,
+		MpSplitStep:                vol.MpSplitStep,
+		InodeCountThreshold:        vol.InodeCountThreshold,
 	}
 }
 
@@ -1433,6 +1425,8 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.enableRemoveDupReq = backupVol.enableRemoveDupReq
 	vol.ConnConfig = backupVol.ConnConfig
 	vol.TruncateEKCountEveryTime = backupVol.TruncateEKCountEveryTime
+	vol.MpSplitStep = backupVol.MpSplitStep
+	vol.InodeCountThreshold = backupVol.InodeCountThreshold
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

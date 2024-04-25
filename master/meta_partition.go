@@ -290,7 +290,7 @@ func (mp *MetaPartition) checkLeader() {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum int, maxPartitionID uint64) (doSplit bool) {
+func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartitionID, inodeCountThreshold uint64) (doSplit bool) {
 	mp.Lock()
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
@@ -320,6 +320,10 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		}
 	}
 
+	if inodeCountThreshold > 0 && mp.Status == proto.ReadWrite {
+		mp.adjustStatusByInodeCount(inodeCountThreshold)
+	}
+
 	if mp.PartitionID == maxPartitionID && mp.Status == proto.ReadOnly {
 		mp.Status = proto.ReadWrite
 	}
@@ -337,6 +341,12 @@ func (mp *MetaPartition) checkStatus(clusterID string, writeLog bool, replicaNum
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpCheckStatus], msg)
 	}
 	return
+}
+
+func (mp *MetaPartition) adjustStatusByInodeCount(inodeCountThreshold uint64) {
+	if mp.InodeCount >= inodeCountThreshold {
+		mp.Status = proto.ReadOnly
+	}
 }
 
 func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
@@ -752,6 +762,36 @@ func (mp *MetaPartition) createTaskToUpdateMetaReplica(clusterID string, partiti
 	return
 }
 
+func (mp *MetaPartition) needSplitCauseInodeCount(inodeCountThreshold uint64) (needSplit bool) {
+	if inodeCountThreshold != 0 && mp.InodeCount >= inodeCountThreshold {
+		needSplit = true
+	}
+	return
+}
+
+func (mp *MetaPartition) needSpitCauseReadonly() (needSplit bool) {
+	liveReplicas := mp.getLiveReplicas()
+	foundReadonlyReplica := false
+	var readonlyReplica *MetaReplica
+	for _, replica := range liveReplicas {
+		if replica.Status == proto.ReadOnly {
+			foundReadonlyReplica = true
+			readonlyReplica = replica
+			break
+		}
+	}
+	if !foundReadonlyReplica {
+		return false
+	}
+	if readonlyReplica.metaNode.isWritable(readonlyReplica.StoreMode) {
+		msg := fmt.Sprintf("action[needSplitCauseInodeCount] vol[%v],max meta parition[%v] status is readonly\n",
+			mp.volName, mp.PartitionID)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpSplit], msg)
+		return true
+	}
+	return true
+}
+
 func (mr *MetaReplica) createTaskToDeleteReplica(partitionID uint64) (t *proto.AdminTask) {
 	req := &proto.DeleteMetaPartitionRequest{PartitionID: partitionID}
 	t = proto.NewAdminTask(proto.OpDeleteMetaPartition, mr.Addr, req)
@@ -954,6 +994,18 @@ func (mp *MetaPartition) setMaxInodeID() {
 		}
 	}
 	mp.MaxInodeID = maxUsed
+}
+
+func (mp *MetaPartition) calculateEnd(step uint64) (end uint64) {
+	if step == 0 {
+		step = proto.DefaultMetaPartitionInodeIDStep
+	}
+	if mp.MaxInodeID <= 0 {
+		end = mp.Start + step
+	} else {
+		end = mp.MaxInodeID + step
+	}
+	return
 }
 
 func (mp *MetaPartition) setInodeCount() {
