@@ -172,6 +172,10 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminAPISetNodesLiveRatio).
 		HandlerFunc(m.setNodesLiveRatioThreshold)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminGetUnavailDataPartitions).
+		HandlerFunc(m.getUnavailableDataPartitions)
+
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateVol).

@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"reflect"
 	"runtime"
@@ -30,7 +31,7 @@ func (c *Cluster) startPeriodicBackgroundSchedulingTasks() {
 	// vol tasks
 	c.startTask(c.doCheckVolStatus, time.Second*time.Duration(c.cfg.IntervalToCheckDataPartition), 0, false)
 	c.startTask(c.doCheckVolReduceReplicaNum, 5*time.Minute, 2*time.Minute, false)
-	c.startTask(c.doCheckUpdateVolsResponseCache, time.Second*time.Duration(c.cfg.IntervalToCheckDataPartition), 0, false)
+	c.startTask(c.doCheckUpdateVolInfoResponseCache, time.Second*time.Duration(c.cfg.IntervalToCheckDataPartition), 0, false)
 	c.startTask(c.doConvertRenamedOldVol, 2*time.Minute, 2*time.Minute, false)
 
 	// data partition  tasks
@@ -150,6 +151,8 @@ func (c *Cluster) doCheckVolStatus() {
 				"doCheckVolStatus occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckVolStatus)
+	defer func() { metrics.Set(nil) }()
 	vols := c.copyVols()
 	for _, vol := range vols {
 		if c.leaderHasChanged() {
@@ -167,6 +170,8 @@ func (c *Cluster) doCheckVolReduceReplicaNum() {
 				"doCheckVolReduceReplicaNum occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckVolReduceReplicaNum)
+	defer func() { metrics.Set(nil) }()
 	vols := c.allVols()
 	for _, vol := range vols {
 		if c.leaderHasChanged() {
@@ -176,17 +181,19 @@ func (c *Cluster) doCheckVolReduceReplicaNum() {
 	}
 }
 
-func (c *Cluster) doCheckUpdateVolsResponseCache() {
+func (c *Cluster) doCheckUpdateVolInfoResponseCache() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogWarnf("doCheckUpdateVolsResponseCache occurred panic,err[%v]", r)
+			log.LogWarnf("doCheckUpdateVolInfoResponseCache occurred panic,err[%v]", r)
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"doCheckUpdateVolsResponseCache occurred panic")
+				"doCheckUpdateVolInfoResponseCache occurred panic")
 		}
 	}()
-	_, err := c.updateVolsResponseCache()
+	metrics := exporter.NewModuleTP(proto.CheckUpdateVolInfoResponseCache)
+	defer func() { metrics.Set(nil) }()
+	_, err := c.updateVolInfoResponseCache()
 	if err != nil {
-		log.LogErrorf("action[doCheckUpdateVolsResponseCache] occurred error,err:%v", err)
+		log.LogErrorf("action[doCheckUpdateVolInfoResponseCache] occurred error,err:%v", err)
 	}
 }
 
@@ -198,6 +205,8 @@ func (c *Cluster) doConvertRenamedOldVol() {
 				"doConvertRenamedOldVol occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.ConvertRenamedOldVol)
+	defer func() { metrics.Set(nil) }()
 	vols := c.copyVols()
 	for _, vol := range vols {
 		if c.leaderHasChanged() {
@@ -215,6 +224,8 @@ func (c *Cluster) doCheckCreateDataPartitions() {
 				"doCheckCreateDataPartitions occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckCreateDataPartitions)
+	defer func() { metrics.Set(nil) }()
 	vols := c.copyVols()
 	for _, vol := range vols {
 		if c.leaderHasChanged() {
@@ -232,6 +243,8 @@ func (c *Cluster) doCheckDataPartitions() {
 				"doCheckDataPartitions occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckDataPartitions)
+	defer func() { metrics.Set(nil) }()
 	c.checkDataPartitions()
 }
 
@@ -270,10 +283,13 @@ func (c *Cluster) doReleaseDataPartition() {
 }
 
 func (c *Cluster) doCheckBadDiskRecovery() {
+	metrics := exporter.NewModuleTP(proto.CheckBadDiskRecovery)
+	defer func() { metrics.Set(nil) }()
 	if c.vols != nil {
 		c.checkDiskRecoveryProgress()
 		c.checkEcDiskRecoveryProgress()
 		c.checkMigratedDataPartitionsRecoveryProgress()
+		c.checkUnavailDataPartitionsRecoveryProgress()
 	}
 }
 
@@ -285,6 +301,8 @@ func (c *Cluster) doCheckUpdatePartitionReplicaNum() {
 				"doCheckUpdatePartitionReplicaNum occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckUpdatePartitionReplicaNum)
+	defer func() { metrics.Set(nil) }()
 	vols := c.copyVols()
 	for _, vol := range vols {
 		if c.leaderHasChanged() {
@@ -309,7 +327,8 @@ func (c *Cluster) doCheckEcDataPartitions() {
 				"doCheckEcDataPartitions occurred panic")
 		}
 	}()
-
+	metrics := exporter.NewModuleTP(proto.CheckEcDataPartitions)
+	defer func() { metrics.Set(nil) }()
 	vols := c.allVols()
 	for _, vol := range vols {
 		if c.leaderHasChanged() {
@@ -330,6 +349,8 @@ func (c *Cluster) doCheckCreateMetaPartitions() {
 				"checkAutoMetaPartitionCreation occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckCreateMetaPartitions)
+	defer func() { metrics.Set(nil) }()
 	ctx := c.buildCreateMetaPartitionContext()
 	vols := c.copyVols()
 	for _, vol := range vols {
@@ -348,6 +369,8 @@ func (c *Cluster) doCheckMetaPartitions() {
 				"checkMetaPartitions occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckMetaPartitions)
+	defer func() { metrics.Set(nil) }()
 	ctx := c.buildCreateMetaPartitionContext()
 	vols := c.allVols()
 	for _, vol := range vols {
@@ -367,6 +390,8 @@ func (c *Cluster) doCheckLoadMetaPartitions() {
 				"checkDiskRecoveryProgress occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckLoadMetaPartitions)
+	defer func() { metrics.Set(nil) }()
 	vols := c.allVols()
 	for _, vol := range vols {
 		mps := vol.cloneMetaPartitionMap()
@@ -387,6 +412,8 @@ func (c *Cluster) doCheckMetaPartitionRecoveryProgress() {
 				"doCheckMetaPartitionRecoveryProgress occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckMetaPartitionRecoveryProgress)
+	defer func() { metrics.Set(nil) }()
 	c.checkMetaPartitionRecoveryProgress()
 	c.checkMigratedMetaPartitionRecoveryProgress()
 }
@@ -404,6 +431,8 @@ func (c *Cluster) doUpdateClusterView() {
 				"doUpdateClusterView occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.UpdateClusterView)
+	defer func() { metrics.Set(nil) }()
 	c.updateClusterViewResponseCache()
 }
 
@@ -415,6 +444,8 @@ func (c *Cluster) doUpdateFlashGroupResponseCache() {
 				"doUpdateFlashGroupResponseCache occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.UpdateFlashGroupResponseCache)
+	defer func() { metrics.Set(nil) }()
 	c.updateFlashGroupResponseCache()
 }
 
@@ -426,6 +457,8 @@ func (c *Cluster) doCheckDataNodeHeartbeat() {
 				"doCheckDataNodeHeartbeat occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckDataNodeHeartbeat)
+	defer func() { metrics.Set(nil) }()
 	c.checkLeaderAddr()
 	tasks := make([]*proto.AdminTask, 0)
 	c.dataNodes.Range(func(addr, dataNode interface{}) bool {
@@ -446,6 +479,8 @@ func (c *Cluster) doCheckMetaNodeHeartbeat() {
 				"doCheckMetaNodeHeartbeat occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckMetaNodeHeartbeat)
+	defer func() { metrics.Set(nil) }()
 	c.checkLeaderAddr()
 	tasks := make([]*proto.AdminTask, 0)
 	c.metaNodes.Range(func(addr, metaNode interface{}) bool {
@@ -466,6 +501,8 @@ func (c *Cluster) doCheckEcNodeHeartbeat() {
 				"doCheckEcNodeHeartbeat occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckEcNodeHeartbeat)
+	defer func() { metrics.Set(nil) }()
 	c.checkLeaderAddr()
 	tasks := make([]*proto.AdminTask, 0)
 	c.ecNodes.Range(func(addr, ecNode interface{}) bool {
@@ -486,6 +523,8 @@ func (c *Cluster) doCheckCodecNodeHeartbeat() {
 				"doCheckCodecNodeHeartbeat occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckCodecNodeHeartbeat)
+	defer func() { metrics.Set(nil) }()
 	c.checkLeaderAddr()
 	tasks := make([]*proto.AdminTask, 0)
 	c.codecNodes.Range(func(addr, codecNode interface{}) bool {
@@ -505,6 +544,8 @@ func (c *Cluster) doCheckFlashNodeHeartbeat() {
 				"doCheckFlashNodeHeartbeat occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckFlashNodeHeartbeat)
+	defer func() { metrics.Set(nil) }()
 	c.checkLeaderAddr()
 	tasks := make([]*proto.AdminTask, 0)
 	c.flashNodeTopo.flashNodeMap.Range(func(addr, flashNode interface{}) bool {
@@ -525,6 +566,8 @@ func (c *Cluster) doCheckAvailSpace() {
 				"doCheckAvailSpace occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckAvailSpace)
+	defer func() { metrics.Set(nil) }()
 	c.updateDataNodeStatInfo()
 	c.updateMetaNodeStatInfo()
 	c.updateEcNodeStatInfo()
@@ -540,6 +583,8 @@ func (c *Cluster) doCheckMergeZoneNodeset() {
 				"doCheckMergeZoneNodeset occurred panic")
 		}
 	}()
+	metrics := exporter.NewModuleTP(proto.CheckMergeZoneNodeset)
+	defer func() { metrics.Set(nil) }()
 	if !c.AutoMergeNodeSet {
 		return
 	}

@@ -46,7 +46,11 @@ func createMetaPartition(vol *Vol, t *testing.T) {
 	if start < mp.MaxInodeID {
 		start = mp.MaxInodeID
 	}
-	start = start + proto.DefaultMetaPartitionInodeIDStep
+	step := proto.DefaultMetaPartitionInodeIDStep
+	if commonVol.MpSplitStep != 0 {
+		step = commonVol.MpSplitStep
+	}
+	start = start + step
 	vol, err = server.cluster.getVol(vol.Name)
 	if !assert.NoError(t, err) {
 		return

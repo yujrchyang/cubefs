@@ -314,8 +314,7 @@ func (partition *DataPartition) hasMissingDataPartition(addr string) (isMissing 
 	return
 }
 
-func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (diskErrorAddrs map[string]string) {
-	diskErrorAddrs = make(map[string]string, 0)
+func (partition *DataPartition) checkReplicaDiskError(clusterID, leaderAddr string) (badReplicas map[string]string) {
 	partition.Lock()
 	defer partition.Unlock()
 	for _, addr := range partition.Hosts {
@@ -324,23 +323,57 @@ func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (di
 			continue
 		}
 		if replica.Status == proto.Unavailable {
-			diskErrorAddrs[replica.Addr] = replica.DiskPath
+			if badReplicas == nil {
+				badReplicas = make(map[string]string)
+			}
+			badReplicas[replica.Addr] = replica.DiskPath
 		}
 	}
 
-	if len(diskErrorAddrs) != (int)(partition.ReplicaNum) && len(diskErrorAddrs) > 0 {
+	if badReplicas == nil {
+		return
+	}
+
+	if len(badReplicas) != (int)(partition.ReplicaNum) && len(badReplicas) > 0 {
 		partition.Status = proto.ReadOnly
 	}
 
-	for addr, diskPath := range diskErrorAddrs {
-		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost",
-			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr)
-		msg = msg + fmt.Sprintf(" decommissionDiskURL is http://%v/disk/decommission?addr=%v&disk=%v", leaderAddr, addr, diskPath)
+	for addr, diskPath := range badReplicas {
+		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  replica:%v  disk:%v occurred disk error,so decommission it",
+			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr, diskPath)
+		msg = msg + fmt.Sprintf(" decommissionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, partition.PartitionID, addr)
 		log.LogWarn(msg)
 	}
-
-	return
+	return badReplicas
 }
+
+//func (partition *DataPartition) checkDiskError(clusterID, leaderAddr string) (diskErrorAddrs map[string]string) {
+//	diskErrorAddrs = make(map[string]string, 0)
+//	partition.Lock()
+//	defer partition.Unlock()
+//	for _, addr := range partition.Hosts {
+//		replica, ok := partition.hasReplica(addr)
+//		if !ok {
+//			continue
+//		}
+//		if replica.Status == proto.Unavailable {
+//			diskErrorAddrs[replica.Addr] = replica.DiskPath
+//		}
+//	}
+//
+//	if len(diskErrorAddrs) != (int)(partition.ReplicaNum) && len(diskErrorAddrs) > 0 {
+//		partition.Status = proto.ReadOnly
+//	}
+//
+//	for addr, diskPath := range diskErrorAddrs {
+//		msg := fmt.Sprintf("action[%v],clusterID[%v],partitionID:%v  On :%v  Disk Error,So Remove it From RocksDBHost",
+//			checkDataPartitionDiskErr, clusterID, partition.PartitionID, addr)
+//		msg = msg + fmt.Sprintf(" decommissionDiskURL is http://%v/disk/decommission?addr=%v&disk=%v", leaderAddr, addr, diskPath)
+//		log.LogWarn(msg)
+//	}
+//
+//	return
+//}
 
 func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSize uint64, dpReplicaNum int) {
 	var msg string

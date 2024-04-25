@@ -2023,11 +2023,11 @@ func validateCrossRegionMetaPartition(metaPartition *MetaPartition, t *testing.T
 	metaPartitionHosts := metaPartition.Hosts
 	learnerHosts := metaPartition.getLearnerHosts()
 	if metaPartition.ReplicaNum != 3 || metaPartition.LearnerNum != 2 {
-		t.Errorf("mp expect ReplicaNum,LearnerNum is (3,2) but is (%v,%v) ", metaPartition.ReplicaNum, metaPartition.LearnerNum)
+		t.Errorf("vol[%v] mp[%v] mp expect ReplicaNum,LearnerNum is (3,2) but is (%v,%v) ", metaPartition.volName, metaPartition.PartitionID, metaPartition.ReplicaNum, metaPartition.LearnerNum)
 	}
 	if len(metaPartitionHosts) != 5 || len(metaPartition.Peers) != 5 || len(metaPartition.Learners) != 2 {
-		t.Errorf("mp(%v) expect Hosts len,Peers len,Learners len is (5,5,2) but is (%v,%v,%v) ",
-			metaPartition.PartitionID, len(metaPartitionHosts), len(metaPartition.Peers), len(metaPartition.Learners))
+		t.Errorf("vol[%v] mp(%v) expect Hosts len,Peers len,Learners len is (5,5,2) but is (%v,%v,%v) ",
+			metaPartition.volName, metaPartition.PartitionID, len(metaPartitionHosts), len(metaPartition.Peers), len(metaPartition.Learners))
 		metaPartition.RUnlock()
 		return
 	}
@@ -4457,27 +4457,56 @@ func TestInodeCountThresholdAndMpSplitStep(t *testing.T) {
 	mpSplitStep := 1
 	reqURL := fmt.Sprintf("%v%v?name=%v&inodeCountThreshold=%v&mpSplitStep=%v&authKey=%v",
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, inodeCountThreshold, mpSplitStep, buildAuthKey("cfs"))
-	process(reqURL, t)
+	resp, err := http.Get(reqURL)
+	if !assert.NoError(t, err) {
+		return
+	}
+	defer resp.Body.Close()
 	vol, err := server.cluster.getVol(commonVolName)
 	if !assert.NoError(t, err) {
-		t.FailNow()
+		t.Fail()
 	}
-	if !assert.Equal(t, inodeCountThreshold, 0) {
-		t.FailNow()
+	if !assert.Equal(t, uint64(0), vol.InodeCountThreshold) {
+		t.Fail()
 	}
-	if !assert.Equal(t, mpSplitStep, 0) {
-		t.FailNow()
+	if !assert.Equal(t, uint64(0), vol.MpSplitStep) {
+		t.Fail()
 	}
 
 	inodeCountThreshold = 1 << 25
-	mpSplitStep = 1 << 20
+	mpSplitStep = 1 << 26
 	reqURL = fmt.Sprintf("%v%v?name=%v&inodeCountThreshold=%v&mpSplitStep=%v&authKey=%v",
-		hostAddr, proto.AdminUpdateVol, commonVol.Name, inodeCountThreshold, mpSplitStep, buildAuthKey("cfs"))
+		hostAddr, proto.AdminUpdateVol, commonVol.Name, inodeCountThreshold, mpSplitStep, buildAuthKey(commonVol.Owner))
 	process(reqURL, t)
-	if !assert.Equal(t, inodeCountThreshold, vol.InodeCountThreshold) {
-		t.FailNow()
+	if !assert.Equal(t, uint64(inodeCountThreshold), vol.InodeCountThreshold) {
+		t.Fail()
 	}
-	if !assert.Equal(t, mpSplitStep, vol.MpSplitStep) {
-		t.FailNow()
+	if !assert.Equal(t, uint64(mpSplitStep), vol.MpSplitStep) {
+		t.Fail()
+	}
+}
+
+func TestUnavailableDataPartitions(t *testing.T) {
+	partition := commonVol.dataPartitions.partitions[0]
+	badReplica := partition.Replicas[0]
+	for _, replica := range partition.Replicas {
+		replica.Status = Unavailable
+		badReplica = replica
+		break
+	}
+	badReplicas := partition.checkReplicaDiskError(server.cluster.Name, server.cluster.leaderInfo.addr)
+	if !assert.Equal(t, 1, len(badReplicas)) {
+		t.Fail()
+	}
+	server.cluster.UnavailDataPartitions.Store(partition.PartitionID, badReplicas)
+	reqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetUnavailDataPartitions)
+	reply := processReturnRawReply(reqURL, t)
+	t.Log(string(reply.Data))
+	badReplica.Status = proto.ReadOnly
+	server.cluster.checkUnavailDataPartitionsRecoveryProgress()
+	_, ok := server.cluster.UnavailDataPartitions.Load(partition.PartitionID)
+
+	if !assert.False(t, ok) {
+		t.Fail()
 	}
 }

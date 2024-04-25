@@ -23,6 +23,51 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
+func (c *Cluster) checkUnavailDataPartitionsRecoveryProgress() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("checkUnavailDataPartitionsRecoveryProgress occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"checkUnavailDataPartitionsRecoveryProgress occurred panic")
+		}
+	}()
+	unprocessedPartitionIDs := make(map[uint64]string, 0)
+	c.UnavailDataPartitions.Range(func(key, value any) bool {
+		if c.leaderHasChanged() {
+			return false
+		}
+		partitionID := key.(uint64)
+		partition, err := c.getDataPartitionByID(partitionID)
+		if err != nil {
+			c.UnavailDataPartitions.Delete(partitionID)
+			return true
+		}
+		vol, err := c.getVol(partition.VolName)
+		if err != nil {
+			c.UnavailDataPartitions.Delete(partitionID)
+			return true
+		}
+		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
+			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+				unprocessedPartitionIDs[partitionID] = ""
+			}
+			return true
+		}
+		badReplicas := partition.checkReplicaDiskError(c.Name, c.leaderInfo.addr)
+		if len(badReplicas) == 0 {
+			c.UnavailDataPartitions.Delete(partitionID)
+		}
+		if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+			unprocessedPartitionIDs[partitionID] = ""
+		}
+		return true
+	})
+	if len(unprocessedPartitionIDs) != 0 {
+		msg := fmt.Sprintf("action[checkUnavailDataPartitionsRecoveryProgress] clusterID[%v],has[%v] unavil dps  more than 24 hours,still not processed,ids[%v]", c.Name, len(unprocessedPartitionIDs), unprocessedPartitionIDs)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpHasNotRecover], msg)
+	}
+}
+
 func (c *Cluster) checkDiskRecoveryProgress() {
 	defer func() {
 		if r := recover(); r != nil {

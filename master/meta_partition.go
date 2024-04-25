@@ -290,7 +290,7 @@ func (mp *MetaPartition) checkLeader() {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartitionID, inodeCountThreshold uint64) (doSplit bool) {
+func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartitionID uint64, vol *Vol) (doSplit bool) {
 	mp.Lock()
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
@@ -320,8 +320,9 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartition
 		}
 	}
 
-	if inodeCountThreshold > 0 && mp.Status == proto.ReadWrite {
-		mp.adjustStatusByInodeCount(inodeCountThreshold)
+	if vol.InodeCountThreshold > 0 && mp.Status == proto.ReadWrite && vol.writableMpCount >= int64(vol.MinWritableMPNum) && vol.MinWritableMPNum != 0 {
+		mp.adjustStatusByInodeCount(vol.InodeCountThreshold)
+		vol.setWritableMpCount(vol.writableMpCount - 1)
 	}
 
 	if mp.PartitionID == maxPartitionID && mp.Status == proto.ReadOnly {

@@ -21,7 +21,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-func (c *Cluster) updateVolsResponseCache() (body []byte, err error) {
+func (c *Cluster) updateVolInfoResponseCache() (body []byte, err error) {
 
 	var vol *Vol
 	volsInfo := make([]*proto.VolInfo, 0)
@@ -42,7 +42,7 @@ func (c *Cluster) updateVolsResponseCache() (body []byte, err error) {
 	}
 	reply := newSuccessHTTPReply(volsInfo)
 	if body, err = json.Marshal(reply); err != nil {
-		log.LogError(fmt.Sprintf("action[updateVolsResponseCache],err:%v", err.Error()))
+		log.LogError(fmt.Sprintf("action[updateVolInfoResponseCache],err:%v", err.Error()))
 		return nil, proto.ErrMarshalData
 	}
 	c.volsInfoCacheMutex.Lock()

@@ -68,6 +68,7 @@ type Cluster struct {
 	BadMetaPartitionIds        *sync.Map
 	MigratedMetaPartitionIds   *sync.Map
 	MigratedDataPartitionIds   *sync.Map
+	UnavailDataPartitions      *sync.Map
 	DisableAutoAllocate        bool
 	AutoMergeNodeSet           bool
 	fsm                        *MetadataFsm
@@ -146,6 +147,7 @@ func newCluster(name string, leaderInfo *LeaderInfo, fsm *MetadataFsm, partition
 	c.BadEcPartitionIds = new(sync.Map)
 	c.MigratedDataPartitionIds = new(sync.Map)
 	c.MigratedMetaPartitionIds = new(sync.Map)
+	c.UnavailDataPartitions = new(sync.Map)
 	c.DataNodeBadDisks = new(sync.Map)
 	c.dataNodeStatInfo = new(nodeStatInfo)
 	c.metaNodeStatInfo = new(nodeStatInfo)
@@ -191,21 +193,18 @@ func (c *Cluster) checkDataPartitions() {
 		}
 	}()
 
-	allBadDisks := make([]map[string][]string, 0)
 	vols := c.allVols()
 	for _, vol := range vols {
 		if c.leaderHasChanged() {
 			return
 		}
-		readWrites, dataNodeBadDisksOfVol := vol.checkDataPartitions(c)
-		allBadDisks = append(allBadDisks, dataNodeBadDisksOfVol)
+		readWrites := vol.checkDataPartitions(c)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
 		vol.dataPartitions.updateResponseJsonCache(vol.ecDataPartitions, true, 0)
 		vol.dataPartitions.setDataPartitionResponseProtobufCache(nil)
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
 	}
-	c.updateDataNodeBadDisks(allBadDisks)
 }
 
 func (c *Cluster) repairDataPartition(wg sync.WaitGroup) {
@@ -5556,10 +5555,10 @@ func (c *Cluster) freezeDataPartition(volName string, partitionID uint64) (err e
 	if err != nil {
 		return
 	}
-	if !vol.isSmart {
-		err = fmt.Errorf("[freezeDataPartition], vol: %v is not smart", volName)
-		return
-	}
+	//if !vol.isSmart {
+	//	err = fmt.Errorf("[freezeDataPartition], vol: %v is not smart", volName)
+	//	return
+	//}
 	var dp *DataPartition
 	dp, err = vol.getDataPartitionByID(partitionID)
 	if err != nil {

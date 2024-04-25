@@ -2213,6 +2213,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EnableRemoveDupReq:       vol.enableRemoveDupReq,
 		ConnConfig:               &vol.ConnConfig,
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
+		MpSplitStep:              vol.MpSplitStep,
+		InodeCountThreshold:      vol.InodeCountThreshold,
 	}
 }
 
@@ -5554,7 +5556,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 	if len(keywords) == 0 {
 		body := m.cluster.getVolsResponseCache()
 		if len(body) == 0 {
-			body, err = m.cluster.updateVolsResponseCache()
+			body, err = m.cluster.updateVolInfoResponseCache()
 		}
 
 		if err != nil {
@@ -6671,6 +6673,25 @@ func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
 	cf.EcNodes = m.cluster.allEcNodes()
 
 	sendOkReply(w, r, newSuccessHTTPReply(cf))
+}
+
+func (m *Server) getUnavailableDataPartitions(w http.ResponseWriter, r *http.Request) {
+	metrics := exporter.NewModuleTP(proto.GetUnavailDataPartitionsUmpKey)
+	defer func() { metrics.Set(nil) }()
+	unavailDps := make(map[uint64]map[string]string)
+	m.cluster.UnavailDataPartitions.Range(func(key, value any) bool {
+		id, ok := key.(uint64)
+		if !ok {
+			return true
+		}
+		badReplicas, ok := value.(map[string]string)
+		if !ok {
+			return true
+		}
+		unavailDps[id] = badReplicas
+		return true
+	})
+	sendOkReply(w, r, newSuccessHTTPReply(unavailDps))
 }
 
 func (m *Server) getBadNodes(w http.ResponseWriter, r *http.Request) {

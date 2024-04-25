@@ -484,11 +484,15 @@ func (vol *Vol) initMetaPartitions(c *Cluster, count int) (err error) {
 	if count > defaultMaxInitMetaPartitionCount {
 		count = defaultMaxInitMetaPartitionCount
 	}
+	step := proto.DefaultMetaPartitionInodeIDStep
+	if vol.MpSplitStep != 0 {
+		step = vol.MpSplitStep
+	}
 	for index := 0; index < count; index++ {
 		if index != 0 {
 			start = end + 1
 		}
-		end = proto.DefaultMetaPartitionInodeIDStep * uint64(index+1)
+		end = step * uint64(index+1)
 		if index == count-1 {
 			end = defaultMaxMetaPartitionInodeID
 		}
@@ -532,8 +536,7 @@ func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 	return
 }
 
-func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol map[string][]string) {
-	dataNodeBadDisksOfVol = make(map[string][]string, 0)
+func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 	if vol.getDpCnt() == 0 && vol.Status != proto.VolStMarkDelete {
 		c.batchCreateDataPartition(vol, 1, "")
 	}
@@ -549,9 +552,9 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int, dataNodeBadDisksOfVol 
 		if dp.Status == proto.ReadWrite && !dp.isFrozen() {
 			cnt++
 		}
-		diskErrorAddrs := dp.checkDiskError(c.Name, c.leaderInfo.addr)
-		for addr, diskPath := range diskErrorAddrs {
-			dataNodeBadDisksOfVol[addr] = append(dataNodeBadDisksOfVol[addr], diskPath)
+		badReplicas := dp.checkReplicaDiskError(c.Name, c.leaderInfo.addr)
+		if badReplicas != nil {
+			c.UnavailDataPartitions.Store(dp.PartitionID, badReplicas)
 		}
 		dp.checkReplicationTask(c, vol.dataPartitionSize, int(vol.dpReplicaNum))
 	}
@@ -635,7 +638,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster, ctx context.Context) (writableMp
 		err     error
 	)
 	for _, mp := range mps {
-		doSplit = mp.checkStatus(true, int(vol.mpReplicaNum), maxPartitionID, vol.InodeCountThreshold)
+		doSplit = mp.checkStatus(true, int(vol.mpReplicaNum), maxPartitionID, vol)
 		if doSplit && mp.MaxInodeID != 0 {
 			nextStart := mp.calculateEnd(vol.MpSplitStep)
 			if err = vol.splitMetaPartition(c, mp, nextStart, ctx); err != nil {
@@ -931,21 +934,10 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	vol.updateViewCache(c, proto.JsonType)
 	vol.clearViewCachePb()
 
-	vol.Lock()
-	defer vol.Unlock()
-	if vol.Status != proto.VolStMarkDelete {
+	metaTasks, dataTasks, ecTasks, hasGeneratedTasks := vol.generateDeleteTasks(c)
+	if !hasGeneratedTasks {
 		return
 	}
-	if vol.RenameConvertStatus != proto.VolRenameConvertStatusFinish {
-		return
-	}
-	if time.Now().Unix()-vol.MarkDeleteTime < c.cfg.DeleteMarkDelVolInterval {
-		return
-	}
-	log.LogInfof("action[volCheckStatus] vol[%v],status[%v]", vol.Name, vol.Status)
-	metaTasks := vol.getTasksToDeleteMetaPartitions()
-	dataTasks := vol.getTasksToDeleteDataPartitions()
-	ecTasks := vol.getTasksToDeleteEcDataPartitions()
 
 	if len(metaTasks) == 0 && len(dataTasks) == 0 && len(ecTasks) == 0 {
 		vol.deleteVolFromStore(c)
@@ -966,6 +958,25 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	}()
 
 	return
+}
+
+func (vol *Vol) generateDeleteTasks(c *Cluster) ([]*proto.AdminTask, []*proto.AdminTask, []*proto.AdminTask, bool) {
+	vol.Lock()
+	defer vol.Unlock()
+	if vol.Status != proto.VolStMarkDelete {
+		return nil, nil, nil, false
+	}
+	if vol.RenameConvertStatus != proto.VolRenameConvertStatusFinish {
+		return nil, nil, nil, false
+	}
+	if time.Now().Unix()-vol.MarkDeleteTime < c.cfg.DeleteMarkDelVolInterval {
+		return nil, nil, nil, false
+	}
+	log.LogInfof("action[generateDeleteTasks] vol[%v],status[%v]", vol.Name, vol.Status)
+	metaTasks := vol.getTasksToDeleteMetaPartitions()
+	dataTasks := vol.getTasksToDeleteDataPartitions()
+	ecTasks := vol.getTasksToDeleteEcDataPartitions()
+	return metaTasks, dataTasks, ecTasks, true
 }
 
 func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTask) {
@@ -1016,11 +1027,12 @@ func (vol *Vol) deleteDataPartitionFromDataNode(c *Cluster, task *proto.AdminTas
 }
 
 func (vol *Vol) deleteVolFromStore(c *Cluster) (err error) {
-
+	vol.RLock()
 	if err = c.syncDeleteVol(vol); err != nil {
+		vol.RUnlock()
 		return
 	}
-
+	vol.RUnlock()
 	// delete the metadata of the meta and data partitionMap first
 	vol.deleteDataPartitionsFromStore(c)
 	vol.deleteMetaPartitionsFromStore(c)
