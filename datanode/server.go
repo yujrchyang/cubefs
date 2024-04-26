@@ -1452,7 +1452,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	// isForceRead 函数用来检查读请求包是否有强制读表示，强制读请求会不检查请求所读数据区域是否存在风险
 	var isForceRead = len(p.Arg) > 0 && p.Arg[0] == 1
 
-	if isForceRead && partition.CheckRisk(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) {
+	if !isForceRead && partition.CheckRisk(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) {
 		// 正常非强制读请求下，若请求所读数据区域存在风险，则拒绝响应。
 		err = proto.ErrOperationDisabled
 		return
