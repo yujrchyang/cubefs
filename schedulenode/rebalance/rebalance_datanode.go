@@ -59,6 +59,8 @@ func NewDNReBalanceController(zoneCtrl *ZoneReBalanceController, info proto.Data
 
 // NeedReBalance 判断当前DataNode是否需要迁移
 func (dnCtrl *DNReBalanceController) NeedReBalance(goalRatio float64) bool {
+	// goalRatio为0，表示一直迁移
+	log.LogInfof("NeedReBalance: usage(%v) goal(%v)", dnCtrl.Usage(), goalRatio)
 	if dnCtrl.Usage() < goalRatio {
 		return false
 	}
@@ -99,6 +101,7 @@ func (dnCtrl *DNReBalanceController) UpdateMigratedDP(disk *Disk, dpInfo *proto.
 
 // Usage 当前DataNode出去已迁移dp后的实际使用率
 func (dnCtrl *DNReBalanceController) Usage() float64 {
+	log.LogInfof("dnCtrl.Usage: used(%v) migrated(%v) total(%v)", dnCtrl.Used, dnCtrl.migratedSize, dnCtrl.Total)
 	return float64(dnCtrl.Used-dnCtrl.migratedSize) / float64(dnCtrl.Total)
 }
 

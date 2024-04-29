@@ -12,53 +12,25 @@ import (
 	"time"
 )
 
-type Status int
-
-type RebalanceType int
-
-func (t RebalanceType) String() string {
-	switch t {
-	case RebalanceData:
-		return "data"
-	case RebalanceMeta:
-		return "meta"
-	default:
-		return fmt.Sprintf("unknown_type_%d", t)
-	}
-}
-
-func ConvertRebalanceTypeStr(rTypeStr string) (rType RebalanceType, err error) {
-	switch rTypeStr {
-	case "data":
-		rType = RebalanceData
-	case "meta":
-		rType = RebalanceMeta
-	default:
-		err = fmt.Errorf("error rebalance type: %v", rTypeStr)
-	}
-	return
-}
-
 // ZoneReBalanceController 用于控制每个Zone内数据的迁移
 type ZoneReBalanceController struct {
 	*master.MasterClient
 
 	Id           uint64
-	clusterName  string
 	cluster      string
 	zoneName     string
 	rType        RebalanceType
-	srcDataNodes []*DNReBalanceController // data node待迁移的源机器
-	dstDataNodes []*proto.DataNodeInfo    // data node目标机器
+	srcDataNodes []*DNReBalanceController       // data node待迁移的源机器
+	dstDataNodes []*proto.DataNodeInfo          // data node目标机器
 	srcMetaNodes []*MetaNodeReBalanceController //meta node待迁移的源机器
-	dstMetaNodes []*proto.MetaNodeInfo //meta node目标机器
-	highRatio float64                  // 源机器的阈值
-	lowRatio  float64                  // 目标机器的阈值
-	goalRatio float64                  // 迁移需达到的阈值
-	ctx       context.Context          // context控制ReBalance程序终止
-	cancel    context.CancelFunc
-	status    Status
-	mutex     sync.Mutex
+	dstMetaNodes []*proto.MetaNodeInfo          //meta node目标机器
+	highRatio    float64                        // 源机器的阈值
+	lowRatio     float64                        // 目标机器的阈值
+	goalRatio    float64                        // 迁移需达到的阈值
+	ctx          context.Context                // context控制ReBalance程序终止
+	cancel       context.CancelFunc
+	status       Status
+	mutex        sync.Mutex
 
 	rw *ReBalanceWorker
 
@@ -71,38 +43,93 @@ type ZoneReBalanceController struct {
 
 	createdAt time.Time
 	updatedAt time.Time
-}
 
-func NewZoneReBalanceController(id uint64, clusterHost, zoneName string, rType RebalanceType, highRatio, lowRatio,
-	goalRatio float64, dstMetaNodePartitionMaxCount int, rw *ReBalanceWorker) (*ZoneReBalanceController, error) {
-	if err := checkRatio(highRatio, lowRatio, goalRatio); err != nil {
-		return nil, err
-	}
-	zoneCtrl := &ZoneReBalanceController{
-		Id:                   id,
-		cluster:              clusterHost,
-		zoneName:             zoneName,
-		highRatio:            highRatio,
-		lowRatio:             lowRatio,
-		goalRatio:            goalRatio,
-		status:               StatusStop,
-		minWritableDPNum:     defaultMinWritableDPNum,
-		clusterMaxBatchCount: defaultClusterMaxBatchCount,
-		migrateLimitPerDisk:  -1,
-		rw:                   rw,
-		rType:                rType,
-		dstMetaNodeMaxPartitionCount: dstMetaNodePartitionMaxCount,
-	}
-	zoneCtrl.MasterClient = master.NewMasterClient([]string{zoneCtrl.cluster}, false)
-
-	//if err := zoneCtrl.updateDataNodes(); err != nil {
-	//	return zoneCtrl, err
-	//}
-	return zoneCtrl, nil
+	srcNodeList []string // 节点迁移指定的 节点列表
+	dstNodeList []string
+	taskType    TaskType // 节点迁移任务 or rebalance任务
 }
 
 func (zoneCtrl *ZoneReBalanceController) reBalanceTaskInfo() string {
 	return fmt.Sprintf("[ID: %v, ClusterName: %s, ZoneName: %s, type: %s]", zoneCtrl.Id, zoneCtrl.cluster, zoneCtrl.zoneName, zoneCtrl.rType)
+}
+
+func NewZoneReBalanceController(id uint64, cluster, zoneName string, rType RebalanceType, highRatio, lowRatio, goalRatio float64, rw *ReBalanceWorker) *ZoneReBalanceController {
+
+	zoneCtrl := &ZoneReBalanceController{
+		Id:                           id,
+		cluster:                      cluster,
+		zoneName:                     zoneName,
+		highRatio:                    highRatio,
+		lowRatio:                     lowRatio,
+		goalRatio:                    goalRatio,
+		status:                       StatusStop,
+		minWritableDPNum:             defaultMinWritableDPNum,
+		clusterMaxBatchCount:         defaultClusterMaxBatchCount,
+		migrateLimitPerDisk:          -1,
+		rw:                           rw,
+		rType:                        rType,
+		taskType:                     ZoneAutoReBalance,
+		dstMetaNodeMaxPartitionCount: defaultDstMetaNodePartitionMaxCount,
+	}
+	zoneCtrl.MasterClient = master.NewMasterClient([]string{rw.getClusterHost(cluster)}, false)
+	return zoneCtrl
+}
+
+func newNodeReBalanceController(id uint64, cluster string, rType RebalanceType, srcNodeList, dstNodeList []string, rw *ReBalanceWorker) *ZoneReBalanceController {
+	zoneCtrl := &ZoneReBalanceController{
+		Id:                           id,
+		cluster:                      cluster,
+		status:                       StatusStop,
+		rType:                        rType,
+		taskType:                     NodesMigrate,
+		rw:                           rw,
+		minWritableDPNum:             defaultMinWritableDPNum,
+		clusterMaxBatchCount:         defaultClusterMaxBatchCount,
+		migrateLimitPerDisk:          -1,
+		dstMetaNodeMaxPartitionCount: defaultDstMetaNodePartitionMaxCount,
+		srcNodeList:                  srcNodeList,
+		dstNodeList:                  dstNodeList,
+	}
+	zoneCtrl.MasterClient = master.NewMasterClient([]string{rw.getClusterHost(cluster)}, false)
+	return zoneCtrl
+}
+
+func (zoneCtrl *ZoneReBalanceController) SetCtrlTaskID(id uint64) {
+	zoneCtrl.Id = id
+}
+
+func (zoneCtrl *ZoneReBalanceController) SetCreatedUpdatedAt(createdAt, updatedAt time.Time) {
+	zoneCtrl.createdAt = createdAt
+	zoneCtrl.updatedAt = updatedAt
+}
+
+func (zoneCtrl *ZoneReBalanceController) UpdateRatio(highRatio, lowRatio, goalRatio float64) {
+	zoneCtrl.highRatio = highRatio
+	zoneCtrl.lowRatio = lowRatio
+	zoneCtrl.goalRatio = goalRatio
+	return
+}
+
+func (zoneCtrl *ZoneReBalanceController) SetMinWritableDPNum(minWritableDPNum int) {
+	if minWritableDPNum <= 0 {
+		return
+	}
+	zoneCtrl.minWritableDPNum = minWritableDPNum
+}
+
+func (zoneCtrl *ZoneReBalanceController) SetClusterMaxBatchCount(clusterMaxBatchCount int) {
+	zoneCtrl.clusterMaxBatchCount = clusterMaxBatchCount
+}
+
+func (zoneCtrl *ZoneReBalanceController) SetDstMetaNodeMaxPartitionCount(mpCountLimit int) {
+	zoneCtrl.dstMetaNodeMaxPartitionCount = mpCountLimit
+}
+
+func (zoneCtrl *ZoneReBalanceController) SetMigrateLimitPerDisk(limit int) {
+	zoneCtrl.migrateLimitPerDisk = limit
+	for _, node := range zoneCtrl.srcDataNodes {
+		node.SetMigrateLimitPerDisk(limit)
+	}
 }
 
 func (zoneCtrl *ZoneReBalanceController) formatToReBalanceInfo() (reBalanceInfo *ReBalanceInfo) {
@@ -146,38 +173,25 @@ func (zoneCtrl *ZoneReBalanceController) formatToReBalanceInfo() (reBalanceInfo 
 
 	reBalanceInfo = &ReBalanceInfo{
 		RebalancedInfoTable: RebalancedInfoTable{
-			ID:                  zoneCtrl.Id,
-			Host:                zoneCtrl.cluster,
-			ZoneName:            zoneCtrl.zoneName,
-			RType:               zoneCtrl.rType,
-			Status:              int(zoneCtrl.status),
-			MaxBatchCount:       zoneCtrl.clusterMaxBatchCount,
-			HighRatio:           zoneCtrl.highRatio,
-			LowRatio:            zoneCtrl.lowRatio,
-			GoalRatio:           zoneCtrl.goalRatio,
-			MigrateLimitPerDisk: zoneCtrl.migrateLimitPerDisk,
-			CreatedAt:           zoneCtrl.createdAt,
-			UpdatedAt:           zoneCtrl.updatedAt,
+			ID:                           zoneCtrl.Id,
+			Cluster:                      zoneCtrl.cluster,
+			ZoneName:                     zoneCtrl.zoneName,
+			RType:                        zoneCtrl.rType,
+			TaskType:                     zoneCtrl.taskType,
+			Status:                       int(zoneCtrl.status),
+			MaxBatchCount:                zoneCtrl.clusterMaxBatchCount,
+			HighRatio:                    zoneCtrl.highRatio,
+			LowRatio:                     zoneCtrl.lowRatio,
+			GoalRatio:                    zoneCtrl.goalRatio,
+			MigrateLimitPerDisk:          zoneCtrl.migrateLimitPerDisk,
+			DstMetaNodePartitionMaxCount: zoneCtrl.dstMetaNodeMaxPartitionCount,
+			CreatedAt:                    zoneCtrl.createdAt,
+			UpdatedAt:                    zoneCtrl.updatedAt,
 		},
 		SrcNodesUsageRatio: srcNodesUsageRatio,
 		DstNodesUsageRatio: dstNodesUsageRatio,
 	}
 	return
-}
-
-func (zoneCtrl *ZoneReBalanceController) SetCreatedUpdatedAt(createdAt, updatedAt time.Time) {
-	zoneCtrl.createdAt = createdAt
-	zoneCtrl.updatedAt = updatedAt
-}
-
-func (zoneCtrl *ZoneReBalanceController) UpdateRatio(highRatio, lowRatio, goalRatio float64) error {
-	if err := checkRatio(highRatio, lowRatio, goalRatio); err != nil {
-		return err
-	}
-	zoneCtrl.highRatio = highRatio
-	zoneCtrl.lowRatio = lowRatio
-	zoneCtrl.goalRatio = goalRatio
-	return nil
 }
 
 // ReBalanceStart 开启ReBalance程序
@@ -201,12 +215,6 @@ func (zoneCtrl *ZoneReBalanceController) reBalanceMetaStart() error {
 		return fmt.Errorf("%v: expected Stop but found %v", ErrWrongStatus, getStatusStr(zoneCtrl.status))
 	}
 
-	// 更新源节点列表和目标节点列表
-	err := zoneCtrl.updateMetaNodes()
-	if err != nil {
-		return err
-	}
-
 	zoneCtrl.status = StatusRunning
 	zoneCtrl.ctx, zoneCtrl.cancel = context.WithCancel(context.Background())
 
@@ -225,16 +233,12 @@ func (zoneCtrl *ZoneReBalanceController) reBalanceDataStart() error {
 		return fmt.Errorf("%v: expected Stop but found %v", ErrWrongStatus, getStatusStr(zoneCtrl.status))
 	}
 
-	// 更新源节点列表和目标节点列表
-	err := zoneCtrl.updateDataNodes()
-	if err != nil {
-		return err
-	}
-
 	zoneCtrl.status = StatusRunning
 	zoneCtrl.ctx, zoneCtrl.cancel = context.WithCancel(context.Background())
+	if zoneCtrl.taskType != NodesMigrate {
+		log.LogInfof("start rebalance zone: %v", zoneCtrl.zoneName)
+	}
 
-	log.LogInfof("start rebalance zone: %v", zoneCtrl.zoneName)
 	go zoneCtrl.doDataReBalance()
 	go zoneCtrl.refreshSrcDataNodes()
 	go zoneCtrl.refreshDstDataNodes()
@@ -262,64 +266,53 @@ func (zoneCtrl *ZoneReBalanceController) Status() Status {
 	return zoneCtrl.status
 }
 
-// SetMinWritableDPNum 设置最小可写DP限制
-func (zoneCtrl *ZoneReBalanceController) SetMinWritableDPNum(minWritableDPNum int) {
-	if minWritableDPNum <= 0 {
-		return
-	}
-	zoneCtrl.minWritableDPNum = minWritableDPNum
-}
-
-// SetClusterMaxBatchCount 设置最大并发量
-func (zoneCtrl *ZoneReBalanceController) SetClusterMaxBatchCount(clusterMaxBatchCount int) {
-	zoneCtrl.clusterMaxBatchCount = clusterMaxBatchCount
-}
-
-func (zoneCtrl *ZoneReBalanceController) SetMigrateLimitPerDisk(limit int) {
-	zoneCtrl.migrateLimitPerDisk = limit
-	for _, node := range zoneCtrl.srcDataNodes {
-		node.SetMigrateLimitPerDisk(limit)
-	}
-}
-
 // 读取当前zone中的dataNode列表，根据使用率划分为srcNode和dstNode
 // srcNode: 使用率高的源机器
 // dstNode: 使用率低可作为迁移目标的目标机器
 func (zoneCtrl *ZoneReBalanceController) updateDataNodes() error {
 	zoneCtrl.srcDataNodes = make([]*DNReBalanceController, 0)
 	zoneCtrl.dstDataNodes = make([]*proto.DataNodeInfo, 0)
-	dataNodes := make(map[string]*proto.DataNodeInfo)
-	lock := sync.Mutex{}
 
-	dataNodeAddrs, err := getZoneDataNodesByClient(zoneCtrl.MasterClient, zoneCtrl.zoneName)
-	if err != nil {
-		return err
-	}
+	var getNodeFunc = func(nodeList []string) map[string]*proto.DataNodeInfo {
+		dataNodes := make(map[string]*proto.DataNodeInfo)
+		lock := sync.Mutex{}
 
-	wg := sync.WaitGroup{}
-	wg.Add(len(dataNodeAddrs))
+		wg := sync.WaitGroup{}
+		wg.Add(len(nodeList))
 
-	for _, addr := range dataNodeAddrs {
-		go func(addr string) {
-			node, err := zoneCtrl.MasterClient.NodeAPI().GetDataNode(addr)
-			if err != nil {
-				log.LogErrorf("updateDataNodes error Zone: %v DataNode: %v %v", zoneCtrl.zoneName, addr, err.Error())
-				return
-			}
-			convertActualUsageRatio(node)
-			lock.Lock()
-			dataNodes[addr] = node
-			lock.Unlock()
-			wg.Done()
-		}(addr)
+		for _, addr := range nodeList {
+			go func(addr string) {
+				node, err := zoneCtrl.MasterClient.NodeAPI().GetDataNode(addr)
+				if err != nil {
+					log.LogErrorf("updateDataNodes error Zone: %v DataNode: %v %v", zoneCtrl.zoneName, addr, err.Error())
+					return
+				}
+				convertActualUsageRatio(node)
+				lock.Lock()
+				dataNodes[addr] = node
+				lock.Unlock()
+				wg.Done()
+			}(addr)
+		}
+		wg.Wait()
+		return dataNodes
 	}
-	wg.Wait()
-	zoneCtrl.updateDstNodes(dataNodes)
-	err = zoneCtrl.updateSrcNodes(dataNodes)
-	if err != nil {
-		return err
+	switch zoneCtrl.taskType {
+	case NodesMigrate:
+		srcDataNodes := getNodeFunc(zoneCtrl.srcNodeList)
+		dstDataNodes := getNodeFunc(zoneCtrl.dstNodeList)
+		zoneCtrl.updateDstNodes(dstDataNodes)
+		return zoneCtrl.updateSrcNodes(srcDataNodes)
+
+	default:
+		dataNodeAddrs, err := getZoneDataNodesByClient(zoneCtrl.MasterClient, zoneCtrl.zoneName)
+		if err != nil {
+			return err
+		}
+		dataNodes := getNodeFunc(dataNodeAddrs)
+		zoneCtrl.updateDstNodes(dataNodes)
+		return zoneCtrl.updateSrcNodes(dataNodes)
 	}
-	return nil
 }
 
 func convertActualUsageRatio(node *proto.DataNodeInfo) {
@@ -355,10 +348,14 @@ func (zoneCtrl *ZoneReBalanceController) updateSrcNodes(dataNodes map[string]*pr
 
 func (zoneCtrl *ZoneReBalanceController) updateDstNodes(dataNodes map[string]*proto.DataNodeInfo) {
 	for _, dataNode := range dataNodes {
-		if dataNode.UsageRatio < zoneCtrl.lowRatio {
+		if zoneCtrl.taskType == NodesMigrate {
 			zoneCtrl.dstDataNodes = append(zoneCtrl.dstDataNodes, dataNode)
+		} else {
+			if dataNode.UsageRatio < zoneCtrl.lowRatio {
+				zoneCtrl.dstDataNodes = append(zoneCtrl.dstDataNodes, dataNode)
+			}
+			log.LogInfof("updateDstNodes dstNode:%v usageRatio:%v lowRatio:%v compare:%v", dataNode.Addr, dataNode.UsageRatio, zoneCtrl.lowRatio, dataNode.UsageRatio < zoneCtrl.lowRatio)
 		}
-		log.LogInfof("updateDstNodes dstNode:%v usageRatio:%v lowRatio:%v compare:%v", dataNode.Addr, dataNode.UsageRatio, zoneCtrl.lowRatio, dataNode.UsageRatio < zoneCtrl.lowRatio)
 	}
 	return
 }
@@ -417,16 +414,21 @@ func (zoneCtrl *ZoneReBalanceController) getInRecoveringDPMapIgnoreMig() (inReco
 // 4. 选择一个用于迁入的DataNode
 // 5. 执行迁移
 func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
+	var isManualStop bool
 	defer func() {
 		zoneCtrl.mutex.Lock()
-		zoneCtrl.status = StatusStop
-		err := zoneCtrl.rw.stopRebalanced(zoneCtrl.cluster, zoneCtrl.zoneName, zoneCtrl.rType)
-		if err != nil {
-			log.LogErrorf("stop rebalanced cluster:%v zoneName：%v err:%v", zoneCtrl.cluster, zoneCtrl.zoneName, err)
+		if !isManualStop {
+			zoneCtrl.status = StatusStop
 		}
+		err := zoneCtrl.rw.stopRebalanced(zoneCtrl.Id, isManualStop)
+		if err != nil {
+			log.LogErrorf("stop rebalanced cluster:%v zoneName：%v  taskID: %v err:%v", zoneCtrl.cluster, zoneCtrl.zoneName, zoneCtrl.Id, err)
+		}
+		log.LogInfof("doDataReBalance: do cancel, taskID:%v", zoneCtrl.Id)
 		zoneCtrl.cancel()
 		zoneCtrl.mutex.Unlock()
 	}()
+
 	for _, srcNode := range zoneCtrl.srcDataNodes {
 		err := srcNode.updateDataNode()
 		if err != nil {
@@ -435,6 +437,7 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 		for srcNode.NeedReBalance(zoneCtrl.goalRatio) {
 			select {
 			case <-zoneCtrl.ctx.Done():
+				isManualStop = true
 				log.LogInfof("stop reBalance cluster:%v zoneName:%v", zoneCtrl.cluster, zoneCtrl.zoneName)
 				return
 			default:
@@ -514,6 +517,7 @@ func (zoneCtrl *ZoneReBalanceController) doMigrate(disk *Disk, dpInfo *proto.Dat
 		NewUsage:     newUsage,
 		NewDiskUsage: newDiskUsage,
 		TaskId:       zoneCtrl.Id,
+		TaskType:     zoneCtrl.taskType,
 	})
 	if err != nil {
 		return err
@@ -575,36 +579,47 @@ func (zoneCtrl *ZoneReBalanceController) updateMetaNodes() (err error) {
 	zoneCtrl.dstMetaNodes = make([]*proto.MetaNodeInfo, 0)
 	zoneCtrl.srcMetaNodes = make([]*MetaNodeReBalanceController, 0)
 
-	var metaNodesAddrs []string
-	if metaNodesAddrs, err = zoneCtrl.getZoneMetaNodes(); err != nil {
-		log.LogErrorf("get zone meta nodes failed, rebalance task info: %v, err: %v", zoneCtrl.reBalanceTaskInfo(), err)
-		return
+	var getMetaNodefunc = func(nodeList []string) map[string]*proto.MetaNodeInfo {
+		nodesInfo := make(map[string]*proto.MetaNodeInfo)
+		var (
+			wg   sync.WaitGroup
+			lock sync.Mutex
+		)
+		for _, addr := range nodeList {
+			wg.Add(1)
+			go func(addr string) {
+				defer wg.Done()
+				nodeInfo, errForGet := zoneCtrl.NodeAPI().GetMetaNode(addr)
+				if errForGet != nil {
+					log.LogErrorf("GetMetaNode failed, taskID[%v] node: %s, err :%v", zoneCtrl.Id, addr, errForGet)
+					return
+				}
+				lock.Lock()
+				nodesInfo[addr] = nodeInfo
+				lock.Unlock()
+			}(addr)
+		}
+		wg.Wait()
+		return nodesInfo
 	}
-	nodesInfo := make(map[string]*proto.MetaNodeInfo, len(metaNodesAddrs))
 
-	var (
-		wg sync.WaitGroup
-		lock sync.Mutex
-	)
-	for _, addr := range metaNodesAddrs {
-		wg.Add(1)
-		go func(addr string) {
-			defer wg.Done()
-			nodeInfo, errForGet := zoneCtrl.NodeAPI().GetMetaNode(addr)
-			if errForGet != nil {
-				log.LogErrorf("get meta node info failed, rebalance task info: %s, node: %s, err :%v",
-					zoneCtrl.reBalanceTaskInfo(), addr, errForGet)
-				return
-			}
-			lock.Lock()
-			nodesInfo[addr] = nodeInfo
-			lock.Unlock()
-		}(addr)
+	switch zoneCtrl.taskType {
+	case NodesMigrate:
+		srcMetaNodes := getMetaNodefunc(zoneCtrl.srcNodeList)
+		dstMetaNodes := getMetaNodefunc(zoneCtrl.dstNodeList)
+		zoneCtrl.updateSrcMetaNodes(srcMetaNodes)
+		zoneCtrl.updateDstMetaNodes(dstMetaNodes)
+
+	case ZoneAutoReBalance:
+		var metaNodesAddrs []string
+		if metaNodesAddrs, err = zoneCtrl.getZoneMetaNodes(); err != nil {
+			log.LogErrorf("getZoneMetaNodes failed, taskID[%v] err(%v)", zoneCtrl.Id, err)
+			return
+		}
+		metaNodes := getMetaNodefunc(metaNodesAddrs)
+		zoneCtrl.updateDstMetaNodes(metaNodes)
+		zoneCtrl.updateSrcMetaNodes(metaNodes)
 	}
-	wg.Wait()
-
-	zoneCtrl.updateDstMetaNodes(nodesInfo)
-	zoneCtrl.updateSrcMetaNodes(nodesInfo)
 	return
 }
 
@@ -614,7 +629,7 @@ func (zoneCtrl *ZoneReBalanceController) updateSrcMetaNodes(metaNodesInfo map[st
 			continue
 		}
 
-		log.LogInfof("nodeAddr: %s, ration: %v", nodeInfo.Addr, nodeInfo.Ratio)
+		log.LogInfof("nodeAddr: %s, usedRatio: %v", nodeInfo.Addr, nodeInfo.Ratio)
 		nodeReBalanceCtrl := NewMetaNodeReBalanceController(nodeInfo, zoneCtrl.MasterClient, zoneCtrl)
 		zoneCtrl.srcMetaNodes = append(zoneCtrl.srcMetaNodes, nodeReBalanceCtrl)
 	}
@@ -625,11 +640,14 @@ func (zoneCtrl *ZoneReBalanceController) updateSrcMetaNodes(metaNodesInfo map[st
 
 func (zoneCtrl *ZoneReBalanceController) updateDstMetaNodes(metaNodesInfo map[string]*proto.MetaNodeInfo) {
 	for _, nodeInfo := range metaNodesInfo {
-		if nodeInfo.Ratio > zoneCtrl.lowRatio {
-			continue
+		if zoneCtrl.taskType == NodesMigrate {
+			zoneCtrl.dstMetaNodes = append(zoneCtrl.dstMetaNodes, nodeInfo)
+		} else {
+			if nodeInfo.Ratio <= zoneCtrl.lowRatio {
+				zoneCtrl.dstMetaNodes = append(zoneCtrl.dstMetaNodes, nodeInfo)
+			}
+			log.LogInfof("updateDstNodes dstNode:%v usageRatio:%v lowRatio:%v compare:%v", nodeInfo.Addr, nodeInfo.Ratio, zoneCtrl.lowRatio, nodeInfo.Ratio < zoneCtrl.lowRatio)
 		}
-
-		zoneCtrl.dstMetaNodes = append(zoneCtrl.dstMetaNodes, nodeInfo)
 	}
 	sort.Slice(zoneCtrl.dstMetaNodes, func(i, j int) bool {
 		return zoneCtrl.dstMetaNodes[i].Ratio < zoneCtrl.dstMetaNodes[j].Ratio
@@ -658,37 +676,32 @@ func (zoneCtrl *ZoneReBalanceController) getZoneMetaNodes() (metaNodeAddrs []str
 	return
 }
 
-func (zoneCtrl *ZoneReBalanceController) stopMetaReBalanceTask() {
-	zoneCtrl.mutex.Lock()
-	defer zoneCtrl.mutex.Unlock()
-
-	zoneCtrl.status = StatusStop
-	if err := zoneCtrl.rw.stopRebalanced(zoneCtrl.cluster, zoneCtrl.zoneName, zoneCtrl.rType); err != nil {
-		log.LogErrorf("stop task failed, task info: %v, err: %v", zoneCtrl.reBalanceTaskInfo(), err)
-		return
-	}
-	zoneCtrl.cancel()
-}
-
 func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
+	var isManualStop bool
 	defer func() {
-		zoneCtrl.stopMetaReBalanceTask()
+		zoneCtrl.mutex.Lock()
+		if !isManualStop {
+			zoneCtrl.status = StatusStop
+		}
+		if err := zoneCtrl.rw.stopRebalanced(zoneCtrl.Id, isManualStop); err != nil {
+			log.LogErrorf("stop task failed, task info: %v, err: %v", zoneCtrl.reBalanceTaskInfo(), err)
+		}
+		log.LogInfof("doMetaReBalance: do cancel, taskID:%v", zoneCtrl.Id)
+		zoneCtrl.cancel()
+		zoneCtrl.mutex.Unlock()
 	}()
-
-	if len(zoneCtrl.dstMetaNodes) == 0 || len(zoneCtrl.srcMetaNodes) == 0 {
-		log.LogWarnf("no available meta nodes for rebalance or no metanodes need rebalance, rebalance task info: %s," +
-			"src node count: %v, dst node count: %v", zoneCtrl.reBalanceTaskInfo(), len(zoneCtrl.srcMetaNodes), len(zoneCtrl.dstMetaNodes))
-		return
-	}
 
 	for _, srcMetaNode := range zoneCtrl.srcMetaNodes {
 		log.LogInfof("start do rebalance, task info: %v, node: %v", zoneCtrl.reBalanceTaskInfo(), srcMetaNode.nodeInfo.Addr)
 
 		updateMetaNodeFailedCount := 0
 		srcMetaNode.alreadyMigrateFinishedPartitions = make(map[uint64]bool)
-		for {
+		// goal=0表示全部迁出
+		// todo：没有mp但还使用率一直不下降
+		for srcMetaNode.nodeInfo.Ratio > zoneCtrl.goalRatio {
 			select {
 			case <-zoneCtrl.ctx.Done():
+				isManualStop = true
 				log.LogInfof("stop reBalance task: %v", zoneCtrl.reBalanceTaskInfo())
 				return
 			default:
@@ -701,14 +714,8 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 						zoneCtrl.reBalanceTaskInfo(), srcMetaNode.nodeInfo.Addr, err)
 					break
 				}
-				time.Sleep(time.Second*30)
+				time.Sleep(time.Second * 30)
 				continue
-			}
-
-			if srcMetaNode.nodeInfo.Ratio <= zoneCtrl.goalRatio {
-				log.LogInfof("meta node mem used ratio reach goal ratio, rebalance finished, task info: %v, node: %v",
-					zoneCtrl.reBalanceTaskInfo(),  srcMetaNode.nodeInfo.Addr)
-				break
 			}
 
 			if err := srcMetaNode.doMigrate(); err != nil {
@@ -716,19 +723,20 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 					srcMetaNode.nodeInfo.Addr, err)
 				return
 			}
-			time.Sleep(time.Second*15)
+			time.Sleep(time.Second * 15)
 		}
-
-		time.Sleep(time.Minute*5)
+		srcMetaNode.isFinished = true
+		log.LogInfof("doReBalance cluster:%v zoneName:%v srcMetaNode:%v finished", zoneCtrl.cluster, zoneCtrl.zoneName, srcMetaNode.nodeInfo.Addr)
+		time.Sleep(time.Minute * 5)
 	}
 }
 
 func (zoneCtrl *ZoneReBalanceController) refreshSrcMetaNodes() {
-	ticker := time.NewTicker(time.Minute*2)
+	ticker := time.NewTicker(time.Minute * 2)
 	defer ticker.Stop()
 	for {
 		select {
-		case <- ticker.C:
+		case <-ticker.C:
 			for index := 0; index < len(zoneCtrl.srcMetaNodes); index++ {
 				err := zoneCtrl.srcMetaNodes[index].updateMetaNodeInfo()
 				if err != nil {
@@ -736,7 +744,7 @@ func (zoneCtrl *ZoneReBalanceController) refreshSrcMetaNodes() {
 						zoneCtrl.reBalanceTaskInfo(), zoneCtrl.srcMetaNodes[index].nodeInfo.Addr, err)
 				}
 			}
-		case <- zoneCtrl.ctx.Done():
+		case <-zoneCtrl.ctx.Done():
 			log.LogInfof("rebalance task finished, task info: %v", zoneCtrl.reBalanceTaskInfo())
 			return
 		}
@@ -744,11 +752,11 @@ func (zoneCtrl *ZoneReBalanceController) refreshSrcMetaNodes() {
 }
 
 func (zoneCtrl *ZoneReBalanceController) refreshDstMetaNodes() {
-	ticker := time.NewTicker(time.Minute*2)
+	ticker := time.NewTicker(time.Minute * 2)
 	defer ticker.Stop()
 	for {
 		select {
-		case <- ticker.C:
+		case <-ticker.C:
 			for index := 0; index < len(zoneCtrl.dstMetaNodes); index++ {
 				nodeInfo, err := zoneCtrl.NodeAPI().GetMetaNode(zoneCtrl.dstMetaNodes[index].Addr)
 				if err != nil {
@@ -758,7 +766,7 @@ func (zoneCtrl *ZoneReBalanceController) refreshDstMetaNodes() {
 				}
 				zoneCtrl.dstMetaNodes[index] = nodeInfo
 			}
-		case <- zoneCtrl.ctx.Done():
+		case <-zoneCtrl.ctx.Done():
 			log.LogInfof("rebalance task finished, task info: %v", zoneCtrl.reBalanceTaskInfo())
 			return
 		}

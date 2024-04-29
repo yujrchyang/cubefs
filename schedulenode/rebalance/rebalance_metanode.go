@@ -9,9 +9,10 @@ import (
 )
 
 type MetaNodeReBalanceController struct {
-	nodeInfo *proto.MetaNodeInfo
-	mc       *master.MasterClient
-	zoneCtrl *ZoneReBalanceController
+	nodeInfo   *proto.MetaNodeInfo
+	mc         *master.MasterClient
+	zoneCtrl   *ZoneReBalanceController
+	isFinished bool // 是否迁移完成
 
 	alreadyMigrateFinishedPartitions map[uint64]bool
 }
@@ -34,7 +35,6 @@ func (mnReBalanceCtrl *MetaNodeReBalanceController) updateMetaNodeInfo() (err er
 	mnReBalanceCtrl.nodeInfo = nodeInfo
 	return
 }
-
 
 func (mnReBalanceCtrl *MetaNodeReBalanceController) migrate(migratePartitionInfo *proto.MetaPartitionInfo, dstMetaNodeAddr string) {
 	log.LogInfof("start do migrate, task info: %v, migrate partition id: %v, src node: %v",
@@ -60,14 +60,14 @@ func (mnReBalanceCtrl *MetaNodeReBalanceController) migrate(migratePartitionInfo
 	}
 
 	err := mnReBalanceCtrl.zoneCtrl.rw.PutMigrateInfoToDB(&MigrateRecordTable{
-		ClusterName:  mnReBalanceCtrl.zoneCtrl.cluster,
-		ZoneName:     mnReBalanceCtrl.zoneCtrl.zoneName,
-		RType:        RebalanceMeta,
-		VolName:      migratePartitionInfo.VolName,
-		PartitionID:  migratePartitionInfo.PartitionID,
-		SrcAddr:      mnReBalanceCtrl.nodeInfo.Addr,
-		DstAddr:      dstMetaNodeAddr,
-		TaskId:       mnReBalanceCtrl.zoneCtrl.Id,
+		ClusterName: mnReBalanceCtrl.zoneCtrl.cluster,
+		ZoneName:    mnReBalanceCtrl.zoneCtrl.zoneName,
+		RType:       RebalanceMeta,
+		VolName:     migratePartitionInfo.VolName,
+		PartitionID: migratePartitionInfo.PartitionID,
+		SrcAddr:     mnReBalanceCtrl.nodeInfo.Addr,
+		DstAddr:     dstMetaNodeAddr,
+		TaskId:      mnReBalanceCtrl.zoneCtrl.Id,
 	})
 	if err != nil {
 		log.LogErrorf("put migrate record to data base failed, task info: %v, migrate partition id: %v, src node: %v, dst node: %v, err: %v",
@@ -79,13 +79,19 @@ func (mnReBalanceCtrl *MetaNodeReBalanceController) migrate(migratePartitionInfo
 
 func canBeSelectedForMigrate(dstMetaNodeInfo *proto.MetaNodeInfo, goalRatio float64, migratePartitionHosts []string,
 	dstMetaNodePartitionMaxCount int) bool {
-	log.LogDebugf("dst node: %s, isActive: %v, metaPartitionCount: %v, toBeOffline: %v, toBeMigrate: %v," +
+	log.LogDebugf("dst node: %s, isActive: %v, metaPartitionCount: %v, toBeOffline: %v, toBeMigrate: %v,"+
 		" srcPartitionHost: %v, ratio: %v", dstMetaNodeInfo.Addr, dstMetaNodeInfo.IsActive, dstMetaNodeInfo.MetaPartitionCount,
 		dstMetaNodeInfo.ToBeOffline, dstMetaNodeInfo.ToBeMigrated, migratePartitionHosts, dstMetaNodeInfo.Ratio)
-	if dstMetaNodeInfo.IsActive && dstMetaNodeInfo.MetaPartitionCount < dstMetaNodePartitionMaxCount && !dstMetaNodeInfo.ToBeOffline &&
-		!dstMetaNodeInfo.ToBeMigrated && !utils.Contains(migratePartitionHosts, dstMetaNodeInfo.Addr) &&
-		 dstMetaNodeInfo.Ratio < goalRatio {
-		return true
+	if dstMetaNodeInfo.IsActive &&
+		dstMetaNodeInfo.MetaPartitionCount < dstMetaNodePartitionMaxCount &&
+		!dstMetaNodeInfo.ToBeOffline &&
+		!dstMetaNodeInfo.ToBeMigrated &&
+		!utils.Contains(migratePartitionHosts, dstMetaNodeInfo.Addr) {
+		if goalRatio > 0 {
+			return dstMetaNodeInfo.Ratio < goalRatio
+		} else {
+			return dstMetaNodeInfo.Ratio < 0.7
+		}
 	}
 	return false
 }

@@ -3,7 +3,7 @@ package rebalance
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/data"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 	"gorm.io/gorm/utils"
@@ -13,7 +13,7 @@ import (
 type Disk struct {
 	*master.MasterClient
 
-	dataClient       *data.DataHttpClient
+	dataClient       *http_client.DataClient
 	masterAddr       string
 	nodeAddr         string // DataNode Addr
 	path             string
@@ -27,7 +27,7 @@ type Disk struct {
 	migrateLimit     int
 }
 
-func NewDiskReBalanceController(dataClient *data.DataHttpClient, disk *proto.DataNodeDiskInfo, masterAddr, nodeAddr string, minWritableDPNum, migrateLimitPerDisk int, masterClient *master.MasterClient) *Disk {
+func NewDiskReBalanceController(dataClient *http_client.DataClient, disk *proto.DataNodeDiskInfo, masterAddr, nodeAddr string, minWritableDPNum, migrateLimitPerDisk int, masterClient *master.MasterClient) *Disk {
 	return &Disk{
 		dataClient:       dataClient,
 		masterAddr:       masterAddr,
@@ -158,7 +158,7 @@ func (d *Disk) checkAvailable(dp *proto.PartitionReport) (bool, *proto.DataParti
 	return true, dataPartition
 }
 
-func checkRaftStatus(dataHttpClient *data.DataHttpClient, id uint64, host string) (stopped bool, err error) {
+func checkRaftStatus(dataHttpClient *http_client.DataClient, id uint64, host string) (stopped bool, err error) {
 	raftStatus, err := dataHttpClient.GetRaftStatus(id)
 	if err != nil {
 		return

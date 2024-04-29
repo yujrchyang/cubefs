@@ -11,6 +11,7 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"gorm.io/gorm"
 	"net/http"
+	"strings"
 	"sync"
 )
 
@@ -95,7 +96,16 @@ func (rw *ReBalanceWorker) parseConfig(cfg *config.Config) (err error) {
 	return
 }
 
-func (rw *ReBalanceWorker) getClusterHost(cluster string) (host string, err error) {
+func verifyCluster(cluster string) error {
+	switch cluster {
+	case SPARK, ELASTICDB, TEST, TestES:
+		return nil
+	default:
+		return fmt.Errorf("cluster:%v Not supported", cluster)
+	}
+}
+
+func (rw *ReBalanceWorker) getClusterHost(cluster string) (host string) {
 	clusterInfo, ok := rw.clusterConfigMap.Load(cluster)
 	if ok {
 		clusterConf := clusterInfo.(*ClusterConfig)
@@ -110,27 +120,26 @@ func (rw *ReBalanceWorker) getClusterHost(cluster string) (host string, err erro
 		host = "cn.chubaofs.jd.local"
 	case DBBAK:
 		host = "cn.chubaofs-seqwrite.jd.local"
-		err = fmt.Errorf("cluster:%v Not supported", cluster)
 	case ELASTICDB:
 		host = "cn.elasticdb.jd.local"
-		//err = fmt.Errorf("cluster:%v Not supported", cluster)
+	case CFS_AMS_MCA:
+		host = "nl.chubaofs.jd.local"
+	case OCHAMA:
+		host = "nl.chubaofs.ochama.com"
 	case TEST:
-		host = "11.60.241.50:17010"
-	}
-	if len(host) == 0 {
-		err = fmt.Errorf("cluster:%v Not supported", cluster)
+		host = "10.179.20.34:80"
+	case TestES:
+		host = "172.21.138.73:80"
 	}
 	return
 }
 
-func (rw *ReBalanceWorker) getDataNodePProfPort(host string) (port string) {
+func (rw *ReBalanceWorker) getDataNodePProfPort(cluster string) (port string) {
 	rw.clusterConfigMap.Range(func(key, value interface{}) bool {
 		clusterConfig := value.(*ClusterConfig)
-		for _, addr := range clusterConfig.MasterAddrs {
-			if addr == host {
-				port = fmt.Sprintf("%v", clusterConfig.DataProfPort)
-				return false
-			}
+		if clusterConfig.ClusterName == cluster {
+			port = fmt.Sprintf("%v", clusterConfig.DataProfPort)
+			return false
 		}
 		return true
 	})
@@ -138,11 +147,13 @@ func (rw *ReBalanceWorker) getDataNodePProfPort(host string) (port string) {
 		return
 	}
 
-	switch host {
-	case "cn.chubaofs.jd.local", "cn.elasticdb.jd.local", "cn.chubaofs-seqwrite.jd.local", "nl.chubaofs.jd.local", "nl.chubaofs.ochama.com":
+	switch cluster {
+	case SPARK, DBBAK, ELASTICDB, CFS_AMS_MCA, OCHAMA:
 		port = "6001"
-	case "192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010":
-		port = "17320"
+	case TEST:
+		port = "17031"
+	case TestES:
+		port = "17031"
 	default:
 		port = "6001"
 	}
@@ -155,16 +166,42 @@ func (rw *ReBalanceWorker) loadInRunningRebalanced() (err error) {
 		return
 	}
 	for _, info := range rInfos {
-		if info.dstMetaNodePartitionMaxCount == 0 || info.dstMetaNodePartitionMaxCount > defaultDstMetaNodePartitionMaxCount {
-			info.dstMetaNodePartitionMaxCount = defaultDstMetaNodePartitionMaxCount
+		if info.DstMetaNodePartitionMaxCount == 0 || info.DstMetaNodePartitionMaxCount > defaultDstMetaNodePartitionMaxCount {
+			info.DstMetaNodePartitionMaxCount = defaultDstMetaNodePartitionMaxCount
 		}
-		err = rw.ReBalanceStart(info.Host, info.ZoneName, info.RType, info.HighRatio, info.LowRatio, info.GoalRatio,
-			info.MaxBatchCount, info.MigrateLimitPerDisk, info.dstMetaNodePartitionMaxCount)
-		if err != nil {
-			log.LogErrorf("start rebalance info:%v err:%v", info, err)
+		var reTaskID uint64
+		reTaskID, e1 := rw.restartRunningTask(info)
+		if e1 != nil || reTaskID != info.ID {
+			log.LogErrorf("restart taskID(%v) failed: err(%v) re_taskID(%v)", info.ID, e1, reTaskID)
+			continue
 		}
-		log.LogInfof("rebalance start host:%v zoneName:%v", info.Host, info.ZoneName)
+		log.LogInfof("restart taskID(%v) success", info.ID)
 	}
+	return
+}
+
+func (rw *ReBalanceWorker) restartRunningTask(info *RebalancedInfoTable) (taskID uint64, err error) {
+	isRestart := true
+
+	var ctrl *ZoneReBalanceController
+	if info.TaskType == ZoneAutoReBalance {
+		ctrl, err = rw.newZoneCtrl(info.Cluster, info.ZoneName, info.RType, info.MaxBatchCount, info.HighRatio, info.LowRatio, info.GoalRatio,
+			info.MigrateLimitPerDisk, info.DstMetaNodePartitionMaxCount, isRestart)
+		if err != nil {
+			rw.stopRebalanced(ctrl.Id, false)
+			return
+		}
+	}
+	if info.TaskType == NodesMigrate {
+		ctrl, err = rw.newNodeMigrationCtrl(info.Cluster, info.RType, info.MaxBatchCount, info.DstMetaNodePartitionMaxCount,
+			strings.Split(info.SrcNodes, ","), strings.Split(info.DstNodes, ","), isRestart, info.ID)
+		if err != nil {
+			rw.stopRebalanced(ctrl.Id, false)
+			return
+		}
+	}
+	taskID = ctrl.Id
+	err = ctrl.ReBalanceStart()
 	return
 }
 
@@ -182,6 +219,7 @@ func (rw *ReBalanceWorker) registerHandler() {
 	http.HandleFunc(RBReset, responseHandler(rw.handleReset))
 	http.HandleFunc(RBInfo, responseHandler(rw.handleRebalancedInfo))
 	http.HandleFunc(RBResetControl, responseHandler(rw.handleReSetControlParam))
-	http.HandleFunc(RBList, rw.handleRebalancedList)
+	http.HandleFunc(RBList, pagingResponseHandler(rw.handleRebalancedList))
 	http.HandleFunc(ZoneUsageRatio, rw.handleZoneUsageRatio)
+	http.HandleFunc(RBRecordsQuery, pagingResponseHandler(rw.handleMigrateRecordsQuery))
 }
