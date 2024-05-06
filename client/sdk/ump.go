@@ -1,6 +1,10 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/cubefs/cubefs/client/util"
+)
 
 var (
 	umpKeyVolArr     []string
@@ -47,8 +51,12 @@ func init() {
 	umpKeyClusterArr = make([]string, 0)
 }
 
-func (c *client) initUmpKeys() {
-	volKeyPrefix := fmt.Sprintf("%s_%s_", c.mw.Cluster(), c.volName)
+func (c *client) initUmpKeys(isMysql bool) {
+	volName := c.volName
+	if isMysql {
+		volName = util.GetNormalizedVolName(c.volName)
+	}
+	volKeyPrefix := fmt.Sprintf("%s_%s_", c.mw.Cluster(), volName)
 	clusterKeyPrefix := fmt.Sprintf("%s_%s_", c.mw.Cluster(), gClientManager.moduleName)
 	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_close", volKeyPrefix))
 	umpKeyVolArr = append(umpKeyVolArr, fmt.Sprintf("%vcfs_open", volKeyPrefix))
