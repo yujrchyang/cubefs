@@ -5390,16 +5390,19 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	stat = new(proto.VolStatInfo)
 	stat.Name = vol.Name
 	stat.TotalSize = vol.Capacity * unit.GB
-	stat.UsedSize = vol.totalUsedSpace()
-	stat.RealUsedSize = stat.UsedSize
-	if stat.UsedSize > stat.TotalSize {
-		stat.UsedSize = stat.TotalSize
-	}
+	stat.RealUsedSize = vol.totalUsedSpace() // The real used space is the sum of the used space of all data partitions.
 	stat.EnableToken = vol.enableToken
 	stat.EnableWriteCache = vol.enableWriteCache
 	stat.FileTotalSize, stat.TrashUsedSize = vol.getFileTotalSizeAndTrashUsedSize()
-	log.LogDebugf("total[%v],usedSize[%v],fileTotalSize[%v],trashUsedSize[%v]", stat.TotalSize, stat.RealUsedSize,
-		stat.FileTotalSize, stat.TrashUsedSize)
+	if stat.FileTotalSize < 0 {
+		stat.FileTotalSize = 0
+	}
+	stat.UsedSize = uint64(stat.FileTotalSize) // The used space is the sum of the total size of all valid files.
+	if stat.UsedSize > stat.TotalSize {
+		stat.UsedSize = stat.TotalSize
+	}
+	log.LogDebugf("total[%v],realUsedSize[%v], useSize[%v],fileTotalSize[%v],trashUsedSize[%v]", stat.TotalSize, stat.RealUsedSize,
+		stat.UsedSize, stat.FileTotalSize, stat.TrashUsedSize)
 	return
 }
 

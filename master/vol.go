@@ -739,8 +739,11 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	if vol.capacity() == 0 {
 		return
 	}
-	usedSpace := vol.totalUsedSpace() / unit.GB
-	if usedSpace >= vol.getMaxCapacityWithReservedTrashSpace() {
+	realUsedSize, _ := vol.getFileTotalSizeAndTrashUsedSize()
+	if realUsedSize < 0 {
+		realUsedSize = 0
+	}
+	if uint64(realUsedSize) >= vol.capacity() {
 		vol.setAllDataPartitionsToReadOnly()
 		return
 	}
