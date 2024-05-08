@@ -49,8 +49,8 @@ func NewBufferPool() (bufferP *BufferPool) {
 // Get returns the data based on the given size. Different size corresponds to different object in the pool.
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 	for i := 0; i < len(bufferPoolSizes); i++ {
-		if size == bufferPoolSizes[i] {
-			return bufferP.pools[i].Get().([]byte), nil
+		if size <= bufferPoolSizes[i] {
+			return bufferP.pools[i].Get().([]byte)[:size], nil
 		}
 	}
 	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
@@ -61,10 +61,10 @@ func (bufferP *BufferPool) Put(data []byte) {
 	if data == nil {
 		return
 	}
-	size := len(data)
+	capacity := cap(data)
 	for i, bufferSize := range bufferPoolSizes {
-		if bufferSize == size {
-			bufferP.pools[i].Put(data)
+		if bufferSize == capacity {
+			bufferP.pools[i].Put(data[:bufferSize])
 			return
 		}
 	}

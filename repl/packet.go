@@ -785,7 +785,6 @@ func (p *Packet) allocateBufferFromPoolForReadConnectBody(c net.Conn) (isUseBuff
 		if getErr != nil {
 			cmd = make([]byte, cmdSize)
 		}
-		isUseBufferPool = getErr == nil
 		var off uint32
 		binary.BigEndian.PutUint32(cmd[off:off+4], uint32(0xFF))
 		off += 4
