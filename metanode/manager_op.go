@@ -33,8 +33,6 @@ const (
 
 func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
-	// For ack to master
-	m.responseAckOKToMaster(conn, p)
 	var (
 		req       = &proto.HeartBeatRequest{}
 		resp      = &proto.MetaNodeHeartbeatResponse{}
@@ -44,7 +42,10 @@ func (m *metadataManager) opMasterHeartbeat(conn net.Conn, p *Packet,
 	)
 	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
 	decode.UseNumber()
-	if err = decode.Decode(adminTask); err != nil {
+	err = decode.Decode(adminTask)
+	// For ack to master
+	m.responseAckOKToMaster(conn, p)
+	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
 		goto end
