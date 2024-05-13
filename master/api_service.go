@@ -2036,12 +2036,6 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if !forceROW && (compactTag == proto.CompactOpenName || compactTag == strconv.FormatBool(true)) {
-		err = fmt.Errorf("compact cannot be opened when force row is closed. Please open force row first,compact tag is[%v]", compactTag)
-		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
-		return
-	}
-
 	var cmpTag proto.CompactTag
 	if cmpTag, err = proto.StrToCompactTag(compactTag); err != nil {
 		err = fmt.Errorf("compactTag can only be open or close,received is[%v]", compactTag)

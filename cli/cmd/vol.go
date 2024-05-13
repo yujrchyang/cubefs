@@ -231,10 +231,6 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			}
 
 			storeMode := proto.StoreMode(optStoreMode)
-
-			if !optForceROW && optCompactTag {
-				errout("error: compact cannot be opened when force row is closed. Please open force row first\n")
-			}
 			// ask user for confirm
 			if !optYes {
 				stdout("Create a new volume:\n")
@@ -380,9 +376,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			var volumeName = args[0]
 			var isChange = false
 			var num1, num2, total int
-
-			var forceRowChange = false
-			var compactTagChange = false
+			
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)
@@ -468,9 +462,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 					return
 				}
 				confirmString.WriteString(fmt.Sprintf("  Force ROW           : %v -> %v\n", formatEnabledDisabled(vv.ForceROW), formatEnabledDisabled(enable)))
-				if vv.ForceROW != enable {
-					forceRowChange = true
-				}
 				vv.ForceROW = enable
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Force ROW           : %v\n", formatEnabledDisabled(vv.ForceROW)))
@@ -638,9 +629,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 					optCompactTag = proto.CompactCloseName
 				}
 				confirmString.WriteString(fmt.Sprintf("  compact             : %v -> %v\n", vv.CompactTag, optCompactTag))
-				if vv.CompactTag != optCompactTag {
-					compactTagChange = true
-				}
 				vv.CompactTag = optCompactTag
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  compact             : %v\n", vv.CompactTag))
@@ -801,7 +789,6 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				stdout("No changes has been set.\n")
 				return
 			}
-			checkForceRowAndCompact(vv, forceRowChange, compactTagChange)
 			// ask user for confirm
 			if !optYes {
 				stdout(confirmString.String())
@@ -1547,36 +1534,6 @@ func calcAuthKey(key string) (authKey string) {
 	_, _ = h.Write([]byte(key))
 	cipherStr := h.Sum(nil)
 	return strings.ToLower(hex.EncodeToString(cipherStr))
-}
-
-func checkForceRowAndCompact(vv *proto.SimpleVolView, forceRowChange, compactTagChange bool) {
-	if forceRowChange && !compactTagChange {
-		if !vv.ForceROW && vv.CompactTag == proto.CompactOpenName {
-			errout("error: force row cannot be closed when compact is opened, Please close compact first\n")
-		}
-		curTime := time.Now().Unix()
-		if !vv.ForceROW &&
-			(vv.CompactTag == proto.CompactCloseName || vv.CompactTag == proto.CompactDefaultName) &&
-			(curTime-vv.CompactTagModifyTime) < proto.CompatTagClosedTimeDuration {
-			errout("error: force row cannot be closed when compact is closed for less than %v minutes, now diff time %v minutes\n", proto.CompatTagClosedTimeDuration/60, (curTime-vv.CompactTagModifyTime)/60)
-		}
-	}
-
-	if !forceRowChange && compactTagChange {
-		if !vv.ForceROW && vv.CompactTag == proto.CompactOpenName {
-			errout("error: compact cannot be opened when force row is closed, Please open force row first\n")
-		}
-	}
-
-	if forceRowChange && compactTagChange {
-		if !vv.ForceROW && vv.CompactTag == proto.CompactOpenName {
-			errout("error: compact cannot be opened when force row is closed, Please open force row first\n")
-		}
-		if !vv.ForceROW &&
-			(vv.CompactTag == proto.CompactCloseName || vv.CompactTag == proto.CompactDefaultName) {
-			errout("error: force row cannot be closed when compact is closed for less than %v minutes, Please close compact first\n", proto.CompatTagClosedTimeDuration/60)
-		}
-	}
 }
 
 func newVolEcInfoCmd(client *master.MasterClient) *cobra.Command {

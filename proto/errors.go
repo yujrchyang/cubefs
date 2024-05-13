@@ -95,7 +95,6 @@ var (
 	ErrHBaseOperation                  = errors.New("hbase operation error")
 	ErrCompactTagUnknow                = errors.New("compact tag unknow")
 	ErrCompactTagForbidden             = errors.New("compact tag forbidden")
-	ErrCompactTagOpened                = errors.New("compact cannot be opened when force row is closed, Please open force row first")
 	ErrInvalidNodeSetCapacity          = errors.New("invalid nodeSetCapacity")
 	ErrMediumTypeUnknown               = errors.New("medium type unknown")
 

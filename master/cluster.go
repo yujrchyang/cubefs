@@ -689,14 +689,6 @@ func (c *Cluster) setVolCompactTag(name, compactTag, authKey string) (err error)
 	if tag == proto.CompactDefault {
 		return proto.ErrCompactTagForbidden
 	}
-	if tag == proto.CompactOpen && !vol.ForceROW {
-		return proto.ErrCompactTagOpened
-	}
-	curTime := time.Now().Unix()
-	if tag == proto.CompactOpen && vol.ForceROW && (curTime-vol.forceRowModifyTime) < proto.ForceRowClosedTimeDuration {
-		err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, now diff time %v minutes", proto.ForceRowClosedTimeDuration/60, (curTime-vol.forceRowModifyTime)/60)
-		return
-	}
 	oldCompactTag = vol.compactTag
 	vol.compactTag = tag
 	oldCompactTagModifyTime = vol.compactTagModifyTime
@@ -2831,8 +2823,6 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		volBak               *Vol
 		serverAuthKey        string
 		masterRegionZoneList []string
-		forceRowChange       bool
-		compactChange        bool
 	)
 	if vol, err = c.getVol(name); err != nil {
 		log.LogErrorf("action[updateVol] err[%v]", err)
@@ -2915,7 +2905,6 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.FollowerRead = followerRead
 	vol.NearRead = nearRead
 	if vol.ForceROW != forceROW {
-		forceRowChange = true
 		vol.forceRowModifyTime = time.Now().Unix()
 	}
 	vol.ForceROW = forceROW
@@ -2976,15 +2965,9 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		}
 	}
 	if vol.compactTag != compactTag {
-		compactChange = true
 		vol.compactTagModifyTime = time.Now().Unix()
 	}
 	vol.compactTag = compactTag
-	err = checkForceRowAndCompact(vol, forceRowChange, compactChange)
-	if err != nil {
-		err = fmt.Errorf(" valid force row or compact for vol: %v, err: %v", name, err.Error())
-		goto errHandler
-	}
 	vol.UmpCollectWay = umpCollectWay
 	vol.RemoteCacheBoostPath = remoteCacheBoostPath
 	vol.RemoteCacheBoostEnable = remoteCacheBoostEnable
@@ -5674,44 +5657,6 @@ func (c *Cluster) setNodeSetCapacity(capacity int) (err error) {
 		c.cfg.nodeSetCapacity = oldCapacity
 		err = proto.ErrPersistenceByRaft
 		return
-	}
-	return
-}
-
-func checkForceRowAndCompact(vol *Vol, forceRowChange, compactTagChange bool) (err error) {
-	if forceRowChange && !compactTagChange {
-		if !vol.ForceROW && vol.compactTag == proto.CompactOpen {
-			err = fmt.Errorf("force row cannot be closed when compact is opened, Please close compact first")
-		}
-		curTime := time.Now().Unix()
-		if !vol.ForceROW &&
-			(vol.compactTag == proto.CompactClose || vol.compactTag == proto.CompactDefault) &&
-			(curTime-vol.compactTagModifyTime) < proto.CompatTagClosedTimeDuration {
-			err = fmt.Errorf("force row cannot be closed when compact is closed for less than %v minutes, now diff time %v minutes", proto.CompatTagClosedTimeDuration/60, (curTime-vol.compactTagModifyTime)/60)
-		}
-	}
-
-	if !forceRowChange && compactTagChange {
-		if !vol.ForceROW && vol.compactTag == proto.CompactOpen {
-			err = fmt.Errorf("compact cannot be opened when force row is closed, Please open force row first")
-		}
-		curTime := time.Now().Unix()
-		if vol.compactTag == proto.CompactOpen && vol.ForceROW && (curTime-vol.forceRowModifyTime) < proto.ForceRowClosedTimeDuration {
-			err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, now diff time %v minutes", proto.ForceRowClosedTimeDuration/60, (curTime-vol.forceRowModifyTime)/60)
-		}
-	}
-
-	if forceRowChange && compactTagChange {
-		if !vol.ForceROW && vol.compactTag == proto.CompactOpen {
-			err = fmt.Errorf("compact cannot be opened when force row is closed, Please open force row first")
-		}
-		if !vol.ForceROW &&
-			(vol.compactTag == proto.CompactClose || vol.compactTag == proto.CompactDefault) {
-			err = fmt.Errorf("force row cannot be closed when compact is closed for less than %v minutes, Please close compact first", proto.CompatTagClosedTimeDuration/60)
-		}
-		if vol.compactTag == proto.CompactOpen && vol.ForceROW {
-			err = fmt.Errorf("compact cannot be opened when force row is opened for less than %v minutes, Please open force row first", proto.ForceRowClosedTimeDuration/60)
-		}
 	}
 	return
 }
