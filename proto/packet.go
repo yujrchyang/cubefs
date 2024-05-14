@@ -598,6 +598,8 @@ func GetOpMsg(opcode uint8) (m string) {
 		m = "OpCachePrepare"
 	case OpLockOrUnlockExtent:
 		m = "OpLockOrUnlockExtent"
+	case OpGetAllExtentInfo:
+		m = "OpGetAllExtentInfo"
 	}
 	return
 }
