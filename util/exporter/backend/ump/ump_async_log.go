@@ -253,7 +253,7 @@ func GetLocalIpAddr() (localAddr string, err error) {
 		return
 	}
 	for _, addr := range addrs {
-		if ipNet, isIpNet := addr.(*net.IPNet); isIpNet && !ipNet.IP.IsLoopback() {
+		if ipNet, isIpNet := addr.(*net.IPNet); isIpNet && !ipNet.IP.IsLoopback() && !ipNet.IP.IsLinkLocalUnicast() {
 			if ipv4 := ipNet.IP.To4(); ipv4 != nil {
 				localAddr = ipv4.String()
 				return
