@@ -1,21 +1,23 @@
 // url统一存放
 export default {
   // login
-  login: '/proxy/login',
+  login: "/proxy/login",
   // user
-  user: '/api/user',
+  user: "/api/user",
   // operations
-  operations: '/api/operations',
+  operations: "/api/operations",
   // cluster
-  cluster: '/api/cluster',
+  cluster: "/api/cluster",
   // monitor
-  monitor: '/proxy/cfs_monitor',
+  monitor: "/proxy/cfs_monitor",
   // volume
-  volume: '/api/volume',
+  volume: "/api/volume",
   // authorization
-  authorization: '/api/user',
+  authorization: "/api/user",
   // file
-  file: '/proxy/file',
-  uploadFile: '/proxy/file/upload',
-  downFile: '/proxy/file/down'
-}
+  file: "/proxy/file",
+  uploadFile: "/proxy/file/upload",
+  downFile: "/proxy/file/down",
+  consoleCluster: "/console/cluster",
+  consoleTraffic: "/console/traffic"
+};

@@ -416,6 +416,8 @@ func GetOpMsg(opcode uint8) (m string) {
 		m = "OpMetaCreateDentry"
 	case OpMetaDeleteDentry:
 		m = "OpMetaDeleteDentry"
+	case OpMetaBatchDeleteDentry:
+		m = "OpMetaBatchDeleteDentry"
 	case OpMetaOpen:
 		m = "OpMetaOpen"
 	case OpMetaReleaseOpen:
@@ -574,8 +576,12 @@ func GetOpMsg(opcode uint8) (m string) {
 		m = "OpMetaCleanExpiredDentry"
 	case OpMetaCleanDeletedInode:
 		m = "OpMetaCleanDeletedInode"
+	case OpMetaBatchCleanDeletedInode:
+		m = "OpMetaBatchCleanDeletedInode"
 	case OpMetaCleanDeletedDentry:
 		m = "OpMetaCleanDeletedDentry"
+	case OpMetaBatchCleanDeletedDentry:
+		m = "OpMetaBatchCleanDeletedDentry"
 	case OpMetaGetDeletedInode:
 		m = "OpMetaGetDeletedInode"
 	case OpMetaBatchGetDeletedInode:

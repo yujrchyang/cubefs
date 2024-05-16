@@ -22,41 +22,48 @@ import (
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
-	client2 "github.com/cubefs/cubefs/sdk/graphql/client"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/samsarahq/thunder/batch"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/reactive"
 )
 
-type graphqlProxyHandler struct {
-	client *client2.MasterGClient
-}
-
-func NewProxyHandler(client *client2.MasterGClient) *graphqlProxyHandler {
-	return &graphqlProxyHandler{client: client}
-}
+const (
+	SSOLoginCookie = "sso.jd.com"
+	PinKey         = "_pin_key"
+)
 
 func Token(r *http.Request) (string, error) {
-	if token := r.Header.Get(proto.HeadAuthorized); token != "" {
-		return token, nil
+	if Global_CFG.IsIntranet {
+		if cookie, err := r.Cookie(SSOLoginCookie); err == nil {
+			return cookie.Value, nil
+		} else if errors.Is(err, http.ErrNoCookie) {
+			return "", fmt.Errorf("cookie:%v not found", SSOLoginCookie)
+		}
+	} else {
+		if token := r.Header.Get(proto.HeadAuthorized); token != "" {
+			return token, nil
+		}
+		if token := r.Form.Get(proto.ParamAuthorized); token != "" {
+			return token, nil
+		}
 	}
-
 	if err := r.ParseForm(); err != nil {
 		return "", err
 	}
 
-	return r.Form.Get(proto.ParamAuthorized), nil
-}
-
-type httpResponse struct {
-	Data   interface{} `json:"data,omitempty"`
-	Errors []string    `json:"errors,omitempty"`
+	return "", fmt.Errorf("the token not found in head:[%s] or url param:[%s]", proto.HeadAuthorized, proto.ParamAuthorized)
 }
 
 type httpPostBody struct {
 	Query     string                 `json:"query"`
 	Variables map[string]interface{} `json:"variables"`
+}
+
+type httpResponse struct {
+	Code   int         `json:"code"`
+	Data   interface{} `json:"data,omitempty"`
+	Errors []string    `json:"errors,omitempty"`
 }
 
 func writeResponse(w http.ResponseWriter, code int, value interface{}, err error) {
@@ -67,23 +74,9 @@ func writeResponse(w http.ResponseWriter, code int, value interface{}, err error
 	w.Header().Set("Access-Control-Allow-Credentials", "true")
 
 	response := httpResponse{}
-
+	response.Code = code
 	if err != nil {
-
-		msg := struct {
-			Messge string `json:"message"`
-			Code   int    `json:"code"`
-		}{
-			Messge: err.Error(),
-			Code:   code,
-		}
-
-		v, e := json.Marshal(msg)
-		if e != nil {
-			v = []byte(fmt.Sprintf("marshal has err , real err is:[%s]", err.Error()))
-		}
-
-		response.Errors = []string{string(v)}
+		response.Errors = []string{err.Error()}
 	} else {
 		response.Data = value
 	}
@@ -97,71 +90,19 @@ func writeResponse(w http.ResponseWriter, code int, value interface{}, err error
 		w.Header().Set("Content-Type", "application/json")
 	}
 
-	if _, err := w.Write(responseJSON); err != nil {
-		log.LogWarnf("write reponse has err:[%s]", err.Error())
-	}
-}
-
-//This code is borrowed https://github.com/samsarahq/thunder
-func (h *graphqlProxyHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
-	if r.Method != "POST" {
-		writeResponse(w, http.StatusMethodNotAllowed, nil, errors.New("request must be a POST"))
-		return
-	}
-
-	if r.Body == nil {
-		writeResponse(w, http.StatusBadRequest, nil, errors.New("request must include a query"))
-		return
-	}
-
-	header := r.Header
-
-	token, err := Token(r)
-	if err != nil {
-		writeResponse(w, http.StatusUnauthorized, nil, err)
-		return
-	}
-
-	ui, err := TokenValidate(token)
-	if err != nil {
-		writeResponse(w, http.StatusProxyAuthRequired, nil, err)
-		return
-	}
-
-	UserID := ui.User_id
-	header.Set(proto.UserKey, UserID)
-
-	rep, err := h.client.Proxy(r.Context(), r, header)
-	if err != nil {
-		if rep != nil {
-			writeResponse(w, rep.Code, nil, err)
-		} else {
-			writeResponse(w, http.StatusInternalServerError, nil, err)
-		}
-		return
-	}
-	responseJSON, err := json.Marshal(rep)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	if w.Header().Get("Content-Type") == "" {
-		w.Header().Set("Content-Type", "application/json")
-	}
-	if _, err := w.Write(responseJSON); err != nil {
-		log.LogWarnf("write reponse has err:[%s]", err.Error())
+	if _, err = w.Write(responseJSON); err != nil {
+		log.LogWarnf("write response has err:[%s]", err.Error())
 	}
 }
 
 type httpHandler struct {
 	schema      *graphql.Schema
-	middlewares []graphql.MiddlewareFunc
 	executor    graphql.ExecutorRunner
+	middlewares []graphql.MiddlewareFunc
 }
 
 func HTTPHandler(schema *graphql.Schema, middlewares ...graphql.MiddlewareFunc) http.Handler {
-	return HTTPHandlerWithExecutor(schema, (graphql.NewExecutor(graphql.NewImmediateGoroutineScheduler())), middlewares...)
+	return HTTPHandlerWithExecutor(schema, graphql.NewExecutor(graphql.NewImmediateGoroutineScheduler()), middlewares...)
 }
 
 func HTTPHandlerWithExecutor(schema *graphql.Schema, executor graphql.ExecutorRunner, middlewares ...graphql.MiddlewareFunc) http.Handler {
@@ -172,21 +113,30 @@ func HTTPHandlerWithExecutor(schema *graphql.Schema, executor graphql.ExecutorRu
 	}
 }
 
+// 处理 schema http请求
 func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
 	if r.Method != "POST" {
 		writeResponse(w, http.StatusMethodNotAllowed, nil, errors.New("request must be a POST"))
 		return
 	}
-
 	if r.Body == nil {
 		writeResponse(w, http.StatusBadRequest, nil, errors.New("request must include a query"))
 		return
 	}
 
 	ctx := r.Context()
-
-	if r.RequestURI != "/login" {
+	if r.RequestURI == "/login" {
+		if Global_CFG.IsIntranet {
+			if cookie, err := r.Cookie(SSOLoginCookie); err == nil {
+				ctx = context.WithValue(ctx, SSOLoginCookie, cookie.Value)
+			}
+		} else {
+			if token := r.Header.Get(proto.HeadAuthorized); token != "" {
+				ctx = context.WithValue(ctx, proto.HeadAuthorized, token)
+			}
+		}
+	}
+	if r.RequestURI != "/login" && r.RequestURI != "/xbp" {
 		token, err := Token(r)
 		if err != nil {
 			writeResponse(w, http.StatusUnauthorized, nil, err)
@@ -198,21 +148,7 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeResponse(w, http.StatusProxyAuthRequired, nil, err)
 			return
 		}
-
-		ctx = context.WithValue(ctx, proto.UserKey, ui.User_id)
-		ctx = context.WithValue(ctx, proto.UserInfoKey, ui)
-	}
-
-	if r.RequestURI == "/monitor" {
-		value := ctx.Value(proto.UserInfoKey)
-		if value == nil {
-			writeResponse(w, http.StatusProxyAuthRequired, nil, fmt.Errorf("user not found"))
-		}
-
-		ui := value.(*proto.UserInfo)
-		if ui.UserType != proto.UserTypeRoot && ui.UserType != proto.UserTypeAdmin {
-			writeResponse(w, http.StatusProxyAuthRequired, nil, fmt.Errorf("no access visit monitor"))
-		}
+		ctx = context.WithValue(ctx, PinKey, ui.UserID)
 	}
 
 	var params httpPostBody
@@ -231,14 +167,13 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if query.Kind == "mutation" {
 		schema = h.schema.Mutation
 	}
-	if err := graphql.PrepareQuery(ctx, schema, query.SelectionSet); err != nil {
-		writeResponse(w, http.StatusInternalServerError, nil, err)
+	if err = graphql.PrepareQuery(ctx, schema, query.SelectionSet); err != nil {
+		writeResponse(w, http.StatusBadRequest, nil, err)
 		return
 	}
 
 	var wg sync.WaitGroup
 	e := h.executor
-
 	wg.Add(1)
 	runner := reactive.NewRerunner(ctx, func(ctx context.Context) (interface{}, error) {
 		defer wg.Done()
@@ -259,16 +194,14 @@ func (h *httpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Query:       params.Query,
 			Variables:   params.Variables,
 		})
-		current, err := output.Current, output.Error
-
-		if err != nil {
-			if graphql.ErrorCause(err) == context.Canceled {
-				return nil, err
+		current, outErr := output.Current, output.Error
+		if outErr != nil {
+			if errors.Is(graphql.ErrorCause(outErr), context.Canceled) {
+				return nil, outErr
 			}
-			writeResponse(w, http.StatusBadRequest, nil, err)
-			return nil, err
+			writeResponse(w, http.StatusInternalServerError, nil, outErr)
+			return nil, nil
 		}
-
 		writeResponse(w, http.StatusOK, current, nil)
 		return nil, nil
 	}, graphql.DefaultMinRerunInterval, false)
@@ -289,13 +222,10 @@ func parseResponseNames(r *http.Request) ([]string, error) {
 	}
 
 	list := make([]string, 0)
-
 	for _, s := range query.Selections {
 		list = append(list, s.Name)
 	}
-
 	return list, nil
-
 }
 
 func IQLFun(writer http.ResponseWriter, request *http.Request) {

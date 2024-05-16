@@ -33,7 +33,7 @@ func TestDataNodeAPI(t *testing.T) {
 	}
 	//datanode disk decommission
 	var diskPath = "/cfs"
-	if err = testMc.NodeAPI().DataNodeDiskDecommission(testNodeAddr, diskPath); err != nil {
+	if err = testMc.NodeAPI().DataNodeDiskDecommission(testNodeAddr, diskPath, false); err != nil {
 		t.Errorf("Data node disk decommission failed: err(%v), node(%v), disk(%v)", err, testNodeAddr, diskPath)
 	}
 	//datanode decommission

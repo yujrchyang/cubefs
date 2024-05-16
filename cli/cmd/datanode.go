@@ -219,7 +219,7 @@ func newDataNodeDiskDecommissionCmd(client *master.MasterClient) *cobra.Command 
 			}()
 			nodeAddr = args[0]
 			diskAddr = args[1]
-			if err = client.NodeAPI().DataNodeDiskDecommission(nodeAddr, diskAddr); err != nil {
+			if err = client.NodeAPI().DataNodeDiskDecommission(nodeAddr, diskAddr, false); err != nil {
 				return
 			}
 			stdout("Decommission disk successfully\n")

@@ -13,12 +13,20 @@ import (
 )
 
 type MasterGClient struct {
-	addrs  []string //first is leader
-	active int
+	addrs     []string //first is leader
+	active    int
+	isRelease bool
 }
 
-func NewMasterGClient(addrs []string) *MasterGClient {
-	return &MasterGClient{addrs: addrs}
+func NewMasterGClient(addrs []string, isRelease bool) *MasterGClient {
+	return &MasterGClient{
+		addrs:     addrs,
+		isRelease: isRelease,
+	}
+}
+
+func (c *MasterGClient) GetMasterAddrs() []string {
+	return c.addrs
 }
 
 type UserToken struct {

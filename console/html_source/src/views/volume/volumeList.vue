@@ -4,68 +4,96 @@
       <div class="volume-left">
         <el-button type="primary" @click="openDialog('accessKeys')">
           <i class="btn-icon key-icon"></i>
-          {{$t('chubaoFS.volume.AccessKeys')}}
+          {{ $t("chubaoFS.volume.AccessKeys") }}
         </el-button>
         <el-button type="primary" @click="openDialog('createVolume')">
           <i class="btn-icon paper-icon"></i>
-          {{$t('chubaoFS.volume.CreateVolume')}}
+          {{ $t("chubaoFS.volume.CreateVolume") }}
         </el-button>
-        <a @click="volumeInfoDialog = true">{{$t('chubaoFS.volume.Info')}}</a>
+        <a @click="volumeInfoDialog = true">{{ $t("chubaoFS.volume.Info") }}</a>
       </div>
       <div class="volume-right">
-        <span>{{$t('chubaoFS.volume.VolumeName')}}</span>
-        <el-input v-model="searchVal" placeholder style="width: 255px;"></el-input>
-        <el-button
-          type="primary"
-          class="ml5"
-          @click="queryVolumeList"
-        >{{ $t('chubaoFS.tools.Search') }}
+        <span>{{ $t("chubaoFS.volume.VolumeName") }}</span>
+        <el-input
+          v-model="searchVal"
+          placeholder
+          style="width: 255px;"
+        ></el-input>
+        <el-button type="primary" class="ml5" @click="queryVolumeList"
+          >{{ $t("chubaoFS.tools.Search") }}
         </el-button>
       </div>
     </div>
-    <p>{{$t('chubaoFS.volume.Volumenumber')}} : {{this.resData.page.totalRecord}} {{$t('chubaoFS.volume.Totalcapacity')}} : {{totalCapacity}}G</p>
+    <p>
+      {{ $t("chubaoFS.volume.Volumenumber") }} :
+      {{ this.resData.page.totalRecord }}
+      {{ $t("chubaoFS.volume.Totalcapacity") }} : {{ totalCapacity }}G
+    </p>
     <div class="data-block" v-loading="resData.loading">
       <el-table :data="resData.resLists" class="mt10" style="width: 100%">
         <el-table-column type="index" label="#"></el-table-column>
         <el-table-column prop="name" :label="$t('chubaoFS.volume.VolumeName')">
           <template slot-scope="scope">
-            <div class="volume-name" @click="goDetail(scope.row)">{{scope.row.name}}</div>
+            <div class="volume-name" @click="goDetail(scope.row)">
+              {{ scope.row.name }}
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="capacityStr" :label="$t('chubaoFS.volume.Totalcapacity')"></el-table-column>
-        <el-table-column prop="occupiedStr" :label="$t('chubaoFS.volume.Used')"></el-table-column>
-        <el-table-column prop="occupiedPercent" :label="$t('chubaoFS.volume.UsedRate')"></el-table-column>
-        <el-table-column prop="inodeCount" :label="$t('chubaoFS.volume.InodeCount')"></el-table-column>
-        <el-table-column prop="dpReplicaNum" :label="$t('chubaoFS.volume.Replications')"></el-table-column>
-        <el-table-column prop="owner" :label="$t('chubaoFS.volume.OwnerID')"></el-table-column>
-        <el-table-column prop="createTime" :label="$t('chubaoFS.volume.CreateTime')"></el-table-column>
+        <el-table-column
+          prop="capacityStr"
+          :label="$t('chubaoFS.volume.Totalcapacity')"
+        ></el-table-column>
+        <el-table-column
+          prop="occupiedStr"
+          :label="$t('chubaoFS.volume.Used')"
+        ></el-table-column>
+        <el-table-column
+          prop="occupiedPercent"
+          :label="$t('chubaoFS.volume.UsedRate')"
+        ></el-table-column>
+        <el-table-column
+          prop="inodeCount"
+          :label="$t('chubaoFS.volume.InodeCount')"
+        ></el-table-column>
+        <el-table-column
+          prop="dpReplicaNum"
+          :label="$t('chubaoFS.volume.Replications')"
+        ></el-table-column>
+        <el-table-column
+          prop="owner"
+          :label="$t('chubaoFS.volume.OwnerID')"
+        ></el-table-column>
+        <el-table-column
+          prop="createTime"
+          :label="$t('chubaoFS.volume.CreateTime')"
+        ></el-table-column>
         <el-table-column prop :label="$t('chubaoFS.tools.Actions')">
           <template slot-scope="scope">
             <el-dropdown trigger="click" size="medium">
               <span class="el-dropdown-link">
-                {{$t('chubaoFS.tools.Actions')}}
+                {{ $t("chubaoFS.tools.Actions") }}
                 <i class="el-icon-arrow-down el-icon--right"></i>
               </span>
               <el-dropdown-menu slot="dropdown" class="my-dropdown">
                 <el-dropdown-item
                   @click.native="openDialog('extend', scope.row)"
-                >{{$t('chubaoFS.tools.Extend')}}
+                  >{{ $t("chubaoFS.tools.Extend") }}
                 </el-dropdown-item>
                 <el-dropdown-item
                   @click.native="openDialog('permission', scope.row)"
-                >{{$t('chubaoFS.tools.Permission')}}
+                  >{{ $t("chubaoFS.tools.Permission") }}
                 </el-dropdown-item>
-                <el-dropdown-item
-                  @click.native="openDialog('edit', scope.row)"
-                >{{$t('chubaoFS.tools.Edit')}}
+                <el-dropdown-item @click.native="openDialog('edit', scope.row)"
+                  >{{ $t("chubaoFS.tools.Edit") }}
                 </el-dropdown-item>
-                <el-dropdown-item
-                  @click.native="deleteVolume(scope.row)"
-                >{{$t('chubaoFS.tools.Delete')}}
+                <el-dropdown-item @click.native="deleteVolume(scope.row)"
+                  >{{ $t("chubaoFS.tools.Delete") }}
                 </el-dropdown-item>
-                <el-dropdown-item
-                  @click.native="openDialog('notes', scope.row)"
-                >{{$t('chubaoFS.tools.Comments')}}
+                <el-dropdown-item @click.native="openDialog('notes', scope.row)"
+                  >{{ $t("chubaoFS.tools.Comments") }}
+                </el-dropdown-item>
+                <el-dropdown-item @click.native="goDepot(scope.row)"
+                  >{{ $t("chubaoFS.tools.Depot") }}
                 </el-dropdown-item>
               </el-dropdown-menu>
             </el-dropdown>
@@ -82,7 +110,9 @@
           layout="sizes, prev, pager, next"
           :total="resData.page.totalRecord"
         ></el-pagination>
-        <span class="fr page-tips pr10">{{ $t('chubaoFS.commonTxt.eachPageShows') }}</span>
+        <span class="fr page-tips pr10">{{
+          $t("chubaoFS.commonTxt.eachPageShows")
+        }}</span>
       </div>
     </div>
     <!-- Access Keys -->
@@ -91,10 +121,16 @@
       :visible.sync="accessKeysDialog"
       width="35%"
     >
-      <div class="pl10">{{$t('chubaoFS.volume.AccessKeys')}}：{{accessKey}}</div>
-      <div class="mt20 pl10">{{$t('chubaoFS.volume.SecretKey')}}：{{secretKey}}</div>
+      <div class="pl10">
+        {{ $t("chubaoFS.volume.AccessKeys") }}：{{ accessKey }}
+      </div>
+      <div class="mt20 pl10">
+        {{ $t("chubaoFS.volume.SecretKey") }}：{{ secretKey }}
+      </div>
       <span slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="accessKeysDialog = false">{{$t('chubaoFS.tools.OK')}}</el-button>
+        <el-button type="primary" @click="accessKeysDialog = false">{{
+          $t("chubaoFS.tools.OK")
+        }}</el-button>
       </span>
     </el-dialog>
     <!-- Create Volume -->
@@ -114,8 +150,16 @@
           :label="$t('chubaoFS.volume.VolumeName')"
           prop="name"
           :rules="[
-            { required: true, message: $t('chubaoFS.volume.EnterNameTip'), trigger: 'blur' },
-            { validator: checkVolName, message: $t('chubaoFS.volume.NameRulesTip'), trigger: 'blur' }
+            {
+              required: true,
+              message: $t('chubaoFS.volume.EnterNameTip'),
+              trigger: 'blur'
+            },
+            {
+              validator: checkVolName,
+              message: $t('chubaoFS.volume.NameRulesTip'),
+              trigger: 'blur'
+            }
           ]"
         >
           <el-input v-model="createVolumeForm.name"></el-input>
@@ -124,8 +168,16 @@
           :label="$t('chubaoFS.volume.Totalcapacity')"
           prop="totalCapacity"
           :rules="[
-            { required: true, message: $t('chubaoFS.volume.EnterCapacityTip'), trigger: 'blur' },
-            { validator: checkNumber, message: $t('chubaoFS.volume.CapacityRules'), trigger: 'blur' }
+            {
+              required: true,
+              message: $t('chubaoFS.volume.EnterCapacityTip'),
+              trigger: 'blur'
+            },
+            {
+              validator: checkNumber,
+              message: $t('chubaoFS.volume.CapacityRules'),
+              trigger: 'blur'
+            }
           ]"
         >
           <el-input v-model="createVolumeForm.totalCapacity"></el-input>
@@ -134,7 +186,10 @@
           <el-input v-model="userID" disabled></el-input>
         </el-form-item>
 
-        <el-form-item :label="$t('chubaoFS.operations.VolumeManagement.ZoneName')" prop="zoneName">
+        <el-form-item
+          :label="$t('chubaoFS.operations.VolumeManagement.ZoneName')"
+          prop="zoneName"
+        >
           <el-input v-model="createVolumeForm.zoneName"></el-input>
         </el-form-item>
 
@@ -148,11 +203,12 @@
         </el-form-item>
       </el-form>
       <span slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="closeDialog('create')">{{$t('chubaoFS.tools.Cancel')}}</el-button>
-        <el-button
-          type="primary"
-          @click="createVolume('createVolumeForm')"
-        >{{$t('chubaoFS.tools.Create')}}</el-button>
+        <el-button type="primary" @click="closeDialog('create')">{{
+          $t("chubaoFS.tools.Cancel")
+        }}</el-button>
+        <el-button type="primary" @click="createVolume('createVolumeForm')">{{
+          $t("chubaoFS.tools.Create")
+        }}</el-button>
       </span>
     </el-dialog>
     <!-- Volume Info -->
@@ -161,37 +217,105 @@
       :visible.sync="volumeInfoDialog"
       width="35%"
     >
-      <div class="vol-info">{{$t('chubaoFS.volume.VolumeInfoTip')}}</div>
+      <div class="vol-info">{{ $t("chubaoFS.volume.VolumeInfoTip") }}</div>
       <span slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="volumeInfoDialog = false">{{$t('chubaoFS.tools.OK')}}</el-button>
+        <el-button type="primary" @click="volumeInfoDialog = false">{{
+          $t("chubaoFS.tools.OK")
+        }}</el-button>
       </span>
     </el-dialog>
     <!-- Edit Volume -->
-    <el-dialog
+    <!-- <el-dialog
       :title="$t('chubaoFS.volume.EditVolume')"
       :visible.sync="editVolumeDialog"
       width="35%"
     >
       <el-form :label-position="labelPosition" :model="editVolumeForm">
-        <!--        <el-form-item label="Replications">-->
-        <!--          <el-select v-model="editVolumeForm.dpReplicaNum" style="width: 100%;">-->
-        <!--            <el-option v-for="item in dpReplicaNumList" :value="item" :label="item" :key="item"></el-option>-->
-        <!--          </el-select>-->
-        <!--        </el-form-item>-->
         <el-form-item :label="$t('chubaoFS.volume.Comments')">
           <el-input type="textarea" v-model="desContent"></el-input>
         </el-form-item>
       </el-form>
       <span slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="editVolumeDialog = false">{{$t('chubaoFS.tools.Cancel')}}</el-button>
-        <el-button type="primary" @click="updateVolume">{{$t('chubaoFS.tools.Update')}}</el-button>
+        <el-button type="primary" @click="editVolumeDialog = false">{{
+          $t("chubaoFS.tools.Cancel")
+        }}</el-button>
+        <el-button type="primary" @click="updateVolume">{{
+          $t("chubaoFS.tools.Update")
+        }}</el-button>
+      </span>
+    </el-dialog> -->
+
+    <el-dialog
+      :title="$t('chubaoFS.volume.EditVolume')"
+      :visible.sync="editVolumeDialog"
+      width="35%"
+    >
+      <el-form :model="editVolumeForm" :label-position="labelPosition">
+        <el-form-item label="DpSelector">
+          <el-radio-group v-model="editVolumeForm.dpSelectorName">
+            <el-radio label="default"></el-radio>
+            <el-radio label="kfaster"></el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.volume.copies')">
+          <el-radio-group v-model="editVolumeForm.dpReplicaNum">
+            <el-radio :label="2"></el-radio>
+            <el-radio :label="3"></el-radio>
+            <el-radio :label="5"></el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.volume.metadata')">
+          <el-radio-group v-model="editVolumeForm.defaultStoreMode">
+            <el-radio :label="1">内存</el-radio>
+            <el-radio :label="2">rocksDB</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.volume.depotDay')">
+          <el-input
+            v-model.number="editVolumeForm.trashRemainingDays"
+          ></el-input>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.volume.capacity')">
+          <el-input v-model="editVolumeForm.capacity"></el-input>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.volume.token')">
+          <el-switch v-model="editVolumeForm.enableToken"></el-switch>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.volume.forcedrow')">
+          <el-switch v-model="editVolumeForm.forceROW"></el-switch>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.volume.sdk')">
+          <el-switch v-model="editVolumeForm.enableWriteCache"></el-switch>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.volume.follow')">
+          <el-switch v-model="editVolumeForm.followerRead"></el-switch>
+        </el-form-item>
+        <el-form-item :label="$t('chubaoFS.volume.cache')">
+          <el-switch
+            v-model="editVolumeForm.remoteCacheBoostEnable"
+          ></el-switch>
+        </el-form-item>
+      </el-form>
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="editVolumeDialog = false">{{
+          $t("chubaoFS.tools.Cancel")
+        }}</el-button>
+        <el-button type="primary" @click="updateVolume">{{
+          $t("chubaoFS.tools.Update")
+        }}</el-button>
       </span>
     </el-dialog>
     <!-- Notes -->
-    <el-dialog :title="$t('chubaoFS.volume.Comments')" :visible.sync="notesDialog" width="35%">
-      <div class="pl10">{{description}}</div>
+    <el-dialog
+      :title="$t('chubaoFS.volume.Comments')"
+      :visible.sync="notesDialog"
+      width="35%"
+    >
+      <div class="pl10">{{ description }}</div>
       <span slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="notesDialog = false">{{$t('chubaoFS.tools.OK')}}</el-button>
+        <el-button type="primary" @click="notesDialog = false">{{
+          $t("chubaoFS.tools.OK")
+        }}</el-button>
       </span>
     </el-dialog>
     <!-- Volume Extension -->
@@ -203,18 +327,30 @@
     >
       <el-form :label-position="labelPosition" :model="editVolumeForm">
         <el-form-item :label="$t('chubaoFS.volume.VolumeName')">
-          <el-input type="text" v-model="editVolumeForm.name" disabled></el-input>
+          <el-input
+            type="text"
+            v-model="editVolumeForm.name"
+            disabled
+          ></el-input>
         </el-form-item>
         <el-form-item :label="$t('chubaoFS.volume.Currentcapacity')">
-          <el-input type="text" v-model="editVolumeForm.capacity" disabled></el-input>
+          <el-input
+            type="text"
+            v-model="editVolumeForm.capacity"
+            disabled
+          ></el-input>
         </el-form-item>
         <el-form-item :label="$t('chubaoFS.volume.Extendto')">
           <el-input type="text" v-model="extendCapacity"></el-input>
         </el-form-item>
       </el-form>
       <span slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="closeDialog('extend')">{{$t('chubaoFS.tools.Cancel')}}</el-button>
-        <el-button type="primary" @click="extendVolume">{{$t('chubaoFS.tools.Extend')}}</el-button>
+        <el-button type="primary" @click="closeDialog('extend')">{{
+          $t("chubaoFS.tools.Cancel")
+        }}</el-button>
+        <el-button type="primary" @click="extendVolume">{{
+          $t("chubaoFS.tools.Extend")
+        }}</el-button>
       </span>
     </el-dialog>
     <!-- Permission of Volume_Spark -->
@@ -223,28 +359,32 @@
       :visible.sync="permissionDialog"
       width="35%"
     >
-      <el-button
-        type="primary"
-        @click="openGrantPermission"
-      >{{$t('chubaoFS.volume.GrantPermission')}}
+      <el-button type="primary" @click="openGrantPermission"
+        >{{ $t("chubaoFS.volume.GrantPermission") }}
       </el-button>
       <el-table :data="permissionList" class="mt10" style="width: 100%">
         <el-table-column type="index" label="#"></el-table-column>
-        <el-table-column prop="userID" :label="$t('chubaoFS.commonAttr.UserName')"></el-table-column>
-        <el-table-column prop="access" :label="$t('chubaoFS.tools.Access')"></el-table-column>
+        <el-table-column
+          prop="userID"
+          :label="$t('chubaoFS.commonAttr.UserName')"
+        ></el-table-column>
+        <el-table-column
+          prop="access"
+          :label="$t('chubaoFS.tools.Access')"
+        ></el-table-column>
         <el-table-column prop :label="$t('chubaoFS.tools.Operations')">
           <template slot-scope="scope">
             <el-button
               type="text"
               class="text-btn"
               @click="openEditPermission(scope.row)"
-            >{{$t('chubaoFS.tools.Edit')}}
+              >{{ $t("chubaoFS.tools.Edit") }}
             </el-button>
             <el-button
               type="text"
               class="text-btn"
               @click="deletePermission(scope.row)"
-            >{{$t('chubaoFS.tools.Remove')}}
+              >{{ $t("chubaoFS.tools.Remove") }}
             </el-button>
           </template>
         </el-table-column>
@@ -263,21 +403,32 @@
         :model="grantPermissionForm"
         :rules="permissionRules"
       >
-        <el-form-item :label="$t('chubaoFS.commonAttr.UserName')" prop="userName">
+        <el-form-item
+          :label="$t('chubaoFS.commonAttr.UserName')"
+          prop="userName"
+        >
           <el-input v-model="grantPermissionForm.userName"></el-input>
         </el-form-item>
         <el-form-item :label="$t('chubaoFS.tools.Access')" prop="access">
           <el-select v-model="grantPermissionForm.access" style="width: 100%;">
-            <el-option v-for="item in accessList" :value="item" :label="item" :key="item"></el-option>
+            <el-option
+              v-for="item in accessList"
+              :value="item"
+              :label="item"
+              :key="item"
+            ></el-option>
           </el-select>
         </el-form-item>
       </el-form>
       <span slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="closeDialog('grantPer')">{{ $t('chubaoFS.tools.No') }}</el-button>
+        <el-button type="primary" @click="closeDialog('grantPer')">{{
+          $t("chubaoFS.tools.No")
+        }}</el-button>
         <el-button
           type="primary"
           @click="grantPermission('grantPermissionForm')"
-        >{{ $t('chubaoFS.tools.Yes') }}</el-button>
+          >{{ $t("chubaoFS.tools.Yes") }}</el-button
+        >
       </span>
     </el-dialog>
     <!-- Edit Permission -->
@@ -291,18 +442,30 @@
         ref="grantPermissionForm"
         :model="editPermissionForm"
       >
-        <el-form-item :label="$t('chubaoFS.commonAttr.UserName')" prop="userName">
+        <el-form-item
+          :label="$t('chubaoFS.commonAttr.UserName')"
+          prop="userName"
+        >
           <el-input v-model="editPermissionForm.userID" disabled></el-input>
         </el-form-item>
         <el-form-item :label="$t('chubaoFS.tools.Access')" prop="access">
           <el-select v-model="editPermissionForm.access" style="width: 100%;">
-            <el-option v-for="(val,key) in accessList" :value="key" :label="val" :key="key"></el-option>
+            <el-option
+              v-for="(val, key) in accessList"
+              :value="key"
+              :label="val"
+              :key="key"
+            ></el-option>
           </el-select>
         </el-form-item>
       </el-form>
       <span slot="footer" class="dialog-footer">
-        <el-button type="primary" @click="closeDialog('editPer')">{{ $t('chubaoFS.tools.No') }}</el-button>
-        <el-button type="primary" @click="editPermission">{{ $t('chubaoFS.tools.Yes') }}</el-button>
+        <el-button type="primary" @click="closeDialog('editPer')">{{
+          $t("chubaoFS.tools.No")
+        }}</el-button>
+        <el-button type="primary" @click="editPermission">{{
+          $t("chubaoFS.tools.Yes")
+        }}</el-button>
       </span>
     </el-dialog>
   </div>
@@ -310,7 +473,7 @@
 
 <script>
 import baseGql from "../../graphql/volume";
-import {date2Str, time2Str} from "../../utils/dateTime.js";
+import { date2Str, time2Str } from "../../utils/dateTime.js";
 
 export default {
   name: "volumeList",
@@ -325,9 +488,9 @@ export default {
           pageNo: 1,
           pageSize: 10,
           totalRecord: 0,
-          totalPage: 1,
+          totalPage: 1
         },
-        resLists: [],
+        resLists: []
       },
       volumeList: [],
       accessKey: "",
@@ -349,7 +512,7 @@ export default {
         dpReplicaNum: null,
         owner: "",
         zoneName: "",
-        notes: "",
+        notes: ""
       },
       userID: null,
       dpReplicaNumList: ["2", "3"],
@@ -359,22 +522,22 @@ export default {
           {
             required: true,
             message: this.$t("chubaoFS.volume.dpReplicaNumMsg"),
-            trigger: "change",
-          },
+            trigger: "change"
+          }
         ],
         notes: [
           {
             required: true,
             message: this.$t("chubaoFS.volume.notesMsg"),
-            trigger: "blur",
-          },
-        ],
+            trigger: "blur"
+          }
+        ]
       },
       permissionList: [],
       editRow: {},
       grantPermissionForm: {
         userName: "",
-        access: "",
+        access: ""
       },
       editPermissionForm: {},
       volName: "",
@@ -384,20 +547,20 @@ export default {
           {
             required: true,
             message: this.$t("chubaoFS.volume.userNameMsg"),
-            trigger: "blur",
-          },
+            trigger: "blur"
+          }
         ],
         access: [
           {
             required: true,
             message: this.$t("chubaoFS.volume.accessMsg"),
-            trigger: "change",
-          },
-        ],
+            trigger: "change"
+          }
+        ]
       },
       permissionItem: null,
       description: "",
-      desContent: "",
+      desContent: ""
     };
   },
   methods: {
@@ -414,17 +577,17 @@ export default {
     },
     getUserInfo() {
       const variables = {
-        userID: this.userID,
+        userID: this.userID
       };
       this.apollo
         .query(this.url.user, baseGql.getUserInfo, variables)
-        .then((res) => {
+        .then(res => {
           if (res) {
             this.accessKey = res.data.getUserInfo.access_key;
             this.secretKey = res.data.getUserInfo.secret_key;
           }
         })
-        .catch((error) => {
+        .catch(error => {
           this.resData.loading = false;
           this.$Message.error(error);
         });
@@ -434,16 +597,16 @@ export default {
       const variables = {
         keyword: "",
         userID: this.userID,
-        num: 10000,
+        num: 10000
       };
       this.apollo
         .query(this.url.volume, baseGql.queryVolumeList, variables)
-        .then((res) => {
+        .then(res => {
           this.resData.loading = false;
           if (res.data) {
             let finalVolumeInfo = [];
             if (this.searchVal && this.searchVal.trim() !== "") {
-              res.data.listVolume.forEach((user) => {
+              res.data.listVolume.forEach(user => {
                 if (user.name.indexOf(this.searchVal.trim()) > -1) {
                   finalVolumeInfo.push(user);
                 }
@@ -452,14 +615,14 @@ export default {
               finalVolumeInfo = res.data.listVolume;
             }
             // 按创建时间倒序排列
-            finalVolumeInfo.sort(function (a, b) {
+            finalVolumeInfo.sort(function(a, b) {
               return b.createTime - a.createTime;
             });
             this.volumeList = finalVolumeInfo;
             this.resData.page.totalRecord = res.data.listVolume.length;
             this.handleCurrentChange(1);
             this.totalCapacity = 0;
-            this.volumeList.forEach((item) => {
+            this.volumeList.forEach(item => {
               this.totalCapacity += item.capacity;
               item.occupiedPercent =
                 (
@@ -481,13 +644,13 @@ export default {
             this.$message.error(res.message);
           }
         })
-        .catch((error) => {
+        .catch(error => {
           this.resData.loading = false;
           this.$Message.error(error);
         });
     },
     createVolume(formName) {
-      this.$refs[formName].validate((valid) => {
+      this.$refs[formName].validate(valid => {
         if (valid) {
           const variables = {
             authenticate: false,
@@ -501,17 +664,17 @@ export default {
             name: this.createVolumeForm.name,
             owner: this.userID,
             zoneName: this.createVolumeForm.zoneName,
-            description: this.createVolumeForm.notes,
+            description: this.createVolumeForm.notes
           };
           this.apollo
             .mutation(this.url.volume, baseGql.createVolume, variables)
-            .then((res) => {
+            .then(res => {
               if (res.code === 200) {
                 this.createVolumeDialog = false;
                 this.queryVolumeList();
                 this.$message({
                   message: this.$t("chubaoFS.message.Success"),
-                  type: "success",
+                  type: "success"
                 });
               } else {
                 this.$message.error(res.message);
@@ -524,24 +687,22 @@ export default {
     },
     updateVolume() {
       const variables = {
-        authKey: this.md5(this.editVolumeForm.owner),
-        name: this.editVolumeForm.name,
-        replicaNum: parseInt(this.editVolumeForm.dpReplicaNum),
-        description: this.desContent,
+        authKey: this.md5(this.editVolumeForm.owner)
       };
-      if (variables.replicaNum > this.editRow.dpReplicaNum) {
-        this.$message.error(this.$t("chubaoFS.volume.updateVolumeMsg"));
-        return;
-      }
+      Object.assign(variables, this.editVolumeForm);
+      // if (variables.replicaNum > this.editRow.dpReplicaNum) {
+      //   this.$message.error(this.$t("chubaoFS.volume.updateVolumeMsg"));
+      //   return;
+      // }
       this.apollo
         .mutation(this.url.volume, baseGql.updateVolume, variables)
-        .then((res) => {
+        .then(res => {
           if (res.code === 200) {
             this.queryVolumeList();
             this.editVolumeDialog = false;
             this.$message({
               message: this.$t("chubaoFS.message.Success"),
-              type: "success",
+              type: "success"
             });
           } else {
             this.$message.error(this.$t("chubaoFS.message.Error"));
@@ -552,7 +713,7 @@ export default {
       const variables = {
         authKey: this.md5(this.editVolumeForm.owner),
         name: this.editVolumeForm.name,
-        capacity: parseInt(this.extendCapacity),
+        capacity: parseInt(this.extendCapacity)
       };
       if (variables.capacity < this.editVolumeForm.capacity) {
         const extendVolumeError = this.$t(
@@ -566,14 +727,14 @@ export default {
       }
       this.apollo
         .mutation(this.url.volume, baseGql.updateVolume, variables)
-        .then((res) => {
+        .then(res => {
           if (res.code === 200) {
             this.queryVolumeList();
             this.extendCapacity = null;
             this.volumeExtensionDialog = false;
             this.$message({
               message: this.$t("chubaoFS.message.Success"),
-              type: "success",
+              type: "success"
             });
           } else {
             this.$message.error(res.message);
@@ -583,74 +744,73 @@ export default {
     deleteVolume(row) {
       const variables = {
         authKey: this.md5(row.owner),
-        name: row.name,
+        name: row.name
       };
       this.$confirm(
         this.$t("chubaoFS.operations.VolumeManagement.deleteVolTip") +
-        " " +
-        row.name +
-        "?",
+          " " +
+          row.name +
+          "?",
         this.$t("chubaoFS.tools.Warning"),
         {
           confirmButtonText: this.$t("chubaoFS.tools.Yes"),
           cancelButtonText: this.$t("chubaoFS.tools.No"),
-          type: "warning",
+          type: "warning"
         }
       )
         .then(() => {
           this.apollo
             .mutation(this.url.volume, baseGql.deleteVolume, variables)
-            .then((res) => {
+            .then(res => {
               if (res.code === 200) {
                 this.queryVolumeList();
                 this.$message({
                   message: this.$t("chubaoFS.message.Success"),
-                  type: "success",
+                  type: "success"
                 });
               } else {
                 this.$message.error(this.$t("chubaoFS.message.Error"));
               }
             });
         })
-        .catch(() => {
-        });
+        .catch(() => {});
     },
     queryPermissionList() {
       this.resData.loading = true;
       const variables = {
         volName: this.permissionItem.name,
-        userID: this.permissionItem.owner,
+        userID: this.permissionItem.owner
       };
       this.apollo
         .query(this.url.volume, baseGql.queryPermissionList, variables)
-        .then((res) => {
+        .then(res => {
           this.resData.loading = false;
           if (res) {
             this.permissionList = res.data.volPermission;
           }
         })
-        .catch((error) => {
+        .catch(error => {
           this.resData.loading = false;
           this.$Message.error(error);
         });
     },
     grantPermission(formName) {
-      this.$refs[formName].validate((valid) => {
+      this.$refs[formName].validate(valid => {
         if (valid) {
           const variables = {
             policy: [this.grantPermissionForm.access],
             userID: this.grantPermissionForm.userName,
-            volume: this.permissionItem.name,
+            volume: this.permissionItem.name
           };
           this.apollo
             .mutation(this.url.user, baseGql.grantPermission, variables)
-            .then((res) => {
+            .then(res => {
               if (res.code === 200) {
                 this.grantPermissionDialog = false;
                 this.queryPermissionList();
                 this.$message({
                   message: this.$t("chubaoFS.message.Success"),
-                  type: "success",
+                  type: "success"
                 });
               } else {
                 this.$message.error(res.message);
@@ -665,17 +825,17 @@ export default {
       const variables = {
         policy: [this.editPermissionForm.access],
         userID: this.editPermissionForm.userID,
-        volume: this.permissionItem.name,
+        volume: this.permissionItem.name
       };
       this.apollo
         .mutation(this.url.user, baseGql.grantPermission, variables)
-        .then((res) => {
+        .then(res => {
           if (res.code === 200) {
             this.editPermissionDialog = false;
             this.queryPermissionList();
             this.$message({
               message: this.$t("chubaoFS.message.Success"),
-              type: "success",
+              type: "success"
             });
           } else {
             this.$message.error(res.message);
@@ -685,7 +845,7 @@ export default {
     deletePermission(row) {
       const variables = {
         userID: row.userID,
-        volume: this.permissionItem.name,
+        volume: this.permissionItem.name
       };
       this.$confirm(
         this.$t("chubaoFS.operations.VolumeManagement.deletePermTip"),
@@ -693,26 +853,25 @@ export default {
         {
           confirmButtonText: this.$t("chubaoFS.tools.Yes"),
           cancelButtonText: this.$t("chubaoFS.tools.No"),
-          type: "warning",
+          type: "warning"
         }
       )
         .then(() => {
           this.apollo
             .mutation(this.url.user, baseGql.deletePermission, variables)
-            .then((res) => {
+            .then(res => {
               if (res.code === 200) {
                 this.queryPermissionList();
                 this.$message({
                   message: this.$t("chubaoFS.message.Success"),
-                  type: "success",
+                  type: "success"
                 });
               } else {
                 this.$message.error(res.message);
               }
             });
         })
-        .catch(() => {
-        });
+        .catch(() => {});
     },
     openGrantPermission() {
       this.grantPermissionDialog = true;
@@ -722,14 +881,41 @@ export default {
       this.editPermissionForm = Object.assign({}, row);
       this.editPermissionForm.access = this.editPermissionForm.access.join(",");
     },
+    goDepot(row) {
+      this.$router.push({
+        name: "depot",
+        query: {
+          volumeName: row.name
+        }
+      });
+    },
     // 页面所有路由跳转
     goDetail(row) {
       this.$router.push({
         name: "volumeDetail",
         query: {
-          volumeName: row.name,
-        },
+          volumeName: row.name
+        }
       });
+    },
+    queryVolume(name) {
+      const variables = {
+        name: name
+      };
+
+      this.apollo
+        .query(this.url.volume, baseGql.getVolume, variables)
+        .then(res => {
+          if (res.data) {
+            this.editVolumeForm = res.data.getVolume.toSimpleVolView;
+          } else {
+            this.$message.error(res.message);
+          }
+        })
+        .catch(error => {
+          this.resData.loading = false;
+          this.$Message.error(error);
+        });
     },
     openDialog(tag, row) {
       if (tag === "accessKeys") {
@@ -744,6 +930,7 @@ export default {
         this.editVolumeForm = Object.assign({}, row);
         this.desContent = this.editVolumeForm.toSimpleVolView.description;
         this.editRow = row;
+        this.queryVolume(row.name);
       }
       if (tag === "notes") {
         this.notesDialog = true;
@@ -756,6 +943,11 @@ export default {
       }
       if (tag === "permission") {
         this.permissionDialog = true;
+        this.permissionItem = row;
+        this.queryPermissionList();
+      }
+      if (tag === "depot") {
+        this.depotDialog = true;
         this.permissionItem = row;
         this.queryPermissionList();
       }
@@ -809,12 +1001,12 @@ export default {
       } else {
         callback();
       }
-    },
+    }
   },
   mounted() {
     this.userID = sessionStorage.getItem("access_userID");
     this.queryVolumeList();
-  },
+  }
 };
 </script>
 

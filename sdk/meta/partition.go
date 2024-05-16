@@ -54,7 +54,6 @@ func (mp *MetaPartition) GetLeaderAddr() string {
 	return str
 }
 
-
 func (mw *MetaWrapper) ClearRWPartitions() {
 	mw.RLock()
 	defer mw.RUnlock()
@@ -104,6 +103,10 @@ func (mw *MetaWrapper) getPartitionByIDWithAutoRefresh(id uint64) *MetaPartition
 		mp = mw.getPartitionByID(id)
 	}
 	return mp
+}
+
+func (mw *MetaWrapper) GetPartitionByInode(ino uint64) *MetaPartition {
+	return mw.getPartitionByInode(context.Background(), ino)
 }
 
 func (mw *MetaWrapper) getPartitionByInode(ctx context.Context, ino uint64) *MetaPartition {

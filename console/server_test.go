@@ -43,7 +43,7 @@ func TestServer(t *testing.T) {
 
 	// start console server
 	cfg = config.LoadConfigString(`{
-		"role": "master",
+		"role": "console",
 		"listen": "8989",
 		"masterAddr": ["127.0.0.1:8080"],
 		"monitor_addr" :"http://cfsthanos-yf01.cfsmon.svc.zyx02.n.jd.local",

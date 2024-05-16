@@ -7,60 +7,119 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/cubefs/cubefs/console/cutil"
+	"github.com/cubefs/cubefs/console/model"
+	"github.com/cubefs/cubefs/console/service/file"
 	. "github.com/cubefs/cubefs/objectnode"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/graphql/client"
-	"github.com/cubefs/cubefs/sdk/graphql/client/user"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
 
 type FileService struct {
-	userClient *user.UserClient
-	manager    *VolumeManager
-	objectNode string
+	objectManager *file.ObjectManager // 文件列表管理
+	trashManager  *file.TrashManager  // 回收站管理
 }
 
-func NewFileService(objectNode string, masters []string, mc *client.MasterGClient) *FileService {
+func NewFileService(clusters []*model.ConsoleCluster) *FileService {
 	return &FileService{
-		manager:    NewVolumeManager(masters, true),
-		userClient: &user.UserClient{mc},
-		objectNode: objectNode,
+		objectManager: file.NewObjectManager(clusters),
+		trashManager:  file.NewTrashManager(clusters),
 	}
 }
 
-func (fs *FileService) empty(ctx context.Context, args struct {
-	Empty bool
-}) (bool, error) {
+func (fs *FileService) Schema() *graphql.Schema {
+	schema := schemabuilder.NewSchema()
 
-	vol := "test"
+	fs.registerObject(schema)
+	fs.registerQuery(schema)
+	fs.registerMutation(schema)
+	return schema.MustBuild()
+}
 
-	userInfo, err := fs.userClient.GetUserInfoForLogin(ctx, "root")
-	if err != nil {
-		return false, err
-	} else {
-
-		policy := userInfo.Policy
-
-		v := ""
-
-		for _, ov := range policy.Own_vols {
-			v = v + " " + ov + " " + vol + ","
-			v = fmt.Sprintf(v+", {}", ov == vol)
+func (fs *FileService) registerObject(schema *schemabuilder.Schema) {
+	object := schema.Object("FSFileInfo", FSFileInfo{})
+	object.FieldFunc("FSFileInfo", func(f *FSFileInfo) []*KeyValue {
+		list := make([]*KeyValue, 0, len(f.Metadata))
+		for k, v := range f.Metadata {
+			list = append(list, &KeyValue{Key: k, Value: v})
 		}
+		return list
+	})
+}
 
-		return false, fmt.Errorf("%v , [%v] , [%v] , [%v]", userInfo.Policy.Own_vols, userInfo.User_id, fs.userVolPerm(ctx, "root", "test"), v)
+func (fs *FileService) registerQuery(schema *schemabuilder.Schema) {
+	query := schema.Query()
+
+	query.FieldFunc("fileMeta", fs.fileMeta)
+	query.FieldFunc("listFile", fs.listFile)
+	query.FieldFunc("listTrash", fs.listTrash)
+}
+
+func (fs *FileService) registerMutation(schema *schemabuilder.Schema) {
+	mutation := schema.Mutation()
+
+	mutation.FieldFunc("signURL", fs.signURL)
+	mutation.FieldFunc("createDir", fs.createDir)
+	mutation.FieldFunc("deleteDir", fs.deleteDir)
+	mutation.FieldFunc("deleteFile", fs.deleteFile)
+	mutation.FieldFunc("recoverPath", fs.recoverPath)
+	mutation.FieldFunc("clearTrash", fs.clearTrash)
+}
+
+type volPerm int
+
+const (
+	none volPerm = iota
+	read
+	write
+)
+
+func (v volPerm) read() error {
+	if v < read {
+		return fmt.Errorf("do not have permission read")
+	}
+	return nil
+}
+
+func (v volPerm) write() error {
+	if v < write {
+		return fmt.Errorf("do not have permission write")
+	}
+	return nil
+}
+
+func (fs *FileService) fileMeta(ctx context.Context, args struct {
+	VolName string
+	Path    string
+}) (info *FSFileInfo, err error) {
+
+	userInfo, _, err := permissions(ctx, USER|ADMIN)
+	if err != nil {
+		return nil, err
 	}
 
-	return args.Empty, nil
+	if err := fs.userVolPerm(ctx, userInfo.UserID, args.VolName).read(); err != nil {
+		return nil, err
+	}
+
+	manager, err := fs.objectManager.GetVolManager(cutil.GlobalCluster)
+	if err != nil {
+		return nil, err
+	}
+
+	volume, err := manager.Volume(args.VolName)
+	if err != nil {
+		return nil, err
+	}
+	return volume.FileInfo(args.Path, false)
 }
 
 type ListFileInfo struct {
@@ -79,11 +138,14 @@ func (fs *FileService) listFile(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	if err := fs.userVolPerm(ctx, userInfo.User_id, args.VolName).read(); err != nil {
+	if err := fs.userVolPerm(ctx, userInfo.UserID, args.VolName).read(); err != nil {
 		return nil, err
 	}
-
-	volume, err := fs.manager.Volume(args.VolName)
+	manager, err := fs.objectManager.GetVolManager(cutil.GlobalCluster)
+	if err != nil {
+		return nil, err
+	}
+	volume, err := manager.Volume(args.VolName)
 	if err != nil {
 		return nil, err
 	}
@@ -102,6 +164,82 @@ func (fs *FileService) listFile(ctx context.Context, args struct {
 	}, err
 }
 
+type TrashListResponse struct {
+	Dentry        []proto.Dentry
+	DeletedDentry []*proto.DeletedDentry
+}
+
+func (fs *FileService) listTrash(ctx context.Context, args struct {
+	Volume string
+	Path   string
+	Inode  uint64
+}) (*TrashListResponse, error) {
+	task := &file.TrashTask{
+		Cluster: cutil.GlobalCluster,
+		Volume:  args.Volume,
+		Path:    args.Path,
+		Inode:   args.Inode,
+	}
+	var (
+		dentrys  []proto.Dentry
+		ddentrys []*proto.DeletedDentry
+		err      error
+	)
+	wg := sync.WaitGroup{}
+	wg.Add(2)
+	go func() {
+		ddentrys, err = fs.trashManager.ListTrashTaskHandler(task)
+		wg.Done()
+	}()
+	go func() {
+		dentrys, err = fs.trashManager.ListDirTaskHandler(task)
+		wg.Done()
+	}()
+	wg.Wait()
+
+	if err != nil {
+		return nil, err
+	}
+	return &TrashListResponse{
+		Dentry:        dentrys,
+		DeletedDentry: ddentrys,
+	}, nil
+
+}
+
+func (fs *FileService) recoverPath(ctx context.Context, args struct {
+	Volume string
+	Path   string
+}) error {
+	req := &file.TrashTask{
+		Cluster: cutil.GlobalCluster,
+		Volume:  args.Volume,
+		Path:    args.Path,
+	}
+	isSuccess, err := fs.trashManager.RecoverTaskHandler(req)
+	if err != nil || !isSuccess {
+		return err
+	}
+	return nil
+}
+
+func (fs *FileService) clearTrash(ctx context.Context, args struct {
+	Volume string
+}) error {
+	req := &file.TrashTask{
+		TaskType: file.CleanTrash,
+		Cluster:  cutil.GlobalCluster,
+		Volume:   args.Volume,
+	}
+	//异步
+	fs.trashManager.PutToTaskChan(req)
+	//isSuccess, err := fs.trashManager.CleanTrashTaskHandler(req)
+	//if err != nil || !isSuccess {
+	//	return nil, err
+	//}
+	return nil
+}
+
 func (fs *FileService) createDir(ctx context.Context, args struct {
 	VolName string
 	Path    string
@@ -112,11 +250,15 @@ func (fs *FileService) createDir(ctx context.Context, args struct {
 		return nil, err
 	}
 
-	if err := fs.userVolPerm(ctx, userInfo.User_id, args.VolName).write(); err != nil {
+	if err = fs.userVolPerm(ctx, userInfo.UserID, args.VolName).write(); err != nil {
 		return nil, err
 	}
 
-	volume, err := fs.manager.Volume(args.VolName)
+	manager, err := fs.objectManager.GetVolManager(cutil.GlobalCluster)
+	if err != nil {
+		return nil, err
+	}
+	volume, err := manager.Volume(args.VolName)
 	if err != nil {
 		return nil, err
 	}
@@ -131,31 +273,35 @@ func (fs *FileService) createDir(ctx context.Context, args struct {
 func (fs *FileService) deleteDir(ctx context.Context, args struct {
 	VolName string
 	Path    string
-}) (*proto.GeneralResp, error) {
+}) (err error) {
 
 	userInfo, _, err := permissions(ctx, USER|ADMIN)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	if err := fs.userVolPerm(ctx, userInfo.User_id, args.VolName).write(); err != nil {
-		return nil, err
+	if err = fs.userVolPerm(ctx, userInfo.UserID, args.VolName).write(); err != nil {
+		return
 	}
 
-	volume, err := fs.manager.Volume(args.VolName)
+	manager, err := fs.objectManager.GetVolManager(cutil.GlobalCluster)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	if err := _deleteDir(ctx, volume, args.Path, ""); err != nil {
-		return nil, err
+	volume, err := manager.Volume(args.VolName)
+	if err != nil {
+		return
 	}
 
-	if err := volume.DeletePath(args.Path + "/"); err != nil {
-		return nil, err
+	if err = _deleteDir(ctx, volume, args.Path, ""); err != nil {
+		return
 	}
 
-	return proto.Success("success"), nil
+	if err = volume.DeletePath(args.Path + "/"); err != nil {
+		return
+	}
+	return nil
 }
 
 func _deleteDir(ctx context.Context, volume *Volume, path string, marker string) error {
@@ -204,85 +350,73 @@ func _deleteDir(ctx context.Context, volume *Volume, path string, marker string)
 func (fs *FileService) deleteFile(ctx context.Context, args struct {
 	VolName string
 	Path    string
-}) (*proto.GeneralResp, error) {
+}) (err error) {
 
 	userInfo, _, err := permissions(ctx, USER|ADMIN)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	if err := fs.userVolPerm(ctx, userInfo.User_id, args.VolName).write(); err != nil {
-		return nil, err
+	if err = fs.userVolPerm(ctx, userInfo.UserID, args.VolName).write(); err != nil {
+		return
 	}
 
-	volume, err := fs.manager.Volume(args.VolName)
+	manager, err := fs.objectManager.GetVolManager(cutil.GlobalCluster)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	if err := volume.DeletePath(args.Path); err != nil {
-		return nil, err
-	}
-
-	return proto.Success("success"), nil
-}
-
-func (fs *FileService) fileMeta(ctx context.Context, args struct {
-	VolName string
-	Path    string
-}) (info *FSFileInfo, err error) {
-
-	userInfo, _, err := permissions(ctx, USER|ADMIN)
+	volume, err := manager.Volume(args.VolName)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	if err := fs.userVolPerm(ctx, userInfo.User_id, args.VolName).read(); err != nil {
-		return nil, err
-	}
-
-	volume, err := fs.manager.Volume(args.VolName)
-	if err != nil {
-		return nil, err
-	}
-	return volume.FileInfo(args.Path, false)
+	err = volume.DeletePath(args.Path)
+	return
 }
 
 func (fs *FileService) signURL(ctx context.Context, args struct {
 	VolName       string
 	Path          string
 	ExpireMinutes int64
-}) (*proto.GeneralResp, error) {
+}) (link string, err error) {
+
+	endPoint, err := fs.objectManager.GetS3EndPoint(cutil.GlobalCluster)
+	if err != nil {
+		return
+	}
+
 	if args.Path == "" || args.ExpireMinutes <= 0 || args.VolName == "" {
-		return nil, fmt.Errorf("param has err")
+		return "", fmt.Errorf("param has err")
 	}
 
 	userInfo, _, err := permissions(ctx, USER|ADMIN)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	if err := fs.userVolPerm(ctx, userInfo.User_id, args.VolName).read(); err != nil {
-		return nil, err
+	if err = fs.userVolPerm(ctx, userInfo.UserID, args.VolName).read(); err != nil {
+		return
 	}
 
-	sess := session.Must(session.NewSession())
-	var ac = aws.NewConfig()
-	ac.Endpoint = aws.String(fs.objectNode)
-	ac.DisableSSL = aws.Bool(true)
-	ac.Region = aws.String("default")
-	ac.Credentials = credentials.NewStaticCredentials(userInfo.Access_key, userInfo.Secret_key, "")
-	ac.S3ForcePathStyle = aws.Bool(true)
-	s3Svc := s3.New(sess, ac)
-	request, _ := s3Svc.GetObjectRequest(&s3.GetObjectInput{
+	sdkConfig := aws.NewConfig()
+	sdkConfig.BaseEndpoint = aws.String(endPoint)
+	sdkConfig.Credentials = aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(userInfo.AccessKey, userInfo.SecretKey, ""))
+	s3Client := s3.NewFromConfig(*sdkConfig)
+	presignerClient := s3.NewPresignClient(s3Client)
+	request, err := presignerClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(args.VolName),
 		Key:    aws.String(args.Path),
+	}, func(opts *s3.PresignOptions) {
+		opts.Expires = time.Duration(args.ExpireMinutes) * time.Minute
 	})
-	u, _, err := request.PresignRequest(time.Duration(args.ExpireMinutes) * time.Minute)
-	return proto.Success(u), err
+	if err != nil {
+		return "", err
+	}
+	return request.URL, nil
 }
 
-//?vol_name=abc&path=/aaa/bbb/ddd.txt
+// ?vol_name=abc&path=/aaa/bbb/ddd.txt
 func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Request) error {
 	if err := request.ParseForm(); err != nil {
 		return err
@@ -297,7 +431,7 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 	if err != nil {
 		return err
 	}
-	ctx := context.WithValue(request.Context(), proto.UserKey, info.User_id)
+	ctx := context.WithValue(request.Context(), proto.UserKey, info.UserID)
 
 	volNames := request.Form["vol_name"]
 	var volName string
@@ -308,7 +442,7 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 	}
 
 	//author validate
-	if err := fs.userVolPerm(ctx, info.User_id, volName).read(); err != nil {
+	if err := fs.userVolPerm(ctx, info.UserID, volName).read(); err != nil {
 		return fmt.Errorf("the user does not have permission to access this volume")
 	}
 
@@ -320,7 +454,12 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 		return fmt.Errorf("not found path in get param ?path=[your path]")
 	}
 
-	volume, err := fs.manager.Volume(volName)
+	manager, err := fs.objectManager.GetVolManager(cutil.GlobalCluster)
+	if err != nil {
+		return err
+	}
+
+	volume, err := manager.Volume(volName)
 	if err != nil {
 		return err
 	}
@@ -344,7 +483,7 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 	return nil
 }
 
-//?vol_name=abc&path=/aaa/bbb/ddd.txt {file}
+// ?vol_name=abc&path=/aaa/bbb/ddd.txt {file}
 func (fs *FileService) UpLoadFile(writer http.ResponseWriter, request *http.Request) error {
 	if err := request.ParseForm(); err != nil {
 		return err
@@ -359,7 +498,7 @@ func (fs *FileService) UpLoadFile(writer http.ResponseWriter, request *http.Requ
 	if err != nil {
 		return err
 	}
-	ctx := context.WithValue(request.Context(), proto.UserKey, info.User_id)
+	ctx := context.WithValue(request.Context(), proto.UserKey, info.UserID)
 
 	volNames := request.Form["vol_name"]
 	var volName string
@@ -370,8 +509,8 @@ func (fs *FileService) UpLoadFile(writer http.ResponseWriter, request *http.Requ
 	}
 
 	//author validate
-	if err := fs.userVolPerm(ctx, info.User_id, volName).write(); err != nil {
-		return fmt.Errorf("the user:[%s] does not have permission to access this volume:[%s]", info.User_id, volName)
+	if err := fs.userVolPerm(ctx, info.UserID, volName).write(); err != nil {
+		return fmt.Errorf("the user:[%s] does not have permission to access this volume:[%s]", info.UserID, volName)
 	}
 
 	var path string
@@ -382,7 +521,11 @@ func (fs *FileService) UpLoadFile(writer http.ResponseWriter, request *http.Requ
 		return fmt.Errorf("not found path in get param ?path=[your path]")
 	}
 
-	volume, err := fs.manager.Volume(volName)
+	manager, err := fs.objectManager.GetVolManager(cutil.GlobalCluster)
+	if err != nil {
+		return err
+	}
+	volume, err := manager.Volume(volName)
 	if err != nil {
 		return err
 	}
@@ -421,55 +564,10 @@ type KeyValue struct {
 	Value string
 }
 
-func (fs *FileService) Schema() *graphql.Schema {
-	schema := schemabuilder.NewSchema()
-	query := schema.Query()
-	query.FieldFunc("fileMeta", fs.fileMeta)
-	query.FieldFunc("listFile", fs.listFile)
-	query.FieldFunc("_empty", fs.empty)
-
-	mutation := schema.Mutation()
-	mutation.FieldFunc("deleteFile", fs.deleteFile)
-	mutation.FieldFunc("createDir", fs.createDir)
-	mutation.FieldFunc("signURL", fs.signURL)
-	mutation.FieldFunc("deleteDir", fs.deleteDir)
-
-	object := schema.Object("FSFileInfo", FSFileInfo{})
-
-	object.FieldFunc("FSFileInfo", func(f *FSFileInfo) []*KeyValue {
-		list := make([]*KeyValue, 0, len(f.Metadata))
-		for k, v := range f.Metadata {
-			list = append(list, &KeyValue{Key: k, Value: v})
-		}
-		return list
-	})
-
-	return schema.MustBuild()
-}
-
-type volPerm int
-
-var none = volPerm(0)
-var read = volPerm(1)
-var write = volPerm(2)
-
-func (v volPerm) read() error {
-	if v < read {
-		return fmt.Errorf("do not have permission read")
-	}
-	return nil
-}
-
-func (v volPerm) write() error {
-	if v < write {
-		return fmt.Errorf("do not have permission write")
-	}
-	return nil
-}
-
 func (fs *FileService) userVolPerm(ctx context.Context, userID string, vol string) volPerm {
+	userClient := fs.objectManager.GetUserClient(cutil.GlobalCluster)
 
-	userInfo, err := fs.userClient.GetUserInfoForLogin(ctx, userID)
+	userInfo, err := userClient.UserAPI().GetUserInfo(userID)
 	if err != nil {
 		log.LogErrorf("found user by id:[%s] has err:[%s]", userID, err.Error())
 		return none
@@ -477,7 +575,7 @@ func (fs *FileService) userVolPerm(ctx context.Context, userID string, vol strin
 
 	policy := userInfo.Policy
 
-	for _, ov := range policy.Own_vols {
+	for _, ov := range policy.OwnVols {
 		if ov == vol {
 			return write
 		}
@@ -485,9 +583,9 @@ func (fs *FileService) userVolPerm(ctx context.Context, userID string, vol strin
 
 	pm := none
 
-	for _, av := range policy.AuthorizedVols {
-		if av.Vol == vol {
-			for _, a := range av.Authorized {
+	for av, authorized := range policy.AuthorizedVols {
+		if av == vol {
+			for _, a := range authorized {
 				if strings.Contains(a, "ReadOnly") {
 					if pm < read {
 						pm = read

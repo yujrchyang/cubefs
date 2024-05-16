@@ -25,9 +25,11 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	pb "github.com/gogo/protobuf/proto"
 )
+
 const (
 	AuthFileName = ".clusterAuth_"
 )
+
 type NodeAPI struct {
 	mc *MasterClient
 }
@@ -40,7 +42,7 @@ type RegNodeInfoReq struct {
 	SrvPort  string
 }
 
-func getReqPathByRole(role string) string{
+func getReqPathByRole(role string) string {
 	switch role {
 	case proto.RoleData:
 		return proto.AddDataNode
@@ -52,7 +54,7 @@ func getReqPathByRole(role string) string{
 		return proto.AddEcNode
 	case proto.RoleFlash:
 		return proto.AddFlashNode
-	default :
+	default:
 		return ""
 	}
 	return ""
@@ -60,7 +62,7 @@ func getReqPathByRole(role string) string{
 
 func (api *NodeAPI) addRegParam(regInfo *RegNodeInfoReq, authKey, addr string, req *request) {
 	req.addParam("module", regInfo.Role)
-	req.addParam("addr", addr + ":" + regInfo.SrvPort)
+	req.addParam("addr", addr+":"+regInfo.SrvPort)
 	if regInfo.ZoneName != "" {
 		req.addParam("zoneName", regInfo.ZoneName)
 	}
@@ -79,7 +81,7 @@ func (api *NodeAPI) addRegParam(regInfo *RegNodeInfoReq, authKey, addr string, r
 
 }
 
-func (api *NodeAPI) buildNewRegReq(regInfo *RegNodeInfoReq, authKey, addr string) (req *request, err error){
+func (api *NodeAPI) buildNewRegReq(regInfo *RegNodeInfoReq, authKey, addr string) (req *request, err error) {
 	reqPath := getReqPathByRole(regInfo.Role)
 	if reqPath == "" {
 		err = fmt.Errorf("invalid para, role[%s] invalid", regInfo.Role)
@@ -91,7 +93,7 @@ func (api *NodeAPI) buildNewRegReq(regInfo *RegNodeInfoReq, authKey, addr string
 	return
 }
 
-func (api *NodeAPI) buildOldRegReq(regInfo *RegNodeInfoReq, authKey, addr string) (req *request, err error){
+func (api *NodeAPI) buildOldRegReq(regInfo *RegNodeInfoReq, authKey, addr string) (req *request, err error) {
 	reqPath := getReqPathByRole(regInfo.Role)
 	if reqPath == "" {
 		err = fmt.Errorf("invalid para, role[%s] invalid", regInfo.Role)
@@ -302,11 +304,11 @@ func (api *NodeAPI) DataNodeDecommission(nodeAddr string) (err error) {
 	return
 }
 
-func (api *NodeAPI) DataNodeDiskDecommission(nodeAddr, diskID string) (err error) {
+func (api *NodeAPI) DataNodeDiskDecommission(nodeAddr, diskID string, force bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.DecommissionDisk)
 	request.addParam("addr", nodeAddr)
 	request.addParam("disk", diskID)
-	request.addHeader("isTimeOut", "false")
+	request.addParam("force", strconv.FormatBool(force))
 	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

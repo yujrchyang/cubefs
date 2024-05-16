@@ -110,14 +110,6 @@ const (
 	AdminUserAPI    = "/api/user"
 	AdminVolumeAPI  = "/api/volume"
 
-	//graphql coonsole api
-	ConsoleIQL        = "/iql"
-	ConsoleLoginAPI   = "/login"
-	ConsoleMonitorAPI = "/cfs_monitor"
-	ConsoleFile       = "/file"
-	ConsoleFileDown   = "/file/down"
-	ConsoleFileUpload = "/file/upload"
-
 	// Client APIs
 	ClientDataPartitions             = "/client/partitions"
 	ClientVol                        = "/client/vol"
@@ -528,6 +520,10 @@ func (v *AtomicString) getString() string {
 		return str
 	}
 	return ""
+}
+
+func (v *AtomicString) ToString() string {
+	return v.getString()
 }
 
 type CompactTag uint8
