@@ -701,6 +701,21 @@ func (mw *MetaWrapper) GetExtents(ctx context.Context, inode uint64) (gen uint64
 	return gen, size, extents, nil
 }
 
+func (mw *MetaWrapper) GetExtentsNoModifyAccessTime(ctx context.Context, inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
+	mp := mw.getPartitionByInode(ctx, inode)
+	if mp == nil {
+		return 0, 0, nil, syscall.ENOENT
+	}
+
+	status, gen, size, extents, err := mw.getExtentsNoModifyAccessTime(ctx, mp, inode)
+	if err != nil || status != statusOK {
+		log.LogErrorf("GetExtentsNoModifyAccessTime: ino(%v) err(%v) status(%v)", inode, err, status)
+		return 0, 0, nil, statusToErrno(status)
+	}
+	log.LogDebugf("GetExtentsNoModifyAccessTime: ino(%v) gen(%v) size(%v)", inode, gen, size)
+	return gen, size, extents, nil
+}
+
 func (mw *MetaWrapper) Truncate(ctx context.Context, inode, oldSize, size uint64) error {
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
@@ -1072,30 +1087,13 @@ func (mw *MetaWrapper) XAttrsList_ll(ctx context.Context, inode uint64) ([]strin
 	return keys, nil
 }
 
-func (mw *MetaWrapper) GetExtentsWithMp(ctx context.Context, mpId uint64, inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
-
+func (mw *MetaWrapper) GetInodeExtents_ll(ctx context.Context, mpId uint64, inos []uint64, cnt int, minEkSize int, minInodeSize uint64, maxEkAvgSize uint64) ([]*proto.InodeExtents, error) {
 	mp := mw.getPartitionByID(mpId)
 	if mp == nil {
-		log.LogErrorf("GetCmpInode_ll: no such partition(%v)", mpId)
-		return 0, 0, nil, fmt.Errorf("no such partition(%v)", mpId)
-	}
-
-	status, gen, size, extents, err := mw.getExtents(ctx, mp, inode)
-	if err != nil || status != statusOK {
-		log.LogErrorf("GetExtents: ino(%v) err(%v) status(%v)", inode, err, status)
-		return 0, 0, nil, statusToErrno(status)
-	}
-	log.LogDebugf("GetExtents: ino(%v) gen(%v) size(%v)", inode, gen, size)
-	return gen, size, extents, nil
-}
-
-func (mw *MetaWrapper) GetCmpInode_ll(ctx context.Context, mpId uint64, inos []uint64, cnt int, minEkSize int, minInodeSize uint64, maxEkAvgSize uint64) ([]*proto.CmpInodeInfo, error) {
-	mp := mw.getPartitionByID(mpId)
-	if mp == nil {
-		log.LogErrorf("GetCmpInode_ll: no such partition(%v)", mpId)
+		log.LogErrorf("GetInodeExtents_ll: no such partition(%v)", mpId)
 		return nil, fmt.Errorf("no such partition(%v)", mpId)
 	}
-	inodes, err := mw.getCmpInodes(ctx, mp, inos, cnt, minEkSize, minInodeSize, maxEkAvgSize)
+	inodes, err := mw.getInodeExtents(ctx, mp, inos, cnt, minEkSize, minInodeSize, maxEkAvgSize)
 	if err != nil {
 		return nil, err
 	}
@@ -1103,13 +1101,13 @@ func (mw *MetaWrapper) GetCmpInode_ll(ctx context.Context, mpId uint64, inos []u
 	return inodes, nil
 }
 
-func (mw *MetaWrapper) InodeMergeExtents_ll(ctx context.Context, ino uint64, oldEks []proto.ExtentKey, newEks []proto.ExtentKey) error {
+func (mw *MetaWrapper) InodeMergeExtents_ll(ctx context.Context, ino uint64, oldEks []proto.ExtentKey, newEks []proto.ExtentKey, mergeType proto.MergeEkType) error {
 	mp := mw.getPartitionByInode(ctx, ino)
 	if mp == nil {
-		log.LogErrorf("GetCmpInode_ll: no such ino(%v)", ino)
+		log.LogErrorf("InodeMergeExtents_ll: no such ino(%v)", ino)
 		return fmt.Errorf("no such ino(%v)", ino)
 	}
-	err := mw.mergeInodeExtents(ctx, mp, ino, oldEks, newEks)
+	err := mw.mergeInodeExtents(ctx, mp, ino, oldEks, newEks, mergeType)
 	if err != nil {
 		return err
 	}

@@ -751,6 +751,46 @@ func CreateExtent(ctx context.Context, conn *net.TCPConn, inode uint64, dp *Data
 	return extID, replyPacket.ResultCode, nil
 }
 
+func LockExtent(ctx context.Context, conn *net.TCPConn, dp *DataPartition, extentKeys []proto.ExtentKey, lockTime int64) (err error) {
+	p := common.NewLockExtentPacket(ctx, dp.PartitionID, dp.GetAllHosts(), extentKeys, lockTime)
+	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
+		errors.Trace(err, "lockExtent: failed to WriteToConn, packet(%v) dataPartitionHosts(%v)", p, dp.Hosts[0])
+		return
+	}
+
+	if err = p.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
+		err = errors.Trace(err, "lockExtent: failed to ReadFromConn, packet(%v) dataPartitionHosts(%v)", p, dp.Hosts[0])
+		return
+	}
+
+	if p.ResultCode != proto.OpOk {
+		err = errors.New(fmt.Sprintf("lockExtent: ResultCode NOK, packet(%v) dataPartitionHost(%v) ResultCode(%v)",
+			p, dp.Hosts[0], p.GetResultMsg()))
+		return
+	}
+	return
+}
+
+func UnlockExtent(ctx context.Context, conn *net.TCPConn, dp *DataPartition, extentKeys []proto.ExtentKey) (err error) {
+	p := common.NewUnlockExtentPacket(ctx, dp.PartitionID, dp.GetAllHosts(), extentKeys)
+	if err = p.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
+		errors.Trace(err, "UnlockExtent: failed to WriteToConn, packet(%v) dataPartitionHosts(%v)", p, dp.Hosts[0])
+		return
+	}
+
+	if err = p.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
+		err = errors.Trace(err, "UnlockExtent: failed to ReadFromConn, packet(%v) dataPartitionHosts(%v)", p, dp.Hosts[0])
+		return
+	}
+
+	if p.ResultCode != proto.OpOk {
+		err = errors.New(fmt.Sprintf("UnlockExtent: ResultCode NOK, packet(%v) dataPartitionHost(%v) ResultCode(%v)",
+			p, dp.Hosts[0], p.GetResultMsg()))
+		return
+	}
+	return
+}
+
 // Handler lock is held by the caller.
 func (eh *ExtentHandler) flushPacket(ctx context.Context) {
 	if eh.packet == nil {

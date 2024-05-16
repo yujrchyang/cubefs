@@ -70,6 +70,7 @@ func NewRootCmd(client *master.MasterClient, cc *convert.ConvertClient) *ChubaoF
 		newCompactCmd(client),
 		newFlashGroupCommand(client),
 		newFlashNodeCommand(client),
+		newColdFileCmd(client),
 	)
 	return cmd
 }

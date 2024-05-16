@@ -62,7 +62,7 @@ func newCompactVolList(client *master.MasterClient) *cobra.Command {
 		Aliases: []string{"ls"},
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var compactVolumes []*proto.CompactVolume
+			var compactVolumes []*proto.DataMigVolume
 			compactVolumes, err = client.AdminAPI().ListCompactVolumes()
 			if err != nil {
 				errout("list all compacting volumes failed case:\n%v\n", err)
@@ -150,12 +150,12 @@ func newCompactBatchCloseCmd(client *master.MasterClient) *cobra.Command {
 				}
 			}
 
-			var compactVolumes []*proto.CompactVolume
+			var compactVolumes []*proto.DataMigVolume
 			compactVolumes, err = client.AdminAPI().ListCompactVolumes()
 			if err != nil {
 				errout("close compact listCompactVolumes failed case:\n%v\n", err)
 			}
-			var compactVolumesMap = make(map[string]*proto.CompactVolume, len(compactVolumes))
+			var compactVolumesMap = make(map[string]*proto.DataMigVolume, len(compactVolumes))
 			for _, cVolume := range compactVolumes {
 				compactVolumesMap[cVolume.Name] = cVolume
 			}
@@ -174,7 +174,7 @@ func newCompactBatchCloseCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				volNames := strings.Split(optVolName, ",")
 				for _, volName := range volNames {
-					var cVolume *proto.CompactVolume
+					var cVolume *proto.DataMigVolume
 					var ok bool
 					if cVolume, ok = compactVolumesMap[volName]; !ok {
 						setCompactMsg += fmt.Sprintf("Volume(%v) does not need to close compact.\n", volName)

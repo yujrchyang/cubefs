@@ -17,6 +17,7 @@ package data
 import (
 	"context"
 	"fmt"
+	"net"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -41,7 +42,7 @@ type GetExtentsFunc func(ctx context.Context, inode uint64) (uint64, uint64, []p
 type TruncateFunc func(ctx context.Context, inode, oldSize, size uint64) error
 type EvictIcacheFunc func(ctx context.Context, inode uint64)
 type PutIcacheFunc func(inodeInfo proto.InodeInfo)
-type InodeMergeExtentsFunc func(ctx context.Context, inode uint64, oldEks []proto.ExtentKey, newEk []proto.ExtentKey) error
+type InodeMergeExtentsFunc func(ctx context.Context, inode uint64, oldEks []proto.ExtentKey, newEk []proto.ExtentKey, mergeType proto.MergeEkType) error
 
 type ExtentClientType uint8
 const (
@@ -410,6 +411,85 @@ func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset 
 		ExtentOffset: 0,
 		FileOffset:   uint64(offset),
 		Size:         uint32(len(data)),
+	}
+	return
+}
+
+func (client *ExtentClient) LockExtent(ctx context.Context, extentKeys []proto.ExtentKey, lockTime int64) (err error) {
+	if client.dataWrapper.VolNotExists() {
+		return proto.ErrVolNotExists
+	}
+	var (
+		conn *net.TCPConn
+		dp   *DataPartition
+	)
+	dpEksMap := make(map[uint64][]proto.ExtentKey)
+	for _, extentKey := range extentKeys {
+		dpEksMap[extentKey.PartitionId] = append(dpEksMap[extentKey.PartitionId], extentKey)
+	}
+	for dpId, exKeys := range dpEksMap {
+		if dp, err = client.dataWrapper.GetDataPartition(dpId); err != nil {
+			return
+		}
+		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
+			return
+		}
+		err = LockExtent(ctx, conn, dp, exKeys, lockTime)
+		StreamConnPool.PutConnectWithErr(conn, err)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (client *ExtentClient) UnlockExtent(ctx context.Context, extentKeys []proto.ExtentKey) (err error) {
+	if client.dataWrapper.VolNotExists() {
+		return proto.ErrVolNotExists
+	}
+	var (
+		conn *net.TCPConn
+		dp   *DataPartition
+	)
+	dpEksMap := make(map[uint64][]proto.ExtentKey)
+	for _, extentKey := range extentKeys {
+		dpEksMap[extentKey.PartitionId] = append(dpEksMap[extentKey.PartitionId], extentKey)
+	}
+	for dpId, exKeys := range dpEksMap {
+		if dp, err = client.dataWrapper.GetDataPartition(dpId); err != nil {
+			return
+		}
+		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
+			return
+		}
+		err = UnlockExtent(ctx, conn, dp, exKeys)
+		StreamConnPool.PutConnectWithErr(conn, err)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func (client *ExtentClient) ReadExtentAllHost(ctx context.Context, inode uint64, extentKey proto.ExtentKey, extentOffset, size int) (allReplicateEkData [][]byte, err error) {
+	if client.dataWrapper.VolNotExists() {
+		return nil, proto.ErrVolNotExists
+	}
+	var (
+		dp *DataPartition
+		data = make([]byte, size)
+	)
+	if dp, err = client.dataWrapper.GetDataPartition(extentKey.PartitionId); err != nil {
+		return
+	}
+	for _, host := range dp.Hosts {
+		reqPacket := common.NewReadPacket(ctx, &extentKey, extentOffset, size, inode, uint64(extentOffset), true)
+		req := NewExtentRequest(extentKey.ExtentOffset, size, data, 0, uint64(size),  &extentKey)
+		_, err = dp.AssignHostRead(reqPacket, req, host)
+		if err != nil {
+			return
+		}
+		allReplicateEkData = append(allReplicateEkData, data)
 	}
 	return
 }

@@ -71,7 +71,7 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 			stdout("Summary of inode  :\n%s\n", formatInodeInfoView(inodeInfoView))
 
 			// getExtentsByInode
-			path := "getExtentsByInode"
+			path := "getExtentsNoModifyAT"
 			if proto.IsDbBack {
 				path = "getExtents"
 			}
@@ -111,6 +111,11 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 				eks = data["eks"].([]interface{})
 			}
 			stdout("Summary of inodeExtentInfo  :\nEks length: %v\n%s\n", len(eks), inodeExtentInfoTableHeader)
+			dataPartitions, err := client.ClientAPI().GetDataPartitions(volumeName, []uint64{})
+			if err != nil {
+				errout("get DataPartitions failed:\n%v\n", err)
+				return
+			}
 			var (
 				fileOffset float64
 				crc        float64
@@ -135,7 +140,13 @@ func newInodeInfoCmd(client *sdk.MasterClient) *cobra.Command {
 					CRC:          uint64(crc),
 				}
 				total += inodeExtentInfoView.Size
-				stdout("%v\n", formatInodeExtentInfoTableRow(inodeExtentInfoView))
+				var mediumType string
+				for _, partition := range dataPartitions.DataPartitions {
+					if partition.PartitionID == inodeExtentInfoView.PartitionId {
+						mediumType = partition.MediumType
+					}
+				}
+				stdout("%v\n", formatInodeExtentInfoTableRow(inodeExtentInfoView, mediumType))
 			}
 			return
 		},

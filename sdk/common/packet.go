@@ -17,6 +17,7 @@ package common
 import (
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"hash/crc32"
 	"io"
@@ -350,4 +351,46 @@ func CheckReadReplyValid(request *Packet, reply *Packet) (err error) {
 		return
 	}
 	return nil
+}
+
+func NewLockExtentPacket(ctx context.Context, partitionID uint64, hosts []string, extentKeys []proto.ExtentKey, lockTime int64) *Packet {
+	p := new(Packet)
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ExtentType = proto.NormalExtentType
+	p.ReqID = proto.GenerateRequestID()
+	p.Opcode = proto.OpLockOrUnlockExtent
+	extKeysLockTime := proto.ExtentLockInfo{
+		ExtentKeys: extentKeys,
+		LockStatus: proto.Lock,
+		LockTime:   lockTime,
+	}
+	p.Data, _ = json.Marshal(extKeysLockTime)
+	p.Size = uint32(len(p.Data))
+	p.RemainingFollowers = uint8(len(hosts) - 1)
+	p.Arg = ([]byte)(strings.Join(hosts[1:], proto.AddrSplit) + proto.AddrSplit)
+	p.ArgLen = uint32(len(p.Arg))
+	p.SetCtx(ctx)
+	return p
+}
+
+func NewUnlockExtentPacket(ctx context.Context, partitionID uint64, hosts []string, extentKeys []proto.ExtentKey) *Packet {
+	p := new(Packet)
+	p.PartitionID = partitionID
+	p.Magic = proto.ProtoMagic
+	p.ExtentType = proto.NormalExtentType
+	p.ReqID = proto.GenerateRequestID()
+	p.Opcode = proto.OpLockOrUnlockExtent
+	extKeysLockTime := proto.ExtentLockInfo{
+		ExtentKeys: extentKeys,
+		LockStatus: proto.Unlock,
+		LockTime:   0,
+	}
+	p.Data, _ = json.Marshal(extKeysLockTime)
+	p.Size = uint32(len(p.Data))
+	p.RemainingFollowers = uint8(len(hosts) - 1)
+	p.Arg = ([]byte)(strings.Join(hosts[1:], proto.AddrSplit) + proto.AddrSplit)
+	p.ArgLen = uint32(len(p.Arg))
+	p.SetCtx(ctx)
+	return p
 }

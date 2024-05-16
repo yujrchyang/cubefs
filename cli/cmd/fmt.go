@@ -234,13 +234,13 @@ func formatInodeInfoView(inodeInfo *proto.InodeInfoView) string {
 }
 
 var (
-	inodeExtentInfoTablePattern = "% -15v    % -15v    % -15v    % -10v    % -15v    % -10v    % -10v"
-	inodeExtentInfoTableHeader  = fmt.Sprintf(inodeExtentInfoTablePattern, "EkStart", "EkEnd", "PartitionId", "ExtentId", "ExtentOffset", "Size", "CRC")
+	inodeExtentInfoTablePattern = "% -15v    % -15v    % -15v    % -10v    % -15v    % -10v    % -10v    % -10v"
+	inodeExtentInfoTableHeader  = fmt.Sprintf(inodeExtentInfoTablePattern, "EkStart", "EkEnd", "PartitionId", "ExtentId", "ExtentOffset", "Size", "CRC", "MediumType")
 )
 
-func formatInodeExtentInfoTableRow(ie *proto.InodeExtentInfoView) string {
+func formatInodeExtentInfoTableRow(ie *proto.InodeExtentInfoView, mediumType string) string {
 	return fmt.Sprintf(inodeExtentInfoTablePattern,
-		formatIntWithThousandComma(int64(ie.FileOffset)), formatIntWithThousandComma(int64(ie.FileOffset+ie.Size)), ie.PartitionId, ie.ExtentId, ie.ExtentOffset, formatSize(ie.Size), ie.CRC)
+		formatIntWithThousandComma(int64(ie.FileOffset)), formatIntWithThousandComma(int64(ie.FileOffset+ie.Size)), ie.PartitionId, ie.ExtentId, ie.ExtentOffset, formatSize(ie.Size), ie.CRC, mediumType)
 }
 
 func formatVolumeStatus(status uint8) string {
@@ -1180,7 +1180,7 @@ func formatCompactVolViewTableHeader() string {
 	return fmt.Sprintf(compactViewTableRowPattern, "VOLUME", "OWNER", "FORCEROW", "COMPACT")
 }
 
-func formatCompactVolView(view *proto.CompactVolume) string {
+func formatCompactVolView(view *proto.DataMigVolume) string {
 	return fmt.Sprintf(compactViewTableRowPattern, view.Name, view.Owner, view.ForceROW, view.CompactTag.Bool())
 }
 
@@ -1324,4 +1324,14 @@ func formatCacheBlockViewHeader() string {
 
 func formatCacheBlockRow(offset, end, fg, size uint64) string {
 	return fmt.Sprintf(formatCacheBlockViewPattern, offset, end, fg, size)
+}
+
+var checkColdFileInfoTableRowPattern = "%-63v    %-16v    %-16v    %-16v    %-16v    %-16v"
+
+func formatColdFileInfoTableHeader() string {
+	return fmt.Sprintf(checkColdFileInfoTableRowPattern, "VOLUME", "MPID", "INODEID", "CTIME", "MTIME", "ATIME")
+}
+
+func formatColdFileInfo(volName string, mpId, inodeId uint64, ctime, mtime, atime int64) string {
+	return fmt.Sprintf(checkColdFileInfoTableRowPattern, volName, mpId, inodeId, formatTime(ctime), formatTime(mtime), formatTime(atime))
 }

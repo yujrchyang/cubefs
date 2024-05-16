@@ -76,7 +76,10 @@ const (
 	metadataOpFSMSynVirtualMPs // Deprecated
 
 	metadataOpFSMSyncMetaConf
+
+	metadataOpFSMMetaRaftAddVirtualMP //deprecated
 	metadataOpFSMSyncEvictReqRecords
+	metadataOpFSMFileMigExtentMerge
 )
 
 const (
@@ -327,6 +330,14 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 	case metadataOpFSMSyncEvictReqRecords:
 		columnValOp.SetValue("SyncEvictTimestamp")
 		columnValAttrs.SetValue(fmt.Sprintf("EvictTimestamp:%v", int64(binary.BigEndian.Uint64(opKVData.V))))
+	case metadataOpFSMFileMigExtentMerge:
+		var inodeMerge *metanode.InodeMerge
+		inodeMerge, err = metanode.InodeMergeUnmarshal(opKVData.V)
+		if err != nil {
+			return
+		}
+		columnValOp.SetValue("FileMigExtentMerge")
+		columnValAttrs.SetValue(fmt.Sprintf("inode: %v, eks:%v", inodeMerge.Inode, decoder.formatEks(inodeMerge.NewExtents, inodeMerge.OldExtents)))
 	default:
 		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")

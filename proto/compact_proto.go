@@ -1,28 +1,6 @@
 package proto
 
-type MPCompactState uint8
-type InodeCompactState uint32
-
-const (
-	MPCmpGetMPInfo MPCompactState = iota
-	MPCmpGetProfPort
-	MPCmpListAllIno
-	MPCmpGetCmpInodes
-	MPCmpWaitSubTask
-	MPCmpStopped
-)
-
-const (
-	InodeCmpInit InodeCompactState = iota
-	InodeCmpOpenFile
-	InodeCmpCalcCmpEKS
-	InodeCmpWaitRead
-	InodeCmpWrite
-	InodeCmpMetaMerge
-	InodeCmpStopped
-)
-
-type CompactVolume struct {
+type DataMigVolume struct {
 	Name       string
 	Owner      string
 	Status     uint8
@@ -33,23 +11,23 @@ type CompactVolume struct {
 	CompactTag CompactTag
 }
 
-func (cv CompactVolume) String() string {
+func (cv DataMigVolume) String() string {
 	return cv.Name
 }
 
-type CompactVolumeView struct {
+type DataMigVolumeView struct {
 	Cluster        string
-	CompactVolumes []*CompactVolume
+	DataMigVolumes []*DataMigVolume
 }
 
-func NewCompactVolumeView(cluster string, compactVolumes []*CompactVolume) *CompactVolumeView {
-	return &CompactVolumeView{
+func NewDataMigVolumeView(cluster string, compactVolumes []*DataMigVolume) *DataMigVolumeView {
+	return &DataMigVolumeView{
 		Cluster:        cluster,
-		CompactVolumes: compactVolumes,
+		DataMigVolumes: compactVolumes,
 	}
 }
 
-type VolumeCompactView struct {
+type VolumeDataMigView struct {
 	ClusterName   string   `json:"clusterName"`
 	Name          string   `json:"volName"`
 	State         uint32   `json:"state"`
@@ -59,31 +37,26 @@ type VolumeCompactView struct {
 	RunningInoCnt uint32   `json:"runningInoCnt"`
 }
 
-type ClusterCompactView struct {
+type ClusterDataMigView struct {
 	ClusterName string               `json:"clusterName"`
 	Nodes       []string             `json:"nodes"`
-	VolumeInfo  []*VolumeCompactView `json:"volumeInfo"`
+	VolumeInfo  []*VolumeDataMigView `json:"volumeInfo"`
 }
 
-type CompactWorkerViewInfo struct {
+type DataMigWorkerViewInfo struct {
 	Port     string                `json:"port"`
-	Clusters []*ClusterCompactView `json:"cluster"`
-}
-
-type CompactMpTaskViewInfo struct {
-	Pid      uint64
-	Name     string
-	State    uint8
-	DealDate string
-	DealCnt  int
-	Leader   string
-	inodes   []uint64
-	Last     int
-	ErrMsg   string
-	ErrCnt   uint32
+	Clusters []*ClusterDataMigView `json:"cluster"`
 }
 
 type QueryHTTPResult struct {
 	Code int32  `json:"code"`
 	Msg  string `json:"msg"`
 }
+
+type MergeEkType uint8
+
+const (
+	CompactMergeEk MergeEkType = iota
+	FileMigMergeEk
+	EcFileMigMergeEk
+)

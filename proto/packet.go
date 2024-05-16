@@ -600,6 +600,10 @@ func GetOpMsg(opcode uint8) (m string) {
 		m = "OpLockOrUnlockExtent"
 	case OpGetAllExtentInfo:
 		m = "OpGetAllExtentInfo"
+	case OpMetaGetExtentsNoModifyAccessTime:
+		m = "OpMetaGetExtentsNoModifyAccessTime"
+	case OpMetaFileMigMergeEks:
+		m = "OpMetaFileMigMergeEks"
 	}
 	return
 }

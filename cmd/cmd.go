@@ -24,11 +24,11 @@ import (
 	"github.com/cubefs/cubefs/flashnode"
 	"github.com/cubefs/cubefs/schedulenode/blck"
 	"github.com/cubefs/cubefs/schedulenode/checktool"
-	"github.com/cubefs/cubefs/schedulenode/compact"
 	"github.com/cubefs/cubefs/schedulenode/crcworker"
 	"github.com/cubefs/cubefs/schedulenode/extentdoubleallocatecheck"
 	"github.com/cubefs/cubefs/schedulenode/fsck"
 	"github.com/cubefs/cubefs/schedulenode/mdck"
+	"github.com/cubefs/cubefs/schedulenode/migration"
 	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
 	"github.com/cubefs/cubefs/schedulenode/rebalance"
 	"github.com/cubefs/cubefs/schedulenode/scheduler"
@@ -221,9 +221,6 @@ func run() error {
 	case proto.RoleSmart:
 		server = smart.NewSmartVolumeWorker()
 		module = proto.ModuleSmart
-	case proto.RoleCompact:
-		server = compact.NewCompactWorker()
-		module = proto.ModuleCompact
 	case proto.RoleCrcWorker:
 		server = crcworker.NewCrcWorker()
 		module = proto.ModuleCrcWorker
@@ -254,6 +251,9 @@ func run() error {
 	case proto.RoleDoubleAllocExtentsCheck:
 		server = extentdoubleallocatecheck.NewExtentDoubleAllocateCheckWorker()
 		module = proto.ModuleDoubleAllocExtentsCheck
+	case proto.RoleDataMig:
+		server = migration.NewDataMigrationServer()
+		module = proto.ModuleDataMig
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)

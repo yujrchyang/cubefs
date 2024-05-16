@@ -592,3 +592,25 @@ func (dc *DataClient) StopRiskFix() (err error) {
 	}
 	return
 }
+
+func (dc *DataClient) GetExtentLockInfo(partition, extentId uint64) (lockInfo map[string]proto.ExtentIdLockInfo, err error) {
+	params := make(map[string]string, 0)
+	params["partitionID"] = strconv.FormatUint(partition, 10)
+	params["extentID"] = strconv.FormatUint(extentId, 10)
+	d := make([]byte, 0)
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/getExtentLockInfo", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	lockInfo = make(map[string]proto.ExtentIdLockInfo)
+	if err = json.Unmarshal(d, &lockInfo); err != nil {
+		return
+	}
+	return
+}

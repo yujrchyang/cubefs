@@ -235,14 +235,14 @@ func UpdateTaskUpdateTime(taskId uint64) (err error) {
 	args := make([]interface{}, 0)
 	args = append(args, taskId)
 	if rs, err = Transaction(sqlCmd, args); err != nil {
-		log.LogErrorf("update task update time has exception, taskId(%v), err(%v)", taskId, err)
+		//log.LogErrorf("update task update time has exception, taskId(%v), err(%v)", taskId, err)
 		return
 	}
 	if nums, err = rs.RowsAffected(); err != nil {
 		return
 	}
 	if nums <= 0 {
-		log.LogErrorf("update task update time has exception, affected rows less then one, taskId(%v)", taskId)
+		//log.LogErrorf("update task update time has exception, affected rows less then one, taskId(%v)", taskId)
 		return errors.New("affected rows less then one")
 	}
 	return

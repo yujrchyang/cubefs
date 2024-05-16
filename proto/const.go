@@ -22,6 +22,7 @@ const (
     RoleNormalExtentCheck       = "normalExtentCheck"
     RoleMetaDataCheck           = "mdck"
     RoleDoubleAllocExtentsCheck = "doubleAllocExtentsCheck"
+    RoleDataMig                 = "dataMigrate"
 )
 
 const (
@@ -46,6 +47,7 @@ const (
     ModuleNormalExtentCheck       = "normalExtentCheck"
     ModuleMetaDataCheck           = "mdck"
     ModuleDoubleAllocExtentsCheck = "doubleAllocExtentsCheck"
+    ModuleDataMig                 = "dataMigration"
 )
 
 const (

@@ -33,11 +33,10 @@ import (
 // API implementations
 //
 type RequestInfo struct {
-	ClientID uint64
-	ClientIP uint32
+	ClientID  uint64
+	ClientIP  uint32
 	RequestID uint32
-	CRC uint32
-
+	CRC       uint32
 }
 
 func (mw *MetaWrapper) icreate(ctx context.Context, mp *MetaPartition, mode, uid, gid uint32, target []byte) (status int, info *proto.InodeInfo, err error) {
@@ -256,11 +255,11 @@ func (mw *MetaWrapper) dupdate(ctx context.Context, mp *MetaPartition, parentID 
 	}
 
 	req := &proto.UpdateDentryRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		ParentID:    parentID,
-		Name:        name,
-		Inode:       newInode,
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		ParentID:        parentID,
+		Name:            name,
+		Inode:           newInode,
 		ClientID:        mw.GetClientID(),
 		ClientStartTime: mw.GetStartTime(),
 	}
@@ -682,13 +681,13 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey, isPreExtent bool) (status int, err error) {
 
 	req := &proto.InsertExtentKeyRequest{
-		VolName:     		mw.volname,
-		PartitionID: 		mp.PartitionID,
-		Inode:       		inode,
-		Extent:      		ek,
-		IsPreExtent: 		isPreExtent,
-		ClientID: 	 		mw.GetClientID(),
-		ClientStartTime: 	mw.GetStartTime(),
+		VolName:         mw.volname,
+		PartitionID:     mp.PartitionID,
+		Inode:           inode,
+		Extent:          ek,
+		IsPreExtent:     isPreExtent,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -742,6 +741,54 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 
 	packet := proto.NewPacketReqID(ctx)
 	packet.Opcode = proto.OpMetaExtentsList
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogWarnf("getExtents: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewModuleTP(packet.GetOpMsg())
+	defer metric.Set(err)
+
+	packet, err = mw.sendReadToMP(ctx, mp, packet)
+	if err != nil {
+		log.LogWarnf("getExtents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status == statusOutOfRange {
+		log.LogWarnf("getExtents: packet(%v) mp(%v) inode(%v) result(%v)", packet, mp, inode, packet.GetResultMsg())
+		newMp := mw.getRefreshMp(ctx, inode)
+		if newMp != nil && newMp.PartitionID != mp.PartitionID {
+			return mw.getExtents(ctx, newMp, inode)
+		}
+	}
+	if status != statusOK {
+		extents = make([]proto.ExtentKey, 0)
+		log.LogWarnf("getExtents: packet(%v) mp(%v) result(%v)", packet, mp, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.GetExtentsResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil {
+		log.LogWarnf("getExtents: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		return
+	}
+	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
+}
+
+func (mw *MetaWrapper) getExtentsNoModifyAccessTime(ctx context.Context, mp *MetaPartition, inode uint64) (status int, gen, size uint64, extents []proto.ExtentKey, err error) {
+	req := &proto.GetExtentsRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Inode:       inode,
+	}
+
+	packet := proto.NewPacketReqID(ctx)
+	packet.Opcode = proto.OpMetaGetExtentsNoModifyAccessTime
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -1529,7 +1576,7 @@ func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr
 	return
 }
 
-func (mw *MetaWrapper) getCmpInodes(ctx context.Context, mp *MetaPartition, ino []uint64, cnt int, minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) ([]*proto.CmpInodeInfo, error) {
+func (mw *MetaWrapper) getInodeExtents(ctx context.Context, mp *MetaPartition, ino []uint64, cnt int, minEkLen int, minInodeSize uint64, maxEkAvgSize uint64) ([]*proto.InodeExtents, error) {
 	var err error
 
 	req := &proto.GetCmpInodesRequest{
@@ -1544,7 +1591,7 @@ func (mw *MetaWrapper) getCmpInodes(ctx context.Context, mp *MetaPartition, ino 
 	packet.Opcode = proto.OpMetaGetCmpInode
 	err = packet.MarshalData(req)
 	if err != nil {
-		log.LogWarnf("getCmpInodes err: (%v), req(%v)", err, *req)
+		log.LogWarnf("getInodeExtents err: (%v), req(%v)", err, *req)
 		return nil, err
 	}
 
@@ -1553,38 +1600,49 @@ func (mw *MetaWrapper) getCmpInodes(ctx context.Context, mp *MetaPartition, ino 
 
 	packet, err = mw.sendReadToMP(ctx, mp, packet)
 	if err != nil || packet == nil {
-		log.LogWarnf("getCmpInodes: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		err = errors.New("getCmpInodes error")
+		log.LogWarnf("getInodeExtents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		err = errors.New("getInodeExtents error")
 		return nil, err
 	}
 	status := parseStatus(packet.ResultCode)
 	if status != statusOK {
-		log.LogWarnf("getCmpInodes: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
-		err = errors.New("getCmpInodes error")
+		log.LogWarnf("getInodeExtents: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		err = errors.New("getInodeExtents error")
 		return nil, err
 	}
 
 	resp := new(proto.GetCmpInodesResponse)
 	err = packet.UnmarshalData(resp)
 	if err != nil {
-		log.LogWarnf("getCmpInodes: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
+		log.LogWarnf("getInodeExtents: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 		return nil, err
 	}
 
 	return resp.Inodes, nil
 }
 
-func (mw *MetaWrapper) mergeInodeExtents(ctx context.Context, mp *MetaPartition, ino uint64, oldEks []proto.ExtentKey, newEks []proto.ExtentKey) error {
+func (mw *MetaWrapper) mergeInodeExtents(ctx context.Context, mp *MetaPartition, ino uint64, oldEks []proto.ExtentKey,
+	newEks []proto.ExtentKey, mergeType proto.MergeEkType) error {
 	var err error
 
 	req := &proto.InodeMergeExtentsRequest{
-		PartitionId: mp.PartitionID,
-		Inode:       ino,
-		OldExtents:  oldEks,
-		NewExtents:  newEks,
+		PartitionId:     mp.PartitionID,
+		Inode:           ino,
+		OldExtents:      oldEks,
+		NewExtents:      newEks,
+		ClientID:        mw.GetClientID(),
+		ClientStartTime: mw.GetStartTime(),
 	}
 	packet := proto.NewPacketReqID(context.Background())
-	packet.Opcode = proto.OpMetaInodeMergeEks
+	switch mergeType {
+	case proto.CompactMergeEk:
+		packet.Opcode = proto.OpMetaInodeMergeEks
+	case proto.FileMigMergeEk, proto.EcFileMigMergeEk:
+		packet.Opcode = proto.OpMetaFileMigMergeEks
+	default:
+		err = fmt.Errorf("mergeType(%v) unknown", mergeType)
+		return err
+	}
 	err = packet.MarshalData(req)
 	if err != nil {
 		log.LogWarnf("mergeInodeExtents err: (%v), req(%v)", err, *req)

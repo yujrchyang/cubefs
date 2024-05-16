@@ -739,6 +739,15 @@ func (dp *DataPartition) assignHostByWeight(hosts []string) (host string, err er
 	return getHostByWeight(weightListForHosts, hosts), nil
 }
 
+func (dp *DataPartition) AssignHostRead(reqPacket *common.Packet, req *ExtentRequest, host string) (readBytes int, err error) {
+	sc := &StreamConn{
+		dp:       dp,
+		currAddr: host,
+	}
+	readBytes, _, _, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
+	return
+}
+
 func getHostsWeight(first int, num int) (weight []int) {
 	weight = make([]int, num)
 	var total = 100

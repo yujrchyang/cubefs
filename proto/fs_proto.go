@@ -694,7 +694,7 @@ type GetCmpInodesRequest struct {
 	MaxEkAvgSize uint64   `json:"max_ek_avg_size"`
 }
 
-type CmpInodeInfo struct {
+type InodeExtents struct {
 	Inode   *InodeInfo
 	Extents []ExtentKey
 }
@@ -705,7 +705,7 @@ type MetaCmpInodeInfo struct {
 }
 
 type GetCmpInodesResponse struct {
-	Inodes []*CmpInodeInfo
+	Inodes []*InodeExtents
 }
 
 type MetaGetCmpInodesResponse struct {

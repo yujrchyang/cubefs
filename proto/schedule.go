@@ -12,9 +12,9 @@ import (
 const (
 	RoleScheduleNode        = "scheduleNode"
 	RoleSmartVolumeWorker   = "smartVolume"
-	RoleCompactWorker       = "compact"
 	RoleDPReBalanceWorker   = "dpReBalance"
 	RoleDiskReBalanceWorker = "diskReBalance"
+	RoleDataMigWorker       = "dataMigrate"
 )
 
 const (

@@ -1336,14 +1336,14 @@ func (api *AdminAPI) StopMigratingByDataPartition(dataPartitionID uint64) string
 	return string(data)
 }
 
-func (api *AdminAPI) ListCompactVolumes() (volumes []*proto.CompactVolume, err error) {
+func (api *AdminAPI) ListCompactVolumes() (volumes []*proto.DataMigVolume, err error) {
 	var buf []byte
 	var request = newAPIRequest(http.MethodGet, proto.AdminCompactVolList)
 	if buf, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
 
-	volumes = make([]*proto.CompactVolume, 0)
+	volumes = make([]*proto.DataMigVolume, 0)
 	if err = json.Unmarshal(buf, &volumes); err != nil {
 		return
 	}

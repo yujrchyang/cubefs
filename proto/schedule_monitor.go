@@ -87,4 +87,8 @@ const (
 	MonitorCompactLoadCompactVolume = "loadCompactVolume"
 	MonitorCompactCreateTask        = "compactCreateTask"
 	MonitorCompactConsumeTask       = "compactConsumeTask"
+
+	MonitorSmartLoadSmartVolumeInode = "loadSmartVolumeInode"
+	MonitorSmartCreateTaskInode      = "smartVolumeCreateTaskInode"
+	MonitorSmartConsumeTaskInode     = "smartVolumeConsumeTaskInode"
 )

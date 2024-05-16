@@ -7,10 +7,10 @@ import (
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/blck"
-	"github.com/cubefs/cubefs/schedulenode/compact"
 	"github.com/cubefs/cubefs/schedulenode/crcworker"
 	"github.com/cubefs/cubefs/schedulenode/fsck"
 	"github.com/cubefs/cubefs/schedulenode/mdck"
+	"github.com/cubefs/cubefs/schedulenode/migration"
 	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
 	"github.com/cubefs/cubefs/schedulenode/smart"
 	"github.com/cubefs/cubefs/sdk/hbase"
@@ -58,6 +58,7 @@ const (
 	DefaultFlowControlSmartVolume = 100
 	DefaultFlowControlCompact     = 1000
 	DefaultFlowControlCrcWorker   = 1000
+	DefaultFlowControlFileMig     = 1000
 )
 
 const (
@@ -67,6 +68,7 @@ const (
 	DefaultWorkerMaxTaskNumFSCheck     = 5
 	DefaultWorkerMaxTaskNumBlockCheck  = 50
 	DefaultWorkerMaxTaskNumMDCheck     = 100
+	DefaultWorkerMaxTaskNumFileMig     = 100
 )
 
 type ScheduleNode struct {
@@ -284,11 +286,14 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	wt := make([]proto.WorkerType, 0)
 	wt = append(wt, proto.WorkerTypeSmartVolume)
 	wt = append(wt, proto.WorkerTypeCompact)
-	wt = append(wt, proto.WorkerTypeCheckCrc)
 	wt = append(wt, proto.WorkerTypeFSCheck)
 	wt = append(wt, proto.WorkerTypeBlockCheck)
 	wt = append(wt, proto.WorkerTypeMetaDataCrcCheck)
 	wt = append(wt, proto.WorkerTypeNormalExtentMistakeDelCheck)
+	if cfg.GetBool(config.ConfigKeyEnableCrcWorker) {
+		wt = append(wt, proto.WorkerTypeCheckCrc)
+	}
+	wt = append(wt, proto.WorkerTypeInodeMigration)
 	s.workerTypes = wt
 
 	var smartVolumeWorker *smart.SmartVolumeWorker
@@ -297,8 +302,8 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		return
 	}
 	s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
-	var compactWorker *compact.CompactWorker
-	if compactWorker, err = compact.NewCompactWorkerForScheduler(cfg); err != nil {
+	var compactWorker *migration.Worker
+	if compactWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeCompact); err != nil {
 		log.LogErrorf("[registerWorker] create compact worker failed, err(%v)", err)
 		return
 	}
@@ -335,6 +340,12 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		return
 	}
 	s.workers.Store(proto.WorkerTypeNormalExtentMistakeDelCheck, normalExtentCheckTaskSchedule)
+	var fileMigrationWorker *migration.Worker
+	if fileMigrationWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeInodeMigration); err != nil {
+		log.LogErrorf("[registerWorker] create file migration worker failed, err(%v)", err)
+		return
+	}
+	s.workers.Store(proto.WorkerTypeInodeMigration, fileMigrationWorker)
 	return
 }
 
@@ -605,7 +616,7 @@ func (s *ScheduleNode) startTaskCreator() {
 				go s.taskCreator(proto.WorkerTypeSmartVolume, dr, sv.CreateTask)
 
 			case proto.WorkerTypeCompact:
-				cw := value.(*compact.CompactWorker)
+				cw := value.(*migration.Worker)
 				dr := cw.GetCreatorDuration()
 				if dr <= 0 {
 					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
@@ -653,6 +664,14 @@ func (s *ScheduleNode) startTaskCreator() {
 				}
 				go s.taskCreator(proto.WorkerTypeNormalExtentMistakeDelCheck, dr, normalExtentCheckTaskSchedule.CreateTask)
 
+			case proto.WorkerTypeInodeMigration:
+				fmw := value.(*migration.Worker)
+				dr := fmw.GetCreatorDuration()
+				if dr <= 0 {
+					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
+					dr = DefaultWorkerDuration
+				}
+				go s.taskCreator(proto.WorkerTypeInodeMigration, dr, fmw.CreateTask)
 			default:
 				log.LogWarnf("[startTaskCreator] unknown worker type, workerType(%v)", wt)
 			}
@@ -988,6 +1007,8 @@ func (s *ScheduleNode) getWorkerMaxTaskNums(wt proto.WorkerType, workerAddr stri
 			taskNum = DefaultWorkerMaxTaskNumBlockCheck
 		case proto.WorkerTypeMetaDataCrcCheck:
 			taskNum = DefaultWorkerMaxTaskNumMDCheck
+		case proto.WorkerTypeInodeMigration:
+			taskNum = DefaultWorkerMaxTaskNumFileMig
 		}
 	}
 	return
@@ -1179,6 +1200,8 @@ func getDefaultFlowControlValue(wt proto.WorkerType) int64 {
 		return DefaultFlowControlCrcWorker
 	case proto.WorkerTypeFSCheck, proto.WorkerTypeBlockCheck, proto.WorkerTypeNormalExtentMistakeDelCheck, proto.WorkerTypeTinyExtentPunchHoleCheck, proto.WorkerTypeMetaDataCrcCheck:
 		return math.MaxInt64
+	case proto.WorkerTypeInodeMigration:
+		return DefaultFlowControlFileMig
 	default:
 		log.LogErrorf("[getDefaultFlowControlValue] invalid worker type, workerType(%v)", wt)
 		return 0
