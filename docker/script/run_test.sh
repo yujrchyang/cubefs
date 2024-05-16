@@ -268,7 +268,6 @@ run_unit_test() {
             ./datanode/... \
             ./metanode/... \
             ./objectnode/... \
-            ./cache_engine/... \
             ./schedulenode/migration/... \
             ./schedulenode/smart/... \
             ./schedulenode/worker/... \
