@@ -6,9 +6,16 @@ import (
 	"math"
 )
 
-const bitPerU64                 = 64
+const (
+	bitPerU64  = 64
+	uint64Size = 8
+)
 
 type U64BitMap []uint64
+
+func NewU64BitMap(count uint32) U64BitMap {
+	return make([]uint64, count)
+}
 
 func findU64FreeBit(bitValue uint64, start int) int{
 	for i := start; i < bitPerU64; i++ {
@@ -95,4 +102,26 @@ func (bitMap U64BitMap) ClearBit(id int) {
 	index   := id / bitPerU64
 	bitIndex := id % bitPerU64
 	bitMap[index] &= (uint64(1) << bitIndex) ^ math.MaxUint64
+}
+
+func (bitMap U64BitMap) Range(f func(value uint64) bool) {
+	for _, v := range bitMap {
+		if !f(v){
+			return
+		}
+	}
+}
+
+func (bitMap U64BitMap) FillByBinaryData(data []byte) (err error) {
+	count := len(data)/8
+	if len(bitMap) != count {
+		return fmt.Errorf("bitmap with error count, expect: %v, actual: %v", count, len(bitMap))
+	}
+
+	offset := 0
+	for index := 0; index < count; index++ {
+		bitMap[index] = binary.BigEndian.Uint64(data[offset:offset+uint64Size])
+		offset += uint64Size
+	}
+	return
 }

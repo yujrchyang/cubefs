@@ -1000,7 +1000,15 @@ func TestGetMatchedSnapV(t *testing.T) {
 	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
 	assert.Equal(t, SnapshotVersion(BatchSnapshotV3), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV3, snapV))
 
-	nodeVersion = proto.BaseVersion
+	nodeVersion = proto.Version_4_6_0
 	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
 	assert.Equal(t, SnapshotVersion(BatchSnapshotV3), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV3, snapV))
+
+	nodeVersion = proto.BitMapDelayAllocate
+	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(BatchSnapshotV4), snapV, fmt.Sprintf("expect version: %v, actual: %v", BatchSnapshotV4, snapV))
+
+	nodeVersion = proto.BaseVersion
+	snapV = GetMatchedSnapV(NewMetaNodeVersion(nodeVersion))
+	assert.Equal(t, SnapshotVersion(LatestSnapV), snapV, fmt.Sprintf("expect version: %v, actual: %v", LatestSnapV, snapV))
 }

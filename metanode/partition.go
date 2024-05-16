@@ -20,6 +20,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/topology"
 	"io/ioutil"
 	"net"
@@ -390,7 +391,6 @@ func (mp *metaPartition) Start() (err error) {
 		if mp.config.BeforeStart != nil {
 			mp.config.BeforeStart()
 		}
-		mp.freezeBitMapAllocatorBeforeStart()
 		if err = mp.onStart(); err != nil {
 			err = errors.NewErrorf("[Start]->%s", err.Error())
 			return
@@ -446,19 +446,6 @@ func (mp *metaPartition) onStart() (err error) {
 	mp.startCleanTrashScheduler()
 	mp.startUpdatePartitionConfigScheduler()
 	return
-}
-
-func (mp *metaPartition) freezeBitMapAllocatorBeforeStart() {
-	if mp.config.Cursor < mp.config.End || mp.inodeIDAllocator == nil {
-		log.LogDebugf("freezeBitMapAllocateBeforeStart cursor less than end or allocator is nil, partitionID: %v," +
-			" cursor: %v", mp.config.PartitionId, mp.config.Cursor)
-		return
-	}
-
-	frozenDuration := mp.getBitmapSnapFrozenDuration()
-	mp.inodeIDAllocator.FreezeAllocator(frozenDuration)
-	log.LogDebugf("freeze bitmap allocator, partitionID: %v", mp.config.PartitionId)
-
 }
 
 func (mp *metaPartition) onStop() {
@@ -640,7 +627,7 @@ func CreateMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) (M
 	mp.inodeIDAllocator = NewInoAllocatorV1(conf.Start, conf.End)
 
 	if mp.HasMemStore() {
-		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusInit)
+		_ = mp.initInodeIDAllocator()
 		mp.initMemoryTree()
 		mp.cleanRocksDbTreeResource()
 	}
@@ -1003,7 +990,9 @@ func (mp *metaPartition) load(ctx context.Context) (err error) {
 	}
 
 	mp.inodeIDAllocator = NewInoAllocatorV1(mp.config.Start, mp.config.End)
-	mp.initInodeIDAllocator()
+	if err = mp.initInodeIDAllocator(); err != nil {
+		return
+	}
 
 	if err = mp.db.OpenDb(mp.getRocksDbRootDir(), mp.config.RocksWalFileSize, mp.config.RocksWalMemSize,
 		mp.config.RocksLogFileSize, mp.config.RocksLogReversedTime, mp.config.RocksLogReVersedCnt, mp.config.RocksWalTTL); err != nil {
@@ -1063,6 +1052,7 @@ func (mp *metaPartition) store(sm *storeMsg) (err error) {
 		mp.storeDeletedDentry,
 		mp.storeDeletedInode,
 		mp.storeRequestInfo,
+		mp.storeBitMapAllocatorInfo,
 	}
 	for _, storeFunc := range storeFuncs {
 		var crc uint32
@@ -1170,11 +1160,27 @@ func (mp *metaPartition) freezeBitmapAllocator() {
 		return
 	}
 
-	if _, err := mp.submit(context.Background(), opFSMFreezeBitmapAllocator, "", nil, nil); err != nil {
+	curTime := time.Now()
+	frozenTimeDuration := mp.getBitmapSnapFrozenDuration()
+	freeTime := curTime.Unix()
+	cancelFreezeTime := curTime.Add(frozenTimeDuration).Unix()
+	data := make([]byte, 16)
+	binary.BigEndian.PutUint64(data[:8], uint64(freeTime))
+	binary.BigEndian.PutUint64(data[8:], uint64(cancelFreezeTime))
+	if _, err = mp.submit(context.Background(), opFSMFreezeBitmapAllocator, "", data, nil); err != nil {
 		log.LogErrorf("freezeBitmapAllocator partitionID(%v) submit raft cmd failed:%v", mp.config.PartitionId, err)
 	}
 	log.LogDebugf("freezeBitmapAllocator submit freeze allocator cmd success, partitionID: %v", mp.config.PartitionId)
 	return
+}
+
+func (mp *metaPartition) updateCancelFreezeTime(newCancelFreezeTime int64) {
+	data := make([]byte, 8)
+	binary.BigEndian.PutUint64(data[:8], uint64(newCancelFreezeTime))
+	if _, err := mp.submit(context.Background(), opFSMUpdateCancelFreezeTime, "", data, nil); err != nil {
+		log.LogErrorf("submit update cancel freeze time failed, partitionID: %v, err: %v", mp.config.PartitionId,
+			err)
+	}
 }
 
 func (mp *metaPartition) cancelFreezeBitmapAllocator() {
@@ -1191,11 +1197,9 @@ func (mp *metaPartition) cancelFreezeBitmapAllocator() {
 
 	freezeSecond := mp.getBitmapSnapFrozenDuration()/time.Second
 	newCancelFreezeTime := freezeTime + int64(freezeSecond)
-	if newCancelFreezeTime > cancelFreezeTime {
-		log.LogInfof("reset cancel freeze time: %v -> %v", time.Unix(cancelFreezeTime, 0).Format(proto.TimeFormat),
-			time.Unix(newCancelFreezeTime, 0).Format(proto.TimeFormat))
-		mp.inodeIDAllocator.ResetCancelFreezeTime(newCancelFreezeTime)
-		cancelFreezeTime = newCancelFreezeTime
+	if newCancelFreezeTime > cancelFreezeTime && time.Now().Before(time.Unix(newCancelFreezeTime, 0)) {
+		mp.updateCancelFreezeTime(newCancelFreezeTime)
+		return
 	}
 
 	if time.Now().Before(time.Unix(cancelFreezeTime, 0)) {
@@ -1203,8 +1207,12 @@ func (mp *metaPartition) cancelFreezeBitmapAllocator() {
 		return
 	}
 
-	mp.inodeIDAllocator.CancelFreezeAllocator()
-	log.LogDebugf("cancelFreezeBitmapAllocator cancel freeze success, partitionID: %v", mp.config.PartitionId)
+	if _, err := mp.submit(context.Background(), opFSMCancelFreezeBitmapAllocator, "", nil, nil); err != nil {
+		log.LogErrorf("submit cancel freeze raft cmd failed, partitionID: %v, err: %v", mp.config.PartitionId, err)
+		return
+	}
+
+	log.LogDebugf("submit cancel freeze raft cmd success, partitionID: %v", mp.config.PartitionId)
 	return
 }
 
@@ -1216,6 +1224,10 @@ func (mp *metaPartition) genInodeIDByBitMap() (inodeID uint64, err error) {
 
 	var needFreeze bool
 	if inodeID, needFreeze, err = mp.inodeIDAllocator.AllocateId(); err != nil {
+		if strings.Contains(err.Error(), doubleAllocateError.Error()) {
+			exporter.WarningAppendKey(doubleAllocateWarningKey, fmt.Sprintf("VolName: %s, PartitionID: %v",
+				mp.config.VolName, mp.config.PartitionId))
+		}
 		err = ErrInodeIDOutOfRange
 		if needFreeze {
 			log.LogDebugf("genInodeIDByBitMap, allocate to end, freeze allocator, partitionID: %v", mp.config.PartitionId)
@@ -1736,14 +1748,24 @@ func (mp *metaPartition) GetLeaderRaftApplyID(target string) (applyID uint64, er
 	return
 }
 
-func (mp *metaPartition) initInodeIDAllocator() {
+func (mp *metaPartition) isVolFirstPartition() bool {
+	if mp.config.Start == 0 {
+		return true
+	}
+	return false
+}
+
+func (mp *metaPartition) initInodeIDAllocator() (err error) {
 	if mp.HasMemStore() {
 		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusInit)
-		if mp.config.Start == 0 {
-			mp.inodeIDAllocator.SetId(0)
-			mp.inodeIDAllocator.SetId(proto.RootIno)
+		if err =  mp.loadBitMapAllocatorInfo(path.Join(mp.config.RootDir, snapshotDir)); err != nil {
+			return
+		}
+		if mp.isVolFirstPartition() {
+			mp.inodeIDAllocator.OccupiedInvalidAndRootInoBits()
 		}
 	}
+	return
 }
 
 func (mp *metaPartition) setAllocatorIno(inodeID uint64) {

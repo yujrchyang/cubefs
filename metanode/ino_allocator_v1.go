@@ -1,6 +1,7 @@
 package metanode
 
 import (
+	"encoding/binary"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/bitmap"
@@ -14,6 +15,12 @@ const (
 	allocatorStatusAvailable   int8 = 2
 	allocatorStatusFrozen      int8 = 3
 	bitPerU64                       = 64
+	marshalBinaryBaseDataLen        = 44
+)
+
+var (
+	doubleAllocateError = fmt.Errorf("double allocate")
+	doubleAllocateWarningKey = "DoubleAllocate"
 )
 
 type inoAllocatorV1 struct {
@@ -68,6 +75,31 @@ func NewInoAllocatorV1(start, end uint64) *inoAllocatorV1 {
 	return allocator
 }
 
+func (allocator *inoAllocatorV1) OccupiedInvalidAndRootInoBits() {
+	allocator.mu.Lock()
+	defer allocator.mu.Unlock()
+
+	if allocator.Start == 0 {
+		//for first meta partition, occupied 0(invalid inode) and 1(root inode)
+		if allocator.Bits.IsBitFree(0) {
+			allocator.Bits.SetBit(0)
+			allocator.Used++
+		}
+
+		if allocator.Bits.IsBitFree(1) {
+			allocator.Bits.SetBit(1)
+			allocator.Used++
+		}
+
+		allocator.BitsSnap.SetBit(0)
+		allocator.BitsSnap.SetBit(1)
+		if allocator.BitCursor < 1 {
+			allocator.BitCursor = 1
+		}
+	}
+	return
+}
+
 func (allocator *inoAllocatorV1) GetAllocatorSnapInfo() (bits bitmap.U64BitMap, cancelFreezeTime int64, allocatorStatus int8) {
 	allocator.mu.RLock()
 	defer allocator.mu.RUnlock()
@@ -75,7 +107,7 @@ func (allocator *inoAllocatorV1) GetAllocatorSnapInfo() (bits bitmap.U64BitMap, 
 	return allocator.BitsSnap.Copy(), allocator.CancelFreezeTime, allocator.Status
 }
 
-func (allocator *inoAllocatorV1) FreezeAllocator(frozenDuration time.Duration) {
+func (allocator *inoAllocatorV1) FreezeAllocator(freezeTime, cancelFreezeTime int64) {
 	allocator.mu.Lock()
 	defer allocator.mu.Unlock()
 
@@ -86,12 +118,11 @@ func (allocator *inoAllocatorV1) FreezeAllocator(frozenDuration time.Duration) {
 	allocator.Status = allocatorStatusFrozen           //置状态
 	allocator.BitsSnap = allocator.Bits.Copy()         //打快照
 
-	curTime := time.Now()
-	allocator.FreezeTime = curTime.Unix()
-	allocator.CancelFreezeTime = curTime.Add(frozenDuration).Unix()
+	allocator.FreezeTime = freezeTime
+	allocator.CancelFreezeTime = cancelFreezeTime
 }
 
-func (allocator *inoAllocatorV1) CancelFreezeAllocator() {
+func (allocator *inoAllocatorV1) CancelFreezeAllocator(force bool) {
 	allocator.mu.Lock()
 	defer allocator.mu.Unlock()
 
@@ -99,7 +130,7 @@ func (allocator *inoAllocatorV1) CancelFreezeAllocator() {
 		return
 	}
 
-	if allocator.CancelFreezeTime > time.Now().Unix() {
+	if !force && allocator.CancelFreezeTime > time.Now().Unix() {
 		return
 	}
 
@@ -146,7 +177,10 @@ func (allocator *inoAllocatorV1) AllocateId() (id uint64, needFreeze bool, err e
 		return
 	}
 	allocator.BitsSnap.SetBit(freeIndex)
-	allocator.Used++
+	if !allocator.Bits.IsBitFree(freeIndex) {
+		err = fmt.Errorf("%s: %v", doubleAllocateError, freeIndex)
+		return
+	}
 	allocator.BitCursor = freeIndex
 	id = allocator.Start + uint64(freeIndex)
 	return
@@ -229,6 +263,9 @@ func (allocator *inoAllocatorV1) ReleaseBitMapMemory() {
 }
 
 func (allocator *inoAllocatorV1) changeStatusToUnavailable() (err error) {
+	if allocator.Status == allocatorStatusUnavailable {
+		return
+	}
 	allocator.Status = allocatorStatusUnavailable
 	allocator.ReleaseBitMapMemory()
 	return
@@ -327,4 +364,80 @@ func (allocator *inoAllocatorV1) GetUsedInosBitMap() []uint64 {
 	defer allocator.mu.RUnlock()
 
 	return allocator.Bits
+}
+
+func (allocator *inoAllocatorV1) GenAllocatorSnap() *inoAllocatorV1 {
+	allocator.mu.RLock()
+	defer allocator.mu.RUnlock()
+
+	if allocator.Status == allocatorStatusInit || allocator.Status == allocatorStatusUnavailable {
+		//未启用时不做dump
+		return nil
+	}
+
+	return &inoAllocatorV1{
+		Start:            allocator.Start,
+		End:              allocator.End,
+		Cnt:              allocator.Cnt,
+		Used:             allocator.Used,
+		BitCursor:        allocator.BitCursor,
+		Status:           allocator.Status,
+		Version:          allocator.Version,
+		BitsSnap:         allocator.BitsSnap.Copy(),
+		FreezeTime:       allocator.FreezeTime,
+		CancelFreezeTime: allocator.CancelFreezeTime,
+	}
+}
+
+func (allocator *inoAllocatorV1) MarshalBinary() []byte {
+	allocator.mu.RLock()
+	defer allocator.mu.RUnlock()
+
+	//version, used, cursor, status, freezeTime, cancelFreezeTime, reserved filed, bitmapCount, bitmap
+	dataLen := marshalBinaryBaseDataLen + len(allocator.BitsSnap)*8
+	data := make([]byte, dataLen)
+
+	offset := 0
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], allocator.Version)
+	offset += Uint64Size
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(allocator.BitCursor))
+	offset += Uint32Size
+	data[offset] = byte(allocator.Status)
+	offset += Uint32Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(allocator.FreezeTime))
+	offset += Uint64Size
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(allocator.CancelFreezeTime))
+	offset += Uint64Size
+	offset += Uint64Size //reserved filed
+	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(len(allocator.BitsSnap)))
+	offset += Uint32Size
+	allocator.BitsSnap.Range(func(value uint64) bool {
+		binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], value)
+		offset += Uint64Size
+		return true
+	})
+	return data
+}
+
+func (allocator *inoAllocatorV1) UnmarshalBinary(data []byte) (err error) {
+	offset := 0
+	allocator.Version = binary.BigEndian.Uint64(data[offset:offset+Uint64Size])
+	offset += Uint64Size
+	allocator.BitCursor = int(binary.BigEndian.Uint32(data[offset:offset+Uint32Size]))
+	offset += Uint32Size
+	allocator.Status = int8(data[offset])
+	offset += Uint32Size
+	allocator.FreezeTime = int64(binary.BigEndian.Uint64(data[offset:offset+Uint64Size]))
+	offset += Uint64Size
+	allocator.CancelFreezeTime = int64(binary.BigEndian.Uint64(data[offset:offset+Uint64Size]))
+	offset += Uint64Size
+	offset += Uint64Size
+	bitmapLen := binary.BigEndian.Uint32(data[offset:offset+Uint32Size])
+	offset += Uint32Size
+	allocator.BitsSnap = bitmap.NewU64BitMap(bitmapLen)
+	err = allocator.BitsSnap.FillByBinaryData(data[offset:])
+	if err != nil {
+		return fmt.Errorf("fill bitmap snap by binary data failed: %v", err)
+	}
+	return
 }

@@ -39,7 +39,15 @@ const (
 	/*
 
 	 */
-	BaseVersion = "4.6.0"
+	Version_4_6_0 = "4.6.0"
+
+	/*
+
+	*/
+	BitMapDelayAllocate = "4.7.0"
+
+
+	BaseVersion = "4.7.0"
 )
 
 var (

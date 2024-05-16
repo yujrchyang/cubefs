@@ -19,8 +19,8 @@ func TestInoAllocatorV1_MaxId(t *testing.T) {
 	allocator.SetId(4000000 - 1)
 	_, needFreeze, _ := allocator.AllocateId()
 	assert.Equal(t, true, needFreeze)
-	allocator.FreezeAllocator(0)
-	allocator.CancelFreezeAllocator()
+	allocator.FreezeAllocator(time.Now().Unix(), time.Now().Unix())
+	allocator.CancelFreezeAllocator(false)
 	id, _, _ := allocator.AllocateId()
 	assert.Equal(t, uint64(2000001), id, "expect id is 2000001")
 	id, _, _ = allocator.AllocateId()
@@ -29,8 +29,8 @@ func TestInoAllocatorV1_MaxId(t *testing.T) {
 	allocator.ClearId(4000000)
 	_, needFreeze, _ = allocator.AllocateId()
 	assert.Equal(t, true, needFreeze)
-	allocator.FreezeAllocator(0)
-	allocator.CancelFreezeAllocator()
+	allocator.FreezeAllocator(time.Now().Unix(), time.Now().Unix())
+	allocator.CancelFreezeAllocator(false)
 	id, _, _ = allocator.AllocateId()
 	assert.Equal(t, uint64(2000003), id, "expect id is 2000003")
 }
@@ -337,7 +337,7 @@ func TestInoAllocatorV1_AllocateIdBySnap(t *testing.T) {
 }
 
 func FreezeAllocator(allocator *inoAllocatorV1) {
-	allocator.FreezeAllocator(time.Second*5)
+	allocator.FreezeAllocator(time.Now().Unix(), time.Now().Add(time.Second*5).Unix())
 	go func() {
 		intervalCheckCancelFreeze := time.Second*1
 		timer := time.NewTimer(intervalCheckCancelFreeze)
@@ -348,7 +348,7 @@ func FreezeAllocator(allocator *inoAllocatorV1) {
 				if time.Now().Before(time.Unix(allocator.CancelFreezeTime, 0)) {
 					continue
 				}
-				allocator.CancelFreezeAllocator()
+				allocator.CancelFreezeAllocator(false)
 				return
 			}
 		}
@@ -406,4 +406,32 @@ func TestInoAllocatorV1_BitCursor(t *testing.T) {
 	id, needFreeze, _ = allocator.AllocateId()
 	assert.Equal(t, false, needFreeze, fmt.Sprintf("expect allocate success"))
 	assert.Equal(t, uint64(20033), id)
+}
+
+func TestInoAllocatorV1_MarshalAndUnmarshal(t *testing.T) {
+	allocator := NewInoAllocatorV1(0, proto.DefaultMetaPartitionInodeIDStep)
+	_ = allocator.SetStatus(allocatorStatusInit)
+	_ = allocator.SetStatus(allocatorStatusAvailable)
+
+	for index := uint64(0); index < 20033; index++ {
+		allocator.SetId(index)
+	}
+
+	allocatorSnap := allocator.GenAllocatorSnap()
+	assert.NotEmpty(t, allocatorSnap)
+
+	data := allocatorSnap.MarshalBinary()
+	assert.NotEmpty(t, data)
+
+	newAllocator := NewInoAllocatorV1(0, proto.DefaultMetaPartitionInodeIDStep)
+	err := newAllocator.UnmarshalBinary(data)
+	assert.Empty(t, err)
+
+	assert.Equal(t, allocator.Version, newAllocator.Version)
+	assert.Equal(t, allocator.Status, newAllocator.Status)
+	assert.Equal(t, allocator.BitCursor, newAllocator.BitCursor)
+	assert.Equal(t, allocator.Used, newAllocator.Used)
+	assert.Equal(t, allocator.FreezeTime, newAllocator.FreezeTime)
+	assert.Equal(t, allocator.CancelFreezeTime, newAllocator.CancelFreezeTime)
+	assert.Equal(t, allocator.BitsSnap, newAllocator.BitsSnap)
 }

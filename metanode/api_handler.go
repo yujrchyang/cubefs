@@ -134,6 +134,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getAllDentryByParentIno", m.getAllDentriesByParentInoHandler)
 
 	http.HandleFunc("/getStartFailedPartitions", m.getStartFailedPartitions)
+	http.HandleFunc("/cancelFrozenMPBitMapAllocator", m.cancelFreezeMPBitMapAllocator)
 	return
 }
 
@@ -3072,5 +3073,66 @@ func (m *MetaNode) getStartFailedPartitions(w http.ResponseWriter, r *http.Reque
 	}
 
 	resp.Data = m.metadataManager.GetStartFailedPartitions()
+	return
+}
+
+func (m *MetaNode) cancelFreezeMPBitMapAllocator(w http.ResponseWriter, r *http.Request) {
+	var err error
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err = w.Write(data); err != nil {
+			log.LogErrorf("response wirte data failed: %v", err)
+		}
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	//parse pid
+	pidStr := r.FormValue("pid")
+	if pidStr == "" {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = "pid is needed"
+		return
+	}
+
+	var pid uint64
+	pid, err = strconv.ParseUint(pidStr, 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("parse pid str (%s) faied: %v", pidStr, err)
+		return
+	}
+
+	var partition MetaPartition
+	partition, err = m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, ok := partition.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("type assert failed")
+		return
+	}
+
+	var forceCancel = false
+	forceCancelFlagStr := r.FormValue("force")
+	if forceCancelFlagStr != "" {
+		forceCancel, err = strconv.ParseBool(forceCancelFlagStr)
+		if err != nil {
+			resp.Code = http.StatusBadRequest
+			resp.Msg = fmt.Sprintf("parse force flag str (%s) failed: %v", forceCancelFlagStr, err)
+			return
+		}
+	}
+	mp.inodeIDAllocator.CancelFreezeAllocator(forceCancel)
 	return
 }

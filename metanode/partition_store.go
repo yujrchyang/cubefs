@@ -35,20 +35,21 @@ import (
 )
 
 const (
-	snapshotDir       = "snapshot"
-	snapshotDirTmp    = ".snapshot"
-	snapshotBackup    = ".snapshot_backup"
-	inodeFile         = "inode"
-	dentryFile        = "dentry"
-	extendFile        = "extend"
-	multipartFile     = "multipart"
-	applyIDFile       = "apply"
-	SnapshotSign      = ".sign"
-	metadataFile      = "meta"
-	metadataFileTmp   = ".meta"
-	inodeDeletedFile  = "inode_deleted"
-	dentryDeletedFile = "dentry_deleted"
-	requestRecordFile = "request_record"
+	snapshotDir         = "snapshot"
+	snapshotDirTmp      = ".snapshot"
+	snapshotBackup      = ".snapshot_backup"
+	inodeFile           = "inode"
+	dentryFile          = "dentry"
+	extendFile          = "extend"
+	multipartFile       = "multipart"
+	applyIDFile         = "apply"
+	SnapshotSign        = ".sign"
+	metadataFile        = "meta"
+	metadataFileTmp     = ".meta"
+	inodeDeletedFile    = "inode_deleted"
+	dentryDeletedFile   = "dentry_deleted"
+	requestRecordFile   = "request_record"
+	bitmapAllocatorFile = "bitmap_allocator"
 )
 
 func (mp *metaPartition) loadMetadata() (err error) {
@@ -573,6 +574,35 @@ func (mp *metaPartition) loadRequestRecords(rootDir string) (err error) {
 	return nil
 }
 
+func (mp *metaPartition) loadBitMapAllocatorInfo(rootDir string) (err error) {
+	filename := path.Join(rootDir, bitmapAllocatorFile)
+	if _, err = os.Stat(filename); err != nil {
+		return nil
+	}
+	fp, err := os.OpenFile(filename, os.O_RDONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = fp.Close()
+	}()
+	var mem mmap.MMap
+	if mem, err = mmap.Map(fp, mmap.RDONLY, 0); err != nil {
+		return err
+	}
+	defer func() {
+		_ = mem.Unmap()
+	}()
+
+	if err = mp.inodeIDAllocator.UnmarshalBinary(mem); err != nil {
+		log.LogErrorf("unmarshal bitmap allocator info failed, partitionID: %v, err: %v", mp.config.PartitionId, err)
+		return
+	}
+	log.LogInfof("load complete: partitionID(%v) bitmapAllocatorStatus(%v) freezeTime(%v) cancelFreezeTime(%v)",
+		mp.config.PartitionId, mp.inodeIDAllocator.Status, mp.inodeIDAllocator.FreezeTime, mp.inodeIDAllocator.CancelFreezeTime)
+	return
+}
+
 func (mp *metaPartition) loadApplyID(rootDir string) (err error) {
 	filename := path.Join(rootDir, applyIDFile)
 	if _, err = os.Stat(filename); err != nil {
@@ -1062,4 +1092,46 @@ func (mp *metaPartition) storeRequestInfo(rootDir string, sm *storeMsg) (crc uin
 	log.LogInfof("storeRequestInfo: store complete: partitoinID(%v) volume(%v) requestRecords(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.reqTree.Count(), crc)
 	return
+}
+
+func (mp *metaPartition) storeBitMapAllocatorInfo(rootDir string, sm *storeMsg) (crcV uint32, err error) {
+	if sm.allocatorSnap == nil {
+		return
+	}
+
+	var fp = path.Join(rootDir, bitmapAllocatorFile)
+	var f *os.File
+	f, err = os.OpenFile(fp, os.O_RDWR|os.O_TRUNC|os.O_APPEND|os.O_CREATE, 0755)
+	if err != nil {
+		return
+	}
+	defer func() {
+		closeErr := f.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
+	var writer = bufio.NewWriterSize(f, 4*1024*1024)
+	var crc = crc32.NewIEEE()
+
+	data := sm.allocatorSnap.MarshalBinary()
+	if _, err = writer.Write(data); err != nil {
+		return
+	}
+
+	if _, err = crc.Write(data); err != nil {
+		return
+	}
+
+	if err = writer.Flush(); err != nil {
+		return
+	}
+	if err = f.Sync(); err != nil {
+		return
+	}
+	crcV = crc.Sum32()
+	log.LogInfof("storeAllocatorInfo: store complete: partitionID(%v) volume(%v) crc(%v)",
+		mp.config.PartitionId, mp.config.VolName, crcV)
+	return
+
 }

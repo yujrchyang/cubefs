@@ -28,7 +28,7 @@ import (
 
 const DefaultBatchCount = 128
 
-var SnapshotVersionArr = []string{MinVersion, RocksDBVersion, BitMapAllocatorVersion, RemoveDupReqVersion}
+var SnapshotVersionArr = []string{MinVersion, RocksDBVersion, BitMapAllocatorVersion, RemoveDupReqVersion, BitMapDelayAllocateVersion}
 
 func GetMatchedSnapV(nodeVersion *MetaNodeVersion) (snapV SnapshotVersion) {
 	snapV = LatestSnapV
@@ -114,6 +114,7 @@ type BatchMetaItemIterator struct {
 	reqRecordsSnap  *BTree
 	batchSnapV      SnapshotVersion
 	metaConf        MetaPartitionConfig
+	allocatorSnap   *inoAllocatorV1
 }
 
 // newBatchMetaItemIterator returns a new MetaItemIterator.
@@ -137,6 +138,9 @@ func newBatchMetaItemIterator(mp *metaPartition, snapV SnapshotVersion) (si *Bat
 	si.rocksDBSnap = mp.db.OpenSnap()
 	si.metaConf = *mp.config
 	si.reqRecordsSnap = mp.reqRecords.ReqBTreeSnap()
+	if mp.inodeIDAllocator != nil {
+		si.allocatorSnap = mp.inodeIDAllocator.GenAllocatorSnap()
+	}
 
 	// start data producer
 	go func(iter *BatchMetaItemIterator) {
@@ -171,8 +175,16 @@ func newBatchMetaItemIterator(mp *metaPartition, snapV SnapshotVersion) (si *Bat
 		// process index ID
 		produceItem(si.applyID)
 
+		//meta conf and allocator info must first send, the sequence can not be changed
 		if snapV >= BatchSnapshotV2 {
 			ok := produceItem(&si.metaConf)
+			if !ok {
+				return
+			}
+		}
+
+		if snapV >= BatchSnapshotV4 && si.allocatorSnap != nil {
+			ok := produceItem(si.allocatorSnap)
 			if !ok {
 				return
 			}
@@ -406,6 +418,15 @@ func (si *BatchMetaItemIterator) Next() (data []byte, err error) {
 			}
 			snap = NewMetaItem(opFSMSyncMetaConf, nil, confJsonData)
 			if data, err = snap.MarshalBinary(); err != nil{
+				si.err = err
+				si.Close()
+			}
+			return
+		case *inoAllocatorV1:
+			var binaryData []byte
+			binaryData = item.(*inoAllocatorV1).MarshalBinary()
+			snap = NewMetaItem(opFSMSyncBitmapAllocator, nil, binaryData)
+			if data, err = snap.MarshalBinary(); err != nil {
 				si.err = err
 				si.Close()
 			}

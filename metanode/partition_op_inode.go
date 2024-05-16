@@ -62,6 +62,12 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
 		return
 	}
+
+	if inoID == 0 {
+		p.PacketErrorWithBody(proto.OpAgain, []byte("invalid inode id: 0"))
+		return
+	}
+
 	log.LogDebugf("[CreateInode] partitionID: %v, newInodeID: %v", mp.config.PartitionId, inoID)
 	ino := NewInode(inoID, req.Mode)
 	ino.Uid = req.Uid

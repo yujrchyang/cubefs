@@ -183,6 +183,10 @@ const (
 	opFSMFileMigExtentMerge
 
 	opFSMFreezeBitmapAllocator
+	opFSMCancelFreezeBitmapAllocator
+	opFSMUpdateCancelFreezeTime
+
+	opFSMSyncBitmapAllocator
 )
 
 var (
@@ -289,11 +293,12 @@ const (
 )
 
 const (
-	MinVersion             = "0.0.0"
-	RocksDBVersion         = proto.RocksDBVersion
-	BitMapAllocatorVersion = proto.BitMapAllocator
-	RemoveDupReqVersion    = proto.RemoveDupReq
-	MetaNodeLatestVersion  = proto.BaseVersion
+	MinVersion                 = "0.0.0"
+	RocksDBVersion             = proto.RocksDBVersion
+	BitMapAllocatorVersion     = proto.BitMapAllocator
+	RemoveDupReqVersion        = proto.RemoveDupReq
+	BitMapDelayAllocateVersion = proto.BitMapDelayAllocate
+	MetaNodeLatestVersion      = proto.BaseVersion
 )
 
 const (
@@ -342,7 +347,8 @@ const (
 	BatchSnapshotV1                   //rocksdb
 	BatchSnapshotV2                   //bitmap allocator
 	BatchSnapshotV3                   //remove dup op
-	LatestSnapV     = BatchSnapshotV3 //change with max snap version
+	BatchSnapshotV4                   //bit map allocator delay allocate
+	LatestSnapV     = BatchSnapshotV4 //change with max snap version
 )
 
 const (

@@ -29,10 +29,11 @@ import (
 )
 
 type storeMsg struct {
-	command    uint32
-	applyIndex uint64
-	snap       Snapshot
-	reqTree    *BTree
+	command       uint32
+	applyIndex    uint64
+	snap          Snapshot
+	reqTree       *BTree
+	allocatorSnap *inoAllocatorV1
 }
 
 func (mp *metaPartition) updateRaftStorageParam() {
@@ -208,6 +209,10 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
 			case <- cancelFreezeBitMapAllocateTicker.C:
+				if _, ok := mp.IsLeader(); !ok {
+					continue
+				}
+
 				mp.cancelFreezeBitmapAllocator()
 			}
 		}
@@ -316,11 +321,17 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 
 func (mp *metaPartition) updateMetaPartitionInodeAllocatorState(enable bool) {
 	if enable {
-		if status := mp.inodeIDAllocator.GetStatus(); status == allocatorStatusFrozen {
-			log.LogDebugf("bitmap allocator already frozen, partitionID: %v", mp.config.PartitionId)
-			return
+		//if cursor >= end, status will load from dump file, if status == init, set status -> available
+		//cursor < end && status == init, keep status in init
+		status := mp.inodeIDAllocator.GetStatus()
+		if mp.config.Cursor >= mp.config.End && status == allocatorStatusInit {
+			_ = mp.inodeIDAllocator.SetStatus(allocatorStatusAvailable)
 		}
-		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusAvailable)
+		//if status := mp.inodeIDAllocator.GetStatus(); status == allocatorStatusFrozen {
+		//	log.LogDebugf("bitmap allocator already frozen, partitionID: %v", mp.config.PartitionId)
+		//	return
+		//}
+		//_ = mp.inodeIDAllocator.SetStatus(allocatorStatusAvailable)
 	} else {
 		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusUnavailable)
 	}

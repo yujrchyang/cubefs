@@ -207,6 +207,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			sMsg.applyIndex = index
 			sMsg.snap = NewSnapshot(mp)
 			sMsg.reqTree = mp.reqRecords.ReqBTreeSnap()
+			sMsg.allocatorSnap = mp.inodeIDAllocator.GenAllocatorSnap()
 			if sMsg.snap == nil {
 				return
 			}
@@ -379,7 +380,14 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMSyncEvictReqRecords:
 		mp.evictExpiredRequestRecords(dbWriteHandle, int64(binary.BigEndian.Uint64(msg.V)))
 	case opFSMFreezeBitmapAllocator:
-		mp.fsmFreezeBitmapAllocator()
+		freezeTime := int64(binary.BigEndian.Uint64(msg.V[:8]))
+		cancelFreezeTime := int64(binary.BigEndian.Uint64(msg.V[8:]))
+		mp.fsmFreezeBitmapAllocator(freezeTime, cancelFreezeTime)
+	case opFSMUpdateCancelFreezeTime:
+		newCancelFreezeTime := int64(binary.BigEndian.Uint64(msg.V[:8]))
+		mp.fsmUpdateAllocatorCancelFreezeTime(newCancelFreezeTime)
+	case opFSMCancelFreezeBitmapAllocator:
+		mp.fsmCancelFreezeBitmapAllocator()
 	}
 
 	return
@@ -595,8 +603,8 @@ func (mp *metaPartition) ApplySnapshot(peers []raftproto.Peer, iter raftproto.Sn
 	case BaseSnapshotV:
 		log.LogInfof("mp[%v] apply base snapshot", mp.config.PartitionId)
 		return mp.ApplyBaseSnapshot(peers, iter)
-	case BatchSnapshotV1, BatchSnapshotV2, BatchSnapshotV3:
-		log.LogInfof("mp[%v] apply batch snapshot(snap version:%v)", mp.config.PartitionId, BatchSnapshotV1)
+	case BatchSnapshotV1, BatchSnapshotV2, BatchSnapshotV3, BatchSnapshotV4:
+		log.LogInfof("mp[%v] apply batch snapshot(snap version:%v)", mp.config.PartitionId, snapV)
 		return mp.ApplyBatchSnapshot(peers, iter, snapV)
 	default:
 		return fmt.Errorf("unknown snap version:%v", snapV)
@@ -804,10 +812,6 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 
 	if mp.HasMemStore() {
 		_ = newInodeIDAllocator.SetStatus(allocatorStatusInit)
-		if mp.config.Start == 0 {
-			newInodeIDAllocator.SetId(0)
-			newInodeIDAllocator.SetId(proto.RootIno)
-		}
 	}
 	nowStr := strconv.FormatInt(time.Now().Unix(), 10)
 	newDBDir := mp.getRocksDbRootDir() + "_" + nowStr
@@ -929,6 +933,12 @@ func (mp *metaPartition) ApplyBatchSnapshot(peers []raftproto.Peer, iter raftpro
 				return
 			}
 			log.LogDebugf("ApplyBatchSnapshot, partitionID(%v) metaConf:%s", mp.config.PartitionId, string(snap.V))
+		case opFSMSyncBitmapAllocator:
+			if err = newInodeIDAllocator.UnmarshalBinary(snap.V); err != nil {
+				log.LogErrorf("ApplyBatchSnapshot, partitionID(%v) unmarshal bitmap allocator info failed: %v", mp.config.PartitionId, err)
+				return
+			}
+			log.LogDebugf("ApplyBatchSnapshot, partitionID(%v) allocator: %s", mp.config.PartitionId, newInodeIDAllocator.String())
 		default:
 			err = fmt.Errorf("unknown op=%d", snap.Op)
 			return
@@ -1070,21 +1080,24 @@ func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, n
 		log.LogErrorf("afterApplySnapshotHandle: metaPartition(%v) recover from snap failed; update meta conf failed:%s", mp.config.PartitionId, err.Error())
 		return
 	}
-
-	mp.inodeIDAllocator = newInodeIDAllocator
-	mp.freezeBitMapAllocatorBeforeStart()
-
 	if newCursor > mp.config.Cursor {
 		atomic.StoreUint64(&mp.config.Cursor, newCursor)
 	}
+
+	mp.inodeIDAllocator = newInodeIDAllocator
+	if mp.isVolFirstPartition() {
+		mp.inodeIDAllocator.OccupiedInvalidAndRootInoBits()
+	}
+
 	mp.reqRecords = InitRequestRecords(requestInfos)
 	err = nil
 	// store message
 	sMsg := &storeMsg{
-		command:    opFSMStoreTick,
-		applyIndex: mp.applyID,
-		snap:       NewSnapshot(mp),
-		reqTree:    mp.reqRecords.ReqBTreeSnap(),
+		command:       opFSMStoreTick,
+		applyIndex:    mp.applyID,
+		snap:          NewSnapshot(mp),
+		reqTree:       mp.reqRecords.ReqBTreeSnap(),
+		allocatorSnap: mp.inodeIDAllocator.GenAllocatorSnap(),
 	}
 	if sMsg.snap != nil {
 		mp.storeChan <- sMsg
@@ -1195,12 +1208,30 @@ func (mp *metaPartition) uploadApplyID(applyId uint64) {
 	}
 }
 
-func (mp *metaPartition) fsmFreezeBitmapAllocator() {
+func (mp *metaPartition) fsmFreezeBitmapAllocator(freezeTime, cancelFreezeTime int64) {
 	if mp.inodeIDAllocator == nil {
 		return
 	}
 
-	frozenDuration := mp.getBitmapSnapFrozenDuration()
-	mp.inodeIDAllocator.FreezeAllocator(frozenDuration)
-	log.LogDebugf("[fsmFreezeBitmapAllocator] freeze bitmap allocator, partitionID: %v", mp.config.PartitionId)
+	mp.inodeIDAllocator.FreezeAllocator(freezeTime, cancelFreezeTime)
+	log.LogDebugf("freeze bitmap allocator, partitionID: %v, freezeTime: %v, cancelFreezeTime: %v", mp.config.PartitionId,
+		freezeTime, cancelFreezeTime)
+}
+
+func (mp *metaPartition) fsmUpdateAllocatorCancelFreezeTime(newCancelFreezeTime int64) {
+	if mp.inodeIDAllocator == nil {
+		return
+	}
+
+	mp.inodeIDAllocator.ResetCancelFreezeTime(newCancelFreezeTime)
+	log.LogDebugf("update cancel freeze time, partitionID: %v, newCancelFreezeTime: %v", mp.config.PartitionId,
+		newCancelFreezeTime)
+}
+
+func (mp *metaPartition) fsmCancelFreezeBitmapAllocator() {
+	if mp.inodeIDAllocator == nil {
+		return
+	}
+
+	mp.inodeIDAllocator.CancelFreezeAllocator(false)
 }
