@@ -93,7 +93,7 @@ func (migInode *MigrateInode) RunOnce() (finished bool, err error) {
 			log.LogDebugf("inode fileMigrate stop because vol(%v) be stopped, ino(%v) inode.stage(%v)", migInode.vol.Name, migInode.name, migInode.stage)
 			migInode.stage = InodeMigStopped
 		}
-		log.LogDebugf("inode runonce ino(%v) inode.stage(%v)", migInode.name, migInode.stage)
+		log.LogDebugf("inode runonce taskType(%v) ino(%v) inode.stage(%v) startEndIndex(%v:%v)", migInode.mpOp.task.TaskType, migInode.name, migInode.stage, migInode.startIndex, migInode.endIndex)
 		switch migInode.stage {
 		case Init:
 			err = migInode.Init()
@@ -147,7 +147,7 @@ func (migInode *MigrateInode) Init() (err error) {
 	} else {
 		migInode.migDirection = COMPACTFILEMIGRATE
 	}
-	if migInode.migDirection == HDDTOSSDFILEMIGRATE || migInode.migDirection == COMPACTFILEMIGRATE {
+	if migInode.migDirection == HDDTOSSDFILEMIGRATE {
 		migInode.extentClient = migInode.vol.NormalDataClient
 	} else {
 		migInode.extentClient = migInode.vol.DataClient
@@ -191,7 +191,12 @@ func (migInode *MigrateInode) LookupEkSegment() (err error) {
 			return
 		}
 		if migInode.migDirection == COMPACTFILEMIGRATE {
-			if migInode.endIndex-migInode.startIndex == 1 {
+			if migInode.endIndex-migInode.startIndex != 1 {
+				return
+			}
+			if migInode.endIndex >= len(migInode.extents) {
+				migInode.stage = InodeMigStopped
+			} else {
 				migInode.stage = LookupEkSegment
 			}
 		}
@@ -220,8 +225,11 @@ func (migInode *MigrateInode) LookupEkSegment() (err error) {
 	for i := migInode.lastMigEkIndex; i < len(migInode.extents); i++ {
 		migInode.lastMigEkIndex = i + 1
 		ek := eks[i]
-		mediumType := migInode.vol.GetDpMediumType(migInode.vol.ClusterName, migInode.vol.Name, ek.PartitionId)
-		mediumType = strings.ToLower(mediumType)
+		var mediumType string
+		if migMediumType != NoneMediumType && migInode.vol.GetDpMediumType != nil {
+			mediumType = migInode.vol.GetDpMediumType(migInode.vol.ClusterName, migInode.vol.Name, ek.PartitionId)
+			mediumType = strings.ToLower(mediumType)
+		}
 		if !proto.IsTinyExtent(ek.ExtentId) && (migMediumType == NoneMediumType || mediumType == migMediumType) {
 			if !findFirstSSd {
 				findFirstSSd = true

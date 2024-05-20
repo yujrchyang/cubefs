@@ -174,7 +174,7 @@ func (w *Worker) createFileMigrateTask(clusterId string, taskNum int64, runningT
 	fv := value.(*FileMigrateVolumeView)
 	var (
 		fileMigrateOpenVols   []*proto.SmartVolume
-		fileMigrateOpenVolMap = make(map[string]struct{}) // key: cluster,volName
+		fileMigrateOpenVolMap = make(volumeMap) // key: cluster,volName
 		fileMigrateCloseVols  []string
 	)
 	for volName, smartVolume := range fv.SmartVolumes {
@@ -243,7 +243,7 @@ func (w * Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView
 		}
 		if mp.InodeCount == 0 {
 			if i >= len(mpView)-1 {
-				w.volumeTaskPos.Store(key, 0)
+				w.volumeTaskPos.Store(key, uint64(0))
 			} else {
 				w.volumeTaskPos.Store(key, mp.PartitionID)
 			}
@@ -269,10 +269,10 @@ func (w * Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView
 		if value, ok := w.volumeTaskCnt.Load(key); ok {
 			w.volumeTaskCnt.Store(key, value.(uint64)+1)
 		} else {
-			w.volumeTaskCnt.Store(key, 1)
+			w.volumeTaskCnt.Store(key, uint64(1))
 		}
 		if i >= len(mpView)-1 {
-			w.volumeTaskPos.Store(key, 0)
+			w.volumeTaskPos.Store(key, uint64(0))
 		} else {
 			w.volumeTaskPos.Store(key, mp.PartitionID)
 		}
@@ -303,7 +303,7 @@ func (w * Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMig
 		}
 		if mp.InodeCount == 0 {
 			if i >= len(mpView)-1 {
-				w.volumeTaskPos.Store(key, 0)
+				w.volumeTaskPos.Store(key, uint64(0))
 			} else {
 				w.volumeTaskPos.Store(key, mp.PartitionID)
 			}
@@ -329,10 +329,10 @@ func (w * Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMig
 		if value, ok := w.volumeTaskCnt.Load(key); ok {
 			w.volumeTaskCnt.Store(key, value.(uint64)+1)
 		} else {
-			w.volumeTaskCnt.Store(key, 1)
+			w.volumeTaskCnt.Store(key, uint64(1))
 		}
 		if i >= len(mpView)-1 {
-			w.volumeTaskPos.Store(key, 0)
+			w.volumeTaskPos.Store(key, uint64(0))
 		} else {
 			w.volumeTaskPos.Store(key, mp.PartitionID)
 		}
@@ -375,11 +375,11 @@ func (w *Worker) resetTaskPosition(volumeKey string, mpView []*proto.MetaPartiti
 		mpPos = value.(uint64)
 	}
 	if len(mpView) > 0 && mpView[len(mpView)-1].PartitionID <= mpPos {
-		w.volumeTaskPos.Store(volumeKey, 0)
+		w.volumeTaskPos.Store(volumeKey, uint64(0))
 	}
 }
 
-func (w *Worker) filterSoonCloseFileMigrateVols(clusterId string, fileMigrateVolMap map[string]struct{}, runningTasks []*proto.Task) (fileMigrateCloseVols []string) {
+func (w *Worker) filterSoonCloseFileMigrateVols(clusterId string, fileMigrateVolMap volumeMap, runningTasks []*proto.Task) (fileMigrateCloseVols []string) {
 	if _, ok := w.lastFileMigrateVolume.Load(clusterId); !ok {
 		w.lastFileMigrateVolume.Store(clusterId, make(volumeMap))
 	}

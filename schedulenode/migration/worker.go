@@ -203,9 +203,10 @@ func (w *Worker) execMigrationTask(task *proto.Task) (isFinished bool, err error
 		log.LogErrorf("ConsumeTask mpOp RunOnce cluster(%v) volName(%v) mpId(%v) err(%v)", task.Cluster, task.VolName, migTask.mpId, err)
 		switch err.Error() {
 		case proto.ErrMetaPartitionNotExists.Error(), proto.ErrVolNotExists.Error():
-			return false, nil
+			isFinished = true
+			err = nil
 		default:
-			return true, err
+			isFinished = false
 		}
 	}
 	return
