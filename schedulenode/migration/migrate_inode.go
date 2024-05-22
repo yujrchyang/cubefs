@@ -132,9 +132,8 @@ func (migInode *MigrateInode) Init() (err error) {
 			migInode.DealActionErr(InodeInitTaskCode, err)
 			return
 		}
-		log.LogDebugf("[inode fileMigrate] init task success ino(%v)", migInode.name)
-		migInode.stage = OpenFile
 	}()
+	var isMigBack bool
 	if migInode.mpOp.task.TaskType == proto.WorkerTypeInodeMigration {
 		var migDir MigrateDirection
 		if migDir, err = migInode.mpOp.getInodeMigDirection(migInode.inodeInfo); err != nil {
@@ -144,16 +143,24 @@ func (migInode *MigrateInode) Init() (err error) {
 		if err = migInode.setInodeAttrMaxTime(); err != nil {
 			return
 		}
+		isMigBack = migInode.vol.GetMigrationConfig(migInode.vol.ClusterName, migInode.vol.Name).MigrationBack == migrationBack
 	} else {
 		migInode.migDirection = COMPACTFILEMIGRATE
 	}
 	if migInode.migDirection == HDDTOSSDFILEMIGRATE {
-		migInode.extentClient = migInode.vol.NormalDataClient
+		if isMigBack {
+			migInode.extentClient = migInode.vol.NormalDataClient
+		} else {
+			migInode.stage = InodeMigStopped
+			return
+		}
 	} else {
 		migInode.extentClient = migInode.vol.DataClient
 	}
 	migInode.initExtentMaxIndex()
 	migInode.lastMigEkIndex = 0
+	log.LogDebugf("[inode fileMigrate] init task success ino(%v)", migInode.name)
+	migInode.stage = OpenFile
 	return
 }
 
@@ -208,16 +215,16 @@ func (migInode *MigrateInode) LookupEkSegment() (err error) {
 		migCnt        uint64
 		findFirstSSd  bool
 		checkHole     bool
-		migMediumType string
+		srcMediumType string
 		eks           = migInode.extents
 	)
 	switch migInode.migDirection {
 	case COMPACTFILEMIGRATE:
-		migMediumType = NoneMediumType
+		srcMediumType = NoneMediumType
 	case HDDTOSSDFILEMIGRATE:
-		migMediumType = proto.MediumHDDName
+		srcMediumType = proto.MediumHDDName
 	case SSDTOHDDFILEMIGRATE:
-		migMediumType = proto.MediumSSDName
+		srcMediumType = proto.MediumSSDName
 	default:
 		err = fmt.Errorf("migrate direction invalid(%v)", migInode.migDirection)
 		return err
@@ -225,12 +232,13 @@ func (migInode *MigrateInode) LookupEkSegment() (err error) {
 	for i := migInode.lastMigEkIndex; i < len(migInode.extents); i++ {
 		migInode.lastMigEkIndex = i + 1
 		ek := eks[i]
-		var mediumType string
-		if migMediumType != NoneMediumType && migInode.vol.GetDpMediumType != nil {
-			mediumType = migInode.vol.GetDpMediumType(migInode.vol.ClusterName, migInode.vol.Name, ek.PartitionId)
-			mediumType = strings.ToLower(mediumType)
+		var candidateMediumType string
+		if srcMediumType != NoneMediumType {
+			candidateMediumType = migInode.vol.GetDpMediumType(migInode.vol.ClusterName, migInode.vol.Name, ek.PartitionId)
+			candidateMediumType = strings.ToLower(candidateMediumType)
 		}
-		if !proto.IsTinyExtent(ek.ExtentId) && (migMediumType == NoneMediumType || mediumType == migMediumType) {
+		log.LogDebugf("lookup inode(%v) srcMediumType(%v) candidateMediumType(%v)", migInode.name, srcMediumType, candidateMediumType)
+		if !proto.IsTinyExtent(ek.ExtentId) && (srcMediumType == NoneMediumType || candidateMediumType == srcMediumType) {
 			if !findFirstSSd {
 				findFirstSSd = true
 				start = i

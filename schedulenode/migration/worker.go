@@ -13,10 +13,12 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	stringutil "github.com/cubefs/cubefs/util/string"
 	"golang.org/x/net/context"
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -25,7 +27,7 @@ const (
 	DefaultMpConcurrency             = 5
 	DefaultCompactVolumeLoadDuration = 60
 	RetryDoGetMaxCnt                 = 3
-	InodeLimitSize                   = 10 * 1024 * 1024
+	PageSize                         = 1000
 )
 
 const (
@@ -46,6 +48,33 @@ const (
 	DefaultMaxEkAvgSize    = 32 //MB
 )
 
+const (
+	ParamKeyCluster       = "cluster"
+	ParamKeyVolume        = "volume"
+	ParamKeySmart         = "smart"
+	paramKeySmartRules    = "smartRules"
+	paramKeyHddDirs       = "hddDirs"
+	paramKeySsdDirs       = "ssdDirs"
+	paramKeyMigrationBack = "migrationBack"
+	paramKeyCompact       = "compact"
+)
+
+const (
+	migClose = iota
+	ssdToHdd
+	HddToSsd
+)
+
+const (
+	notModify    = -1
+	notModifyStr = "-1"
+)
+
+const (
+	noMigrationBack = 0
+	migrationBack   = 1
+)
+
 type volumeMap map[string]struct{}
 
 type Worker struct {
@@ -59,6 +88,7 @@ type Worker struct {
 	volumeTaskCnt         sync.Map //key: clusterVolumeKey value: taskCnt
 	controlConfig         *ControlConfig
 	limiter               *cm.ConcurrencyLimiter
+	volumeInfoCheckMutex  sync.Mutex
 }
 
 func NewWorker(workerType proto.WorkerType) (w *Worker) {
@@ -99,6 +129,24 @@ func doStartWorker(s common.Server, cfg *config.Config) (err error) {
 	go w.loadVolumeInfo()
 	go w.releaseVolume()
 	w.registerHandler()
+	return
+}
+
+func loadAllMigrationConfig() (volumeConfigs []*proto.MigrationConfig) {
+	var offset = 0
+	for {
+		vcs, err := mysql.SelectAllMigrationConfig(PageSize, offset)
+		if err != nil {
+			log.LogErrorf("[loadAllMigrationConfig] load migration configs failed, err(%v)", err)
+			break
+		}
+		if len(vcs) == 0 {
+			break
+		}
+		log.LogDebugf("[loadAllMigrationConfig] load migration configs finished pageSize(%v) offset(%v)", PageSize, offset)
+		volumeConfigs = append(volumeConfigs, vcs...)
+		offset += len(volumeConfigs)
+	}
 	return
 }
 
@@ -213,6 +261,8 @@ func (w *Worker) execMigrationTask(task *proto.Task) (isFinished bool, err error
 }
 
 func (w *Worker) checkVolumeInfo(cluster, volume string, clientType data.ExtentClientType) (err error) {
+	w.volumeInfoCheckMutex.Lock()
+	defer w.volumeInfoCheckMutex.Unlock()
 	var (
 		clusterInfo *ClusterInfo
 		volumeInfo  *VolumeInfo
@@ -230,20 +280,23 @@ func (w *Worker) checkVolumeInfo(cluster, volume string, clientType data.ExtentC
 	var (
 		getInodeATimePolicies func(cluster, volName string) (layerPolicies []interface{}, exist bool)
 		getDpMediumType       func(cluster, volName string, dpId uint64) (mediumType string)
+		getMigrationConfig    func(cluster, volName string) (migConfig proto.MigrationConfig)
 	)
 	switch clientType {
 	case data.Normal:
 		getInodeATimePolicies = nil
 		getDpMediumType = nil
+		getMigrationConfig = nil
 	case data.Smart:
 		getInodeATimePolicies = w.getInodeATimePolicies
 		getDpMediumType = w.getDpMediumType
+		getMigrationConfig = w.getMigrationConfig
 	default:
 		err = fmt.Errorf("volumeInfo clientType(%v) invalid cluster(%v) volume(%v) ", cluster, volume, clientType)
 		return
 	}
 	if volumeInfo, err = NewVolumeInfo(cluster, volume, clusterInfo.MasterClient.Nodes(), w.controlConfig, clientType,
-		getInodeATimePolicies, getDpMediumType); err != nil {
+		getInodeATimePolicies, getDpMediumType, getMigrationConfig); err != nil {
 		err = fmt.Errorf("NewFileMigrateVolume cluster(%v) volume(%v) info failed:%v", cluster, volume, err)
 		return
 	}
@@ -291,6 +344,23 @@ func (w *Worker) getInodeATimePolicies(cluster, volName string) (layerPolicies [
 	return
 }
 
+func (w *Worker) getMigrationConfig(cluster, volName string) (volumeConfig proto.MigrationConfig) {
+	value, ok := w.volumeView.Load(cluster)
+	if !ok {
+		return
+	}
+	volViews := value.(*FileMigrateVolumeView)
+	if sv, has := volViews.SmartVolumes[volName]; has {
+		volumeConfig = proto.MigrationConfig{
+			Smart:         sv.Smart,
+			HddDirs:       sv.HddDirs,
+			SsdDirs:       sv.SsdDirs,
+			MigrationBack: sv.MigrationBack,
+		}
+	}
+	return
+}
+
 func (w *Worker) getDpMediumType(cluster, volName string, dpId uint64) (mediumType string) {
 	f := func(dataPartitions []*proto.DataPartitionResponse) string {
 		for _, dp := range dataPartitions {
@@ -326,6 +396,8 @@ func (w *Worker) registerHandler() {
 		http.HandleFunc(FileMigrateStop, w.stop)
 		http.HandleFunc(FileMigrateConcurrencySetLimit, w.setLimit)
 		http.HandleFunc(FileMigrateConcurrencyGetLimit, w.getLimit)
+		http.HandleFunc(MigrationConfigAddOrUpdate, w.migrationConfigAddOrUpdate)
+		http.HandleFunc(MigrationConfigDelete, w.migrationConfigDelete)
 	}
 }
 
@@ -473,6 +545,11 @@ const (
 	FileMigrateConcurrencyGetLimit = "/fileMigrate/getLimit"
 )
 
+const (
+	MigrationConfigAddOrUpdate = "/migrationConfig/addOrUpdate"
+	MigrationConfigDelete      = "/migrationConfig/delete"
+)
+
 func (w *Worker) workerViewInfo(res http.ResponseWriter, r *http.Request) {
 	view := w.collectWorkerViewInfo()
 	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: view})
@@ -516,11 +593,11 @@ func (w *Worker) info(res http.ResponseWriter, r *http.Request) {
 	clusterName := r.FormValue(ClusterKey)
 	volumeName := r.FormValue(VolNameKey)
 	volInfo := w.volInfo(clusterName, volumeName)
-	var data *proto.VolumeDataMigView = nil
+	var migView *proto.VolumeDataMigView
 	if volInfo != nil {
-		data = volInfo.GetVolumeView()
+		migView = volInfo.GetVolumeView()
 	}
-	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: data})
+	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: migView})
 }
 
 func (w *Worker) volInfo(clusterName, volumeName string) (volInfo *VolumeInfo) {
@@ -620,6 +697,7 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 	}
 	var (
 		mc *master.MasterClient
+		volumeInfo *VolumeInfo
 		ok bool
 	)
 	if mc, ok = w.getMasterClient(cluster); !ok {
@@ -628,20 +706,6 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
 		return
 	}
-	var volInfo *proto.SimpleVolView
-	if volInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(volume); err != nil {
-		msg := "failed to get volume simple info"
-		log.LogErrorf("addInode GetVolumeSimpleInfo cluster(%v) volName(%v) err(%v)", cluster, volume, err)
-		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
-		return
-	}
-	if volInfo.CompactTag != proto.CompactOpenName {
-		msg := "compact is closed"
-		err = errors.New(msg)
-		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
-		return
-	}
-	var volumeInfo *VolumeInfo
 	if volumeInfo, ok = w.getVolumeInfo(cluster, volume); !ok {
 		msg := fmt.Sprintf("cluster(%v) volName(%v) does not exist", cluster, volume)
 		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
@@ -671,7 +735,16 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 			WorkerAddr: w.LocalIp,
 		}
 		var migrateInode *MigrateInode
-		migrateInode, err = NewMigrateInode(NewMigrateTask(task, mc, volumeInfo), inodeExtents[0])
+		migrateTask := NewMigrateTask(task, mc, volumeInfo)
+		if err = migrateTask.GetMpInfo(); err != nil {
+			log.LogErrorf("GetMpInfo cluster(%v) volName(%v) mpId(%v) inodeId(%v) err(%v)", cluster, volume, mpId, inodeId, err)
+			return
+		}
+		if err = migrateTask.GetProfPort(); err != nil {
+			log.LogErrorf("GetProfPort cluster(%v) volName(%v) mpId(%v) inodeId(%v) err(%v)", cluster, volume, mpId, inodeId, err)
+			return
+		}
+		migrateInode, err = NewMigrateInode(migrateTask, inodeExtents[0])
 		if err != nil {
 			log.LogErrorf("NewMigrateInode cluster(%v) volName(%v) mpId(%v) inodeId(%v) err(%v)", cluster, volume, mpId, inodeId, err)
 			return
@@ -684,4 +757,210 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 		}
 	}()
 	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "start exec inode compact task"})
+}
+
+func (w *Worker) migrationConfigAddOrUpdate(res http.ResponseWriter, r *http.Request) {
+	var (
+		migConfig *proto.MigrationConfig
+		err       error
+	)
+	migConfig, err = parseParamVolumeConfig(w, r)
+	if err != nil {
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	var volumeConfigs []*proto.MigrationConfig
+	volumeConfigs, err = mysql.SelectVolumeConfig(migConfig.ClusterName, migConfig.VolName)
+	if err != nil {
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	if len(volumeConfigs) == 0 {
+		if migConfig.Smart == notModify {
+			migConfig.Smart = migClose
+		}
+		if migConfig.SmartRules == notModifyStr {
+			migConfig.SmartRules = ""
+		}
+		if migConfig.HddDirs == notModifyStr {
+			migConfig.HddDirs = ""
+		}
+		if migConfig.SsdDirs == notModifyStr {
+			migConfig.SsdDirs = ""
+		}
+		if migConfig.MigrationBack == notModify {
+			migConfig.MigrationBack = noMigrationBack
+		}
+		if migConfig.Compact == notModify {
+			migConfig.Compact = compactDisabled
+		}
+		err = mysql.AddMigrationConfig(migConfig)
+		if err != nil {
+			SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
+		return
+	}
+	volumeConfigInMysql := volumeConfigs[0]
+	if migConfig.Smart != notModify {
+		volumeConfigInMysql.Smart = migConfig.Smart
+	}
+	if migConfig.SmartRules != notModifyStr {
+		volumeConfigInMysql.SmartRules = migConfig.SmartRules
+	}
+	if migConfig.HddDirs != notModifyStr {
+		volumeConfigInMysql.HddDirs = migConfig.HddDirs
+	}
+	if migConfig.SsdDirs != notModifyStr {
+		volumeConfigInMysql.SsdDirs = migConfig.SsdDirs
+	}
+	if migConfig.MigrationBack != notModify {
+		volumeConfigInMysql.MigrationBack = migConfig.MigrationBack
+	}
+	if migConfig.Compact != notModify {
+		volumeConfigInMysql.Compact = migConfig.Compact
+	}
+	err = mysql.UpdateMigrationConfig(volumeConfigInMysql)
+	if err != nil && !strings.Contains(err.Error(), "affected rows less then one") {
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
+}
+
+func (w *Worker) migrationConfigDelete(res http.ResponseWriter, r *http.Request) {
+	var (
+		cluster string
+		volume  string
+		err     error
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	cluster = r.FormValue(ParamKeyCluster)
+	if stringutil.IsStrEmpty(cluster) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyCluster)
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	volume = r.FormValue(ParamKeyVolume)
+	if stringutil.IsStrEmpty(volume) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyVolume)
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	if err = mysql.DeleteMigrationConfig(cluster, volume); err != nil {
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
+}
+
+func parseParamVolumeConfig(w *Worker, r *http.Request) (config *proto.MigrationConfig, err error) {
+	var (
+		cluster       string
+		volume        string
+		smart         int
+		smartRules    string
+		hddDirs       string
+		ssdDirs       string
+		migBack       int
+		compact       int
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		return
+	}
+	cluster = r.FormValue(ParamKeyCluster)
+	if stringutil.IsStrEmpty(cluster) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyCluster)
+		return
+	}
+	volume = r.FormValue(ParamKeyVolume)
+	if stringutil.IsStrEmpty(volume) {
+		err = fmt.Errorf("param %v can not be empty", ParamKeyVolume)
+		return
+	}
+	var (
+		value interface{}
+		ok bool
+	)
+	if value, ok = w.masterClients.Load(cluster); !ok {
+		err = fmt.Errorf("cluster %v not support", cluster)
+		return
+	}
+	mc := value.(*master.MasterClient)
+	var volInfo *proto.SimpleVolView
+	if volInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(volume); err != nil {
+		err = fmt.Errorf("cluster: %v volume: %v %v", cluster, volume, err)
+		return
+	}
+	if volInfo != nil && volInfo.MarkDeleteTime > 0 {
+		err = fmt.Errorf("cluster: %v volume: %v has been mark delete", cluster, volume)
+		return
+	}
+	smartReqValue := r.FormValue(ParamKeySmart)
+	if len(smartReqValue) == 0 {
+		smart = notModify
+	} else {
+		if smart, err = strconv.Atoi(smartReqValue); err != nil {
+			err = fmt.Errorf("parse param %v fail: %v", ParamKeySmart, err)
+			return
+		}
+	}
+	if smart > 0 {
+		if smart != ssdToHdd && smart != HddToSsd {
+			err = fmt.Errorf("parse param %v fail: %v", ParamKeySmart, "should be 1 or 2")
+			return
+		}
+	}
+	smartRules = r.FormValue(paramKeySmartRules)
+	if len(smartRules) == 0 {
+		smartRules = notModifyStr
+	} else {
+		if err = proto.CheckLayerPolicy(cluster, volume, strings.Split(smartRules, ",")); err != nil {
+			err = fmt.Errorf("valid smart rules invalid err: %v", err)
+			return
+		}
+	}
+	hddDirs = r.FormValue(paramKeyHddDirs)
+	if len(hddDirs) == 0 {
+		hddDirs = notModifyStr
+	}
+	ssdDirs = r.FormValue(paramKeySsdDirs)
+	if len(ssdDirs) == 0 {
+		ssdDirs = notModifyStr
+	}
+	migrationBackReqValue := r.FormValue(paramKeyMigrationBack)
+	if len(migrationBackReqValue) == 0 {
+		migBack = notModify
+	} else {
+		if migBack, err = strconv.Atoi(migrationBackReqValue); err != nil {
+			err = fmt.Errorf("parse param %v fail: %v", paramKeyMigrationBack, err)
+			return
+		}
+	}
+	compactReqValue := r.FormValue(paramKeyCompact)
+	if len(compactReqValue) == 0 {
+		compact = notModify
+	} else {
+		if compact, err = strconv.Atoi(compactReqValue); err != nil {
+			err = fmt.Errorf("parse param %v fail: %v", paramKeyCompact, err)
+			return
+		}
+	}
+	config = &proto.MigrationConfig{
+		ClusterName:   cluster,
+		VolName:       volume,
+		Smart:         int8(smart),
+		SmartRules:    smartRules,
+		HddDirs:       hddDirs,
+		SsdDirs:       ssdDirs,
+		MigrationBack: int8(migBack),
+		Compact:       int8(compact),
+	}
+	return
 }

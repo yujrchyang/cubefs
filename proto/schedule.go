@@ -386,3 +386,17 @@ func NewMainCheckTask(taskType WorkerType, clusterID string) *MainCheckTask {
 		Status:       MainCheckTaskStatusRunning,
 	}
 }
+
+type MigrationConfig struct {
+	Id            uint64
+	ClusterName   string
+	VolName       string
+	Smart         int8
+	SmartRules    string
+	HddDirs       string
+	SsdDirs       string
+	MigrationBack int8
+	Compact       int8
+	CreateTime    time.Time
+	UpdateTime    time.Time
+}

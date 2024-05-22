@@ -74,6 +74,10 @@ const (
 	MonitorMysqlSelectScheduleConfig           = "SelectScheduleConfig"
 	MonitorMysqlUpdateScheduleConfig           = "UpdateScheduleConfig"
 	MonitorMysqlDeleteScheduleConfig           = "DeleteScheduleConfig"
+	MonitorMysqlSelectMigrationConfig          = "SelectMigrationConfig"
+	MonitorMysqlAddMigrationConfig             = "AddMigrationConfig"
+	MonitorMysqlUpdateMigrationConfig          = "UpdateMigrationConfig"
+	MonitorMysqlDeleteMigrationConfig          = "DeleteMigrationConfig"
 
 	// base worker
 	MonitorWorkerHeartbeat = "workerHeartbeat"
