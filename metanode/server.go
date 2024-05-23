@@ -20,6 +20,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"io"
 	"net"
+	"runtime/debug"
 	"time"
 
 	"github.com/cubefs/cubefs/util/log"
@@ -80,11 +81,23 @@ const (
 )
 // Read data from the specified tcp connection until the connection is closed by the remote or the tcp service is down.
 func (m *MetaNode) serveConn(conn net.Conn, stopC chan uint8) {
+	remoteAddr := conn.RemoteAddr().String()
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("MetaNode ServerConn: occurred panic. \n"+
+				"remote: %s\n" +
+				"message: %v\n"+
+				"stack:\n%v",
+				remoteAddr, r, string(debug.Stack()))
+			log.LogCritical(msg)
+			exporter.WarningAppendKey(PanicBackGroundKey, msg)
+		}
+	}()
+
 	defer conn.Close()
 	c := conn.(*net.TCPConn)
 	_ = c.SetKeepAlive(true) // Ignore error
 	_ = c.SetNoDelay(true)   // Ignore error
-	remoteAddr := conn.RemoteAddr().String()
 	for {
 		select {
 		case <-stopC:
