@@ -2034,7 +2034,7 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 		if inodeID%3==1 {
 			delInodesID = append(delInodesID, inodeID)
 			var retMsg *InodeResponse
-			retMsg, err = mp.getInode(NewInode(inodeID, 0))
+			retMsg, err = mp.getInode(NewInode(inodeID, 0), false)
 			if err != nil {
 				t.Error(err)
 				t.FailNow()

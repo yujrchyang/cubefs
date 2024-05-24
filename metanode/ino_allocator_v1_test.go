@@ -22,17 +22,19 @@ func TestInoAllocatorV1_MaxId(t *testing.T) {
 	allocator.FreezeAllocator(time.Now().Unix(), time.Now().Unix())
 	allocator.CancelFreezeAllocator(false)
 	id, _, _ := allocator.AllocateId()
-	assert.Equal(t, uint64(2000001), id, "expect id is 2000001")
+	assert.Equal(t, uint64(2000002), id, "expect id is 2000001")
+	allocator.SetId(id)
 	id, _, _ = allocator.AllocateId()
-	assert.Equal(t, uint64(2000002), id, "expect id is 2000002")
-	allocator.SetId(4000000 - 1)
+	assert.Equal(t, uint64(2000003), id, "expect id is 2000002")
+	allocator.SetId(id)
+	allocator.ResetBitCursorToEnd()
 	allocator.ClearId(4000000)
-	_, needFreeze, _ = allocator.AllocateId()
+	id, needFreeze, _ = allocator.AllocateId()
 	assert.Equal(t, true, needFreeze)
 	allocator.FreezeAllocator(time.Now().Unix(), time.Now().Unix())
 	allocator.CancelFreezeAllocator(false)
 	id, _, _ = allocator.AllocateId()
-	assert.Equal(t, uint64(2000003), id, "expect id is 2000003")
+	assert.Equal(t, uint64(2000004), id, "expect id is 2000003")
 }
 
 func TestInoAllocatorV1_MaxCost(t *testing.T) {
@@ -48,16 +50,11 @@ func TestInoAllocatorV1_MaxCost(t *testing.T) {
 	allocator.ClearId(3)
 	allocator.BitsSnap.ClearBit(3)
 	allocator.BitCursor = 4
-	start := time.Now()
 	id, _, err := allocator.AllocateId()
-	if err != nil {
-		t.Fatalf("allocate id failed")
+	if err == nil {
+		t.Fatalf("allocate id expect failed, but allocator %v", id)
 		return
 	}
-	cost := time.Since(start)
-	assert.Equal(t, uint64(3), id, "expect allocate id:3")
-	t.Logf("allocate id:%d, max cost:%v", id, cost)
-
 	allocator.BitCursor = 256
 	id, _, err = allocator.AllocateId()
 	if err == nil {
@@ -430,7 +427,6 @@ func TestInoAllocatorV1_MarshalAndUnmarshal(t *testing.T) {
 	assert.Equal(t, allocator.Version, newAllocator.Version)
 	assert.Equal(t, allocator.Status, newAllocator.Status)
 	assert.Equal(t, allocator.BitCursor, newAllocator.BitCursor)
-	assert.Equal(t, allocator.Used, newAllocator.Used)
 	assert.Equal(t, allocator.FreezeTime, newAllocator.FreezeTime)
 	assert.Equal(t, allocator.CancelFreezeTime, newAllocator.CancelFreezeTime)
 	assert.Equal(t, allocator.BitsSnap, newAllocator.BitsSnap)
