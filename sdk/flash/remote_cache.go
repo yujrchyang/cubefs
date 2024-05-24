@@ -54,8 +54,10 @@ const (
 	RefreshFlashNodesInterval  = time.Minute
 	RefreshHostLatencyInterval = 15 * time.Minute
 
-	sameZoneTimeout   = 400 * time.Microsecond
-	SameRegionTimeout = 2 * time.Millisecond
+	sameZoneTimeout       = 400 * time.Microsecond
+	secondSameZoneTimeout = 600 * time.Microsecond
+	thirdSameZoneTimeout  = 800 * time.Microsecond
+	SameRegionTimeout     = 2 * time.Millisecond
 
 	limitedHostPunishTime = time.Duration(5 * time.Second)
 )
@@ -134,7 +136,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 
 	addr := rc.selectFlashHost(fg)
 	if addr == "" {
-		err = fmt.Errorf("getFlashHost failed: cannot find any available host")
+		err = fmt.Errorf("getFlashHost failed: fgID(%v) cannot find any available host", fg.ID)
 		log.LogWarnf("FlashGroup read failed: err(%v)", err)
 		return
 	}
@@ -149,7 +151,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		}
 	}()
 	if conn, err = rc.conns.GetConnect(addr); err != nil {
-		log.LogWarnf("FlashGroup read: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", addr, req, err)
+		log.LogWarnf("FlashGroup read: get connection to curr addr failed, fgID(%v) addr(%v) reqPacket(%v) err(%v)", fg.ID, addr, req, err)
 		return
 	}
 	defer func() {
@@ -160,7 +162,7 @@ func (rc *RemoteCache) Read(ctx context.Context, fg *FlashGroup, inode uint64, r
 		return
 	}
 	if read, reply, err = rc.getReadReply(conn, reqPacket, req); err != nil {
-		log.LogWarnf("FlashGroup Read: getReadReply from addr(%v) err(%v)", addr, err)
+		log.LogWarnf("FlashGroup Read: getReadReply from fgID(%v) addr(%v) err(%v)", fg.ID, addr, err)
 	}
 	// check resultCode is limited or not
 	if reply.ResultCode == proto.OpAgain {
@@ -409,25 +411,39 @@ func (rc *RemoteCache) updateFlashGroups() (err error) {
 
 func (rc *RemoteCache) ClassifyHostsByAvgDelay(fgID uint64, hosts []string) (sortedHosts map[ZoneRankType][]string) {
 	sortedHosts = make(map[ZoneRankType][]string, 0)
+	defer func() {
+		log.LogInfof("ClassifyHostsByAvgDelay: fgID(%v) sortedHost:%v", fgID, sortedHosts)
+	}()
 
-	for _, host := range hosts {
-		avgTime := time.Duration(0)
-		v, ok := rc.hostLatency.Load(host)
-		if ok {
-			avgTime = v.(time.Duration)
-		}
-		if avgTime <= time.Duration(0) {
-			sortedHosts[UnknownZoneRank] = append(sortedHosts[UnknownZoneRank], host)
-		} else if avgTime <= sameZoneTimeout {
-			sortedHosts[SameZoneRank] = append(sortedHosts[SameZoneRank], host)
-		} else if avgTime <= SameRegionTimeout {
-			sortedHosts[SameRegionRank] = append(sortedHosts[SameRegionRank], host)
-		} else {
-			sortedHosts[CrossRegionRank] = append(sortedHosts[CrossRegionRank], host)
+	var chooseSameZoneFunc = func(timeout time.Duration) {
+		for _, host := range hosts {
+			avgTime := time.Duration(0)
+			v, ok := rc.hostLatency.Load(host)
+			if ok {
+				avgTime = v.(time.Duration)
+			}
+			if avgTime <= time.Duration(0) {
+				sortedHosts[UnknownZoneRank] = append(sortedHosts[UnknownZoneRank], host)
+			} else if avgTime <= timeout {
+				sortedHosts[SameZoneRank] = append(sortedHosts[SameZoneRank], host)
+			} else if avgTime <= SameRegionTimeout {
+				sortedHosts[SameRegionRank] = append(sortedHosts[SameRegionRank], host)
+			} else {
+				sortedHosts[CrossRegionRank] = append(sortedHosts[CrossRegionRank], host)
+			}
 		}
 	}
-	log.LogInfof("ClassifyHostsByAvgDelay: fgID(%v) sortedHost:%v", fgID, sortedHosts)
-	return sortedHosts
+
+	allTimeouts := []time.Duration{sameZoneTimeout, secondSameZoneTimeout, thirdSameZoneTimeout}
+	for _, timeout := range allTimeouts {
+		chooseSameZoneFunc(timeout)
+		if hosts, ok := sortedHosts[SameZoneRank]; ok && len(hosts) > 0 {
+			return
+		}
+		sortedHosts = make(map[ZoneRankType][]string, 0)
+	}
+
+	return
 }
 
 func (rc *RemoteCache) refreshHostLatency() {
