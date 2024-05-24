@@ -57,6 +57,65 @@ func extentAppend(ino uint64, extent proto.ExtentKey, leader *metaPartition) (er
 	return
 }
 
+func extentTruncate(ino uint64, oldSize, newSize uint64, mp *metaPartition) (err error) {
+	rand.Seed(time.Now().Unix())
+	req := &proto.TruncateRequest{
+		Inode:           ino,
+		Size:            newSize,
+		OldSize:         oldSize,
+		Version:         1,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
+	}
+	packet := &Packet{}
+	packet.Data, _ = json.Marshal(req)
+	packet.Size = uint32(len(packet.Data))
+	packet.CRC = crc32.ChecksumIEEE(packet.Data[:packet.Size])
+	packet.ReqID = rand.Int63n(math.MaxInt64)
+	if err = mp.ExtentsTruncate(req, packet); err != nil || packet.ResultCode != proto.OpOk {
+		err = fmt.Errorf("truncate extents failed, err:%v, resultCode:%v", err, packet.ResultCode)
+		return
+	}
+	return
+}
+
+func unlinkInode(ino uint64, mp *metaPartition, trashEnable bool) (err error) {
+	rand.Seed(time.Now().UnixMilli())
+	unlinkInodeReq := &UnlinkInoReq{
+		PartitionID:     mp.config.PartitionId,
+		Inode:           ino,
+		NoTrash:         !trashEnable,
+		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
+		ClientStartTime: time.Now().Unix(),
+		ClientID:        uint64(rand.Int63n(math.MaxInt64)),
+	}
+	var p = &Packet{}
+	p.Data, _ = json.Marshal(unlinkInodeReq)
+	p.Size = uint32(len(p.Data))
+	p.CRC = crc32.ChecksumIEEE(p.Data[:p.Size])
+	p.ReqID = rand.Int63n(math.MaxInt64)
+	if err = mp.UnlinkInode(unlinkInodeReq, p); err != nil {
+		err = fmt.Errorf("unlink inode failed:%v", err)
+		return
+	}
+	return
+}
+
+func evictInode(ino uint64, mp *metaPartition, trashEnable bool) (err error) {
+	evictInodeReq := &EvictInodeReq{
+		PartitionID: mp.config.PartitionId,
+		Inode:       ino,
+		NoTrash:     !trashEnable,
+	}
+	p := &Packet{}
+	if err = mp.EvictInode(evictInodeReq, p); err != nil {
+		err = fmt.Errorf("evict inode failed:%v", err)
+		return
+	}
+	return
+}
+
 func extentResultVerify(t *testing.T, leader, follower *metaPartition, ino uint64, expectExtents []proto.ExtentKey) {
 	inodeInMem, _ := leader.inodeTree.Get(ino)
 	inodeInRocks, _ := follower.inodeTree.Get(ino)
@@ -313,8 +372,8 @@ func TestMetaPartition_ListExtentCase01(t *testing.T) {
 func extentInsert(ino uint64, extent proto.ExtentKey, mp *metaPartition) (err error) {
 	rand.Seed(time.Now().Unix())
 	req := &proto.InsertExtentKeyRequest{
-		Inode:  ino,
-		Extent: extent,
+		Inode:           ino,
+		Extent:          extent,
 		ClientIP:        uint32(rand.Int31n(math.MaxInt32)),
 		ClientStartTime: time.Now().Unix(),
 		ClientID:        uint64(rand.Int63n(math.MaxInt64)),

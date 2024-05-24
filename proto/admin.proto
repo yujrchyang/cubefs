@@ -246,6 +246,8 @@ message SimpleVolViewPb {
     uint64                    MpSplitStep            = 92;
     uint64                    InodeCountThreshold    = 93;
     int64                     BitMapSnapFrozenHour   = 94;
+    int64                     FileTotalSize          = 95;
+    int64                     TrashUsedSize          = 96;
 }
 
 message NodeStatInfoPb {

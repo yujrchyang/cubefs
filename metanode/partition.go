@@ -680,11 +680,11 @@ func (mp *metaPartition) cleanMemoryTreeResource() {
 
 func (mp *metaPartition) initMemoryTree() {
 	mp.dentryTree = &DentryBTree{NewBtree()}
-	mp.inodeTree = &InodeBTree{NewBtree()}
+	mp.inodeTree = &InodeBTree{NewBtree(), 0}
 	mp.extendTree = &ExtendBTree{NewBtree()}
 	mp.multipartTree = &MultipartBTree{NewBtree()}
 	mp.dentryDeletedTree = &DeletedDentryBTree{NewBtree()}
-	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree(), 0}
 	return
 }
 
@@ -860,6 +860,8 @@ func (mp *metaPartition) loadMetaInRocksDB() (err error) {
 		return
 	}
 	//todo:range inode, del inode table, set bit map
+	log.LogDebugf("loadMetaInRocksDB partitionID: %v, inodeTotalSize: %v, delInodeTotalSize: %v",
+		mp.config.PartitionId, mp.inodeTree.GetInodesTotalSize(), mp.inodeDeletedTree.GetDelInodesTotalSize())
 	return
 }
 
@@ -1898,4 +1900,65 @@ func (mp *metaPartition) getBitmapSnapFrozenDuration() (intervalDuration time.Du
 		interval = defBitMapAllocatorFrozenHour
 	}
 	return time.Hour*time.Duration(interval)
+}
+func (mp *metaPartition) CorrectInodesAndDelInodesTotalSize(ctx context.Context, req *proto.CorrectMPInodesAndDelInodesTotalSizeReq) (err error) {
+	var data []byte
+	data, err = json.Marshal(req)
+	if err != nil {
+		log.LogInfof("CorrectInodesAndDelInodesTotalSize partitionID(%v), json marshal failed:%v",
+			mp.config.PartitionId, err.Error())
+		return
+	}
+
+	if _, ok := mp.IsLeader(); !ok {
+		err = fmt.Errorf("not leader")
+		return
+	}
+	_, err = mp.submit(ctx, opFSMCorrectInodesAndDelInodesTotalSize, "", data, nil)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (mp *metaPartition) updateDelInodesTotalSize(addSize uint64, subSize uint64) {
+	if addSize == subSize {
+		return
+	}
+
+	var oldSize, newSize int64
+
+	if log.IsDebugEnabled() {
+		oldSize = mp.inodeDeletedTree.GetDelInodesTotalSize()
+	}
+
+	mp.inodeDeletedTree.UpdateDelInodeTotalSize(addSize, subSize)
+
+	if log.IsDebugEnabled() {
+		newSize = mp.inodeDeletedTree.GetDelInodesTotalSize()
+	}
+
+	log.LogDebugf("updateDelInodesTotalSize, partitionID: %v, oldSize: %v, addSize: %v, subSize: %v, newSize: %v",
+		mp.config.PartitionId, oldSize, addSize, subSize, newSize)
+}
+
+func (mp *metaPartition) updateInodesTotalSize(addSize uint64, subSize uint64) {
+	if addSize == subSize {
+		return
+	}
+
+	var oldSize, newSize int64
+
+	if log.IsDebugEnabled() {
+		oldSize = mp.inodeTree.GetInodesTotalSize()
+	}
+
+	mp.inodeTree.UpdateInodeTotalSize(addSize, subSize)
+
+	if log.IsDebugEnabled() {
+		newSize = mp.inodeTree.GetInodesTotalSize()
+	}
+
+	log.LogDebugf("updateInodesTotalSize, partitionID: %v, oldSize: %v, addSize: %v, subSize: %v, newSize:%v",
+		mp.config.PartitionId, oldSize, addSize, subSize, newSize)
 }

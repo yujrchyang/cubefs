@@ -896,23 +896,25 @@ type DiskInfo struct {
 
 // MetaPartitionReport defines the meta partition report.
 type MetaPartitionReport struct {
-	PartitionID       uint64
-	Start             uint64
-	End               uint64
-	Status            int
-	MaxInodeID        uint64
-	IsLeader          bool
-	VolName           string
-	InodeCnt          uint64
-	DentryCnt         uint64
-	DelInodeCnt       uint64
-	DelDentryCnt      uint64
-	IsLearner         bool
-	ExistMaxInodeID   uint64
-	StoreMode         StoreMode
-	ApplyId           uint64
-	IsRecover         bool
-	AllocatorInUseCnt uint64
+	PartitionID        uint64
+	Start              uint64
+	End                uint64
+	Status             int
+	MaxInodeID         uint64
+	IsLeader           bool
+	VolName            string
+	InodeCnt           uint64
+	DentryCnt          uint64
+	DelInodeCnt        uint64
+	DelDentryCnt       uint64
+	IsLearner          bool
+	ExistMaxInodeID    uint64
+	StoreMode          StoreMode
+	ApplyId            uint64
+	IsRecover          bool
+	AllocatorInUseCnt  uint64
+	InodesTotalSize    int64
+	DelInodesTotalSize int64
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -1084,21 +1086,23 @@ type MigrateTaskView struct {
 // You Must modify MetaPartitionViewPb in admin.proto at the same time when modify this struct
 // MetaPartitionView defines the view of a meta partition
 type MetaPartitionView struct {
-	PartitionID uint64
-	Start       uint64
-	End         uint64
-	MaxInodeID  uint64
-	InodeCount  uint64
-	DentryCount uint64
-	MaxExistIno uint64
-	IsRecover   bool
-	Members     []string
-	Learners    []string
-	LeaderAddr  string
-	Status      int8
-	StoreMode   StoreMode
-	MemCount    uint8
-	RocksCount  uint8
+	PartitionID        uint64
+	Start              uint64
+	End                uint64
+	MaxInodeID         uint64
+	InodeCount         uint64
+	DentryCount        uint64
+	MaxExistIno        uint64
+	IsRecover          bool
+	Members            []string
+	Learners           []string
+	LeaderAddr         string
+	Status             int8
+	StoreMode          StoreMode
+	MemCount           uint8
+	RocksCount         uint8
+	InodesTotalSize    int64
+	DelInodesTotalSize int64
 }
 
 // You Must modify VolViewPb in admin.proto at the same time when modify this struct
@@ -1266,6 +1270,9 @@ type SimpleVolView struct {
 	MpSplitStep              uint64
 	InodeCountThreshold      uint64
 	BitMapSnapFrozenHour     int64
+
+	FileTotalSize int64
+	TrashUsedSize int64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1300,6 +1307,8 @@ type VolInfo struct {
 	TruncateEKCountEveryTime      int
 	StoreMode                     StoreMode
 	BitMapSnapFrozenHour          int64
+	FileTotalSize                 int64
+	TrashUsedSize                 int64
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,

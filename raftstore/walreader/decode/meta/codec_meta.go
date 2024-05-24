@@ -338,6 +338,67 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 		}
 		columnValOp.SetValue("FileMigExtentMerge")
 		columnValAttrs.SetValue(fmt.Sprintf("inode: %v, eks:%v", inodeMerge.Inode, decoder.formatEks(inodeMerge.NewExtents, inodeMerge.OldExtents)))
+	case metadataOpFSMCleanExpiredDentry:
+		var batch metanode.DeletedDentryBatch
+		batch, err = metanode.DeletedDentryBatchUnmarshal(opKVData.V)
+		if err != nil {
+			return
+		}
+		columnValOp.SetValue("CleanExpiredDentry")
+		msg := ""
+		msg += "CleanDeletedDentry:"
+		for index, ddentry := range batch {
+			msg += fmt.Sprintf("%v.[parIno: %v, name: %v, ino: %v, type: %v], timestamp:%v, from:%v", index+1,
+				ddentry.ParentId, ddentry.Name, ddentry.Inode, ddentry.Type, time.Unix(ddentry.Timestamp/1000/1000, 0), ddentry.From)
+			msg += "; "
+		}
+		columnValAttrs.SetValue(msg)
+	case metadataOpFSMRecoverDeletedDentry:
+		ddentry := new(metanode.DeletedDentry)
+		err = ddentry.Unmarshal(opKVData.V)
+		if err != nil {
+			return
+		}
+		columnValOp.SetValue("RecoverDeletedDentry")
+		columnValAttrs.SetValue(fmt.Sprintf("RecoverDeletedDentryInfo[parIno: %v, name: %v, ino: %v, type: %v], timestamp:%v, from:%v",
+			ddentry.ParentId, ddentry.Name, ddentry.Inode, ddentry.Type, time.Unix(ddentry.Timestamp/1000/1000, 0), ddentry.From))
+	case metadataOpFSMBatchRecoverDeletedDentry:
+		var batch metanode.DeletedDentryBatch
+		batch, err = metanode.DeletedDentryBatchUnmarshal(opKVData.V)
+		if err != nil {
+			return
+		}
+		columnValOp.SetValue("BatchRecoverDeletedDentry")
+		msg := ""
+		msg += "RecoverDeletedDentry: "
+		for index, ddentry := range batch {
+			msg += fmt.Sprintf("%v.[parIno: %v, name: %v, ino: %v, type: %v], timestamp:%v, from:%v", index+1,
+				ddentry.ParentId, ddentry.Name, ddentry.Inode, ddentry.Type, time.Unix(ddentry.Timestamp/1000/1000, 0), ddentry.From)
+			msg += "; "
+		}
+		columnValAttrs.SetValue(msg)
+	case metadataOpFSMRecoverDeletedInode:
+		ino := new(metanode.FSMDeletedINode)
+		err = ino.Unmarshal(opKVData.V)
+		if err != nil {
+			return
+		}
+		columnValOp.SetValue("RecoverDeletedInode")
+		inodeVal, _ := ino.Marshal()
+		columnValAttrs.SetValue(fmt.Sprintf("RecoverDeleteInode: %v", binary.BigEndian.Uint64(inodeVal)))
+	case metadataOpFSMBatchRecoverDeletedInode:
+		var batch metanode.FSMDeletedINodeBatch
+		batch, err = metanode.FSMDeletedINodeBatchUnmarshal(opKVData.V)
+		if err != nil {
+			return
+		}
+		columnValOp.SetValue("BatchRecoverDeletedInodes")
+		inodes := make([]uint64, 0, len(batch))
+		for _, deletedInode := range batch {
+			inodeData, _ := deletedInode.Marshal()
+			inodes = append(inodes, binary.BigEndian.Uint64(inodeData))
+		}
+		columnValAttrs.SetValue(fmt.Sprintf("RecoverDeletedInodes: %v", inodes))
 	default:
 		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")

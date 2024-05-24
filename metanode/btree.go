@@ -65,12 +65,14 @@ func NewSnapshot(mp *metaPartition) Snapshot {
 	if mp.HasMemStore() {
 		return &MemSnapShot{
 			applyID:   mp.GetAppliedID(),
-			inode:     &InodeBTree{mp.inodeTree.(*InodeBTree).GetTree()},
+			inode:     &InodeBTree{mp.inodeTree.(*InodeBTree).GetTree(),
+				mp.inodeTree.(*InodeBTree).inodesTotalSize},
 			dentry:    &DentryBTree{mp.dentryTree.(*DentryBTree).GetTree()},
 			extend:    &ExtendBTree{mp.extendTree.(*ExtendBTree).GetTree()},
 			multipart: &MultipartBTree{mp.multipartTree.(*MultipartBTree).GetTree()},
 			delDentry: &DeletedDentryBTree{mp.dentryDeletedTree.(*DeletedDentryBTree).GetTree()},
-			delInode:  &DeletedInodeBTree{mp.inodeDeletedTree.(*DeletedInodeBTree).GetTree()},
+			delInode:  &DeletedInodeBTree{mp.inodeDeletedTree.(*DeletedInodeBTree).GetTree(),
+				mp.inodeDeletedTree.(*DeletedInodeBTree).delInodesTotalSize},
 		}
 	}
 	if mp.HasRocksDBStore() {
@@ -122,6 +124,8 @@ type InodeTree interface {
 	RealCount() uint64
 	MaxItem() *Inode
 	GetMaxInode() (uint64, error)
+	UpdateInodeTotalSize(addSize, subSize uint64)
+	GetInodesTotalSize() int64
 }
 
 type DentryTree interface {
@@ -192,6 +196,8 @@ type DeletedInodeTree interface {
 	RealCount() uint64
 	Count() uint64
 	Update(dbHandle interface{}, delIno *DeletedINode) error
+	UpdateDelInodeTotalSize(addSize, subSize uint64)
+	GetDelInodesTotalSize() int64
 }
 
 type MetaTree struct {
@@ -206,12 +212,12 @@ type MetaTree struct {
 func newMetaTree(storeMode proto.StoreMode, db *RocksDbInfo) *MetaTree {
 	if (storeMode & proto.StoreModeMem) != 0 {
 		return &MetaTree{
-			InodeTree:         &InodeBTree{NewBtree()},
+			InodeTree:         &InodeBTree{NewBtree(), 0},
 			DentryTree:        &DentryBTree{NewBtree()},
 			ExtendTree:        &ExtendBTree{NewBtree()},
 			MultipartTree:     &MultipartBTree{NewBtree()},
 			DeletedDentryTree: &DeletedDentryBTree{NewBtree()},
-			DeletedInodeTree:  &DeletedInodeBTree{NewBtree()},
+			DeletedInodeTree:  &DeletedInodeBTree{NewBtree(), 0},
 		}
 	} else {
 		tree, err := DefaultRocksTree(db)

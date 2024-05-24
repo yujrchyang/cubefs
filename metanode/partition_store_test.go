@@ -141,7 +141,7 @@ func TestMetaPartition_storeDeletedInode(t *testing.T) {
 
 	storeMsg := new(storeMsg)
 	storeMsg.snap = &MemSnapShot{
-		delInode: &DeletedInodeBTree{tree},
+		delInode: &DeletedInodeBTree{tree, 0},
 	}
 	mp := new(metaPartition)
 	mp.config = new(MetaPartitionConfig)
@@ -155,7 +155,7 @@ func TestMetaPartition_storeDeletedInode(t *testing.T) {
 		t.FailNow()
 	}
 
-	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree()}
+	mp.inodeDeletedTree = &DeletedInodeBTree{NewBtree(), 0}
 	err = mp.loadDeletedInode(context.Background(), rootdir)
 	if err != nil {
 		t.Error(err.Error())
@@ -198,7 +198,7 @@ func TestMetaPartition_storeInode(t *testing.T) {
 
 	sMsg := new(storeMsg)
 	sMsg.snap = &MemSnapShot{
-		inode: &InodeBTree{tree},
+		inode: &InodeBTree{tree, 0},
 	}
 	mp := new(metaPartition)
 	mp.config = new(MetaPartitionConfig)
@@ -212,7 +212,7 @@ func TestMetaPartition_storeInode(t *testing.T) {
 		t.FailNow()
 	}
 
-	mp.inodeTree = &InodeBTree{NewBtree()}
+	mp.inodeTree = &InodeBTree{NewBtree(), 0}
 	err = mp.loadInode(context.Background(), rootdir)
 	if err != nil {
 		t.Error(err.Error())

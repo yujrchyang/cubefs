@@ -109,3 +109,9 @@ type InodeInfoWithEK struct {
 	Timestamp  int64       `json:"ts"`
 	IsExpired  bool        `json:"isExpired"`
 }
+
+type CorrectMPInodesAndDelInodesTotalSizeReq struct {
+	NeedCorrectHosts        []string `json:"needCorrectHosts"`
+	InodesTotalSizeDelta    int64    `json:"inosTotalSizeDelta"`
+	DelInodesTotalSizeDelta int64    `json:"delInosTotalSizeDelta"`
+}

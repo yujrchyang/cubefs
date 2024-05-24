@@ -17,6 +17,7 @@ package master
 import (
 	stringutil "github.com/cubefs/cubefs/util/string"
 	"sync"
+	"sync/atomic"
 
 	"fmt"
 	"math"
@@ -30,25 +31,27 @@ import (
 
 // MetaReplica defines the replica of a meta partition
 type MetaReplica struct {
-	Addr              string
-	start             uint64 // lower bound of the inode id
-	end               uint64 // upper bound of the inode id
-	nodeID            uint64
-	MaxInodeID        uint64
-	InodeCount        uint64
-	DentryCount       uint64
-	DelInoCnt         uint64
-	MaxExistIno       uint64
-	ReportTime        int64
-	Status            int8 // unavailable, readOnly, readWrite
-	IsLeader          bool
-	IsLearner         bool
-	IsRecover         bool
-	StoreMode         proto.StoreMode
-	ApplyId           uint64
-	AllocatorInUseCnt uint64
-	metaNode          *MetaNode
-	createTime        int64
+	Addr               string
+	start              uint64 // lower bound of the inode id
+	end                uint64 // upper bound of the inode id
+	nodeID             uint64
+	MaxInodeID         uint64
+	InodeCount         uint64
+	DentryCount        uint64
+	DelInoCnt          uint64
+	MaxExistIno        uint64
+	ReportTime         int64
+	Status             int8 // unavailable, readOnly, readWrite
+	IsLeader           bool
+	IsLearner          bool
+	IsRecover          bool
+	StoreMode          proto.StoreMode
+	ApplyId            uint64
+	AllocatorInUseCnt  uint64
+	InodesTotalSize    int64
+	DelInodesTotalSize int64
+	metaNode           *MetaNode
+	createTime         int64
 }
 
 // MetaPartition defines the structure of a meta partition
@@ -62,6 +65,8 @@ type MetaPartition struct {
 	DelInodeCount        uint64
 	MaxExistIno          uint64
 	InoAllocatorInuseCnt uint64
+	InodesTotalSize      int64
+	DelInodesTotalSize   int64
 	Replicas             []*MetaReplica
 	ReplicaNum           uint8
 	LearnerNum           uint8
@@ -418,6 +423,8 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.setDeletedInodeCount()
 	mp.setMaxExistIno()
 	mp.setInoAllocatorUsedCount()
+	mp.setInodesTotalSize()
+	mp.setDelInodesTotalSize()
 	mp.removeMissingReplica(metaNode.Addr)
 }
 
@@ -848,6 +855,8 @@ func (mr *MetaReplica) updateMetric(mgr *proto.MetaPartitionReport) {
 	mr.StoreMode = mgr.StoreMode
 	mr.ApplyId = mgr.ApplyId
 	mr.AllocatorInUseCnt = mgr.AllocatorInUseCnt
+	mr.InodesTotalSize = mgr.InodesTotalSize
+	mr.DelInodesTotalSize = mgr.DelInodesTotalSize
 	mr.setLastReportTime()
 }
 
@@ -1057,6 +1066,26 @@ func (mp *MetaPartition) setInoAllocatorUsedCount() {
 		}
 	}
 	mp.InoAllocatorInuseCnt = allocatorUsedCount
+}
+
+func (mp *MetaPartition) setInodesTotalSize() {
+	totalSize := int64(0)
+	for _, r := range mp.Replicas {
+		if r.InodesTotalSize > totalSize {
+			totalSize = r.InodesTotalSize
+		}
+	}
+	atomic.StoreInt64(&mp.InodesTotalSize, totalSize)
+}
+
+func (mp *MetaPartition) setDelInodesTotalSize() {
+	totalSize := int64(0)
+	for _, r := range mp.Replicas {
+		if r.DelInodesTotalSize > totalSize {
+			totalSize = r.DelInodesTotalSize
+		}
+	}
+	atomic.StoreInt64(&mp.DelInodesTotalSize, totalSize)
 }
 
 func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {

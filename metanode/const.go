@@ -187,6 +187,8 @@ const (
 	opFSMUpdateCancelFreezeTime
 
 	opFSMSyncBitmapAllocator
+
+	opFSMCorrectInodesAndDelInodesTotalSize
 )
 
 var (

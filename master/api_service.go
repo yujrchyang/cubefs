@@ -2217,6 +2217,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		MpSplitStep:              vol.MpSplitStep,
 		InodeCountThreshold:      vol.InodeCountThreshold,
 		BitMapSnapFrozenHour:     vol.BitMapSnapFrozenHour,
+		FileTotalSize:            stat.FileTotalSize,
+		TrashUsedSize:            stat.TrashUsedSize,
 	}
 }
 
@@ -5388,14 +5390,19 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	stat = new(proto.VolStatInfo)
 	stat.Name = vol.Name
 	stat.TotalSize = vol.Capacity * unit.GB
-	stat.UsedSize = vol.totalUsedSpace()
-	stat.RealUsedSize = stat.UsedSize
+	stat.RealUsedSize = vol.totalUsedSpace() // The real used space is the sum of the used space of all data partitions.
+	stat.EnableToken = vol.enableToken
+	stat.EnableWriteCache = vol.enableWriteCache
+	stat.FileTotalSize, stat.TrashUsedSize = vol.getFileTotalSizeAndTrashUsedSize()
+	if stat.FileTotalSize < 0 {
+		stat.FileTotalSize = 0
+	}
+	stat.UsedSize = uint64(stat.FileTotalSize) // The used space is the sum of the total size of all valid files.
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}
-	stat.EnableToken = vol.enableToken
-	stat.EnableWriteCache = vol.enableWriteCache
-	log.LogDebugf("total[%v],usedSize[%v]", stat.TotalSize, stat.RealUsedSize)
+	log.LogDebugf("total[%v],realUsedSize[%v], useSize[%v],fileTotalSize[%v],trashUsedSize[%v]", stat.TotalSize, stat.RealUsedSize,
+		stat.UsedSize, stat.FileTotalSize, stat.TrashUsedSize)
 	return
 }
 
@@ -5413,6 +5420,8 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	mpView.DentryCount = mp.DentryCount
 	mpView.IsRecover = mp.IsRecover
 	mpView.MaxExistIno = mp.MaxExistIno
+	mpView.InodesTotalSize = mp.InodesTotalSize
+	mpView.DelInodesTotalSize = mp.DelInodesTotalSize
 	if mpView.End == defaultMaxMetaPartitionInodeID && mpView.Status == proto.ReadOnly {
 		log.LogErrorf("[getMetaPartitionView] change mpid(%v) status to read write", mpView.PartitionID)
 		mpView.Status = proto.ReadWrite
@@ -5609,6 +5618,8 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 					vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
 					vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
 				volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
+				volInfo.FileTotalSize = stat.FileTotalSize
+				volInfo.TrashUsedSize = stat.TrashUsedSize
 				volsInfo = append(volsInfo, volInfo)
 			}
 		}
@@ -5696,6 +5707,8 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 				vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
 				vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
 			volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
+			volInfo.FileTotalSize = stat.FileTotalSize
+			volInfo.TrashUsedSize = stat.TrashUsedSize
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/sortedextent"
+	"github.com/stretchr/testify/assert"
 	"os"
 	"reflect"
 	"testing"
@@ -32,7 +33,7 @@ func newTestRocksTree(dir string) (rocksTree *RocksTree) {
 func mockTree(rocksTree *RocksTree, treeType TreeType) (memModeTree, rocksModeTree interface{}) {
 	switch treeType {
 	case InodeType:
-		memModeTree = &InodeBTree{NewBtree()}
+		memModeTree = &InodeBTree{NewBtree(), 0}
 		rocksModeTree, _ = NewInodeRocks(rocksTree)
 	case DentryType:
 		memModeTree = &DentryBTree{NewBtree()}
@@ -47,7 +48,7 @@ func mockTree(rocksTree *RocksTree, treeType TreeType) (memModeTree, rocksModeTr
 		memModeTree = &DeletedDentryBTree{NewBtree()}
 		rocksModeTree, _ = NewDeletedDentryRocks(rocksTree)
 	case DelInodeType:
-		memModeTree = &DeletedInodeBTree{NewBtree()}
+		memModeTree = &DeletedInodeBTree{NewBtree(), 0}
 		rocksModeTree, _ = NewDeletedInodeRocks(rocksTree)
 	default:
 		fmt.Printf("error tree type(%v)\n", treeType)
@@ -911,4 +912,43 @@ func TestDentryTreeRange(t *testing.T) {
 			t.Fatalf("Test Dentry Range in rocksdb: result mismatch, expect:%s, actual:%s", den.String(), actualResult[index].String())
 		}
 	}
+}
+
+func TestBtreeRocksBaseInfoMarshalUnmarshal(t *testing.T) {
+	baseInfo := RocksBaseInfo{
+		version:            BaseInfoBaseVersion,
+		applyId:            3043,
+		inodeCnt:           340,
+		dentryCnt:          3289,
+		extendCnt:          2332,
+		multiCnt:           739,
+		delDentryCnt:       2389,
+		delInodeCnt:        2389,
+	}
+	data, err := baseInfo.Marshal()
+	assert.Equal(t, err, nil)
+
+	newBaseInfo := RocksBaseInfo{
+		version: BaseInfoWithInodesTotalSizeVersion,
+	}
+	err = newBaseInfo.Unmarshal(data)
+	assert.Equal(t, err, nil)
+
+	assert.Equal(t, baseInfo.applyId, newBaseInfo.applyId)
+	assert.Equal(t, baseInfo.inodeCnt, newBaseInfo.inodeCnt)
+	assert.Equal(t, baseInfo.dentryCnt, newBaseInfo.dentryCnt)
+	assert.Equal(t, baseInfo.extendCnt, newBaseInfo.extendCnt)
+	assert.Equal(t, baseInfo.multiCnt, newBaseInfo.multiCnt)
+	assert.Equal(t, baseInfo.delInodeCnt, newBaseInfo.delInodeCnt)
+	assert.Equal(t, baseInfo.delDentryCnt, newBaseInfo.delDentryCnt)
+
+	data, err = newBaseInfo.Marshal()
+	assert.Equal(t, err, nil)
+
+	baseInfo = RocksBaseInfo{
+		version: BaseInfoWithInodesTotalSizeVersion,
+	}
+	err = baseInfo.Unmarshal(data)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, newBaseInfo, baseInfo)
 }
