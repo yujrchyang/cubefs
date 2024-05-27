@@ -36,7 +36,9 @@ package main
 #include <unistd.h>
 
 // support libc versions before 2.14
+#ifdef __x86_64__
 __asm__(".symver memcpy,memcpy@GLIBC_2.2.5");
+#endif
 
 typedef struct {
     int ignore_sighup;
@@ -284,7 +286,7 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		}
 		if i == ListenRetryTime {
 			syslog.Printf("listen prof port [%v] failed. exit.", gClientManager.profPort)
-			os.Exit(1)
+			return C.int(statusEIO)
 		}
 		if gClientManager.profPort != 0 {
 			gClientManager.wg.Add(2)
@@ -364,6 +366,9 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 		}
 	}
 	c := newClient(conf, C.GoString(configPath))
+	if c == nil {
+		return C.int64_t(statusEIO)
+	}
 
 	if !first_start && sdkState.MetaState != nil && sdkState.MetaState.LocalIP != "" {
 		c.localAddr = fmt.Sprintf("%s:%d", sdkState.MetaState.LocalIP, gClientManager.profPort)
@@ -371,7 +376,7 @@ func cfs_new_client(conf *C.cfs_config_t, configPath, str *C.char) C.int64_t {
 		localIp, err := iputil.GetLocalIPByDial(strings.Split(c.masterAddr, ","), iputil.GetLocalIPTimeout)
 		if err != nil && c.app == appCoralDB {
 			syslog.Printf("GetLocalIpAddr err: %v", err)
-			os.Exit(1)
+			return C.int64_t(statusEIO)
 		}
 		c.localAddr = fmt.Sprintf("%s:%d", localIp, gClientManager.profPort)
 	}
@@ -439,7 +444,7 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 		cfg, err := ini.Load(configPath)
 		if err != nil {
 			syslog.Printf("load config file %s err: %v", configPath, err)
-			os.Exit(1)
+			return nil
 		}
 		c.masterAddr = cfg.Section("").Key("masterAddr").String()
 		c.volName = cfg.Section("").Key("volName").String()
@@ -453,13 +458,13 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 		c.masterClient = cfg.Section("").Key("masterClient").String()
 		if c.masterAddr == "" || c.volName == "" || c.owner == "" {
 			syslog.Println("Check CFS config file for masterAddr, volName or owner.")
-			os.Exit(1)
+			return nil
 		}
 
 		c.pidFile = cfg.Section("").Key("pidFile").String()
 		if c.pidFile != "" && c.pidFile[0] != os.PathSeparator {
 			syslog.Printf("pidFile(%s) must be a absolute path", c.pidFile)
-			os.Exit(1)
+			return nil
 		}
 	}
 
