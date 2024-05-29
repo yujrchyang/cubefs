@@ -75,7 +75,7 @@ func (migTask *MigrateTask) RunOnce() (finished bool, err error) {
 			log.LogDebugf("cmpMpTask compact cancel because vol(%v) be stopped, cmpMpTask.Name(%v) cmpMpTask.stage(%v)", migTask.vol.GetName(), migTask.name, migTask.stage)
 			migTask.stage = Stopped
 		}
-		log.LogDebugf("cmpMpTask runonce cmpMpTask.Name(%v) cmpMpTask.stage(%v)", migTask.name, migTask.stage)
+		log.LogDebugf("cmpMpTask runonce taskType(%v) cmpMpTask.Name(%v) cmpMpTask.stage(%v)", migTask.task.TaskType, migTask.name, migTask.stage)
 
 		switch migTask.stage {
 		case GetMPInfo:
@@ -230,6 +230,11 @@ func (migTask *MigrateTask) MigrateInode() (err error) {
 		return
 	}
 	for _, migInode := range migInodes {
+		isMatch := migTask.checkMatchMigDir(migInode.Inode.Inode)
+		log.LogDebugf("check match migration dir, migTask.Name(%v) taskType(%v) inode(%v) isMatch(%v)", migTask.name, migTask.task.TaskType, migInode.Inode, isMatch)
+		if !isMatch {
+			continue
+		}
 		var inodeOp *MigrateInode
 		if inodeOp, err = NewMigrateInode(migTask, migInode); err != nil {
 			log.LogErrorf("NewMigrateInode migTask.Name(%v) inode(%v) err(%v)", migTask.name, migInode.Inode, err)
@@ -251,6 +256,21 @@ func (migTask *MigrateTask) MigrateInode() (err error) {
 	migTask.wg.Wait()
 	migTask.setLastCursor(len(migInodes), end, maxIno)
 	return
+}
+
+func (migTask *MigrateTask) checkMatchMigDir(inode uint64) (isMatch bool) {
+	if migTask.task.TaskType != proto.WorkerTypeInodeMigration {
+		return true
+	}
+	_, ok1 := migTask.vol.inodeFilter.Load(rootDir)
+	if ok1 {
+		return true
+	}
+	_, ok2 := migTask.vol.inodeFilter.Load(inode)
+	if ok2 {
+		return true
+	}
+	return false
 }
 
 func (migTask *MigrateTask) setLastCursor(migInodeCnt, end int, maxIno uint64) {

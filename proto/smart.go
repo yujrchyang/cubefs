@@ -23,6 +23,7 @@ type SmartVolume struct {
 	Name              string
 	Owner             string
 	Status            uint8
+	Smart             int8
 	SmartRules        []string
 	TotalSize         uint64
 	UsedSize          uint64
@@ -37,6 +38,9 @@ type SmartVolume struct {
 	OSSBucketPolicy   BucketAccessPolicy
 	LayerPolicies     map[LayerType][]interface{}
 	StoreMode         StoreMode
+	HddDirs           string
+	SsdDirs           string
+	MigrationBack     int8
 }
 
 type ActionMetricsTaskInfo struct {

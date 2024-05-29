@@ -24,6 +24,11 @@ const (
 	FileMigrateClose = "Disabled"
 )
 
+const (
+	compactDisabled = iota
+	compactEnabled
+)
+
 func NewWorkerForScheduler(cfg *config.Config, workerType proto.WorkerType) (w *Worker, err error) {
 	w = &Worker{}
 	w.WorkerType = workerType
@@ -174,11 +179,15 @@ func (w *Worker) createFileMigrateTask(clusterId string, taskNum int64, runningT
 	fv := value.(*FileMigrateVolumeView)
 	var (
 		fileMigrateOpenVols   []*proto.SmartVolume
-		fileMigrateOpenVolMap = make(map[string]struct{}) // key: cluster,volName
+		fileMigrateOpenVolMap = make(volumeMap) // key: cluster,volName
 		fileMigrateCloseVols  []string
 	)
 	for volName, smartVolume := range fv.SmartVolumes {
 		log.LogDebugf("FileMigrationWorker: cluster(%v) volName(%v) forceRow(%v) smartRules(%v)", clusterId, volName, smartVolume.ForceROW, smartVolume.SmartRules)
+		if smartVolume.Smart <= migClose {
+			log.LogWarnf("FileMigrationWorker CreateTask smart is false, cluster(%v), volume(%v), smart(%v)", clusterId, volName, smartVolume.Smart)
+			continue
+		}
 		if len(smartVolume.LayerPolicies) == 0 {
 			log.LogWarnf("FileMigrationWorker CreateTask have no layer policy, cluster(%v), volume(%v)", clusterId, volName)
 			continue
@@ -226,7 +235,7 @@ func (w *Worker) createFileMigrateTaskByVolume(workerType proto.WorkerType, clus
 	return
 }
 
-func (w * Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView []*proto.MetaPartitionView,
+func (w *Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView []*proto.MetaPartitionView,
 	runningTasks []*proto.Task, taskNum int64, workerType proto.WorkerType) (newTasks []*proto.Task, err error) {
 	volumeTaskNum := w.getTaskCountByVolume(runningTasks, vol.Name)
 	key := workerTypeKey(workerType, vol.ClusterId, vol.Name)
@@ -243,7 +252,7 @@ func (w * Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView
 		}
 		if mp.InodeCount == 0 {
 			if i >= len(mpView)-1 {
-				w.volumeTaskPos.Store(key, 0)
+				w.volumeTaskPos.Store(key, uint64(0))
 			} else {
 				w.volumeTaskPos.Store(key, mp.PartitionID)
 			}
@@ -269,10 +278,10 @@ func (w * Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView
 		if value, ok := w.volumeTaskCnt.Load(key); ok {
 			w.volumeTaskCnt.Store(key, value.(uint64)+1)
 		} else {
-			w.volumeTaskCnt.Store(key, 1)
+			w.volumeTaskCnt.Store(key, uint64(1))
 		}
 		if i >= len(mpView)-1 {
-			w.volumeTaskPos.Store(key, 0)
+			w.volumeTaskPos.Store(key, uint64(0))
 		} else {
 			w.volumeTaskPos.Store(key, mp.PartitionID)
 		}
@@ -286,7 +295,7 @@ func (w * Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView
 	return
 }
 
-func (w * Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMigVolume, mpView []*proto.MetaPartitionView,
+func (w *Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMigVolume, mpView []*proto.MetaPartitionView,
 	runningTasks []*proto.Task, taskNum int64, workerType proto.WorkerType) (newTasks []*proto.Task, err error) {
 	volumeTaskNum := w.getTaskCountByVolume(runningTasks, vol.Name)
 	key := workerTypeKey(workerType, cluster, vol.Name)
@@ -303,7 +312,7 @@ func (w * Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMig
 		}
 		if mp.InodeCount == 0 {
 			if i >= len(mpView)-1 {
-				w.volumeTaskPos.Store(key, 0)
+				w.volumeTaskPos.Store(key, uint64(0))
 			} else {
 				w.volumeTaskPos.Store(key, mp.PartitionID)
 			}
@@ -329,10 +338,10 @@ func (w * Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMig
 		if value, ok := w.volumeTaskCnt.Load(key); ok {
 			w.volumeTaskCnt.Store(key, value.(uint64)+1)
 		} else {
-			w.volumeTaskCnt.Store(key, 1)
+			w.volumeTaskCnt.Store(key, uint64(1))
 		}
 		if i >= len(mpView)-1 {
-			w.volumeTaskPos.Store(key, 0)
+			w.volumeTaskPos.Store(key, uint64(0))
 		} else {
 			w.volumeTaskPos.Store(key, mp.PartitionID)
 		}
@@ -360,7 +369,7 @@ func (w *Worker) GetMpView(cluster string, volName string) (mpView []*proto.Meta
 	return
 }
 
-func (w * Worker) getTaskCountByVolume(runningTasks []*proto.Task, volume string) (cnt int) {
+func (w *Worker) getTaskCountByVolume(runningTasks []*proto.Task, volume string) (cnt int) {
 	for _, task := range runningTasks {
 		if task.VolName == volume {
 			cnt++
@@ -375,11 +384,11 @@ func (w *Worker) resetTaskPosition(volumeKey string, mpView []*proto.MetaPartiti
 		mpPos = value.(uint64)
 	}
 	if len(mpView) > 0 && mpView[len(mpView)-1].PartitionID <= mpPos {
-		w.volumeTaskPos.Store(volumeKey, 0)
+		w.volumeTaskPos.Store(volumeKey, uint64(0))
 	}
 }
 
-func (w *Worker) filterSoonCloseFileMigrateVols(clusterId string, fileMigrateVolMap map[string]struct{}, runningTasks []*proto.Task) (fileMigrateCloseVols []string) {
+func (w *Worker) filterSoonCloseFileMigrateVols(clusterId string, fileMigrateVolMap volumeMap, runningTasks []*proto.Task) (fileMigrateCloseVols []string) {
 	if _, ok := w.lastFileMigrateVolume.Load(clusterId); !ok {
 		w.lastFileMigrateVolume.Store(clusterId, make(volumeMap))
 	}
@@ -484,22 +493,33 @@ func (w *Worker) loadCompactVolume() {
 			loader := func() (err error) {
 				metrics := exporter.NewModuleTP(proto.MonitorCompactLoadCompactVolume)
 				defer metrics.Set(err)
-				w.masterClients.Range(func(key, value interface{}) bool {
-					cluster := key.(string)
+
+				clusterVolumes := make(map[string][]*proto.DataMigVolume)
+				migrationConfigs := loadAllMigrationConfig()
+				for _, vc := range migrationConfigs {
+					var (
+						value interface{}
+						ok    bool
+					)
+					if value, ok = w.masterClients.Load(vc.ClusterName); !ok {
+						continue
+					}
 					mc := value.(*master.MasterClient)
-					var cmpVolView *proto.DataMigVolumeView
-					cmpVolView, err = GetCompactVolumes(cluster, mc)
-					if err != nil {
-						log.LogErrorf("[loadCompactVolume] get cluster compact volumes failed, cluster(%v), err(%v)", cluster, err)
-						return true
+					var volInfo *proto.SimpleVolView
+					if volInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(vc.VolName); err != nil {
+						continue
 					}
-					if cmpVolView == nil || len(cmpVolView.DataMigVolumes) == 0 {
-						log.LogWarnf("[loadCompactVolume] got all compact volumes is empty, cluster(%v)", cluster)
-						return true
+					dataMigVolume := &proto.DataMigVolume{
+						Name:       vc.VolName,
+						Owner:      volInfo.Owner,
+						CompactTag: convertCompactTag(vc.Compact),
 					}
-					w.volumeView.Store(cluster, cmpVolView)
-					return true
-				})
+					clusterVolumes[vc.ClusterName] = append(clusterVolumes[vc.ClusterName], dataMigVolume)
+				}
+				for cluster, volumes := range clusterVolumes {
+					cvv := proto.NewDataMigVolumeView(cluster, volumes)
+					w.volumeView.Store(cluster, cvv)
+				}
 				return
 			}
 			if err := loader(); err != nil {
@@ -511,6 +531,15 @@ func (w *Worker) loadCompactVolume() {
 			return
 		}
 	}
+}
+
+func convertCompactTag(compact int8) (tag proto.CompactTag) {
+	if compact == compactEnabled {
+		tag = proto.CompactOpen
+	} else {
+		tag = proto.CompactClose
+	}
+	return
 }
 
 func GetCompactVolumes(cluster string, mc *master.MasterClient) (cvv *proto.DataMigVolumeView, err error) {
@@ -543,25 +572,58 @@ func (w *Worker) loadSmartVolume() {
 				metrics := exporter.NewModuleTP(proto.MonitorSmartLoadSmartVolumeInode)
 				defer metrics.Set(err)
 
-				w.masterClients.Range(func(key, value interface{}) bool {
-					cluster := key.(string)
-					mc := value.(*master.MasterClient)
-					var smartVolumeView *FileMigrateVolumeView
-					smartVolumeView, err = GetSmartVolumes(cluster, mc)
-					if err != nil {
-						log.LogErrorf("[loadSmartVolume] get cluster smart volumes failed, cluster(%v), err(%v)", cluster, err)
-						return true
+				clusterVolumes := make(map[string]map[string]*proto.SmartVolume)
+				volumeConfigs := loadAllMigrationConfig()
+				for _, vc := range volumeConfigs {
+					var (
+						value   interface{}
+						ok      bool
+						mc      *master.MasterClient
+						volInfo *proto.SimpleVolView
+						dpView  *proto.DataPartitionsView
+					)
+					if value, ok = w.masterClients.Load(vc.ClusterName); !ok {
+						continue
 					}
-					// parse smart volume layer policy
-					for volume, vv := range smartVolumeView.SmartVolumes {
+					mc = value.(*master.MasterClient)
+					if volInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(vc.VolName); err != nil {
+						log.LogErrorf("[GetVolumeSimpleInfo] cluster(%v) vol(%v) err(%v)", vc.ClusterName, vc.VolName, err)
+						continue
+					}
+					if dpView, err = mc.ClientAPI().GetDataPartitions(vc.VolName, nil); err != nil {
+						log.LogErrorf("[GetDataPartitions] cluster(%v) vol(%v) err(%v)", vc.ClusterName, vc.VolName, err)
+						continue
+					}
+					smartVolume := &proto.SmartVolume{
+						ClusterId:      vc.ClusterName,
+						Name:           vc.VolName,
+						Owner:          volInfo.Owner,
+						StoreMode:      volInfo.DefaultStoreMode,
+						Smart:          vc.Smart,
+						SmartRules:     strings.Split(vc.SmartRules, ","),
+						HddDirs:        vc.HddDirs,
+						SsdDirs:        vc.SsdDirs,
+						MigrationBack:  vc.MigrationBack,
+						DataPartitions: dpView.DataPartitions,
+					}
+					if _, ok = clusterVolumes[vc.ClusterName]; !ok {
+						clusterVolumes[vc.ClusterName] = make(map[string]*proto.SmartVolume)
+					}
+					clusterVolumes[vc.ClusterName][vc.VolName] = smartVolume
+				}
+				for cluster, volumes := range clusterVolumes {
+					cvv := &FileMigrateVolumeView{
+						Cluster:      cluster,
+						SmartVolumes: volumes,
+					}
+					for volume, vv := range cvv.SmartVolumes {
 						log.LogInfof("smart info volume:%v vv:%v", volume, vv.SmartRules)
 						if !w.parseLayerPolicy(vv) {
-							delete(smartVolumeView.SmartVolumes, volume)
+							delete(cvv.SmartVolumes, volume)
 						}
 					}
-					w.volumeView.Store(cluster, smartVolumeView)
-					return true
-				})
+					w.volumeView.Store(cluster, cvv)
+				}
 				return
 			}
 			if err := loader(); err != nil {
