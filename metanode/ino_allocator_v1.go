@@ -79,6 +79,10 @@ func (allocator *inoAllocatorV1) OccupiedInvalidAndRootInoBits() {
 	allocator.mu.Lock()
 	defer allocator.mu.Unlock()
 
+	if allocator.Status == allocatorStatusUnavailable {
+		return
+	}
+
 	if allocator.Start == 0 {
 		//for first meta partition, occupied 0(invalid inode) and 1(root inode)
 		if allocator.Bits.IsBitFree(0) {
@@ -348,6 +352,10 @@ func (allocator *inoAllocatorV1) ResetLastBitIndex() {
 func (allocator *inoAllocatorV1) GetUsedInos() []uint64 {
 	allocator.mu.RLock()
 	defer allocator.mu.RUnlock()
+
+	if allocator.Status == allocatorStatusUnavailable {
+		return nil
+	}
 
 	usedInos := make([]uint64, 0, allocator.Cnt)
 	for id := allocator.Start; id < allocator.End; id++ {

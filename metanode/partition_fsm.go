@@ -1096,9 +1096,11 @@ func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, n
 		atomic.StoreUint64(&mp.config.Cursor, newCursor)
 	}
 
-	mp.inodeIDAllocator = newInodeIDAllocator
-	if mp.isVolFirstPartition() {
-		mp.inodeIDAllocator.OccupiedInvalidAndRootInoBits()
+	if newInodeIDAllocator != nil {
+		mp.inodeIDAllocator = newInodeIDAllocator
+		if mp.isVolFirstPartition() {
+			mp.inodeIDAllocator.OccupiedInvalidAndRootInoBits()
+		}
 	}
 
 	mp.reqRecords = InitRequestRecords(requestInfos)
