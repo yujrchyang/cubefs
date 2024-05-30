@@ -94,7 +94,7 @@ const (
 	HeaderValueAcceptRange          = "bytes"
 	HeaderValueTypeStream           = "application/octet-stream"
 	HeaderValueContentTypeXML       = "application/xml"
-	HeaderValueContentTypeDirectory = "application/directory"
+	HeaderValueContentTypeDirectory = "application/x-directory"
 	HeaderValueContentTypeSymlink   = "inode/symlink"
 
 	ServerName                 = "CubeFS"
