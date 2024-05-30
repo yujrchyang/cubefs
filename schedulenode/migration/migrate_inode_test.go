@@ -353,11 +353,11 @@ func TestCheckReplicaCrcValid(t *testing.T) {
 	subTask.migDataCrc = crc.Sum32()
 	subTask.startIndex = 0
 	subTask.endIndex = len(subTask.extents)
-	replicaCrc, err := subTask.replicaCrc()
+	replicaCrc, err := subTask.getReplicaDataCRC()
 	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
-	if err = subTask.checkReplicaCrcValid(replicaCrc); err != nil {
+	if err = subTask.checkReplicaCRCValid(replicaCrc); err != nil {
 		assert.FailNow(t, err.Error())
 	}
 }
@@ -406,11 +406,11 @@ func TestCheckReplicaCrcValid2(t *testing.T) {
 	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
-	replicaCrc, err := subTask.replicaCrc()
+	replicaCrc, err := subTask.getReplicaDataCRC()
 	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
-	if err = subTask.checkReplicaCrcValid(replicaCrc); err != nil {
+	if err = subTask.checkReplicaCRCValid(replicaCrc); err != nil {
 		assert.FailNow(t, err.Error())
 	}
 }

@@ -132,10 +132,10 @@ func doStartWorker(s common.Server, cfg *config.Config) (err error) {
 	return
 }
 
-func loadAllMigrationConfig() (volumeConfigs []*proto.MigrationConfig) {
+func loadAllMigrationConfig(cluster, volume string) (volumeConfigs []*proto.MigrationConfig) {
 	var offset = 0
 	for {
-		vcs, err := mysql.SelectAllMigrationConfig(PageSize, offset)
+		vcs, err := mysql.SelectAllMigrationConfig(cluster, volume, PageSize, offset)
 		if err != nil {
 			log.LogErrorf("[loadAllMigrationConfig] load migration configs failed, err(%v)", err)
 			break
@@ -192,11 +192,12 @@ func (w *Worker) ConsumeCompactTask(task *proto.Task) (restore bool, err error) 
 		return false, nil
 	}
 	if err = w.checkVolumeInfo(task.Cluster, task.VolName, data.Normal); err != nil {
-		return
+		log.LogWarnf("ConsumeTask checkVolumeInfo task(%v) err(%v)", task, err)
+		return false, nil
 	}
 	var isFinished bool
 	isFinished, err = w.execMigrationTask(task)
-	return !isFinished, err
+	return !isFinished, nil
 }
 
 func (w *Worker) ConsumeFileMigTask(task *proto.Task) (restore bool, err error) {
@@ -224,11 +225,12 @@ func (w *Worker) ConsumeFileMigTask(task *proto.Task) (restore bool, err error) 
 		return false, nil
 	}
 	if err = w.checkVolumeInfo(task.Cluster, task.VolName, data.Smart); err != nil {
-		return
+		log.LogWarnf("ConsumeTask checkVolumeInfo task(%v) err(%v)", task, err)
+		return false, nil
 	}
 	var isFinished bool
 	isFinished, err = w.execMigrationTask(task)
-	return !isFinished, err
+	return !isFinished, nil
 }
 
 func (w *Worker) execMigrationTask(task *proto.Task) (isFinished bool, err error) {
@@ -247,17 +249,11 @@ func (w *Worker) execMigrationTask(task *proto.Task) (isFinished bool, err error
 	}
 	migTask := NewMigrateTask(task, masterClient, volumeInfo)
 	isFinished, err = migTask.RunOnce()
-	if err != nil {
-		log.LogErrorf("ConsumeTask mpOp RunOnce cluster(%v) volName(%v) mpId(%v) err(%v)", task.Cluster, task.VolName, migTask.mpId, err)
-		switch err.Error() {
-		case proto.ErrMetaPartitionNotExists.Error(), proto.ErrVolNotExists.Error():
-			isFinished = true
-			err = nil
-		default:
-			isFinished = false
-		}
+	if err == nil {
+		return true, nil
 	}
-	return
+	log.LogErrorf("ConsumeTask mpOp RunOnce cluster(%v) volName(%v) mpId(%v) err(%v)", task.Cluster, task.VolName, migTask.mpId, err)
+	return true, err
 }
 
 func (w *Worker) checkVolumeInfo(cluster, volume string, clientType data.ExtentClientType) (err error) {
@@ -398,6 +394,7 @@ func (w *Worker) registerHandler() {
 		http.HandleFunc(FileMigrateConcurrencyGetLimit, w.getLimit)
 		http.HandleFunc(MigrationConfigAddOrUpdate, w.migrationConfigAddOrUpdate)
 		http.HandleFunc(MigrationConfigDelete, w.migrationConfigDelete)
+		http.HandleFunc(MigrationConfigList, w.migrationConfigList)
 	}
 }
 
@@ -548,6 +545,7 @@ const (
 const (
 	MigrationConfigAddOrUpdate = "/migrationConfig/addOrUpdate"
 	MigrationConfigDelete      = "/migrationConfig/delete"
+	MigrationConfigList        = "/migrationConfig/list"
 )
 
 func (w *Worker) workerViewInfo(res http.ResponseWriter, r *http.Request) {
@@ -696,9 +694,9 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var (
-		mc *master.MasterClient
+		mc         *master.MasterClient
 		volumeInfo *VolumeInfo
-		ok bool
+		ok         bool
 	)
 	if mc, ok = w.getMasterClient(cluster); !ok {
 		msg := "failed to get master client"
@@ -761,13 +759,40 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 
 func (w *Worker) migrationConfigAddOrUpdate(res http.ResponseWriter, r *http.Request) {
 	var (
-		migConfig *proto.MigrationConfig
-		err       error
+		migConfig  *proto.MigrationConfig
+		volumeInfo *proto.SimpleVolView
+		idcMap     map[string]string
+		value      interface{}
+		ok         bool
+		err        error
 	)
 	migConfig, err = parseParamVolumeConfig(w, r)
 	if err != nil {
 		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
+	}
+	if value, ok = w.masterClients.Load(migConfig.ClusterName); !ok {
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: fmt.Sprintf("cluster(%v) not support", migConfig.ClusterName)})
+		return
+	}
+	if migConfig.Smart == ssdToHdd {
+		mc := value.(*master.MasterClient)
+		if volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(migConfig.VolName); err != nil {
+			SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+		if idcMap, err = getIdcMap(mc); err != nil {
+			SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			return
+		}
+		zoneList := strings.Split(volumeInfo.ZoneName, ",")
+		for _, name := range zoneList {
+			if idcMap[name] != proto.MediumSSDName {
+				err = fmt.Errorf("the medium type of zone: %v, should be ssd", name)
+				SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+				return
+			}
+		}
 	}
 	var volumeConfigs []*proto.MigrationConfig
 	volumeConfigs, err = mysql.SelectVolumeConfig(migConfig.ClusterName, migConfig.VolName)
@@ -859,16 +884,47 @@ func (w *Worker) migrationConfigDelete(res http.ResponseWriter, r *http.Request)
 	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
 }
 
+func (w *Worker) migrationConfigList(res http.ResponseWriter, r *http.Request) {
+	var (
+		cluster string
+		volume  string
+		err     error
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	cluster = r.FormValue(ParamKeyCluster)
+	volume = r.FormValue(ParamKeyVolume)
+	migrationConfig := loadAllMigrationConfig(cluster, volume)
+	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success", Data: migrationConfig})
+}
+
+func getIdcMap(mc *master.MasterClient) (idcMap map[string]string, err error) {
+	idcMap = make(map[string]string, 0)
+	var idcList []*proto.IDCView
+	if idcList, err = mc.AdminAPI().IdcList(); err != nil {
+		return
+	}
+	for _, idc := range idcList {
+		for zone, mediumType := range idc.Zones {
+			idcMap[zone] = mediumType
+		}
+	}
+	return
+}
+
 func parseParamVolumeConfig(w *Worker, r *http.Request) (config *proto.MigrationConfig, err error) {
 	var (
-		cluster       string
-		volume        string
-		smart         int
-		smartRules    string
-		hddDirs       string
-		ssdDirs       string
-		migBack       int
-		compact       int
+		cluster    string
+		volume     string
+		smart      int
+		smartRules string
+		hddDirs    string
+		ssdDirs    string
+		migBack    int
+		compact    int
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
@@ -886,7 +942,7 @@ func parseParamVolumeConfig(w *Worker, r *http.Request) (config *proto.Migration
 	}
 	var (
 		value interface{}
-		ok bool
+		ok    bool
 	)
 	if value, ok = w.masterClients.Load(cluster); !ok {
 		err = fmt.Errorf("cluster %v not support", cluster)

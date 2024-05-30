@@ -320,13 +320,9 @@ func (w *Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMigV
 		}
 		newTask := proto.NewDataTask(workerType, cluster, vol.Name, 0, mp.PartitionID, vol.CompactTag.String())
 		var exist bool
-		var oldTask *proto.Task
-		if exist, oldTask, err = w.ContainMPTask(newTask, runningTasks); err != nil {
-			log.LogErrorf("CompactWorker CreateMpTask ContainMPTask failed, cluster(%v), volume(%v), err(%v)",
-				cluster, vol.Name, err)
-			continue
-		}
-		if exist && oldTask.Status != proto.TaskStatusSucceed {
+		if exist, _, err = w.ContainMPTask(newTask, runningTasks); err != nil || exist {
+			log.LogErrorf("CompactWorker CreateMpTask ContainMPTask failed, cluster(%v), volume(%v) exist(%v), err(%v)",
+				cluster, vol.Name, exist, err)
 			continue
 		}
 		var taskId uint64
@@ -495,7 +491,7 @@ func (w *Worker) loadCompactVolume() {
 				defer metrics.Set(err)
 
 				clusterVolumes := make(map[string][]*proto.DataMigVolume)
-				migrationConfigs := loadAllMigrationConfig()
+				migrationConfigs := loadAllMigrationConfig("", "")
 				for _, vc := range migrationConfigs {
 					var (
 						value interface{}
@@ -573,7 +569,7 @@ func (w *Worker) loadSmartVolume() {
 				defer metrics.Set(err)
 
 				clusterVolumes := make(map[string]map[string]*proto.SmartVolume)
-				volumeConfigs := loadAllMigrationConfig()
+				volumeConfigs := loadAllMigrationConfig("", "")
 				for _, vc := range volumeConfigs {
 					var (
 						value   interface{}

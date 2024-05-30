@@ -314,29 +314,37 @@ func (vol *VolumeInfo) updateInodeFilter() {
 		if len(dir) == 0 {
 			continue
 		}
+		regs := findRegStr(dir)
+		fileNameReg := ""
+		if regs != nil {
+			dir = strings.ReplaceAll(dir, regs[0], "")
+			fileNameReg = regs[1]
+		}
 		inode, err := vol.MetaClient.LookupPath(ctx, proto.RootIno, dir)
 		if err != nil {
 			log.LogErrorf("look up path dir:%v err:%v", dir, err)
 			continue
 		}
-		err = vol.readDir(ctx, inode)
+		err = vol.readDir(ctx, inode, fileNameReg)
 		if err != nil {
 			log.LogErrorf("read inode:%v err:%v", inode, err)
 		}
 	}
 }
 
-func (vol *VolumeInfo) readDir(ctx context.Context, parentID uint64) (err error) {
+func (vol *VolumeInfo) readDir(ctx context.Context, parentID uint64, fileNameReg string) (err error) {
 	dentrys, err := vol.MetaClient.ReadDir_ll(ctx, parentID)
 	if err != nil {
 		return
 	}
 	for _, d := range dentrys {
 		if proto.IsRegular(d.Type) {
-			vol.inodeFilter.Store(d.Inode, struct{}{})
-			log.LogDebugf("will migrate cluster:%v volume:%v inode:%v", vol.ClusterName, vol.Name, d.Inode)
+			if len(fileNameReg) == 0 || (len(fileNameReg) != 0 && checkMatchRegexp(d.Name, fileNameReg)) {
+				vol.inodeFilter.Store(d.Inode, struct{}{})
+			log.LogDebugf("will migrate cluster:%v volume:%v inode:%v name:%v", vol.ClusterName, vol.Name, d.Inode, d.Name)
+			}
 		} else if proto.IsDir(d.Type) {
-			err = vol.readDir(ctx, d.Inode)
+			err = vol.readDir(ctx, d.Inode, fileNameReg)
 		}
 	}
 	return

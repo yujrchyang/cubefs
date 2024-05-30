@@ -44,13 +44,30 @@ func AddMigrationConfig(vc *proto.MigrationConfig) (err error) {
 	return
 }
 
-func SelectAllMigrationConfig(limit, offset int) (volumeConfigs []*proto.MigrationConfig, err error) {
+func SelectAllMigrationConfig(cluster, volume string, limit, offset int) (volumeConfigs []*proto.MigrationConfig, err error) {
 	metrics := exporter.NewModuleTP(proto.MonitorMysqlSelectMigrationConfig)
 	defer metrics.Set(err)
-
-	var rows *sql.Rows
-	sqlCmd := fmt.Sprintf("select %s from migration_config limit ? offset ?", migrationConfigColumns())
-	rows, err = db.Query(sqlCmd, limit, offset)
+	var (
+		rows *sql.Rows
+		sqlCmd string
+	)
+	if cluster == "" {
+		if volume == "" {
+			sqlCmd = fmt.Sprintf("select %s from migration_config limit ? offset ?", migrationConfigColumns())
+			rows, err = db.Query(sqlCmd, limit, offset)
+		} else {
+			sqlCmd = fmt.Sprintf("select %s from migration_config where vol_name=? limit ? offset ?", migrationConfigColumns())
+			rows, err = db.Query(sqlCmd, volume, limit, offset)
+		}
+	} else {
+		if volume == "" {
+			sqlCmd = fmt.Sprintf("select %s from migration_config where cluster_name=? limit ? offset ?", migrationConfigColumns())
+			rows, err = db.Query(sqlCmd, cluster, limit, offset)
+		} else {
+			sqlCmd = fmt.Sprintf("select %s from migration_config where cluster_name=? and vol_name=? limit ? offset ?", migrationConfigColumns())
+			rows, err = db.Query(sqlCmd, cluster, volume, limit, offset)
+		}
+	}
 	if rows == nil {
 		return
 	}

@@ -10,9 +10,31 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"io/ioutil"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+var (
+	bracketReg = regexp.MustCompile(`\((.*)\)`)
+)
+
+func findRegStr(dir string) (reg []string) {
+	matches := bracketReg.FindAllStringSubmatch(dir, -1)
+	if len(matches) == 1 {
+		return matches[0]
+	}
+	return
+}
+
+func checkMatchRegexp(testStr, regStr string) (ok bool) {
+	var err error
+	ok, err = regexp.MatchString(regStr, testStr)
+	if err != nil {
+		ok = false
+	}
+	return ok
+}
 
 func UmpKeySuffix(migType string, action string) string {
 	return fmt.Sprintf("%v_%v", migType, action)

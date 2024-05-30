@@ -1361,3 +1361,12 @@ func formatColdFileInfoTableHeader() string {
 func formatColdFileInfo(volName string, mpId, inodeId uint64, ctime, mtime, atime int64) string {
 	return fmt.Sprintf(checkColdFileInfoTableRowPattern, volName, mpId, inodeId, formatTime(ctime), formatTime(mtime), formatTime(atime))
 }
+
+var (
+	extentLockInfoTablePattern = "%-20v    %-15v    %-15v    %-15v    %-15v"
+	extentLockInfoTableHeader  = fmt.Sprintf(extentLockInfoTablePattern, "host", "partitionId", "extentId", "ttl", "expireTime")
+)
+
+func formatExtentLockInfoTableRow(host string, partitionId, extentId uint64, ttl, expireTime string) string {
+	return fmt.Sprintf(extentLockInfoTablePattern, host, partitionId, extentId, ttl, expireTime)
+}

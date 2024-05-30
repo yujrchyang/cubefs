@@ -1,12 +1,14 @@
 package migration
 
 import (
+	"encoding/json"
 	"fmt"
 	"hash"
 	"hash/crc32"
 	"io"
 	"net"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -368,7 +370,7 @@ func (migInode *MigrateInode) checkCanMigrate() (err error) {
 		return
 	}
 	if migDirection != migInode.migDirection {
-		err = fmt.Errorf("check inode cannot migrate inconsistent migrate type, atime:%v mtime:%v migType:%v", inodeInfo.AccessTime, inodeInfo.ModifyTime, migDirection)
+		err = fmt.Errorf("inode cannot migrate, because different migrate direction init migDirection:%v now migDirection:%v atime:%v mtime:%v", migInode.migDirection, migDirection, inodeInfo.AccessTime, inodeInfo.ModifyTime)
 		return
 	}
 	return
@@ -503,11 +505,11 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 		return
 	}
 	// 分别从三副本中读取数据和新写的的数据进行crc比较
-	var replicateCrc []uint32
-	if replicateCrc, err = migInode.replicaCrc(); err != nil {
+	var replicateDataCRC []uint32
+	if replicateDataCRC, err = migInode.getReplicaDataCRC(); err != nil {
 		return err
 	}
-	if err = migInode.checkReplicaCrcValid(replicateCrc); err != nil {
+	if err = migInode.checkReplicaCRCValid(replicateDataCRC); err != nil {
 		return err
 	}
 	// 读写的时间 超过（锁定时间-预留时间），放弃修改ek链
@@ -527,15 +529,30 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 	// merge success, delete old extents
 	migInode.deleteOldExtents(migEks)
 	log.LogDebugf("InodeMergeExtents_ll success ino(%v) oldEks(%v) newEks(%v)", migInode.name, migEks, copyNewEks)
+	migInode.addInodeMigrateLog(migEks, copyNewEks)
+	migInode.SummaryStatisticsInfo(copyNewEks)
+	return
+}
+
+func (migInode *MigrateInode) addInodeMigrateLog(oldEks, newEks []proto.ExtentKey) {
+	var (
+		oldEksByte []byte
+		newEksByte []byte
+	)
+	oldEksByte, _ = json.Marshal(oldEks)
+	newEksByte, _ = json.Marshal(newEks)
+	_ = mysql.AddInodeMigrateLog(migInode.mpOp.task, migInode.inodeInfo.Inode, string(oldEksByte), string(newEksByte), len(oldEks) , len(newEks))
+}
+
+func (migInode *MigrateInode) SummaryStatisticsInfo(newEks []proto.ExtentKey) {
 	migInode.statisticsInfo.MigCnt += 1
 	migInode.statisticsInfo.MigEkCnt += uint64(migInode.endIndex - migInode.startIndex)
-	migInode.statisticsInfo.NewEkCnt += uint64(len(copyNewEks))
+	migInode.statisticsInfo.NewEkCnt += uint64(len(newEks))
 	var migSize uint32
-	for _, newEk := range copyNewEks {
+	for _, newEk := range newEks {
 		migSize += newEk.Size
 	}
 	migInode.statisticsInfo.MigSize += uint64(migSize)
-	return
 }
 
 func (migInode *MigrateInode) compareReplicasInodeEksEqual() bool {
@@ -580,11 +597,13 @@ func (migInode *MigrateInode) compareReplicasInodeEksEqual() bool {
 	return true
 }
 
-func (migInode *MigrateInode) replicaCrc() (replicateCrc []uint32, err error) {
+func (migInode *MigrateInode) getReplicaDataCRC() (replicateCrc []uint32, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogWarnf("replicaCrc occurred panic: %v", r)
-			err = fmt.Errorf("replicaCrc occurred panic:%v", r)
+			stack := make([]byte, 1024*8)
+			length := runtime.Stack(stack, false)
+			log.LogWarnf(fmt.Sprintf("getReplicaDataCRC occurred panic: %v: %s\n", err, stack[:length]))
+			err = fmt.Errorf("getReplicaDataCRC occurred panic:%v", r)
 		}
 	}()
 	migEks := migInode.extents[migInode.startIndex:migInode.endIndex]
@@ -618,6 +637,11 @@ func (migInode *MigrateInode) replicaCrc() (replicateCrc []uint32, err error) {
 					replicateHash32[i] = crc32.NewIEEE()
 				}
 			}
+			if len(allReplicateEkData) != len(replicateHash32) {
+				err = fmt.Errorf("getReplicaDataCRC inode:%v readOffset:%v readSize:%v, allReplicateEkData length is %v but replicateHash32 length is %v err:%v",
+					migInode.name, readOffset, readSize, len(allReplicateEkData), len(replicateHash32), err)
+				return
+			}
 			for i, d := range allReplicateEkData {
 				_, err = replicateHash32[i].Write(d)
 				if err != nil {
@@ -633,7 +657,7 @@ func (migInode *MigrateInode) replicaCrc() (replicateCrc []uint32, err error) {
 	return
 }
 
-func (migInode *MigrateInode) checkReplicaCrcValid(replicateCrc []uint32) (err error) {
+func (migInode *MigrateInode) checkReplicaCRCValid(replicateCrc []uint32) (err error) {
 	if len(replicateCrc) <= 1 {
 		err = fmt.Errorf("dp replicate count is %v", len(replicateCrc))
 		return err
@@ -878,19 +902,20 @@ func (migInode *MigrateInode) setInodeAttrMaxTime() (err error) {
 			defer wg.Done()
 			ipPort := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], migInode.mpOp.profPort)
 			metaHttpClient := meta.NewMetaHttpClient(ipPort, false)
-			inodeInfoView, err := metaHttpClient.GetInodeInfo(migInode.mpOp.mpId, migInode.inodeInfo.Inode)
-			if err == nil && inodeInfoView != nil {
+			inodeInfoView, errInternal := metaHttpClient.GetInodeInfo(migInode.mpOp.mpId, migInode.inodeInfo.Inode)
+			if errInternal == nil && inodeInfoView != nil {
 				mu.Lock()
 				inodeInfoViews = append(inodeInfoViews, inodeInfoView)
 				mu.Unlock()
 			} else {
-				log.LogErrorf("GetInodeNoModifyAccessTime mpId(%v) ino(%v) err(%v)", migInode.mpOp.mpId, migInode.inodeInfo.Inode, err)
+				err = errInternal
+				log.LogErrorf("GetInodeInfo mpId(%v) ino(%v) err(%v)", migInode.mpOp.mpId, migInode.inodeInfo.Inode, errInternal)
 			}
 		}(member)
 	}
 	wg.Wait()
 	if len(inodeInfoViews) != len(members) {
-		return fmt.Errorf("there is a mp replica but no response")
+		return err
 	}
 	for _, inodeInfoView := range inodeInfoViews {
 		if inodeInfoView.AccessTime.After(maxAccessTime) {
