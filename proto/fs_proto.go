@@ -754,10 +754,10 @@ type InodeMergeExtentsRequest struct {
 
 // Dentry defines the dentry struct.
 type MetaDentry struct {
-	ParentId uint64 // FileID value of the parent inode.
-	Name     string // Name of the current dentry.
-	Inode    uint64 // FileID value of the current inode.
-	Type     uint32
+	ParentId uint64 `json:"pid"`  // FileID value of the parent inode.
+	Name     string `json:"name"` // Name of the current dentry.
+	Inode    uint64 `json:"ino"`  // FileID value of the current inode.
+	Type     uint32 `json:"type"`
 }
 
 // String returns the string format of the dentry.

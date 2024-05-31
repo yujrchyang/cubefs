@@ -145,6 +145,9 @@ func (api *ClientAPI) GetMetaPartition(partitionID uint64, volName string) (part
 	if err = json.Unmarshal(data, partition); err != nil {
 		return
 	}
+	if proto.IsDbBack {
+		partition.Hosts = partition.PersistenceHosts
+	}
 	return
 }
 

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/cubefs/cubefs/proto"
@@ -34,6 +35,7 @@ func newZoneCmd(mc *master.MasterClient) *cobra.Command {
 }
 
 func newZoneInfoCmd(client *master.MasterClient) *cobra.Command {
+	var optMetaDetail, optDataDetail, optEcDetail bool
 	var cmd = &cobra.Command{
 		Use:   cmdZoneInfoUse,
 		Short: cmdZoneInfoShort,
@@ -64,9 +66,67 @@ func newZoneInfoCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				stdout("ZoneInfo:%s not exist.\n", zoneName)
 			}
+
+			if !optMetaDetail && !optDataDetail && !optEcDetail {
+				return
+			}
+
+			var view *proto.TopologyView
+			if view, err = client.AdminAPI().GetTopology(); err != nil {
+				return
+			}
+
+			var zoneView *proto.ZoneView
+			for _, zoneInfo := range view.Zones {
+				if zoneInfo.Name == zoneName {
+					zoneView = zoneInfo
+					break
+				}
+			}
+
+			if zoneView == nil {
+				err = fmt.Errorf("zone %s not exist", zoneName)
+				return
+			}
+
+
+			if optDataDetail {
+				dataNodes := make([]proto.NodeView, 0)
+				for _, nodeSet := range zoneView.NodeSet {
+					dataNodes = append(dataNodes, nodeSet.DataNodes...)
+				}
+				sort.Slice(dataNodes, func(i, j int) bool {
+					return dataNodes[i].ID < dataNodes[j].ID
+				})
+
+				fmt.Printf("Data Nodes (cnt: %v):\n", len(dataNodes))
+				stdout("%s\n", formatNodeViewTableHeader())
+				for _, node := range dataNodes {
+					stdout("%s\n", formatNodeView(&node, true))
+				}
+
+			}
+
+			if optMetaDetail {
+				metaNodes := make([]proto.NodeView, 0)
+				for _, nodeSet := range zoneView.NodeSet {
+					metaNodes = append(metaNodes, nodeSet.MetaNodes...)
+				}
+				sort.SliceStable(metaNodes, func(i, j int) bool {
+					return metaNodes[i].ID < metaNodes[j].ID
+				})
+
+				fmt.Printf("Meta Nodes (cnt: %v):\n", len(metaNodes))
+				stdout("%s\n", formatNodeViewTableHeader())
+				for _, node := range metaNodes {
+					stdout("%s\n", formatNodeView(&node, true))
+				}
+			}
 			return
 		},
 	}
+	cmd.Flags().BoolVarP(&optMetaDetail, "list-meta-nodes", "m", false, "Display all meta node detail information")
+	cmd.Flags().BoolVarP(&optDataDetail, "list-data-nodes", "d", false, "Display all meta node detail information")
 	return cmd
 }
 

@@ -136,3 +136,25 @@ func getChildInodesByParent(mw *meta.MetaWrapper, vol string, parent uint64) (in
 	}
 	return
 }
+
+func GetInodeIDByPath(masters []string, vol string, filePath string) (inodeID uint64, err error) {
+	ctx := context.Background()
+	var mw *meta.MetaWrapper
+	mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
+		Volume:        vol,
+		Masters:       masters,
+		ValidateOwner: false,
+		InfiniteRetry: true,
+	})
+	if err != nil {
+		fmt.Printf("NewMetaWrapper fails, err:%v\n", err)
+		return
+	}
+	defer mw.Close()
+	inodeID, err = mw.LookupPath(ctx, proto.RootIno, filePath)
+	if err != nil {
+		fmt.Printf("LookupPath fails, err:%v\n", err)
+		return
+	}
+	return
+}

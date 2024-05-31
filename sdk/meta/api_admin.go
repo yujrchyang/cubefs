@@ -64,6 +64,16 @@ func NewDBBackMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
 	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: true}
 }
 
+func isDbBackOldApi(path string) bool {
+	if strings.Contains(path, "getExtents") || strings.Contains(path, "getAllPartitions") ||
+		strings.Contains(path, "getPartitionById") || strings.Contains(path, "getInodeRange") ||
+		strings.Contains(path, "getDentry") || strings.Contains(path, "getAllDentriesByParentIno") ||
+		strings.Contains(path, "getStartFailedPartitions") {
+		return true
+	}
+	return false
+}
+
 func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	var resp *http.Response
 	var schema string
@@ -88,7 +98,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	}
 	switch stateCode {
 	case http.StatusOK:
-		if c.isDBBack && strings.Contains(r.path, "getExtents") {
+		if c.isDBBack && isDbBackOldApi(r.path) {
 			return respData, nil
 		}
 		var body = &struct {
@@ -633,5 +643,33 @@ func (mc *MetaHttpClient) GetInodeInfo(pid, ino uint64) (info *proto.InodeInfo, 
 		return
 	}
 	info = r.Info
+	return
+}
+
+func (mc *MetaHttpClient) GetDentry(pid uint64, name string) (den *proto.MetaDentry, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[GetDentry],pid:%v, name: %s, err:%v", pid, name, err)
+		}
+	}()
+
+	var req *request
+	if mc.isDBBack {
+		req = newAPIRequest(http.MethodGet, "/getDentrySingle")
+	} else {
+		req = newAPIRequest(http.MethodGet, "/getDentry")
+	}
+	req.addParam("pid", fmt.Sprintf("%v", pid))
+	req.addParam("name", name)
+	respData, err := mc.serveRequest(req)
+	log.LogInfof("err:%v,respData:%v\n", err, string(respData))
+	if err != nil {
+		return
+	}
+
+	den = new(proto.MetaDentry)
+	if err = json.Unmarshal(respData, den); err != nil {
+		return
+	}
 	return
 }

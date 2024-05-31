@@ -155,6 +155,7 @@ type MetaPartitionInfo struct {
 	Status            int8
 	IsRecover         bool
 	Hosts             []string
+	PersistenceHosts  []string //for dbbak cluster
 	Peers             []Peer
 	Learners          []Learner
 	Zones             []string

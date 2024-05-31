@@ -48,6 +48,7 @@ type NodeView struct {
 	Status     bool
 	ID         uint64
 	IsWritable bool
+	Version    string
 }
 
 // TopologyView provides the view of the topology view of the cluster
@@ -185,12 +186,14 @@ func (m *Server) getTopology(w http.ResponseWriter, r *http.Request) {
 			cv.NodeSet[ns.ID] = nsView
 			ns.dataNodes.Range(func(key, value interface{}) bool {
 				dataNode := value.(*DataNode)
-				nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr, Status: dataNode.isActive, IsWritable: dataNode.isWriteAble()})
+				nsView.DataNodes = append(nsView.DataNodes, NodeView{ID: dataNode.ID, Addr: dataNode.Addr,
+					Status: dataNode.isActive, IsWritable: dataNode.isWriteAble(), Version: dataNode.Version})
 				return true
 			})
 			ns.metaNodes.Range(func(key, value interface{}) bool {
 				metaNode := value.(*MetaNode)
-				nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr, Status: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem)})
+				nsView.MetaNodes = append(nsView.MetaNodes, NodeView{ID: metaNode.ID, Addr: metaNode.Addr,
+					Status: metaNode.IsActive, IsWritable: metaNode.isWritable(proto.StoreModeMem), Version: metaNode.Version})
 				return true
 			})
 		}
