@@ -665,14 +665,15 @@ func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 			err = errors.New(msg)
 		}
 	}()
-	ticker := time.NewTicker(updateConfigTicket)
-	defer ticker.Stop()
+    timer := time.NewTimer(0)
+	defer timer.Stop()
 	for {
 		select {
 		case <-client.stopC:
 			return
-		case <-ticker.C:
+		case <-timer.C:
 			client.updateConfig()
+            timer.Reset(updateConfigTicket)
 		}
 	}
 }
@@ -716,6 +717,7 @@ func (client *ExtentClient) updateConfig() {
 		client.writeLimiter.SetLimit(rate.Limit(defaultWriteLimitRate))
 	}
 	client.dpTimeoutCntThreshold = limitInfo.DpTimeoutCntThreshold
+    log.LogInfof("updateConfig: vol(%v) limit(%v)", client.dataWrapper.volName, limitInfo)
 }
 
 func (client *ExtentClient) Close(ctx context.Context) error {
