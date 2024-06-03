@@ -29,23 +29,22 @@ class ObjectPutTest(S3TestCase):
 
     def test_put_directory(self):
         key = random_string(16)
-        content_type = 'application/directory'
         md5 = compute_md5(bytes())
         # Put a directory object
         self.assert_put_object_result(
-            result=self.s3.put_object(Bucket=BUCKET, Key=key, ContentType=content_type),
+            result=self.s3.put_object(Bucket=BUCKET, Key=key + '/'),
             etag=md5)
         # Get the directory info
         self.assert_head_object_result(
             result=self.s3.head_object(Bucket=BUCKET, Key=key + '/'),
             etag=md5,
-            content_type=content_type,
+            content_type='application/x-directory',
             content_length=0)
         # Get directory object
         self.assert_get_object_result(
             result=self.s3.get_object(Bucket=BUCKET, Key=key + '/'),
             etag=md5,
-            content_type=content_type,
+            content_type='application/x-directory',
             content_length=0,
             body_md5=md5)
         try:
@@ -64,6 +63,32 @@ class ObjectPutTest(S3TestCase):
         # Delete the directory
         self.assert_delete_object_result(
             result=self.s3.delete_object(Bucket=BUCKET, Key=key + '/'))
+
+    def test_auto_remove_empty_directory_s1(self):
+        key = KEY_PREFIX + 'd0/d1/d2/d3/hello.txt'
+        body = random_bytes(10)
+        expect_etag = compute_md5(body)
+        self.assert_put_object_result(
+            result=self.s3.put_object(Bucket=BUCKET, Key=key, Body=body),
+            etag=expect_etag)
+        self.s3.delete_object(Bucket=BUCKET, Key=KEY_PREFIX+ 'd0/d1/d2/d3/hello.txt')
+        try:
+            self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX + 'd0/')
+            self.fail()
+        except Exception as e:
+            pass
+
+    def test_auto_remove_empty_directory_s2(self):
+        body = random_bytes(10)
+        expect_etag = compute_md5(body)
+        self.s3.put_object(Bucket=BUCKET, Key=KEY_PREFIX+'d0/d1/d2/d3/hello.txt', Body=body)
+        self.s3.put_object(Bucket=BUCKET, Key=KEY_PREFIX+'d0/d1/d2/')
+        self.s3.delete_object(Bucket=BUCKET, Key=KEY_PREFIX+'d0/d1/d2/d3/hello.txt')
+        self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX+'d0/d1/d2/')
+        try:
+            self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX+'d0/d1/d2/d3/')
+        except Exception as e:
+            pass
 
     def __do_test_put_objects(self, file_name, file_size, file_num):
         for _ in range(file_num):
@@ -255,7 +280,7 @@ class ObjectPutTest(S3TestCase):
         :return:
         """
         key = KEY_PREFIX + random_string(16)
-        directory_mime = 'application/directory'
+        directory_mime = 'application/x-directory'
         directory_etag = 'd41d8cd98f00b204e9800998ecf8427e'
         self.assert_put_object_result(
             result=self.s3.put_object(Bucket=BUCKET, Key=key, ContentType=directory_mime),
@@ -297,7 +322,7 @@ class ObjectPutTest(S3TestCase):
             result=self.s3.head_object(Bucket=BUCKET, Key=key),
             etag=empty_content_etag)
         try:
-            directory_mime = 'application/directory'
+            directory_mime = 'application/x-directory'
             self.s3.put_object(Bucket=BUCKET, Key=key, ContentType=directory_mime)
             self.fail()
         except Exception as e:

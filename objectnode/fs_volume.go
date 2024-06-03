@@ -16,6 +16,7 @@ package objectnode
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -246,8 +247,11 @@ func (v *Volume) getInodeFromPath(path string, targetRedirect bool) (inode uint6
 	if path == "/" || path == "" {
 		return volumeRootInode, nil
 	}
-
-	_, inode, _, _, err = v.recursiveLookupTarget(path, targetRedirect)
+	var entries POSIXDentries
+	if entries, err = v.recursiveLookupTarget(path, targetRedirect); err != nil {
+		return
+	}
+	inode = entries.Last().Inode
 	return
 }
 
@@ -674,41 +678,54 @@ func (v *Volume) DeletePath(path string) (err error) {
 			err = nil
 		}
 	}()
-	var parent uint64
-	var ino uint64
-	var name string
-	var mode os.FileMode
-	parent, ino, name, mode, err = v.recursiveLookupTarget(path, false)
+	var entries POSIXDentries
+	entries, err = v.recursiveLookupTarget(path, false)
 	if err != nil {
 		// An unexpected error occurred
 		return
 	}
+
 	if log.IsDebugEnabled() {
 		log.LogDebugf("DeletePath: lookup target: path(%v) parentID(%v) inode(%v) name(%v) mode(%v)",
-			path, parent, ino, name, mode)
+			path, entries.Last().Parent, entries.Last().Inode, entries.Last().Name, entries.Last().Mode)
 	}
 
-	if mode.IsDir() {
-		// Check if the directory is empty and cannot delete non-empty directories.
-		var dentries []proto.Dentry
-		dentries, err = v.mw.ReadDir_ll(context.Background(), ino)
-		if err != nil || len(dentries) > 0 {
+	for i, entry := range entries.Reverse() {
+		var parent, name, ino, mode = entry.Parent, entry.Name, entry.Inode, entry.Mode
+		if i != 0 && mode.IsDir() {
+			var xattr *proto.XAttrInfo
+			xattr, err = v.mw.XAttrGet_ll(context.Background(), ino, XAttrKeyOSSAutoCreatedDir)
+			if err != nil || xattr == nil {
+				return nil
+			}
+			if !bytes.Equal(xattr.Get(XAttrKeyOSSAutoCreatedDir), []byte{1}) {
+				return nil
+			}
+		}
+
+		if mode.IsDir() {
+			// Check if the directory is empty and cannot delete non-empty directories.
+			var dentries []proto.Dentry
+			dentries, err = v.mw.ReadDir_ll(context.Background(), ino)
+			if err != nil || len(dentries) > 0 {
+				return
+			}
+		}
+		log.LogWarnf("DeletePath: delete: volume(%v) path(%v) inode(%v)", v.name, path, ino)
+		if _, err = v.mw.Delete_ll(context.Background(), parent, name, mode.IsDir()); err != nil {
 			return
 		}
-	}
-	log.LogWarnf("DeletePath: delete: volume(%v) path(%v) inode(%v)", v.name, path, ino)
-	if _, err = v.mw.Delete_ll(context.Background(), parent, name, mode.IsDir()); err != nil {
-		return
+
+		// Evict inode
+		if err = v.ec.EvictStream(context.Background(), ino); err != nil {
+			log.LogWarnf("DeletePath EvictStream: path(%v) inode(%v)", path, ino)
+		}
+		log.LogWarnf("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
+		if err = v.mw.Evict(context.Background(), ino, false); err != nil {
+			log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
+		}
 	}
 
-	// Evict inode
-	if err = v.ec.EvictStream(context.Background(), ino); err != nil {
-		log.LogWarnf("DeletePath EvictStream: path(%v) inode(%v)", path, ino)
-	}
-	log.LogWarnf("DeletePath: evict: volume(%v) path(%v) inode(%v)", v.name, path, ino)
-	if err = v.mw.Evict(context.Background(), ino, false); err != nil {
-		log.LogWarnf("DeletePath Evict: path(%v) inode(%v)", path, ino)
-	}
 	err = nil
 	return
 }
@@ -1302,9 +1319,12 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) (i
 
 	var ino uint64
 	var mode os.FileMode
-	if _, ino, _, mode, err = v.recursiveLookupTarget(path, true); err != nil {
+	var entries POSIXDentries
+	if entries, err = v.recursiveLookupTarget(path, true); err != nil {
 		return 0, err
 	}
+	var entry = entries.Last()
+	ino, mode = entry.Inode, entry.Mode
 	if mode.IsDir() {
 		return 0, nil
 	}
@@ -1323,9 +1343,12 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 	var inoInfo *proto.InodeInfo
 
 	for limiter := NewLoopLimiter(MaxRetry); limiter.NextLoop(); {
-		if _, inode, _, mode, err = v.recursiveLookupTarget(path, targetRedirect); err != nil {
+		var ents POSIXDentries
+		if ents, err = v.recursiveLookupTarget(path, targetRedirect); err != nil {
 			return
 		}
+		var entry = ents.Last()
+		inode, mode = entry.Inode, entry.Mode
 
 		inoInfo, err = v.mw.InodeGet_ll(context.Background(), inode)
 		if err == syscall.ENOENT {
@@ -1336,6 +1359,9 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 			return
 		}
 		break
+	}
+	if err != nil {
+		return
 	}
 
 	var (
@@ -1456,7 +1482,7 @@ func (v *Volume) Close() error {
 // ENOENT:
 // 		0x2 ENOENT No such file or directory. A component of a specified
 // 		pathname did not exist, or the pathname was an empty string.
-func (v *Volume) recursiveLookupTarget(path string, targetRedirect bool) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
+func (v *Volume) recursiveLookupTarget(path string, targetRedirect bool) (entries POSIXDentries, err error) {
 	defer func() {
 		if err == syscall.ELOOP {
 			exporter.Warning(fmt.Sprintf("Too many levels of symbolic link.\n"+
@@ -1465,12 +1491,41 @@ func (v *Volume) recursiveLookupTarget(path string, targetRedirect bool) (parent
 				v.name, path))
 		}
 	}()
-	parent, ino, name, mode, err = v.__recursiveLookupTarget(0, path, targetRedirect)
+	entries, err = v.__recursiveLookupTarget(0, path, targetRedirect)
 	return
 }
 
-func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedirect bool) (parent uint64, ino uint64, name string, mode os.FileMode, err error) {
-	parent = rootIno
+type POSIXDentry struct {
+	Parent uint64
+	Name   string
+	Inode  uint64
+	Mode   os.FileMode
+}
+
+type POSIXDentries []POSIXDentry
+
+func (es POSIXDentries) Count() int {
+	return len(es)
+}
+
+func (es POSIXDentries) Last() POSIXDentry {
+	if len(es) == 0 {
+		return POSIXDentry{}
+	}
+	return es[len(es)-1]
+}
+
+func (es POSIXDentries) Reverse() POSIXDentries {
+	var n = len(es)
+	var res = make(POSIXDentries, n)
+	for i, e := range es {
+		res[n-i-1] = e
+	}
+	return res
+}
+
+func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedirect bool) (entries POSIXDentries, err error) {
+	var parent = rootIno
 	var pathItems = NewPathIterator(path).ToSlice()
 	if len(pathItems) == 0 {
 		err = syscall.ENOENT
@@ -1532,21 +1587,24 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 			if log.IsDebugEnabled() {
 				log.LogDebugf("volume[%v]: recursiveLookupTarget: found symlink [%v -> %v], path redirect [%v -> %v]", v.name, pathItem.Name, linkTarget, path, redirectPath)
 			}
-			parent, ino, name, mode, err = v.__recursiveLookupTarget(redirects+1, redirectPath, targetRedirect)
+			entries, err = v.__recursiveLookupTarget(redirects+1, redirectPath, targetRedirect)
 			return
 		}
 		if curFileMode.IsDir() != pathItem.IsDirectory {
 			err = syscall.ENOENT
 			return
 		}
+		entries = append(entries, POSIXDentry{
+			Parent: parent,
+			Name:   pathItem.Name,
+			Inode:  curIno,
+			Mode:   curFileMode,
+		})
 		if i < len(pathItems)-1 {
 			parent = curIno
 			base = curPath
 			continue
 		}
-		ino = curIno
-		name = pathItem.Name
-		mode = os.FileMode(curMode)
 		break
 	}
 	return
@@ -1589,14 +1647,23 @@ func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
 				return
 			}
 			curIno, curMode = info.Inode, info.Mode
+			if pathIterator.HasNext() {
+				if err = v.mw.XAttrSet_ll(context.Background(), curIno, []byte(XAttrKeyOSSAutoCreatedDir), []byte{1}); err != nil {
+					if log.IsWarnEnabled() {
+						log.LogWarnf("Volume %v: mark auto created dir failed, path %v, cur %v, ino %v, cause %v",
+							v.name, path, pathItem.Name, curIno, err)
+					}
+					err = nil
+				}
+			}
+		} else if os.FileMode(curMode).IsDir() != pathItem.IsDirectory {
+			err = syscall.EINVAL
+			return
+		} else if pathItem.IsDirectory && !pathIterator.HasNext() {
+			_ = v.mw.XAttrDel_ll(context.Background(), curIno, XAttrKeyOSSAutoCreatedDir)
 		}
 		log.LogDebugf("recursiveMakeDirectory: lookup item: parentID(%v) inode(%v) name(%v) mode(%v)",
 			ino, curIno, pathItem.Name, os.FileMode(curMode))
-		// Check file mode
-		if os.FileMode(curMode).IsDir() != pathItem.IsDirectory {
-			err = syscall.EINVAL
-			return
-		}
 		ino = curIno
 	}
 	return
@@ -1819,8 +1886,10 @@ func (v *Volume) lookupPrefix(prefix string) (inode uint64, prefixDirs []string,
 			var (
 				linkTargetInode uint64
 				linkTargetMode  os.FileMode
+
+				linkTargetEntries POSIXDentries
 			)
-			_, linkTargetInode, _, linkTargetMode, err = v.recursiveLookupTarget(redirectPath, true)
+			linkTargetEntries, err = v.recursiveLookupTarget(redirectPath, true)
 			if err == syscall.ENOENT {
 				return 0, nil, syscall.ENOENT
 			}
@@ -1828,6 +1897,9 @@ func (v *Volume) lookupPrefix(prefix string) (inode uint64, prefixDirs []string,
 				log.LogErrorf("volume[%v]: lookupPrefix: lookup symlink target [path: %v] failed: %v", v.name, redirectPath, err)
 				return 0, nil, err
 			}
+			var linkTargetEntry = linkTargetEntries.Last()
+			linkTargetInode, linkTargetMode = linkTargetEntry.Inode, linkTargetEntry.Mode
+
 			curIno = linkTargetInode
 			curFileMode = linkTargetMode
 			if log.IsDebugEnabled() {
@@ -2272,8 +2344,9 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		tParentId  uint64
 		pathItems  []PathItem
 		tLastName  string
+		tEntries   POSIXDentries
 	)
-	if _, _, _, tMode, err = v.recursiveLookupTarget(targetPath, true); err != nil && err != syscall.ENOENT {
+	if tEntries, err = v.recursiveLookupTarget(targetPath, true); err != nil && err != syscall.ENOENT {
 		log.LogErrorf("CopyFile: look up target path failed, target path(%v), err(%v)", targetPath, err)
 		return
 	}
@@ -2283,6 +2356,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			"target path(%v), target inode(%v), source path(%v), source inode(%v)", targetPath, tInode, sourcePath, sInode)
 		return nil, syscall.EINVAL
 	}
+	tMode = tEntries.Last().Mode
 	// if source file mode is directory, return OK, and need't create target directory
 	if sMode == DefaultDirMode {
 		// create target directory

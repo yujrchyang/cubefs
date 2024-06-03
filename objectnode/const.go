@@ -166,7 +166,8 @@ const (
 	// Deprecated
 	XAttrKeyOSSETagDeprecated = "oss:tag"
 
-	XAttrKeyOSSMultipart = proto.XAttrKeyOSSMultipart
+	XAttrKeyOSSMultipart      = proto.XAttrKeyOSSMultipart
+	XAttrKeyOSSAutoCreatedDir = "oss:auto-created-dir"
 )
 
 const (
