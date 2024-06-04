@@ -571,7 +571,6 @@ func (o *ObjectNode) abortMultipartUploadHandler(w http.ResponseWriter, r *http.
 	err = vol.AbortMultipart(param.Object(), uploadId)
 	if err != nil && err != syscall.ENOENT {
 		log.LogErrorf("abortMultipartUploadHandler: Volume abort multipart fail, requestID(%v) uploadID(%v) err(%v)", GetRequestID(r), uploadId, err)
-		errorCode = InternalErrorCode(err)
 		return
 	}
 	if log.IsDebugEnabled() {

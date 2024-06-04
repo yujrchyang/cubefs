@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"syscall"
 
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -53,10 +54,15 @@ func (r *FSFileReader) WriteTo(writer io.Writer, offset, size uint64) (int64, er
 		}
 		n, _, err = r.ec.Read(context.Background(), r.info.Inode, buffer, offset, readSize)
 		if err != nil && err != io.EOF {
-			log.LogErrorf("FSFileReader: data read fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
-				r.volume, r.info.Inode, offset, size, err)
-			exporter.Warning(fmt.Sprintf("read data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
-				r.volume, r.info.Inode, offset, readSize, err))
+			if err != syscall.ENOENT {
+				log.LogErrorf("FSFileReader: data read fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
+					r.volume, r.info.Inode, offset, size, err)
+				exporter.Warning(fmt.Sprintf("read data fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
+					r.volume, r.info.Inode, offset, readSize, err))
+			} else if log.IsWarnEnabled() {
+				log.LogWarnf("FSFileReader: data read fail: volume(%v) inode(%v) offset(%v) size(%v) err(%v)",
+					r.volume, r.info.Inode, offset, size, err)
+			}
 			return 0, err
 		}
 		if n > 0 {

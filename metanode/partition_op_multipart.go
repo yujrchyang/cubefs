@@ -42,7 +42,7 @@ func (mp *metaPartition) GetMultipart(req *proto.GetMultipartRequest, p *Packet)
 		return
 	}
 	if multipart == nil {
-		p.PacketErrorWithBody(proto.OpDisabled, nil)
+		p.PacketErrorWithBody(proto.OpNotExistErr, nil)
 		return
 	}
 	resp := &proto.GetMultipartResponse{
