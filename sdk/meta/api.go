@@ -37,8 +37,8 @@ import (
 // Low-level API, i.e. work with inode
 
 const (
-	BatchIgetRespBuf 	= 1000
-	BatchIgetLimit   	= 2000
+	BatchIgetRespBuf = 1000
+	BatchIgetLimit   = 2000
 
 	CreateSubDirDeepLimit = 5
 )
@@ -239,7 +239,7 @@ func (mw *MetaWrapper) InodeNotExist(ctx context.Context, inode uint64) bool {
 	if mp == nil {
 		return false
 	}
-	status, _, err := mw.iget(ctx, mp, inode)
+	status, _, _, err := mw.iget(ctx, mp, inode, false)
 	if err == nil && status == statusNoent {
 		return true
 	}
@@ -286,13 +286,14 @@ func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (*proto.In
 		return nil, syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(ctx, mp, inode)
+	status, info, _, err := mw.iget(ctx, mp, inode, false)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			// For NOENT error, pull the latest mp and give it another try,
 			// in case the mp view is outdated.
 			mw.triggerAndWaitForceUpdate()
-			return mw.doInodeGet(ctx, inode)
+			info, _, err = mw.doInodeGet(ctx, inode, false)
+			return info, err
 		}
 		return nil, statusToErrno(status)
 	}
@@ -303,20 +304,48 @@ func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (*proto.In
 	return info, nil
 }
 
+func (mw *MetaWrapper) InodeGetWithXattrs(ctx context.Context, inode uint64) (*proto.InodeInfo, []*proto.ExtendAttrInfo, error) {
+	if mw.VolNotExists() {
+		return nil, nil, proto.ErrVolNotExists
+	}
+
+	mp := mw.getPartitionByInode(ctx, inode)
+	if mp == nil {
+		log.LogErrorf("InodeGetWithXattrs: No such partition, ino(%v)", inode)
+		return nil, nil, syscall.ENOENT
+	}
+
+	status, info, xattrs, err := mw.iget(ctx, mp, inode, true)
+	if err != nil || status != statusOK {
+		if status == statusNoent {
+			// For NOENT error, pull the latest mp and give it another try,
+			// in case the mp view is outdated.
+			mw.triggerAndWaitForceUpdate()
+			return mw.doInodeGet(ctx, inode, true)
+		}
+		return nil, nil, statusToErrno(status)
+	}
+	if proto.IsSymlink(info.Mode) {
+		info.Size = uint64(len(info.Target))
+	}
+	log.LogDebugf("InodeGetWithXattrs: info(%v)", info)
+	return info, xattrs, nil
+}
+
 // Just like InodeGet but without retry
-func (mw *MetaWrapper) doInodeGet(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) doInodeGet(ctx context.Context, inode uint64, withXattrs bool) (*proto.InodeInfo, []*proto.ExtendAttrInfo, error) {
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		log.LogErrorf("InodeGet_ll: No such partition, ino(%v)", inode)
-		return nil, syscall.ENOENT
+		return nil, nil, syscall.ENOENT
 	}
 
-	status, info, err := mw.iget(ctx, mp, inode)
+	status, info, xattrs, err := mw.iget(ctx, mp, inode, withXattrs)
 	if err != nil || status != statusOK {
-		return nil, statusToErrno(status)
+		return nil, nil, statusToErrno(status)
 	}
 	log.LogDebugf("doInodeGet: info(%v)", info)
-	return info, nil
+	return info, xattrs, nil
 }
 
 func (mw *MetaWrapper) BatchInodeGet(ctx context.Context, inodes []uint64) []*proto.InodeInfo {
@@ -468,7 +497,7 @@ func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name stri
 			log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
 			return nil, syscall.EAGAIN
 		}
-		status, info, err = mw.iget(ctx, mp, inode)
+		status, info, _, err = mw.iget(ctx, mp, inode, false)
 		if err != nil || status != statusOK {
 			return nil, statusToErrno(status)
 		}

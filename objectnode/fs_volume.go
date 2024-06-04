@@ -1341,6 +1341,7 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 	var inode uint64
 	var mode os.FileMode
 	var inoInfo *proto.InodeInfo
+	var xattrs []*proto.ExtendAttrInfo
 
 	for limiter := NewLoopLimiter(MaxRetry); limiter.NextLoop(); {
 		var ents POSIXDentries
@@ -1350,7 +1351,7 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 		var entry = ents.Last()
 		inode, mode = entry.Inode, entry.Mode
 
-		inoInfo, err = v.mw.InodeGet_ll(context.Background(), inode)
+		inoInfo, xattrs, err = v.mw.InodeGetWithXattrs(context.Background(), inode)
 		if err == syscall.ENOENT {
 			continue
 		}
@@ -1373,24 +1374,27 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 		tagging      *Tagging
 	)
 
-	var xAttrs map[string]string
-	if xAttrs, err = v.loadXAttrs(inode); err != nil {
-		log.LogErrorf("FileInfo: load user-defined metadata fail: volume(%v) inode(%v) path(%v) err(%v)",
-			v.name, inode, path, err)
-		return
+	var xattrMap = make(map[string]string)
+	for _, xattr := range xattrs {
+		xattrMap[xattr.Name] = xattr.Value
 	}
-	var rawETag = xAttrs[XAttrKeyOSSETag]
+	//if xAttrs, err = v.loadXAttrs(inode); err != nil {
+	//	log.LogErrorf("FileInfo: load user-defined metadata fail: volume(%v) inode(%v) path(%v) err(%v)",
+	//		v.name, inode, path, err)
+	//	return
+	//}
+	var rawETag = xattrMap[XAttrKeyOSSETag]
 	if len(rawETag) == 0 {
-		rawETag = xAttrs[XAttrKeyOSSETagDeprecated]
+		rawETag = xattrMap[XAttrKeyOSSETagDeprecated]
 	}
 	if len(rawETag) > 0 {
 		etagValue = ParseETagValue(rawETag)
 	}
-	mimeType = xAttrs[XAttrKeyOSSMIME]
-	disposition = xAttrs[XAttrKeyOSSDISPOSITION]
-	cacheControl = xAttrs[XAttrKeyOSSCacheControl]
-	expires = xAttrs[XAttrKeyOSSExpires]
-	tagging, _ = ParseTagging(xAttrs[XAttrKeyOSSTagging])
+	mimeType = xattrMap[XAttrKeyOSSMIME]
+	disposition = xattrMap[XAttrKeyOSSDISPOSITION]
+	cacheControl = xattrMap[XAttrKeyOSSCacheControl]
+	expires = xattrMap[XAttrKeyOSSExpires]
+	tagging, _ = ParseTagging(xattrMap[XAttrKeyOSSTagging])
 
 	if mode.IsDir() {
 		// Folder has specific ETag and MIME type.
@@ -1402,8 +1406,8 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 	}
 
 	// Filter user-defined metadata
-	var metadata = make(map[string]string, len(xAttrs))
-	for k, v := range xAttrs {
+	var metadata = make(map[string]string, len(xattrMap))
+	for k, v := range xattrMap {
 		if strings.HasPrefix(k, "oss:") {
 			continue
 		}

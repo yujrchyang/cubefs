@@ -52,7 +52,7 @@ class ObjectSymlinkTest(S3TestCase):
         # Test head result of key 'test-object-symlink/current'
         self.assert_head_object_result(
             result=self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX + 'current/'),
-            content_type='application/directory')
+            content_type='application/x-directory')
         self.assert_head_object_result(
             result=self.s3.head_object(Bucket=BUCKET, Key=KEY_PREFIX + 'current/meta'),
             content_type='application/octet-stream')

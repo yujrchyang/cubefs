@@ -414,12 +414,15 @@ func (mw *MetaWrapper) lookup(ctx context.Context, mp *MetaPartition, parentID u
 	return statusOK, resp.Inode, resp.Mode, nil
 }
 
-func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64, withXattrs bool) (
+	status int, info *proto.InodeInfo, xattrs []*proto.ExtendAttrInfo, err error) {
 
 	req := &proto.InodeGetRequest{
 		VolName:     mw.volname,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
+
+		WithExtendAttr: withXattrs,
 	}
 
 	packet := proto.NewPacketReqID(ctx)
@@ -447,7 +450,7 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 		log.LogWarnf("iget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		newMp := mw.getRefreshMp(ctx, inode)
 		if newMp != nil && newMp.PartitionID != mp.PartitionID {
-			return mw.iget(ctx, newMp, inode)
+			return mw.iget(ctx, newMp, inode, withXattrs)
 		}
 	}
 	if status != statusOK {
@@ -461,7 +464,7 @@ func (mw *MetaWrapper) iget(ctx context.Context, mp *MetaPartition, inode uint64
 		log.LogWarnf("iget: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
 		return
 	}
-	return statusOK, resp.Info, nil
+	return statusOK, resp.Info, resp.ExtendAttrs, nil
 }
 
 func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *MetaPartition, inodes []uint64, respCh chan []*proto.InodeInfo) {
@@ -871,7 +874,7 @@ func (mw *MetaWrapper) truncate(ctx context.Context, mp *MetaPartition, inode, o
 	}
 	// truncate may recieve statusInval caused by repeat execution on metanode
 	if status == statusInval {
-		getStatus, getInfo, getErr := mw.iget(ctx, mp, inode)
+		getStatus, getInfo, _, getErr := mw.iget(ctx, mp, inode, false)
 		log.LogWarnf("truncate: truncate failed[packet(%v) mp(%v) req(%v)], but inode(%v) size correct",
 			packet, mp, req, getInfo)
 		if getErr == nil && getStatus == statusOK && getInfo.Size == size {
