@@ -291,7 +291,7 @@ const (
 	maxRetryTimes                                          = 2
 	maxBw                                                  = 1800 * 1024 * 1024
 	minBw                                                  = 500 * 1024 * 1024
-	minInodeCountThreshold                                 = 5000000
+	minInodeCountThreshold                                 = 10000000
 )
 
 const (

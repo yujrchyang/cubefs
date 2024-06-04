@@ -260,6 +260,9 @@ func (partition *DataPartition) checkLeader(timeOut int64) {
 func (partition *DataPartition) checkMissingReplicas(clusterID, leaderAddr string, dataPartitionMissSec, dataPartitionWarnInterval int64) {
 	partition.Lock()
 	defer partition.Unlock()
+	if partition.isOffline == true {
+		return
+	}
 	for _, replica := range partition.Replicas {
 		if partition.hasHost(replica.Addr) && replica.isMissing(dataPartitionMissSec) == true && partition.needToAlarmMissingDataPartition(replica.Addr, dataPartitionWarnInterval) {
 			dataNode := replica.getReplicaNode()
@@ -376,6 +379,9 @@ func (partition *DataPartition) checkReplicaDiskError(clusterID, leaderAddr stri
 //}
 
 func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSize uint64, dpReplicaNum int) {
+	if partition.isOffline == true {
+		return
+	}
 	var msg string
 	if excessAddr, excessErr := partition.deleteIllegalReplica(); excessErr != nil {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Excess Replication"+

@@ -4475,7 +4475,7 @@ func TestInodeCountThresholdAndMpSplitStep(t *testing.T) {
 	}
 
 	inodeCountThreshold = 1 << 25
-	mpSplitStep = 1 << 26
+	mpSplitStep = int(3 * proto.DefaultMetaPartitionInodeIDStep)
 	reqURL = fmt.Sprintf("%v%v?name=%v&inodeCountThreshold=%v&mpSplitStep=%v&authKey=%v",
 		hostAddr, proto.AdminUpdateVol, commonVol.Name, inodeCountThreshold, mpSplitStep, buildAuthKey(commonVol.Owner))
 	process(reqURL, t)

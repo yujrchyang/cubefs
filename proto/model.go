@@ -80,6 +80,7 @@ type MetaNodeInfo struct {
 	ToBeMigrated              bool
 	ProfPort                  string
 	Version                   string
+	RocksdbDisks              []*MetaNodeDiskInfo
 }
 
 // DataNode stores all the information about a data node
@@ -374,10 +375,10 @@ type DataPartitionInfoDBBack struct {
 	Replicas         []*DataReplica
 	PartitionType    string
 	PersistenceHosts []string
-	VolName         string
-	FileInCoreMap   map[string]*FileInCore
-	MissNodes       map[string]int64
-	FileMissReplica map[string]int64
+	VolName          string
+	FileInCoreMap    map[string]*FileInCore
+	MissNodes        map[string]int64
+	FileMissReplica  map[string]int64
 }
 
 // FileInCore define file in data partition

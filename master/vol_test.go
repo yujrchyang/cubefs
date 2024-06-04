@@ -260,7 +260,7 @@ func checkMetaPartitionsWritableTest(vol *Vol, t *testing.T) {
 	maxPartitionID := vol.maxPartitionID()
 	maxMp := vol.MetaPartitions[maxPartitionID]
 	//after check meta partitions ,the status must be writable
-	maxMp.checkStatus(false, int(vol.mpReplicaNum), maxPartitionID, vol)
+	maxMp.checkStatus(false, int(vol.mpReplicaNum), maxPartitionID, vol, false)
 	if !assert.Equalf(t, proto.ReadWrite, int(maxMp.Status), "expect partition status[%v],real status[%v]\n", proto.ReadWrite, maxMp.Status) {
 		return
 	}

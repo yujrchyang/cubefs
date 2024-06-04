@@ -108,6 +108,7 @@ var (
 	ErrNetworkOutLimitArrived    = errors.New("the bandwidth limit of network out has arrived")
 	ErrHasCommonPreMetaPartition = errors.New("has common precursor meta partition")
 	ErrUnknownMetaPartition      = errors.New("unknown meta partition")
+	ErrVolNameIsEmpty            = errors.New("vol name is empty")
 )
 
 // http response error code and error message definitions
@@ -184,6 +185,7 @@ const (
 	ErrCodeGetExtentsFailed
 	ErrCodeTmpfsNoSpace
 	ErrCodeRaftLeaderHasChanged
+	ErrCodeVolNameIsEmpty
 )
 
 // Err2CodeMap error map to code
@@ -256,6 +258,7 @@ var Err2CodeMap = map[error]int32{
 	ErrGetExtentsFailed:                ErrCodeGetExtentsFailed,
 	ErrTmpfsNoSpace:                    ErrCodeTmpfsNoSpace,
 	ErrRaftLeaderHasChanged:            ErrCodeRaftLeaderHasChanged,
+	ErrVolNameIsEmpty:                  ErrCodeVolNameIsEmpty,
 }
 
 func ParseErrorCode(code int32) error {
@@ -335,6 +338,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeGetExtentsFailed:                ErrGetExtentsFailed,
 	ErrCodeTmpfsNoSpace:                    ErrTmpfsNoSpace,
 	ErrCodeRaftLeaderHasChanged:            ErrRaftLeaderHasChanged,
+	ErrCodeVolNameIsEmpty:                  ErrVolNameIsEmpty,
 }
 
 type GeneralResp struct {

@@ -109,8 +109,12 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		regionType      proto.RegionType
 	)
 	mp.offlineMutex.Lock()
-	defer mp.offlineMutex.Unlock()
+	defer func() {
+		mp.isOffline = false
+		mp.offlineMutex.Unlock()
+	}()
 	mp.lastOfflineTime = time.Now().Unix()
+	mp.isOffline = true
 	oldHosts = mp.Hosts
 	if vol, err = c.getVol(mp.volName); err != nil {
 		goto errHandler

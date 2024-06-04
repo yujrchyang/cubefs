@@ -271,7 +271,7 @@ func (vol *Vol) checkAutoMetaPartitionCreation(c *Cluster, createMpContext conte
 
 func (vol *Vol) autoCreateMetaPartitions(c *Cluster, createMpContext context.Context) {
 	writableMpCount := int(vol.getWritableMpCount())
-	if writableMpCount < vol.MinWritableMPNum {
+	if writableMpCount < vol.MinWritableMPNum || vol.needSplitMpByInodeCount {
 		maxPartitionID := vol.maxPartitionID()
 		mp, err := vol.metaPartition(maxPartitionID)
 		if err != nil {

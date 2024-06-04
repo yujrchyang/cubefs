@@ -72,6 +72,7 @@ type MetaPartition struct {
 	LearnerNum           uint8
 	Status               int8
 	IsRecover            bool
+	isOffline            bool
 	volID                uint64
 	volName              string
 	Hosts                []string
@@ -295,7 +296,7 @@ func (mp *MetaPartition) checkLeader() {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartitionID uint64, vol *Vol) (doSplit bool) {
+func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartitionID uint64, vol *Vol, allowAdjustMpStatus bool) (doSplit bool) {
 	mp.Lock()
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
@@ -325,10 +326,12 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartition
 		}
 	}
 
-	if vol.InodeCountThreshold > 0 && mp.Status == proto.ReadWrite && vol.writableMpCount >= int64(vol.MinWritableMPNum) && vol.MinWritableMPNum != 0 {
+	if allowAdjustMpStatus && mp.PartitionID != maxPartitionID && vol.InodeCountThreshold > 0 && mp.Status == proto.ReadWrite && vol.MinWritableMPNum != 0 {
 		mp.adjustStatusByInodeCount(vol.InodeCountThreshold)
-		vol.setWritableMpCount(vol.writableMpCount - 1)
 	}
+
+	log.LogWarnf("action[checkMPStatus],vol:%v,writeMpCount:%v,allowAdjustMpStatus:%v,id:%v,status:%v,replicaNum:%v,liveReplicas:%v persistenceHosts:%v",
+		vol.Name, vol.writableMpCount, allowAdjustMpStatus, mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts)
 
 	if mp.PartitionID == maxPartitionID && mp.Status == proto.ReadOnly {
 		mp.Status = proto.ReadWrite
@@ -578,6 +581,9 @@ func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64)
 func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, seconds, interval int64) {
 	mp.Lock()
 	defer mp.Unlock()
+	if mp.isOffline == true {
+		return
+	}
 	for _, replica := range mp.Replicas {
 		// reduce the alarm frequency
 		if contains(mp.Hosts, replica.Addr) && replica.isMissing() && mp.shouldReportMissingReplica(replica.Addr, interval) {
@@ -593,8 +599,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 			msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 				clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
-			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
-			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
+			msg = msg + fmt.Sprintf(" decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
 		}
 	}
@@ -604,8 +609,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time  > %v ",
 				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
-			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
-			msg = fmt.Sprintf("decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
+			msg = msg + fmt.Sprintf(" decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
 		}
 	}

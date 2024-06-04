@@ -133,6 +133,7 @@ type Vol struct {
 	RemoteCacheTTL             int64
 	MpSplitStep                uint64 // the step of split meta partition，0：used default step; if larger than the default step, used the value
 	InodeCountThreshold        uint64 // the threshold of inode count, if the inode count of a meat replica is larger than this value, the meta partition will be readonly,default 1000w
+	needSplitMpByInodeCount    bool
 	BitMapSnapFrozenHour       int64
 	ConnConfig                 proto.ConnConfig
 	sync.RWMutex
@@ -639,8 +640,12 @@ func (vol *Vol) checkMetaPartitions(c *Cluster, ctx context.Context) (writableMp
 		doSplit bool
 		err     error
 	)
+	notArrivedThresholdWritableMpCount := vol.getInodeCountNotArrivedThresholdWritableMpCount(mps)
+	log.LogWarnf("vol[%v],WritableMpCount[%v],notArrivedThresholdWritableMpCount[%v],MinWritableMPNum[%v]",
+		vol.Name, vol.getWritableMpCount(), notArrivedThresholdWritableMpCount, vol.MinWritableMPNum)
+	allowAdjustMpStatus := vol.InodeCountThreshold > 0 && notArrivedThresholdWritableMpCount >= int(vol.MinWritableMPNum)
 	for _, mp := range mps {
-		doSplit = mp.checkStatus(true, int(vol.mpReplicaNum), maxPartitionID, vol)
+		doSplit = mp.checkStatus(true, int(vol.mpReplicaNum), maxPartitionID, vol, allowAdjustMpStatus)
 		if doSplit && mp.MaxInodeID != 0 {
 			nextStart := mp.calculateEnd(vol.MpSplitStep)
 			if err = vol.splitMetaPartition(c, mp, nextStart, ctx); err != nil {
@@ -659,6 +664,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster, ctx context.Context) (writableMp
 			writableMpCount++
 		}
 	}
+	vol.resetNeedSplitMpByInodeCount(mps)
 	return
 }
 
@@ -1323,7 +1329,6 @@ func (vol *Vol) getDataPartitionQuorum() (quorum int) {
 			quorum = int(vol.dpReplicaNum/2 + 1)
 		}
 	default:
-		quorum = int(vol.dpReplicaNum)
 	}
 	return
 }
@@ -1657,4 +1662,27 @@ func (vol *Vol) checkIsDataPartitionAndMetaPartitionReplicaNumSameWithVolReplica
 func (vol *Vol) isRealDelete(deleteMarkDelVolInterval int64) (ok bool) {
 	ok = vol.Status == proto.VolStMarkDelete && vol.RenameConvertStatus == proto.VolRenameConvertStatusFinish && time.Now().Unix()-vol.MarkDeleteTime > deleteMarkDelVolInterval
 	return
+}
+
+func (vol *Vol) getInodeCountNotArrivedThresholdWritableMpCount(mps map[uint64]*MetaPartition) int {
+	count := 0
+	for _, mp := range mps {
+		if mp.Status == proto.ReadWrite && mp.InodeCount < vol.InodeCountThreshold {
+			count++
+		}
+	}
+	return count
+}
+
+func (vol *Vol) resetNeedSplitMpByInodeCount(mps map[uint64]*MetaPartition) {
+	if vol.InodeCountThreshold == 0 {
+		vol.needSplitMpByInodeCount = false
+		return
+	}
+	notArrivedThresholdWritableMpCount := vol.getInodeCountNotArrivedThresholdWritableMpCount(mps)
+	if notArrivedThresholdWritableMpCount < vol.MinWritableMPNum {
+		vol.needSplitMpByInodeCount = true
+	} else {
+		vol.needSplitMpByInodeCount = false
+	}
 }

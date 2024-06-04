@@ -318,10 +318,8 @@ func (m *Server) getIPAddr(w http.ResponseWriter, r *http.Request) {
 	defer func() { metrics.Set(nil) }()
 	//m.cluster.loadClusterValue()
 	cInfo := &proto.ClusterInfo{
-		Cluster:              m.cluster.Name,
-		Ip:                   strings.Split(r.RemoteAddr, ":")[0],
-		ClientReadLimitRate:  m.cluster.cfg.ClientReadVolRateLimitMap[""],
-		ClientWriteLimitRate: m.cluster.cfg.ClientWriteVolRateLimitMap[""],
+		Cluster: m.cluster.Name,
+		Ip:      strings.Split(r.RemoteAddr, ":")[0],
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1759,7 +1757,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		truncateEKCountEveryTime int
 
-		bitMapSnapFrozenHour   int64
+		bitMapSnapFrozenHour int64
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -2727,6 +2725,10 @@ type updateLimitPara struct {
 }
 
 func setLimitRateWithPara(params map[string]interface{}, key string, min uint64, limitPara updateLimitPara, update updateLimitFunc) (err error) {
+	if (key == dataNodeReqVolOpRateKey || key == dataNodeReqVolPartRateKey || key == dataNodeReqVolOpPartRateKey ||
+		key == flashNodeVolRateKey) && strings.TrimSpace(limitPara.vol) == "" {
+		return proto.ErrVolNameIsEmpty
+	}
 	if val, ok := params[key]; ok {
 		v := val.(uint64)
 		if v > 0 && v < min {
@@ -2946,6 +2948,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	metaNode.PersistenceMetaPartitions = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
+	metaNode.RLock()
 	metaNodeInfo = &proto.MetaNodeInfo{
 		ID:                        metaNode.ID,
 		Addr:                      metaNode.Addr,
@@ -2966,7 +2969,9 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		ToBeMigrated:              metaNode.ToBeMigrated,
 		ProfPort:                  metaNode.ProfPort,
 		Version:                   metaNode.Version,
+		RocksdbDisks:              metaNode.RocksdbDisks,
 	}
+	metaNode.RUnlock()
 	sendOkReply(w, r, newSuccessHTTPReply(metaNodeInfo))
 }
 
@@ -4060,6 +4065,11 @@ func parseMPSplitStepAndInodeCountThresholdToUpdateVol(r *http.Request, vol *Vol
 			err = fmt.Errorf("splitStep must be larger than %d", proto.DefaultMetaPartitionInodeIDStep)
 			return
 		}
+
+		if splitStep > 3*proto.DefaultMetaPartitionInodeIDStep {
+			err = fmt.Errorf("splitStep must be less than %d", 3*proto.DefaultMetaPartitionInodeIDStep)
+			return
+		}
 	}
 	inodeCountThresholdStr := r.FormValue(inodeCountThresholdKey)
 	if inodeCountThresholdStr == "" {
@@ -4070,7 +4080,7 @@ func parseMPSplitStepAndInodeCountThresholdToUpdateVol(r *http.Request, vol *Vol
 			return
 		}
 		if inodeCountThreshold < minInodeCountThreshold {
-			err = fmt.Errorf("inodeCountThreshold must be larger than 100000")
+			err = fmt.Errorf("inodeCountThreshold must be larger than %v", minInodeCountThreshold)
 			return
 		}
 	}
@@ -4324,6 +4334,10 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		}
 		if mpSplitStep < proto.DefaultMetaPartitionInodeIDStep {
 			err = fmt.Errorf("splitStep must be larger than %d", proto.DefaultMetaPartitionInodeIDStep)
+			return
+		}
+		if mpSplitStep > 3*proto.DefaultMetaPartitionInodeIDStep {
+			err = fmt.Errorf("splitStep must be less than %d", 3*proto.DefaultMetaPartitionInodeIDStep)
 			return
 		}
 	}

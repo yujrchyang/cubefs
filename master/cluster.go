@@ -2081,7 +2081,7 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 	if leaderAddr, candidateAddrs, err = dp.prepareAddRaftMember(addPeer); err != nil {
 		return
 	}
-	//send task to leader addr first,if need to retry,then send to other addr
+	//send task to leader addr first,if it needs to retry,then send to other addr
 	for index, host := range candidateAddrs {
 		if leaderAddr == "" && len(candidateAddrs) < int(dp.ReplicaNum) {
 			time.Sleep(retrySendSyncTaskInternal)
@@ -3985,8 +3985,9 @@ func (c *Cluster) setRateLimit(module string, zone string, volume string, opcode
 		}
 		zoneVol = multirate.ZonePrefix + zone
 	} else {
+
 		if volume == rateLimitDefaultVal {
-			volume = ""
+			return proto.ErrVolNameIsEmpty
 		}
 		zoneVol = multirate.VolPrefix + volume
 	}
@@ -4415,6 +4416,9 @@ func (c *Cluster) setMetaNodeDumpSnapCount(zone string, val int64) (err error) {
 }
 
 func (c *Cluster) setClientReadVolRateLimit(val uint64, vol string) (err error) {
+	if strings.TrimSpace(vol) == "" {
+		return proto.ErrVolNameIsEmpty
+	}
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
 	oldVal, ok := c.cfg.ClientReadVolRateLimitMap[vol]
@@ -4437,6 +4441,9 @@ func (c *Cluster) setClientReadVolRateLimit(val uint64, vol string) (err error) 
 }
 
 func (c *Cluster) setClientWriteVolRateLimit(val uint64, vol string) (err error) {
+	if strings.TrimSpace(vol) == "" {
+		return proto.ErrVolNameIsEmpty
+	}
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
 	oldVal, ok := c.cfg.ClientWriteVolRateLimitMap[vol]
@@ -4459,9 +4466,11 @@ func (c *Cluster) setClientWriteVolRateLimit(val uint64, vol string) (err error)
 }
 
 func (c *Cluster) setClientVolOpRateLimit(val int64, vol string, op uint8) (err error) {
+	if strings.TrimSpace(vol) == "" {
+		return proto.ErrVolNameIsEmpty
+	}
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()
-
 	var (
 		oldVal  int64
 		opExist bool
