@@ -32,7 +32,7 @@ import (
 // Create handles the create request.
 func (d *Node) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fs.Node, fs.Handle, error) {
 	var err error
-	tpObject := exporter.NewModuleTP("filecreate")
+	tpObject := exporter.NewModuleTPUs("filecreate_us")
 	defer tpObject.Set(err)
 
 	start := time.Now()
@@ -66,7 +66,7 @@ func (d *Node) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.C
 // Mkdir handles the mkdir request.
 func (d *Node) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, error) {
 	var err error
-	tpObject := exporter.NewModuleTP("mkdir")
+	tpObject := exporter.NewModuleTPUs("mkdir_us")
 	defer tpObject.Set(err)
 
 	start := time.Now()
@@ -93,7 +93,7 @@ func (d *Node) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, erro
 // Remove handles the remove request.
 func (d *Node) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
 	tpObject := exporter.NewVolumeTPUs("Remove_us", Sup.volname)
-	tpObject1 := exporter.NewModuleTP("remove")
+	tpObject1 := exporter.NewModuleTPUs("remove_us")
 	defer func() {
 		tpObject.Set(err)
 		tpObject1.Set(err)
@@ -225,7 +225,7 @@ func (d *Node) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 	start := time.Now()
 
 	var err error
-	tpObject := exporter.NewModuleTP("readdir")
+	tpObject := exporter.NewModuleTPUs("readdir_us")
 	defer tpObject.Set(err)
 
 	children, err := Sup.mw.ReadDir_ll(ctx, d.inode)
@@ -274,7 +274,7 @@ func (d *Node) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusRespons
 	start := time.Now()
 
 	var err error
-	tpObject := exporter.NewModuleTP("readdirplus")
+	tpObject := exporter.NewModuleTPUs("readdirplus_us")
 	defer tpObject.Set(err)
 
 	children, err := Sup.mw.ReadDir_ll(ctx, d.inode)
@@ -341,7 +341,7 @@ func (d *Node) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.No
 	d.dcache.Delete(req.OldName)
 
 	var err error
-	tpObject := exporter.NewModuleTP("rename")
+	tpObject := exporter.NewModuleTPUs("rename_us")
 	defer tpObject.Set(err)
 
 	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
@@ -368,7 +368,7 @@ func (d *Node) Mknod(ctx context.Context, req *fuse.MknodRequest) (fs.Node, erro
 	start := time.Now()
 
 	var err error
-	tpObject := exporter.NewModuleTP("mknod")
+	tpObject := exporter.NewModuleTPUs("mknod_us")
 	defer tpObject.Set(err)
 
 	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
@@ -396,7 +396,7 @@ func (d *Node) Symlink(ctx context.Context, req *fuse.SymlinkRequest) (fs.Node, 
 	start := time.Now()
 
 	var err error
-	tpObject := exporter.NewModuleTP("symlink")
+	tpObject := exporter.NewModuleTPUs("symlink_us")
 	defer tpObject.Set(err)
 
 	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
@@ -430,7 +430,7 @@ func (d *Node) Link(ctx context.Context, req *fuse.LinkRequest, old fs.Node) (fs
 	}
 
 	var err error
-	tpObject := exporter.NewModuleTP("link")
+	tpObject := exporter.NewModuleTPUs("link_us")
 	defer tpObject.Set(err)
 
 	start := time.Now()

@@ -278,6 +278,10 @@ func NewModuleTPUs(op string) TP {
 	return newModuleTP(op, PrecisionUs, unspecifiedTime)
 }
 
+func NewModuleTPUsWithStart(op string, start time.Time) TP {
+	return newModuleTP(op, PrecisionUs, start)
+}
+
 func NewVolumeTP(op string, volume string) TP {
 	return newVolumeTP(op, volume, PrecisionMs)
 }

@@ -670,7 +670,7 @@ func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 			err = errors.New(msg)
 		}
 	}()
-    timer := time.NewTimer(0)
+	timer := time.NewTimer(0)
 	defer timer.Stop()
 	for {
 		select {
@@ -678,7 +678,7 @@ func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 			return
 		case <-timer.C:
 			client.updateConfig()
-            timer.Reset(updateConfigTicket)
+			timer.Reset(updateConfigTicket)
 		}
 	}
 }
@@ -695,9 +695,6 @@ func (client *ExtentClient) updateConfig() {
 		readRate, writeRate uint64
 	)
 	readRate, ok = limitInfo.ClientReadVolRateLimitMap[client.dataWrapper.volName]
-	if !ok {
-		readRate, ok = limitInfo.ClientReadVolRateLimitMap[""]
-	}
 	if (!ok || readRate == 0) && client.originReadRate > 0 {
 		readRate = uint64(client.originReadRate)
 	}
@@ -709,9 +706,6 @@ func (client *ExtentClient) updateConfig() {
 	}
 
 	writeRate, ok = limitInfo.ClientWriteVolRateLimitMap[client.dataWrapper.volName]
-	if !ok {
-		writeRate, ok = limitInfo.ClientWriteVolRateLimitMap[""]
-	}
 	if (!ok || writeRate == 0) && client.originWriteRate > 0 {
 		writeRate = uint64(client.originWriteRate)
 	}
@@ -722,7 +716,7 @@ func (client *ExtentClient) updateConfig() {
 		client.writeLimiter.SetLimit(rate.Limit(defaultWriteLimitRate))
 	}
 	client.dpTimeoutCntThreshold = limitInfo.DpTimeoutCntThreshold
-    log.LogInfof("updateConfig: vol(%v) limit(%v)", client.dataWrapper.volName, limitInfo)
+	log.LogInfof("updateConfig: vol(%v) limit(%v)", client.dataWrapper.volName, limitInfo)
 }
 
 func (client *ExtentClient) Close(ctx context.Context) error {

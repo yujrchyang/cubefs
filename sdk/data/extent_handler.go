@@ -26,6 +26,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 )
@@ -342,13 +343,14 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 
 	//log.LogDebugf("processReply enter: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 
+	var errmsg string
 	status := eh.getStatus()
 	if status >= ExtentStatusError {
 		eh.discardPacket(packet)
 		log.LogErrorf("processReply discard packet: handler is in error status, inflight(%v) eh(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, packet)
 		return
 	} else if status >= ExtentStatusRecovery {
-		errmsg := fmt.Sprintf("recover eh(%v) packet(%v)", eh, packet)
+		errmsg = fmt.Sprintf("recover eh(%v) packet(%v)", eh, packet)
 		if err := eh.recoverPacket(packet, errmsg); err != nil {
 			eh.discardPacket(packet)
 			log.LogErrorf("processReply discard packet: handler is in recovery status, inflight(%v) eh(%v) packet(%v) err(%v)", atomic.LoadInt32(&eh.inflight), eh, packet, err)
@@ -357,9 +359,18 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 		return
 	}
 
-	cost := time.Since(time.Unix(0, packet.StartT))
+	start := time.Unix(0, packet.StartT)
+	metric := exporter.NewModuleTPWithStart("OpWrite", start)
+	defer func() {
+		var err error
+		if errmsg != "" {
+			err = fmt.Errorf(errmsg)
+		}
+		metric.Set(err)
+	}()
+	cost := time.Since(start)
 	if cost > time.Second*proto.MaxPacketProcessTime {
-		errmsg := fmt.Sprintf("processReply: time-out(%v) before recieve, costFromStart(%v), costFromSend(%v) "+
+		errmsg = fmt.Sprintf("processReply: time-out(%v) before recieve, costFromStart(%v), costFromSend(%v) "+
 			"packet(%v)", time.Second*proto.MaxPacketProcessTime, cost, time.Since(time.Unix(0, packet.SendT)), packet)
 		eh.processReplyError(packet, errmsg)
 		return
@@ -376,7 +387,7 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 	err := reply.ReadFromConnNs(eh.conn, eh.dataWrapper.connConfig.ReadTimeoutNs)
 	eh.dp.checkErrorIsTimeout(err)
 	if err != nil {
-		errmsg := fmt.Sprintf("ReadFromConn timeout(%vns) err(%v) costBeforeRecv(%v) costFromStart(%v) costFromSend(%v)",
+		errmsg = fmt.Sprintf("ReadFromConn timeout(%vns) err(%v) costBeforeRecv(%v) costFromStart(%v) costFromSend(%v)",
 			eh.dataWrapper.connConfig.ReadTimeoutNs, err.Error(), cost, time.Since(time.Unix(0, packet.StartT)),
 			time.Since(time.Unix(0, packet.SendT)))
 		eh.processReplyError(packet, errmsg)
@@ -396,21 +407,21 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 			}
 		}
 		eh.dp.checkAddrNotExist(eh.dp.Hosts[0], reply)
-		errmsg := fmt.Sprintf("reply NOK: reply(%v)", reply)
+		errmsg = fmt.Sprintf("reply NOK: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
 		eh.dp.RecordWrite(packet.StartT, true)
 		return
 	}
 
 	if !packet.IsValidWriteReply(reply) {
-		errmsg := fmt.Sprintf("request and reply does not match: reply(%v)", reply)
+		errmsg = fmt.Sprintf("request and reply does not match: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
 		eh.dp.RecordWrite(packet.StartT, true)
 		return
 	}
 
 	if reply.CRC != packet.CRC {
-		errmsg := fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
+		errmsg = fmt.Sprintf("inconsistent CRC: reqCRC(%v) replyCRC(%v) reply(%v) ", packet.CRC, reply.CRC, reply)
 		eh.processReplyError(packet, errmsg)
 		eh.dp.RecordWrite(packet.StartT, true)
 		return

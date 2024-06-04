@@ -594,10 +594,6 @@ func (mw *MetaWrapper) GetStartTime() int64 {
 	return mw.StartTime
 }
 
-//func (mw *MetaWrapper) exporterKey(act string) string {
-//	return fmt.Sprintf("%s_sdk_meta_%s", mw.cluster, act)
-//}
-
 // Proto ResultCode to status
 func parseStatus(result uint8) (status int) {
 	switch result {

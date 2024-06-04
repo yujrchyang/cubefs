@@ -112,7 +112,7 @@ func (f *Node) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 
 	tpObject := exporter.NewVolumeTPUs("Open_us", Sup.volname)
-	tpObject1 := exporter.NewModuleTP("fileopen")
+	tpObject1 := exporter.NewModuleTPUs("fileopen_us")
 	defer func() {
 		tpObject.Set(err)
 		tpObject1.Set(err)
@@ -172,7 +172,7 @@ func (f *Node) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 // Read handles the read request.
 func (f *Node) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
 	tpObject := exporter.NewVolumeTPUs("Read_us", Sup.volname)
-	tpObject1 := exporter.NewModuleTP("fileread")
+	tpObject1 := exporter.NewModuleTPUs("fileread_us")
 	defer func() {
 		tpObject.Set(err)
 		tpObject1.Set(err)
@@ -227,7 +227,7 @@ func (f *Node) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		newFileSize uint64
 	)
 	tpObject := exporter.NewVolumeTPUs("Write_us", Sup.volname)
-	tpObject1 := exporter.NewModuleTP("filewrite")
+	tpObject1 := exporter.NewModuleTPUs("filewrite_us")
 	defer func() {
 		tpObject.Set(err)
 		tpObject1.Set(err)
@@ -305,7 +305,7 @@ func (f *Node) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	start := time.Now()
 
 	tpObject := exporter.NewVolumeTPUs("Flush_us", Sup.volname)
-	tpObject1 := exporter.NewModuleTP("filesync")
+	tpObject1 := exporter.NewModuleTPUs("filesync_us")
 	defer func() {
 		tpObject.Set(err)
 		tpObject1.Set(err)
@@ -330,7 +330,7 @@ func (f *Node) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 		return nil
 	}
 	tpObject := exporter.NewVolumeTPUs("Fsync_us", Sup.volname)
-	tpObject1 := exporter.NewModuleTP("filefsync")
+	tpObject1 := exporter.NewModuleTPUs("filefsync_us")
 	defer func() {
 		tpObject.Set(err)
 		tpObject1.Set(err)
@@ -353,7 +353,7 @@ func (f *Node) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 // Setattr handles the setattr request.
 func (f *Node) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) (err error) {
 	tpObject := exporter.NewVolumeTPUs("Setattr_us", Sup.volname)
-	tpObject1 := exporter.NewModuleTP("filesetattr")
+	tpObject1 := exporter.NewModuleTPUs("filesetattr_us")
 	defer func() {
 		tpObject.Set(err)
 		tpObject1.Set(err)

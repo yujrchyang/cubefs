@@ -657,7 +657,7 @@ func (s *Streamer) writeToExtentSpecificOffset(ctx context.Context, oriReq *Exte
 }
 
 func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool) (total int, err error) {
-	tpObject := exporter.NewModuleTP("row")
+	tpObject := exporter.NewModuleTPUs("row")
 
 	defer func() {
 		tpObject.Set(err)

@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -441,6 +442,7 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *c
 		tryOther = true
 		return
 	}
+	metric := exporter.NewModuleTPUs(reqPacket.GetOpMsg())
 	var conn *net.TCPConn
 	defer func() {
 		StreamConnPool.PutConnectWithErr(conn, err)
@@ -448,6 +450,7 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *c
 			// 'tryOther' means network failure
 			dp.updateCrossRegionMetrics(sc.currAddr, tryOther)
 		}
+		metric.Set(err)
 	}()
 	if conn, err = sc.sendToDataPartition(reqPacket); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
@@ -512,9 +515,11 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 }
 
 func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *common.Packet, reply *common.Packet) (err error) {
+	metric := exporter.NewModuleTPUs(req.GetOpMsg())
 	var conn *net.TCPConn
 	defer func() {
 		StreamConnPool.PutConnectWithErr(conn, err)
+		metric.Set(err)
 	}()
 	if conn, err = sc.sendToDataPartition(req); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
