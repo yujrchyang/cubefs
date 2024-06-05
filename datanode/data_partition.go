@@ -4081,7 +4081,6 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 // raftfsm Apply puts the data onto the disk.
 func (dp *DataPartition) handleRaftApply(command []byte, index uint64) (resp interface{}, err error) {
 	defer func() {
-		proto.Buffers.Put(command)
 		if err != nil {
 			msg := fmt.Sprintf("partition [id: %v, disk: %v] apply command [index: %v] occurred error and will be stop: %v",
 				dp.partitionID, dp.Disk().Path, index, err)

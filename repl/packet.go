@@ -781,10 +781,7 @@ func (p *Packet) allocateBufferFromPoolForReadConnectBody(c net.Conn) (isUseBuff
 	case p.IsRandomWrite():
 		// Pre-build random write raft command data
 		var cmdSize = int(unit.RandomWriteRaftCommandHeaderSize + p.Size)
-		var cmd, getErr = proto.Buffers.Get(cmdSize)
-		if getErr != nil {
-			cmd = make([]byte, cmdSize)
-		}
+		var cmd = make([]byte, cmdSize)
 		var off uint32
 		binary.BigEndian.PutUint32(cmd[off:off+4], uint32(0xFF))
 		off += 4
