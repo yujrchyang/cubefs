@@ -2725,11 +2725,11 @@ type updateLimitPara struct {
 }
 
 func setLimitRateWithPara(params map[string]interface{}, key string, min uint64, limitPara updateLimitPara, update updateLimitFunc) (err error) {
-	if (key == dataNodeReqVolOpRateKey || key == dataNodeReqVolPartRateKey || key == dataNodeReqVolOpPartRateKey ||
-		key == flashNodeVolRateKey) && strings.TrimSpace(limitPara.vol) == "" {
-		return proto.ErrVolNameIsEmpty
-	}
 	if val, ok := params[key]; ok {
+		if (key == dataNodeReqVolOpRateKey || key == dataNodeReqVolPartRateKey || key == dataNodeReqVolOpPartRateKey ||
+			key == flashNodeVolRateKey) && strings.TrimSpace(limitPara.vol) == "" {
+			return proto.ErrVolNameIsEmpty
+		}
 		v := val.(uint64)
 		if v > 0 && v < min {
 			err = errors.NewErrorf("parameter %s can't be less than %d", key, min)
