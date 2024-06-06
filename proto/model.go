@@ -437,6 +437,16 @@ type ExtentInfo struct {
 	Source     string `json:"src"`
 }
 
+type ExtentFileInfoDbBack struct {
+	FileID    uint64    `json:"fileId"`
+	Ino       uint64    `json:"ino"`
+	Size      uint64    `json:"size"`
+	Crc       uint32    `json:"crc"`
+	IsDeleted bool      `json:"deleted"`
+	ModTime   time.Time `json:"modTime"`
+	Source    string    `json:"src"`
+}
+
 type ExtentInfoDbBack struct {
 	FileId      uint64
 	Size        uint64

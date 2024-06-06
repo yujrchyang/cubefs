@@ -23,6 +23,7 @@ import (
 	"github.com/cubefs/cubefs/util/unit"
 	"math"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -77,6 +78,7 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionReloadCmd(client),
 		newDataPartitionCheckReplicaCmd(client),
 		newDataPartitionDiffExtentCmd(client),
+		newDataPartitionEmptyExtent(client),
 	)
 	return cmd
 }
@@ -1595,6 +1597,160 @@ func newDataPartitionCheckReplicaCmd(client *master.MasterClient) *cobra.Command
 	cmd.Flags().StringVar(&fromTime, "from-time", "1970-01-01 00:00:00", "specify extent modify from time to check, format:yyyy-mm-dd hh:mm:ss")
 	cmd.Flags().BoolVar(&quickCheck, "quick-check", false, "quick check: check crc from meta data first, if not the same, then check md5")
 	return cmd
+}
+func newDataPartitionEmptyExtent(client *master.MasterClient) *cobra.Command {
+	var fromTime string
+	var partitions string
+	var cmd = &cobra.Command{
+		Use:   "empty-extent" + " [volume]",
+		Short: "find empty extent",
+		Args:  cobra.MinimumNArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			var extentModifyMin time.Time
+			var minTime time.Time
+			var err error
+			var pids []uint64
+			var volume string
+			var dps *proto.DataPartitionsView
+
+			defer func() {
+				if err != nil {
+					fmt.Printf(err.Error())
+				}
+			}()
+			volume = args[0]
+			if partitions != "" {
+				pidsStr := strings.Split(partitions, ",")
+				for _, pidStr := range pidsStr {
+					var pid uint64
+					pid, err = strconv.ParseUint(pidStr, 10, 64)
+					if err != nil {
+						return
+					}
+					pids = append(pids, pid)
+				}
+			} else {
+				dps, err = client.ClientAPI().GetDataPartitions(volume, nil)
+				if err != nil {
+					return
+				}
+				for _, partition := range dps.DataPartitions {
+					pids = append(pids, partition.PartitionID)
+				}
+			}
+
+			minTime = time.Now().Add(-time.Hour * 24)
+			if extentModifyMin, err = parseTime(fromTime); err != nil {
+				return
+			}
+			if extentModifyMin.Unix() > minTime.Unix() {
+				err = fmt.Errorf("time %v no later than %v", extentModifyMin, minTime)
+				return
+			}
+			volDir := path.Join(os.TempDir(), "empty-extent", volume)
+			os.RemoveAll(volDir)
+			os.MkdirAll(volDir, 0666)
+			ch := make(chan uint64, 16)
+			wg := sync.WaitGroup{}
+			stop := make(chan bool, 1)
+			wg.Add(50)
+			for j := 0; j < 50; j++ {
+				go func() {
+					defer wg.Done()
+					for {
+						select {
+						case id := <-ch:
+							findEmptyExtent(volDir, id, extentModifyMin)
+						case <-stop:
+							return
+						}
+					}
+				}()
+			}
+
+			count := len(pids)
+			total := len(pids)
+			if total == 0 {
+				total = 1
+			}
+			for _, pid := range pids {
+				ch <- pid
+				count--
+				fmt.Printf("pids remain:%v, percent remain:%v\n", count, count/total*100)
+			}
+			close(stop)
+			wg.Wait()
+			fmt.Println("all check stopped")
+		},
+	}
+	cmd.Flags().StringVar(&partitions, "partitions", "", "split by comma")
+	cmd.Flags().StringVar(&fromTime, "from-time", "1970-01-01 00:00:00", "specify extent modify from time to check, zone: CST, format:yyyy-mm-dd hh:mm:ss")
+	return cmd
+}
+
+func findEmptyExtent(dpDir string, pid uint64, extentModifyMin time.Time) (err error) {
+	var dp *proto.DataPartitionInfo
+	var dpFile *os.File
+	dp, err = client.AdminAPI().GetDataPartition("", pid)
+	if err != nil {
+		return
+	}
+	dpFileName := path.Join(dpDir, fmt.Sprintf("%v", dp.PartitionID))
+	os.Remove(dpFileName)
+
+	extentMap := make(map[uint64]bool, 0)
+	for _, h := range dp.Hosts {
+		var dpNode *proto.DNDataPartitionInfo
+		dataClient := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(h, ":")[0], client.DataNodeProfPort), false)
+		if dpNode, err = dataClient.GetPartitionFromNodeDbbak(pid); err != nil {
+			return
+		}
+		fmt.Printf("vol:%v dp:%v host:%v extent total:%v\n", dp.VolName, dp.PartitionID, h, len(dpNode.Files))
+		for _, f := range dpNode.Files {
+			if IsDbBackTinyExtent(f[proto.ExtentInfoFileID]) {
+				continue
+			}
+			if f[proto.ExtentInfoSize] == 0 && f[proto.ExtentInfoModifyTime] < uint64(extentModifyMin.Unix()) {
+				extentMap[f[proto.ExtentInfoFileID]] = true
+			}
+		}
+	}
+
+	extents := make([]uint64, 0)
+	for ext := range extentMap {
+		extents = append(extents, ext)
+	}
+	if len(extents) == 0 {
+		return
+	}
+	dpFile, err = os.OpenFile(dpFileName, os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		return
+	}
+	defer dpFile.Close()
+	fmt.Printf("vol:%v dp:%v extent map:%v\n", dp.VolName, dp.PartitionID, len(extentMap))
+	sort.Slice(extents, func(i, j int) bool {
+		return extents[i] < extents[j]
+	})
+	for _, e := range extents {
+		dpFile.WriteString(fmt.Sprintf("%v\n", e))
+	}
+	return
+}
+
+const (
+	TinyExtentCount        = 128
+	TinyExtentStartId      = 50000000
+	BlockHeaderInoSize     = 8
+	PerBlockCrcSize        = 4
+	BlockCount             = 1024
+	BlockHeaderCrcSize     = PerBlockCrcSize * BlockCount
+	BlockHeaderDelMarkSize = 1
+	BlockHeaderSize        = BlockHeaderInoSize + BlockHeaderCrcSize + BlockHeaderDelMarkSize
+)
+
+func IsDbBackTinyExtent(extentId uint64) bool {
+	return extentId >= TinyExtentStartId && extentId < TinyExtentStartId+TinyExtentCount
 }
 
 func newDataPartitionDiffExtentCmd(client *master.MasterClient) *cobra.Command {

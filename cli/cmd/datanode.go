@@ -453,7 +453,7 @@ func newDataNodeStopRiskFix(client *master.MasterClient) *cobra.Command {
 
 func parseTime(timeStr string) (t time.Time, err error) {
 	if timeStr != "" {
-		t, err = time.Parse("2006-01-02 15:04:05", timeStr)
+		t, err = time.ParseInLocation("2006-01-02 15:04:05", timeStr, time.Now().Location())
 		if err != nil {
 			return
 		}

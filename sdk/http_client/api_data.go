@@ -133,6 +133,38 @@ func (dc *DataClient) GetPartitionFromNode(id uint64) (pInfo *proto.DNDataPartit
 	pInfo.VolName = pInfoOld.VolName
 	return
 }
+func (dc *DataClient) GetPartitionFromNodeDbbak(id uint64) (pInfo *proto.DNDataPartitionInfo, err error) {
+	params := make(map[string]string)
+	params["id"] = strconv.FormatUint(id, 10)
+	var d []byte
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/partition", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	if err != nil {
+		return
+	}
+	pInfo = new(proto.DNDataPartitionInfo)
+	pInfoDbbak := new(proto.DNDataPartitionInfoDbbak)
+	if err = json.Unmarshal(d, pInfoDbbak); err != nil {
+		return
+	}
+	for _, ext := range pInfoDbbak.Files {
+		extent := proto.ExtentInfoBlock{
+			ext.FileID,
+			ext.Size,
+			uint64(ext.Crc),
+			uint64(ext.ModTime.Unix()),
+		}
+		pInfo.Files = append(pInfo.Files, extent)
+	}
+	pInfo.Path = pInfoDbbak.Path
+	pInfo.VolName = pInfoDbbak.VolName
+	return
+}
 
 func (dc *DataClient) GetPartitionSimple(id uint64) (pInfo *proto.DNDataPartitionInfo, err error) {
 	params := make(map[string]string)

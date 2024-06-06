@@ -69,6 +69,17 @@ const (
 	ExtentInfoModifyTime
 )
 
+type DNDataPartitionInfoDbbak struct {
+	VolName   string                 `json:"volname"`
+	ID        uint64                 `json:"id"`
+	Size      int                    `json:"size"`
+	Used      int                    `json:"used"`
+	Status    int                    `json:"status"`
+	Path      string                 `json:"path"`
+	Files     []ExtentFileInfoDbBack `json:"files"`
+	FileCount int                    `json:"fileCount"`
+	Replicas  []string               `json:"replicas"`
+}
 type DNDataPartitionInfoOldVersion struct {
 	VolName              string       `json:"volName"`
 	ID                   uint64       `json:"id"`
