@@ -327,6 +327,11 @@ func (mp *metaPartition) internalDeleteBatch(dbHandle interface{}, inodes InodeB
 }
 
 func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (err error) {
+	var inode *Inode
+	inode, err = mp.inodeTree.RefGet(ino.Inode)
+	if inode != nil {
+		mp.updateInodesTotalSize(0, inode.Size)
+	}
 	_, err = mp.inodeTree.Delete(dbHandle, ino.Inode)
 	mp.freeList.Remove(ino.Inode)
 	_, err = mp.extendTree.Delete(dbHandle, ino.Inode) // Also delete extend attribute.

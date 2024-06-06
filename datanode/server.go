@@ -572,6 +572,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/risk/status", s.getRiskStatus)
 	http.HandleFunc("/risk/startFix", s.startRiskFix)
 	http.HandleFunc("/risk/stopFix", s.stopRiskFix)
+	http.HandleFunc("/getDataPartitionViewCache", s.getDataPartitionViewCache)
 }
 
 func (s *DataNode) startTCPService() (err error) {
@@ -4292,6 +4293,31 @@ func (s *DataNode) transferDeleteV0(w http.ResponseWriter, r *http.Request) {
 	} else {
 		s.buildSuccessResp(w, "no partitions need to transfer")
 	}
+}
+
+func (s *DataNode) getDataPartitionViewCache(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	volumeName := r.FormValue("volumeName")
+	if volumeName == "" {
+		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("lack of params: volumeName"))
+		return
+	}
+	dpIDStr := r.FormValue("dpID")
+	if dpIDStr == "" {
+		s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("lack of params: dpID"))
+		return
+	}
+	dpID, err := strconv.ParseUint(dpIDStr, 10, 64)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	data := s.topoManager.GetPartitionFromCache(volumeName, dpID)
+	s.buildSuccessResp(w, data)
+	return
 }
 
 func (s *DataNode) buildHeartBeatResponsePb(response *proto.DataNodeHeartbeatResponsePb) {
