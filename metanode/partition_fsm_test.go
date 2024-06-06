@@ -111,6 +111,46 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 			applyFunc:         ApplyMockWithNull,
 			snapV:             BatchSnapshotV3,
 		},
+		{
+			name:              "test9",
+			partitionID:       9,
+			leaderStoreMode:   proto.StoreModeMem,
+			leaderRootDir:     "./test_apply_snapshot_leader_mp",
+			followerStoreMode: proto.StoreModeMem,
+			followerRootDir:   "./test_apply_snapshot_follower_mp",
+			applyFunc:         ApplyMockWithNull,
+			snapV:             BatchSnapshotV4,
+		},
+		{
+			name:              "test10",
+			partitionID:       10,
+			leaderStoreMode:   proto.StoreModeMem,
+			leaderRootDir:     "./test_apply_snapshot_leader_mp",
+			followerStoreMode: proto.StoreModeRocksDb,
+			followerRootDir:   "./test_apply_snapshot_follower_mp",
+			applyFunc:         ApplyMockWithNull,
+			snapV:             BatchSnapshotV4,
+		},
+		{
+			name:              "test11",
+			partitionID:       11,
+			leaderStoreMode:   proto.StoreModeRocksDb,
+			leaderRootDir:     "./test_apply_snapshot_leader_mp",
+			followerStoreMode: proto.StoreModeMem,
+			followerRootDir:   "./test_apply_snapshot_follower_mp",
+			applyFunc:         ApplyMockWithNull,
+			snapV:             BatchSnapshotV4,
+		},
+		{
+			name:              "test12",
+			partitionID:       12,
+			leaderStoreMode:   proto.StoreModeRocksDb,
+			leaderRootDir:     "./test_apply_snapshot_leader_mp",
+			followerStoreMode: proto.StoreModeRocksDb,
+			followerRootDir:   "./test_apply_snapshot_follower_mp",
+			applyFunc:         ApplyMockWithNull,
+			snapV:             BatchSnapshotV4,
+		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -133,12 +173,7 @@ func TestMetaPartition_ApplySnapshotNew(t *testing.T) {
 				releaseMetaPartition(followerMp)
 			}()
 
-			withTrashTest := false
-			if test.snapV > 0 {
-				withTrashTest = true
-			}
-
-			if err = mockForSnapshot(t, leaderMp, withTrashTest); err != nil {
+			if err = mockForSnapshot(t, leaderMp); err != nil {
 				t.Errorf("mock for snapshot failed:%v", err)
 				return
 			}
@@ -177,7 +212,7 @@ func TestMetaPartition_ApplySnapshotCase01(t *testing.T) {
 		releaseMetaPartition(followerMp)
 	}()
 
-	if err = mockForSnapshot(t, leaderMp, false); err != nil {
+	if err = mockForSnapshot(t, leaderMp); err != nil {
 		t.Errorf("mock for snapshot failed:%v", err)
 		return
 	}
@@ -214,7 +249,7 @@ func TestMetaPartition_ApplySnapshotCase02(t *testing.T) {
 		releaseMetaPartition(followerMp)
 	}()
 
-	if err = mockForSnapshot(t, leaderMp, false); err != nil {
+	if err = mockForSnapshot(t, leaderMp); err != nil {
 		t.Errorf("mock for snapshot failed:%v", err)
 		return
 	}
@@ -250,7 +285,7 @@ func TestMetaPartition_ApplySnapshotCase03(t *testing.T) {
 		releaseMetaPartition(followerMp)
 	}()
 
-	if err = mockForSnapshot(t, leaderMp, false); err != nil {
+	if err = mockForSnapshot(t, leaderMp); err != nil {
 		t.Errorf("mock for snapshot failed:%v", err)
 		return
 	}
@@ -287,7 +322,7 @@ func TestMetaPartition_ApplySnapshotCase04(t *testing.T) {
 		releaseMetaPartition(followerMp)
 	}()
 
-	if err = mockForSnapshot(t, leaderMp, false); err != nil {
+	if err = mockForSnapshot(t, leaderMp); err != nil {
 		t.Errorf("mock for snapshot failed:%v", err)
 		return
 	}
@@ -295,24 +330,21 @@ func TestMetaPartition_ApplySnapshotCase04(t *testing.T) {
 	interTest(t, leaderMp, followerMp, BaseSnapshotV)
 }
 
-func mockForSnapshot(t *testing.T, mp *metaPartition, withTrashTest bool) (err error) {
-	if err = mockMetaTree(mp, withTrashTest); err != nil {
+func mockForSnapshot(t *testing.T, mp *metaPartition) (err error) {
+	if err = mockMetaTree(mp); err != nil {
 		t.Errorf("mock trees failed, error:%v", err)
 		return
 	}
 
-	//create extent del file
-	if !withTrashTest {
-		for index := 0; index < 5; index++ {
-			fileName := path.Join(mp.config.RootDir, prefixDelExtent+"_"+strconv.Itoa(index))
-			if _, err = os.Create(fileName); err != nil {
-				t.Errorf("create file[%s] failed:%v", fileName, err)
-				return
-			}
-			if err = os.WriteFile(fileName, []byte("test_apply_snapshot"), 0666); err != nil {
-				t.Errorf("write data to file[%s] failed:%v", fileName, err)
-				return
-			}
+	for index := 0; index < 5; index++ {
+		fileName := path.Join(mp.config.RootDir, prefixDelExtent+"_"+strconv.Itoa(index))
+		if _, err = os.Create(fileName); err != nil {
+			t.Errorf("create file[%s] failed:%v", fileName, err)
+			return
+		}
+		if err = os.WriteFile(fileName, []byte("test_apply_snapshot"), 0666); err != nil {
+			t.Errorf("write data to file[%s] failed:%v", fileName, err)
+			return
 		}
 	}
 
@@ -320,7 +352,7 @@ func mockForSnapshot(t *testing.T, mp *metaPartition, withTrashTest bool) (err e
 	return
 }
 
-func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
+func mockMetaTree(mp *metaPartition) (err error) {
 	var dbHandle interface{}
 	dbHandle, err = mp.inodeTree.CreateBatchWriteHandle()
 	if err != nil {
@@ -341,6 +373,7 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 	}()
 	//create root inode
 	rootInode := NewInode(1, proto.Mode(os.ModeDir))
+	mp.inodeIDAllocator.SetId(rootInode.Inode)
 	_, _, err = mp.inodeTree.Create(dbHandle, rootInode, true)
 	if err != nil {
 		return
@@ -357,6 +390,7 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 			fmt.Printf("create inode[%v] failed, error:%v", ino, err)
 			return fmt.Errorf("create inode failed:%v", err)
 		}
+		mp.inodeIDAllocator.SetId(uint64(ino))
 		dentry := &Dentry{
 			ParentId: rootInode.Inode,
 			Name:     name,
@@ -378,6 +412,7 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 				fmt.Printf("create inode[%v] failed, error:%v", ino2, err)
 				return fmt.Errorf("create inode failed:%v", err)
 			}
+			mp.inodeIDAllocator.SetId(uint64(ino2))
 			name = fmt.Sprintf("third_level_file_%v", ino2)
 			dentry = &Dentry{
 				ParentId: uint64(ino),
@@ -418,14 +453,14 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 			extend[key] = value
 		}
 		p := fmt.Sprintf("/test_apply_snapshot/%v", index)
-		multipart := &Multipart{
+		mul := &Multipart{
 			key:      p,
 			id:       multipart.CreateMultipartID(10).String(),
 			parts:    parts,
 			extend:   extend,
 			initTime: timeNow.Local(),
 		}
-		if _, _, err = mp.multipartTree.Create(dbHandle, multipart, true); err != nil {
+		if _, _, err = mp.multipartTree.Create(dbHandle, mul, true); err != nil {
 			return fmt.Errorf("create multipart failed")
 		}
 	}
@@ -443,9 +478,11 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 		}
 	}
 
-	if !withTrashTest {
-		return
-	}
+	mp.config.Cursor = mp.config.End - 204054
+
+	//if !withTrashTest {
+	//	return
+	//}
 
 	//mock deleted inode, deleted dentry tree
 	timeStamp := time.Now().UnixNano() / 1000
@@ -463,6 +500,7 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 
 		inode := NewInode(uint64(ino), 1)
 		dino := NewDeletedInode(inode, timeStamp)
+		mp.inodeIDAllocator.SetId(inode.Inode)
 		if _, _, err = mp.inodeDeletedTree.Create(dbHandle, dino, false); err != nil {
 			return fmt.Errorf("create deleted inode[%v] failed, error:%v", dino, err)
 		}
@@ -497,6 +535,10 @@ func mockMetaTree(mp *metaPartition, withTrashTest bool) (err error) {
 	}
 
 	mp.reqRecords = InitRequestRecords(genBatchRequestInfo(200, true))
+
+	if mp.HasMemStore() {
+		mp.inodeIDAllocator.FreezeAllocator(time.Now().Unix(), time.Now().Add(time.Hour*24).Unix())
+	}
 	return
 }
 
@@ -508,7 +550,7 @@ func interTest(t *testing.T, leaderMp, followerMp *metaPartition, snapV int) {
 	switch snapV {
 	case BaseSnapshotV:
 		snap, err = newMetaItemIterator(leaderMp)
-	case BatchSnapshotV1, BatchSnapshotV2, BatchSnapshotV3:
+	case BatchSnapshotV1, BatchSnapshotV2, BatchSnapshotV3, BatchSnapshotV4:
 		snap, err = newBatchMetaItemIterator(leaderMp, SnapshotVersion(snapV))
 	default:
 		t.Errorf("error snap version:%v", snapV)
@@ -525,13 +567,13 @@ func interTest(t *testing.T, leaderMp, followerMp *metaPartition, snapV int) {
 	snap.Close()
 	t.Logf("follower apply snap success")
 	//validate (compare leader with follower)
-	if !validateApplySnapshotResult(t, leaderMp, followerMp) {
+	if !validateApplySnapshotResult(t, leaderMp, followerMp, snapV) {
 		t.Errorf("validate failed")
 		return
 	}
 }
 
-func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartition) bool {
+func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartition, snapV int) bool {
 	if leaderMp.applyID != followerMp.applyID || (followerMp.HasRocksDBStore() && leaderMp.applyID != followerMp.inodeTree.GetPersistentApplyID()) {
 		t.Errorf("apply id mismatch, expect:%v, actual[mem:%v rocksdb:%v]", leaderMp.applyID, followerMp.applyID, followerMp.inodeTree.GetPersistentApplyID())
 		return false
@@ -593,6 +635,14 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		return false
 	}
 
+	if snapV < BatchSnapshotV1 {
+		if _, err := compareExtentDeleteFile(leaderMp, followerMp); err != nil {
+			t.Errorf("extent file validate failed:%v", err)
+			return false
+		}
+		return true
+	}
+
 	if leaderMp.inodeDeletedTree.Count() != followerMp.inodeDeletedTree.Count() {
 		t.Errorf("deleted inode tree count mismatch, leader:%v, follower:%v", leaderMp.inodeDeletedTree.Count(), followerMp.inodeDeletedTree.Count())
 		return false
@@ -618,11 +668,6 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		return true, nil
 	}); err != nil {
 		t.Errorf("validate failed:%v", err)
-		return false
-	}
-
-	if _, err := compareExtentDeleteFile(leaderMp, followerMp); err != nil {
-		t.Errorf("extent file validate failed:%v", err)
 		return false
 	}
 
@@ -655,6 +700,21 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 	}); err != nil {
 		t.Errorf("validate failed:%v", err)
 		return false
+	}
+
+	if snapV < BatchSnapshotV2 {
+		return true
+	}
+
+	//meta conf
+	assert.Equal(t, leaderMp.config.Start, followerMp.config.Start)
+	assert.Equal(t, leaderMp.config.End, followerMp.config.End)
+	assert.Equal(t, leaderMp.config.Cursor, followerMp.config.Cursor)
+	assert.Equal(t, leaderMp.config.Peers, followerMp.config.Peers)
+	assert.Equal(t, leaderMp.config.Learners, followerMp.config.Learners)
+
+	if snapV < BatchSnapshotV3 {
+		return true
 	}
 
 	if leaderMp.reqRecords.Count() != followerMp.reqRecords.Count() {
@@ -698,6 +758,18 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		}
 	}
 
+	if snapV < BatchSnapshotV4 {
+		return true
+	}
+
+	if leaderMp.HasMemStore() && followerMp.HasMemStore() {
+		assert.Equal(t, leaderMp.inodeIDAllocator.Version, followerMp.inodeIDAllocator.Version)
+		assert.Equal(t, leaderMp.inodeIDAllocator.Status, followerMp.inodeIDAllocator.Status)
+		assert.Equal(t, leaderMp.inodeIDAllocator.BitCursor, followerMp.inodeIDAllocator.BitCursor)
+		assert.Equal(t, leaderMp.inodeIDAllocator.BitsSnap, followerMp.inodeIDAllocator.BitsSnap)
+		assert.Equal(t, leaderMp.inodeIDAllocator.FreezeTime, followerMp.inodeIDAllocator.FreezeTime)
+		assert.Equal(t, leaderMp.inodeIDAllocator.CancelFreezeTime, followerMp.inodeIDAllocator.CancelFreezeTime)
+	}
 	return true
 }
 
