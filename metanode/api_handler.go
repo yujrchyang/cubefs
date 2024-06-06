@@ -137,6 +137,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getStartFailedPartitions", m.getStartFailedPartitions)
 	http.HandleFunc("/cancelFrozenMPBitMapAllocator", m.cancelFreezeMPBitMapAllocator)
 	http.HandleFunc("/correctInodesTotalSize", m.correctInodesAndDelInodesTotalSize)
+
+	http.HandleFunc("/getDataPartitionViewCache", m.getDataPartitionViewCache)
 	return
 }
 
@@ -3202,5 +3204,40 @@ func (m *MetaNode) correctInodesAndDelInodesTotalSize(w http.ResponseWriter, r *
 		resp.Msg = err.Error()
 		return
 	}
+	return
+}
+
+func (m *MetaNode) getDataPartitionViewCache(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getDataPartitionViewCache] response %s", err)
+		}
+	}()
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	volumeName := r.FormValue("volumeName")
+	if volumeName == "" {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("lack of params: volumeName")
+		return
+	}
+	dpIDStr := r.FormValue("dpID")
+	if dpIDStr == "" {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = fmt.Sprintf("lack of params: dpID")
+		return
+	}
+	dpID, err := strconv.ParseUint(dpIDStr, 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	resp.Data = m.topoManager.GetPartitionFromCache(volumeName, dpID)
 	return
 }
