@@ -9,6 +9,7 @@ import (
 
 var (
 	bufferPoolSizes = []int{
+		unit.PacketHeaderSizeForDbbak,
 		unit.PacketHeaderSize,
 		unit.BlockSize,
 		unit.BlockSize + unit.RandomWriteRaftCommandHeaderSize,
@@ -19,12 +20,7 @@ var (
 
 // BufferPool defines the struct of a buffered pool with 4 objects.
 type BufferPool struct {
-<<<<<<< HEAD
-	pools                  [3]*sync.Pool
-	tinyPool               *sync.Pool
-=======
 	pools                  []*sync.Pool
->>>>>>> cfc9abf8e (Pre-build random write command when decoding packet from connection)
 	blockSizeGetNum        uint64
 	avaliBlockSizePutNum   uint64
 	unavaliBlockSizePutNum uint64

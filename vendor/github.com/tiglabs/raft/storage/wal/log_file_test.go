@@ -20,6 +20,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
+	"reflect"
 	"testing"
 
 	"github.com/tiglabs/raft/proto"
@@ -555,4 +556,91 @@ func generateLogEntryFileWithIndex(path, name string, entries []*proto.Entry) (e
 	}
 	err = lf.Release()
 	return
+}
+
+func TestLogEntryFile_ReBuildIndex(t *testing.T) {
+	var err error
+	var testPath = path.Join(os.TempDir(), t.Name())
+	if err = os.MkdirAll(testPath, os.ModePerm); err != nil {
+		t.Fatalf("prepare test path fail: %v", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(testPath)
+	}()
+
+	var (
+		logFileName = logFileName{
+			seq:   0,
+			index: 1,
+		}
+		lf        *logEntryFile
+		entryData = make([]byte, 32)
+	)
+
+	if lf, err = createLogEntryFile(testPath, logFileName); err != nil {
+		return
+	}
+	for i := uint64(1); i <= 10000; i++ {
+		if err = lf.Save(context.Background(), &proto.Entry{Index: i, Term: 1, Data: entryData}); err != nil {
+			return
+		}
+	}
+	if err = lf.FinishWrite(nil); err != nil {
+		return
+	}
+	var originalIndex = lf.index
+	_ = lf.Release()
+
+	// Load and validate log file
+	if lf, err = openLogEntryFile(testPath, logFileName, true); err != nil {
+		t.Fatalf("open test log file fail: %v", err)
+	}
+
+	var rebuiltIndex = lf.index
+
+	if !reflect.DeepEqual(originalIndex, rebuiltIndex) {
+		t.Fatalf("rebuilt index mismatch: expect %v, actual %v", originalIndex, rebuiltIndex)
+	}
+	_ = lf.Release()
+}
+
+func BenchmarkLogEntryFile_ReBuildIndex(b *testing.B) {
+	var err error
+	var testPath = path.Join(os.TempDir(), b.Name())
+	if err = os.MkdirAll(testPath, os.ModePerm); err != nil {
+		b.Fatalf("prepare test path fail: %v", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(testPath)
+	}()
+
+	var (
+		logFileName = logFileName{
+			seq:   0,
+			index: 1,
+		}
+		lf        *logEntryFile
+		entryData = make([]byte, 32)
+	)
+
+	if lf, err = createLogEntryFile(testPath, logFileName); err != nil {
+		return
+	}
+	for i := uint64(1); i <= 10000; i++ {
+		if err = lf.Save(context.Background(), &proto.Entry{Index: i, Term: 1, Data: entryData}); err != nil {
+			return
+		}
+	}
+	if err = lf.FinishWrite(nil); err != nil {
+		return
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if lf, err = openLogEntryFile(testPath, logFileName, true); err != nil {
+			b.Fatalf("open test log file fail: %v", err)
+		}
+		_ = lf.Release()
+	}
+	b.ReportAllocs()
 }

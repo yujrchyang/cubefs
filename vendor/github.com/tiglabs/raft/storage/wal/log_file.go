@@ -166,13 +166,13 @@ func (lf *logEntryFile) ReBuildIndex() (truncateOffset int64, err error) {
 	filesize := info.Size()
 
 	var (
-		rec              record
+		rec              = new(record)
 		offset           int64
 		nextRecordOffset int64
 	)
 	r := newRecordReader(lf.f)
 	for {
-		offset, rec, err = r.Read()
+		offset, err = r.Read(rec)
 		if err != nil {
 			break
 		}
@@ -181,7 +181,7 @@ func (lf *logEntryFile) ReBuildIndex() (truncateOffset int64, err error) {
 		if rec.recType == recTypeLogEntry {
 			ent := &proto.Entry{}
 			ent.Decode(rec.data)
-			lf.index = lf.index.Append(uint32(offset), ent)
+			lf.index = lf.index.Append(uint32(offset), ent.Index, ent.Term)
 		} else {
 			// All valid log entries have been loaded
 			return offset, nil
@@ -274,7 +274,7 @@ func (lf *logEntryFile) Save(ctx context.Context, ent *proto.Entry) error {
 	}
 
 	// 更新索引
-	lf.index = lf.index.Append(uint32(offset), ent)
+	lf.index = lf.index.Append(uint32(offset), ent.Index, ent.Term)
 	lf.maybeDirty = true
 	return nil
 }

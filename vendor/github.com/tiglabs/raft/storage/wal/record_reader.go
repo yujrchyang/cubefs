@@ -83,7 +83,7 @@ func newRecordReader(f *os.File) *recordReader {
 }
 
 // 顺序读
-func (r *recordReader) Read() (recStartOffset int64, rec record, err error) {
+func (r *recordReader) Read(rec *record) (recStartOffset int64, err error) {
 	recStartOffset = r.offset
 
 	// read record type and data len
@@ -116,8 +116,12 @@ func (r *recordReader) Read() (recStartOffset int64, rec record, err error) {
 
 	// read data and crc
 	// WARN：不可以用buffer pool，因为log entry等decode时没有进行拷贝
-	rec.data = make([]byte, rec.dataLen+4)
-	n, err = r.br.Read(rec.data)
+	if rec.data == nil || cap(rec.data) < int(rec.dataLen+4) {
+		rec.data = make([]byte, rec.dataLen+4)
+	} else {
+		rec.data = rec.data[:rec.dataLen+4]
+	}
+	n, err = r.br.Read(rec.data[:rec.dataLen+4])
 	if err != nil {
 		return
 	}

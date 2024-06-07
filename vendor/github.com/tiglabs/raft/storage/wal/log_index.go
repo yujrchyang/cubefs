@@ -18,8 +18,6 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-
-	"github.com/tiglabs/raft/proto"
 )
 
 const indexItemSize = 8 + 8 + 4
@@ -64,10 +62,10 @@ func (li logEntryIndex) Get(i uint64) (item indexItem, err error) {
 	return li[i-ibegin], nil
 }
 
-func (li logEntryIndex) Append(offset uint32, entry *proto.Entry) logEntryIndex {
+func (li logEntryIndex) Append(offset uint32, index, term uint64) logEntryIndex {
 	return append(li, indexItem{
-		logindex: entry.Index,
-		logterm:  entry.Term,
+		logindex: index,
+		logterm:  term,
 		offset:   offset,
 	})
 }
