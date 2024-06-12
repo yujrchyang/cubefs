@@ -775,6 +775,13 @@ func (api *AdminAPI) SetMetaNodeMemModeRocksDBDiskThreshold(threshold float64) (
 }
 
 func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
+	if (info.ClientReadVolRate > 0 || info.ClientWriteVolRate > 0) && (info.Volume == "" || info.Volume == "_") {
+		return fmt.Errorf("volume cannot be empty")
+	}
+	if info.RateLimit > 0 && (info.Volume == "" || info.Volume == "_") && (info.ZoneName == "" || info.ZoneName == "_") {
+		return fmt.Errorf("volume and zone cannot be empty at the same time")
+	}
+
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
 	if info.Opcode >= 0 {
 		request.addParam("opcode", strconv.FormatInt(int64(info.Opcode), 10))

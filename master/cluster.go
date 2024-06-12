@@ -3980,15 +3980,8 @@ func (c *Cluster) setRateLimit(module string, zone string, volume string, opcode
 	}
 	var zoneVol string
 	if zone != "" {
-		if zone == rateLimitDefaultVal {
-			zone = ""
-		}
 		zoneVol = multirate.ZonePrefix + zone
 	} else {
-
-		if volume == rateLimitDefaultVal {
-			return proto.ErrVolNameIsEmpty
-		}
 		zoneVol = multirate.VolPrefix + volume
 	}
 	opMap, ok := zoneVolOpMap[zoneVol]

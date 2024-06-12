@@ -427,10 +427,6 @@ const (
 )
 
 const (
-	rateLimitDefaultVal = "_"
-)
-
-const (
 	APICodeGetCluster        uint8 = 0x01
 	APICodeGetVol            uint8 = 0x02
 	APICodeGetMetaPartitions uint8 = 0x03

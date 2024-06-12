@@ -2463,7 +2463,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[zoneNameKey]; ok {
 		zone = val.(string)
-		if zone != "" && zone != rateLimitDefaultVal {
+		if zone != "" {
 			err = proto.ErrZoneNotExists
 			for _, z := range m.cluster.t.getAllZones() {
 				if zone == z.name {
@@ -2485,7 +2485,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if val, ok := params[volumeKey]; ok {
 		vol = val.(string)
-		if vol != "" && vol != rateLimitDefaultVal {
+		if vol != "" {
 			if _, err = m.cluster.getVol(vol); err != nil {
 				sendErrReply(w, r, newErrHTTPReply(err))
 				return
