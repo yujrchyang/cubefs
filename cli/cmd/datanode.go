@@ -42,12 +42,12 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newDataNodeListCmd(client),
 		newDataNodeInfoCmd(client),
-		newDataNodeDecommissionCmd(client),
-		newDataNodeDiskDecommissionCmd(client),
-		newResetDataNodeCmd(client),
-		newStopMigratingByDataNode(client),
+		//newDataNodeDecommissionCmd(client),
+		//newDataNodeDiskDecommissionCmd(client),
+		//newResetDataNodeCmd(client),
+		//newStopMigratingByDataNode(client),
 		newCheckReplicaByDataNodeCmd(client),
-		newResetDataNodeLogLevelCmd(client),
+		//newResetDataNodeLogLevelCmd(client),
 		newDataNodeStartRiskFix(client),
 		newDataNodeStopRiskFix(client),
 	)

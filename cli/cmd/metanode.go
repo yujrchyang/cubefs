@@ -39,8 +39,8 @@ func newMetaNodeCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newMetaNodeListCmd(client),
 		newMetaNodeInfoCmd(client),
-		newMetaNodeDecommissionCmd(client),
-		newResetMetaNodeCmd(client),
+		//newMetaNodeDecommissionCmd(client),
+		//newResetMetaNodeCmd(client),
 	)
 	return cmd
 }

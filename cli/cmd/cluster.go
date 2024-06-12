@@ -35,14 +35,14 @@ func (cmd *ChubaoFSCmd) newClusterCmd(client *master.MasterClient) *cobra.Comman
 	clusterCmd.AddCommand(
 		newClusterInfoCmd(client),
 		newClusterStatCmd(client),
-		newClusterFreezeCmd(client),
-		newClusterSetThresholdCmd(client),
-		newClusterEcUpdate(client),
-		newClusterSetClientPkgAddr(client),
-		newClusterSetRocksDBDiskThresholdCmd(client),
-		newClusterSetMemModeRocksDBDiskThresholdCmd(client),
-		newClusterSetNodeState(client),
-		newClusterSetNodeSetCapacity(client),
+		//newClusterFreezeCmd(client),
+		//newClusterSetThresholdCmd(client),
+		//newClusterEcUpdate(client),
+		//newClusterSetClientPkgAddr(client),
+		//newClusterSetRocksDBDiskThresholdCmd(client),
+		//newClusterSetMemModeRocksDBDiskThresholdCmd(client),
+		//newClusterSetNodeState(client),
+		//newClusterSetNodeSetCapacity(client),
 	)
 	return clusterCmd
 }

@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+
 	"github.com/cubefs/cubefs/convertnode"
 	"github.com/cubefs/cubefs/sdk/convert"
 	"github.com/spf13/cobra"
@@ -35,18 +36,18 @@ func newConvertNodeCmd(client *convert.ConvertClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newConvertNodeList(client),
-		newConvertAddCmd(client),
-		newConvertDelCmd(client),
+		//newConvertAddCmd(client),
+		//newConvertDelCmd(client),
 		newConvertInfoCmd(client),
-		newConvertStartCmd(client),
-		newConvertStopCmd(client),
+		//newConvertStartCmd(client),
+		//newConvertStopCmd(client),
 		newConvertNodeDBCmd(),
 	)
 	return cmd
 }
 
 const (
-	cmdConvertNodeList			       = "List all clusters & processors & tasks in the convert node"
+	cmdConvertNodeList = "List all clusters & processors & tasks in the convert node"
 )
 
 func newConvertNodeList(client *convert.ConvertClient) *cobra.Command {
@@ -56,7 +57,7 @@ func newConvertNodeList(client *convert.ConvertClient) *cobra.Command {
 		Long:  `Users are required to specify the convert node addr in config, and run this cmd`,
 		Run: func(cmd *cobra.Command, args []string) {
 			cv, err := client.ConvertAPI().List()
-			if  err != nil {
+			if err != nil {
 				errout("Get cluster info fail:\n%v\n", err)
 			}
 			stdout("[ConvertNode]\n")
@@ -77,14 +78,14 @@ const (
 )
 
 func newConvertAddCmd(client *convert.ConvertClient) *cobra.Command {
-	var optClusterName 	string
-	var optVolName 		string
-	var optnodesAddrs 	string
+	var optClusterName string
+	var optVolName string
+	var optnodesAddrs string
 	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdConvertAddUse,
 		Short: cmdConvertAddShort,
-		Args: cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
 			objType := args[0]
@@ -135,28 +136,29 @@ func newConvertAddCmd(client *convert.ConvertClient) *cobra.Command {
 }
 
 const (
-	cmdConvertDelUse             = "del cluster/task "
-	cmdConvertDelShort           = "del cluster or convert task to convert node"
+	cmdConvertDelUse   = "del cluster/task "
+	cmdConvertDelShort = "del cluster or convert task to convert node"
 )
+
 func newConvertDelCmd(client *convert.ConvertClient) *cobra.Command {
-	var optVolName 		string
+	var optVolName string
 	var optClustertName string
-	var optnodesAddrs 	string
+	var optnodesAddrs string
 	var optDelClusterFlag bool
 	var optYes bool
 	var cmd = &cobra.Command{
 		Use:   cmdConvertDelUse,
 		Short: cmdConvertDelShort,
-		Args: cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var err error
-			var clusterName 	string
+			var clusterName string
 			objType := args[0]
 			if objType != "cluster" && objType != "task" {
 				errout("unknown object type")
 			}
 
-			if len(optnodesAddrs) == 0 && len(optVolName) == 0 && len(optClustertName) == 0{
+			if len(optnodesAddrs) == 0 && len(optVolName) == 0 && len(optClustertName) == 0 {
 				errout("At least contain one param")
 			}
 
@@ -200,28 +202,29 @@ func newConvertDelCmd(client *convert.ConvertClient) *cobra.Command {
 }
 
 const (
-	cmdConvertInfoUse             = "info cluster/task/processor "
-	cmdConvertInfoShort           = "info cluster/processor/task detail info"
+	cmdConvertInfoUse   = "info cluster/task/processor "
+	cmdConvertInfoShort = "info cluster/processor/task detail info"
 )
+
 func newConvertInfoCmd(client *convert.ConvertClient) *cobra.Command {
-	var optVolName 		string
+	var optVolName string
 	var optClustertName string
-	var optProcessorId	int
+	var optProcessorId int
 	var cmd = &cobra.Command{
 		Use:   cmdConvertInfoUse,
 		Short: cmdConvertInfoShort,
-		Args: cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				err error
+				err  error
 				data interface{}
 			)
 			objType := args[0]
-			if objType != "cluster" && objType != "task" && objType != "processor"{
+			if objType != "cluster" && objType != "task" && objType != "processor" {
 				errout("unknown object type")
 			}
 
-			if len(optVolName) == 0 && len(optClustertName) == 0 && optProcessorId == -1{
+			if len(optVolName) == 0 && len(optClustertName) == 0 && optProcessorId == -1 {
 				errout("At least contain one param")
 			}
 
@@ -252,26 +255,27 @@ func newConvertInfoCmd(client *convert.ConvertClient) *cobra.Command {
 }
 
 const (
-	cmdConvertStartUse             = "start server/task "
-	cmdConvertStartShort           = "start server/task"
+	cmdConvertStartUse   = "start server/task "
+	cmdConvertStartShort = "start server/task"
 )
+
 func newConvertStartCmd(client *convert.ConvertClient) *cobra.Command {
-	var optVolName 		string
+	var optVolName string
 	var optClustertName string
 	var cmd = &cobra.Command{
 		Use:   cmdConvertStartUse,
 		Short: cmdConvertStartShort,
-		Args: cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err error
 			)
 			objType := args[0]
-			if objType != "server" && objType != "task"{
+			if objType != "server" && objType != "task" {
 				errout("unknown object type")
 			}
 
-			if len(optVolName) == 0 && len(optClustertName) == 0 && objType == "task"{
+			if len(optVolName) == 0 && len(optClustertName) == 0 && objType == "task" {
 				errout("At least contain one param")
 			}
 
@@ -298,26 +302,27 @@ func newConvertStartCmd(client *convert.ConvertClient) *cobra.Command {
 }
 
 const (
-	cmdConvertStopUse             = "stop server/task "
-	cmdConvertStopShort           = "stop server/task"
+	cmdConvertStopUse   = "stop server/task "
+	cmdConvertStopShort = "stop server/task"
 )
+
 func newConvertStopCmd(client *convert.ConvertClient) *cobra.Command {
-	var optVolName 		string
+	var optVolName string
 	var optClustertName string
 	var cmd = &cobra.Command{
 		Use:   cmdConvertStopUse,
 		Short: cmdConvertStopShort,
-		Args: cobra.MinimumNArgs(1),
+		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
 				err error
 			)
 			objType := args[0]
-			if objType != "server" && objType != "task"{
+			if objType != "server" && objType != "task" {
 				errout("unknown object type")
 			}
 
-			if len(optVolName) == 0 && len(optClustertName) == 0 && objType == "task"{
+			if len(optVolName) == 0 && len(optClustertName) == 0 && objType == "task" {
 				errout("At least contain one param")
 			}
 
@@ -344,14 +349,14 @@ func newConvertStopCmd(client *convert.ConvertClient) *cobra.Command {
 }
 
 const (
-	cmdConvertNodeDBCmdUse = "db"
+	cmdConvertNodeDBCmdUse   = "db"
 	cmdConvertNodeDBCmdShort = "Operation Database"
 )
 
 func newConvertNodeDBCmd() *cobra.Command {
 	var cmd = &cobra.Command{
-		Use:     cmdConvertNodeDBCmdUse,
-		Short:   cmdConvertNodeDBCmdShort,
+		Use:   cmdConvertNodeDBCmdUse,
+		Short: cmdConvertNodeDBCmdShort,
 	}
 	cmd.AddCommand(
 		newConvertNodeAddrCmd(),
@@ -366,7 +371,7 @@ func newConvertNodeAddrCmd() *cobra.Command {
 	}
 	cmd.AddCommand(
 		newConvertNodeAddrListCmd(),
-		newConvertNodesAddrClearCmd(),
+		//newConvertNodesAddrClearCmd(),
 	)
 	return cmd
 }
@@ -446,5 +451,3 @@ func newConvertNodesAddrClearCmd() *cobra.Command {
 	}
 	return cmd
 }
-
-

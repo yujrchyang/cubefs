@@ -31,8 +31,8 @@ func newRegionCmd(mc *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newRegionListCmd(client),
 		newRegionInfoCmd(client),
-		newCreateRegionCmd(client),
-		newRegionSetCmd(client),
+		//newCreateRegionCmd(client),
+		//newRegionSetCmd(client),
 	)
 	return cmd
 }

@@ -17,12 +17,13 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"regexp"
+
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/jacobsa/daemonize"
 	"github.com/spf13/cobra"
-	"regexp"
 )
 
 const (
@@ -37,7 +38,7 @@ var (
 	gTrashEnv              *TrashEnv
 	forceFlag              = false
 	isRecursive            = false
-	isFormatAsJSON = false
+	isFormatAsJSON         = false
 )
 
 type TrashEnv struct {
@@ -90,8 +91,8 @@ func NewTrashCmd(client *master.MasterClient) *cobra.Command {
 	}
 	c.AddCommand(
 		newFSListCmd(client),
-		newFSRecoverCmd(client),
-		newFSCleanCmd(client),
+		//newFSRecoverCmd(client),
+		//newFSCleanCmd(client),
 		newStatCmd(client),
 		newTestCmd(client),
 		newTest2Cmd(client),
@@ -110,4 +111,3 @@ func initLog() (err error) {
 	}
 	return
 }
-

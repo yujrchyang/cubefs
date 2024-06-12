@@ -47,7 +47,7 @@ func newRateLimitCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newRateLimitInfoCmd(client),
-		newRateLimitSetCmd(client),
+		//newRateLimitSetCmd(client),
 	)
 	return cmd
 }

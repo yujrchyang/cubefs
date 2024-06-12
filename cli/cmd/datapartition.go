@@ -52,20 +52,20 @@ func newDataPartitionCmd(client *master.MasterClient) *cobra.Command {
 		newDataPartitionGetCmd(client),
 		newDataPartitionCheckCmd(client),
 		newResetDataPartitionCmd(client),
-		newDataPartitionDecommissionCmd(client),
+		//newDataPartitionDecommissionCmd(client),
 		newDataPartitionReplicateCmd(client),
-		newDataPartitionDeleteReplicaCmd(client),
-		newDataPartitionAddLearnerCmd(client),
-		newDataPartitionPromoteLearnerCmd(client),
+		//newDataPartitionDeleteReplicaCmd(client),
+		//newDataPartitionAddLearnerCmd(client),
+		//newDataPartitionPromoteLearnerCmd(client),
 		newDataPartitionCheckCommitCmd(client),
-		newDataPartitionFreezeCmd(client),
-		newDataPartitionUnfreezeCmd(client),
-		newDataPartitionTransferCmd(client),
+		//newDataPartitionFreezeCmd(client),
+		//newDataPartitionUnfreezeCmd(client),
+		//newDataPartitionTransferCmd(client),
 		newGetCanEcMigrateCmd(client),
 		newGetCanEcDelCmd(client),
-		newDelDpAlreadyEc(client),
-		newMigrateEc(client),
-		newStopMigratingByDataPartition(client),
+		//newDelDpAlreadyEc(client),
+		//newMigrateEc(client),
+		//newStopMigratingByDataPartition(client),
 		newDataPartitionResetRecoverCmd(client),
 		newDataPartitionStopCmd(client),
 		newDataPartitionReloadCmd(client),
@@ -464,7 +464,7 @@ The "reset" command will be released in next version`,
 	}
 	cmd.Flags().Uint64Var(&optSpecifyDP, CliFlagId, 0, "check data partition by partitionID")
 	cmd.Flags().IntVar(&optDiffSizeThreshold, CliFlagThreshold, 20, "if the diff size larger than this, report the volume")
-	cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "true - automatically full fill the missing replica")
+	//cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "true - automatically full fill the missing replica")
 	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions; false - only check partitions which lack of replica")
 	return cmd
 }

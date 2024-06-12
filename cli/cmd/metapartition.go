@@ -49,18 +49,18 @@ func newMetaPartitionCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newMetaPartitionGetCmd(client),
 		newListCorruptMetaPartitionCmd(client),
-		newResetMetaPartitionCmd(client),
-		newMetaPartitionDecommissionCmd(client),
-		newMetaPartitionReplicateCmd(client),
-		newMetaPartitionDeleteReplicaCmd(client),
-		newMetaPartitionAddLearnerCmd(client),
-		newMetaPartitionPromoteLearnerCmd(client),
-		newMetaPartitionResetCursorCmd(client),
+		//newResetMetaPartitionCmd(client),
+		//newMetaPartitionDecommissionCmd(client),
+		//newMetaPartitionReplicateCmd(client),
+		//newMetaPartitionDeleteReplicaCmd(client),
+		//newMetaPartitionAddLearnerCmd(client),
+		//newMetaPartitionPromoteLearnerCmd(client),
+		//newMetaPartitionResetCursorCmd(client),
 		newMetaPartitionListAllInoCmd(client),
 		newMetaPartitionCheckSnapshot(client),
 		newMetaDataChecksum(client),
 		newCheckInodeTree(client),
-		newMetaPartitionResetRecoverCmd(client),
+		//newMetaPartitionResetRecoverCmd(client),
 		newMetaPartitionInodeInuse(client),
 		newCheckMetaPartitionTotalSizeCalculation(client),
 	)
@@ -1284,7 +1284,7 @@ func newCheckMetaPartitionTotalSizeCalculation(client *master.MasterClient) *cob
 				return
 			}
 
-			errCh = make(chan error,  len(partition.Replicas))
+			errCh = make(chan error, len(partition.Replicas))
 			resps = make([]*meta.GetMPInfoResp, len(partition.Replicas))
 			for index, replica := range partition.Replicas {
 				wg.Add(1)
@@ -1301,7 +1301,7 @@ func newCheckMetaPartitionTotalSizeCalculation(client *master.MasterClient) *cob
 			}
 			wg.Wait()
 			select {
-			case err = <- errCh:
+			case err = <-errCh:
 				err = fmt.Errorf("get meta partition info failed:%v", err)
 				return
 			default:
@@ -1312,7 +1312,7 @@ func newCheckMetaPartitionTotalSizeCalculation(client *master.MasterClient) *cob
 			}
 			if !isConsistent(resps) {
 				for index, resp := range resps {
-					fmt.Printf("partitionID :%v, host: %v, dentryCnt: %v, inodeCnt: %v, delDentryCnt: %v," +
+					fmt.Printf("partitionID :%v, host: %v, dentryCnt: %v, inodeCnt: %v, delDentryCnt: %v,"+
 						" delInodeCnt: %v, freeListCnt: %v, delInodesTotalSize: %v, inodesTotalSize: %v\n", partitionID,
 						partition.Replicas[index].Addr, resp.DentryCount, resp.InodeCount, resp.DelDentryCount,
 						resp.DelInodeCount, resp.FreeListCount, resp.DelInodesTotalSize, resp.InodesTotalSize)

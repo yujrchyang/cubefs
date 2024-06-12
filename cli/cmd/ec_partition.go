@@ -17,12 +17,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/ecstorage"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/spf13/cobra"
 	"io/ioutil"
 	"net/http"
 	"sort"
@@ -30,6 +24,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/ecstorage"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -44,32 +45,32 @@ func newEcPartitionCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newEcPartitionGetCmd(client),
-		newEcPartitionDecommissionCmd(client),
-		newEcPartitionDeleteReplicaCmd(client),
-		newEcPartitionReplicateCmd(client),
-		newEcPartitionRollBackCmd(client),
+		//newEcPartitionDecommissionCmd(client),
+		//newEcPartitionDeleteReplicaCmd(client),
+		//newEcPartitionReplicateCmd(client),
+		//newEcPartitionRollBackCmd(client),
 		newListUnHealthEcPartitionsCmd(client),
 		newEcPartitionCheckChunkDataConsist(client),
 		newEcPartitionGetExtentHosts(client),
 		newEcPartitionCheckConsistency(client),
 		newEcGetTinyExtentDelInfo(client),
-		newEcSetPartitionSize(client),
+		//newEcSetPartitionSize(client),
 	)
 	return cmd
 }
 
 const (
-	cmdEcPartitionGetShort              = "Display detail information of a ec partition"
-	cmdEcPartitionDecommissionShort     = "Decommission a replication of the ec partition to a new address"
-	cmdEcPartitionDeleteReplicaShort    = "Delete a replication of the ec partition on a fixed address"
-	cmdEcPartitionReplicateShort        = "Add a replication of the ec partition on a new address"
-	cmdEcPartitionRollBackShort         = "Will rollback from ecpartition to datapartition and delEcPartition ?"
-	cmdCheckCorruptEcPartitionsShort    = "Check and list unhealthy ec partitions"
+	cmdEcPartitionGetShort               = "Display detail information of a ec partition"
+	cmdEcPartitionDecommissionShort      = "Decommission a replication of the ec partition to a new address"
+	cmdEcPartitionDeleteReplicaShort     = "Delete a replication of the ec partition on a fixed address"
+	cmdEcPartitionReplicateShort         = "Add a replication of the ec partition on a new address"
+	cmdEcPartitionRollBackShort          = "Will rollback from ecpartition to datapartition and delEcPartition ?"
+	cmdCheckCorruptEcPartitionsShort     = "Check and list unhealthy ec partitions"
 	cmdEcPartitionCheckStripeDataConsist = "Check ec partition extent stripe data consist"
-	cmdGetExtentHosts                   = "get extent hosts"
-	cmdGetTinyDelInfo                   = "get tiny extent del info"
-	cmdEcPartitionCheckConsistency      = "Check Consistency of ec partition and data partition"
-	cmdEcSetPartitionSize               = "set ecPartition size"
+	cmdGetExtentHosts                    = "get extent hosts"
+	cmdGetTinyDelInfo                    = "get tiny extent del info"
+	cmdEcPartitionCheckConsistency       = "Check Consistency of ec partition and data partition"
+	cmdEcSetPartitionSize                = "set ecPartition size"
 )
 
 func newEcPartitionGetCmd(client *master.MasterClient) *cobra.Command {
@@ -109,7 +110,7 @@ func newEcPartitionDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			data, err := client.AdminAPI().DecommissionEcPartition(partitionID, address)
 			if err != nil {
 				stdout("%v", err)
-			}else {
+			} else {
 				stdout("%v", string(data))
 			}
 		},
@@ -154,7 +155,7 @@ func newEcPartitionDeleteReplicaCmd(client *master.MasterClient) *cobra.Command 
 			data, err := client.AdminAPI().DeleteEcReplica(partitionID, address)
 			if err != nil {
 				stdout("%v", err)
-			}else {
+			} else {
 				stdout("%v", string(data))
 			}
 		},
@@ -183,7 +184,7 @@ func newEcPartitionReplicateCmd(client *master.MasterClient) *cobra.Command {
 			data, err := client.AdminAPI().AddEcReplica(partitionID, address)
 			if err != nil {
 				stdout("%v", err)
-			}else {
+			} else {
 				stdout("%v", string(data))
 			}
 		},
@@ -216,7 +217,7 @@ func newEcPartitionRollBackCmd(client *master.MasterClient) *cobra.Command {
 			data, err := client.AdminAPI().SetEcRollBack(partitionID, needDelEc)
 			if err != nil {
 				stdout("%v", err)
-			}else {
+			} else {
 				stdout("%v", string(data))
 			}
 		},
@@ -454,7 +455,7 @@ func getTinyDelInfo(ep *proto.EcPartitionInfo, extentId uint64) (delInfos []*pro
 	if extentId == 0 {
 		stdout("**************partition(%v) all tinyExtents delInfos********************* \n\n",
 			ep.PartitionID)
-	}else {
+	} else {
 		stdout("**************partition(%v) extentId(%v) delInfos********************* \n\n",
 			ep.PartitionID, extentId)
 	}
@@ -504,7 +505,7 @@ func newEcGetTinyExtentDelInfo(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			var (
-				partition *proto.EcPartitionInfo
+				partition   *proto.EcPartitionInfo
 				partitionID uint64
 				extentID    uint64
 			)

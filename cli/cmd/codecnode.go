@@ -35,7 +35,7 @@ func newCodEcnodeCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newCodEcnodeListCmd(client),
-		newCodEcnodeDecommissionCmd(client),
+		//newCodEcnodeDecommissionCmd(client),
 	)
 	return cmd
 }

@@ -59,24 +59,24 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 		newVolListCmd(client),
 		newVolCreateCmd(client),
 		newVolInfoCmd(client),
-		newVolDeleteCmd(client),
-		newVolTransferCmd(client),
-		newVolAddDPCmd(client),
-		newVolSetCmd(client),
-		newVolShrinkCapacityCmd(client),
+		//newVolDeleteCmd(client),
+		//newVolTransferCmd(client),
+		//newVolAddDPCmd(client),
+		//newVolSetCmd(client),
+		//newVolShrinkCapacityCmd(client),
 		newVolPartitionCheckCmd(client),
-		newVolSetMinRWPartitionCmd(client),
-		newVolConvertTaskCmd(client),
-		newVolAddMPCmd(client),
+		//newVolSetMinRWPartitionCmd(client),
+		//newVolConvertTaskCmd(client),
+		//newVolAddMPCmd(client),
 		newVolEcInfoCmd(client),
-		newVolEcSetCmd(client),
+		//newVolEcSetCmd(client),
 		newVolEcPartitionsConsistency(client),
 		newVolEcPartitionsChunkConsistency(client),
 		newVolCheckEKDeletedByMistake(client),
-		newVolSetChildFileMaxCountCmd(client),
-		newVolRecoverCmd(client),
+		//newVolSetChildFileMaxCountCmd(client),
+		//newVolRecoverCmd(client),
 		newVolListTrashVolsCmd(client),
-		newVolForceDeleteCmd(client),
+		//newVolForceDeleteCmd(client),
 	)
 	return cmd
 }
@@ -324,49 +324,49 @@ const (
 
 func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	var (
-		optCapacity                   uint64
-		optReplicas                   int
-		optMpReplicas                 int
-		optTrashDays                  int
-		optStoreMode                  int
-		optFollowerRead               string
-		optVolWriteMutex              string
-		optNearRead                   string
-		optForceROW                   string
-		optEnableWriteCache           string
-		optAuthenticate               string
-		optEnableToken                string
-		optAutoRepair                 string
-		optBucketPolicy               string
-		optCrossRegionHAType          string
-		optZoneName                   string
-		optLayout                     string
-		optExtentCacheExpireSec       int64
-		optYes                        bool
-		confirmString                 = strings.Builder{}
-		vv                            *proto.SimpleVolView
-		optIsSmart                    string
-		smartRules                    []string
-		optCompactTag                 string
-		optFolReadDelayInterval       int64
-		optLowestDelayHostWeight      int
-		optTrashCleanInterval         int
-		optBatchDelInodeCnt           int
-		optDelInodeInterval           int
-		optUmpCollectWay              int
-		optEnableBitMapAllocator      string
-		optTrashCleanDuration         int32
-		optTrashCleanMaxCount         int32
-		optRemoteCacheBoostPath       string
-		optRemoteCacheBoostEnable     string
-		optRemoteCacheAutoPrepare     string
-		optRemoteCacheTTL             int64
-		optEnableRemoveDup            string
-		optDelRemoteCacheBoostPath    string
-		optReadConnTimeoutMs          int64
-		optWriteConnTimeoutMs         int64
-		optTruncateEKCountEveryTime   int
-		optBitMapSnapFrozenHour       int64
+		optCapacity                 uint64
+		optReplicas                 int
+		optMpReplicas               int
+		optTrashDays                int
+		optStoreMode                int
+		optFollowerRead             string
+		optVolWriteMutex            string
+		optNearRead                 string
+		optForceROW                 string
+		optEnableWriteCache         string
+		optAuthenticate             string
+		optEnableToken              string
+		optAutoRepair               string
+		optBucketPolicy             string
+		optCrossRegionHAType        string
+		optZoneName                 string
+		optLayout                   string
+		optExtentCacheExpireSec     int64
+		optYes                      bool
+		confirmString               = strings.Builder{}
+		vv                          *proto.SimpleVolView
+		optIsSmart                  string
+		smartRules                  []string
+		optCompactTag               string
+		optFolReadDelayInterval     int64
+		optLowestDelayHostWeight    int
+		optTrashCleanInterval       int
+		optBatchDelInodeCnt         int
+		optDelInodeInterval         int
+		optUmpCollectWay            int
+		optEnableBitMapAllocator    string
+		optTrashCleanDuration       int32
+		optTrashCleanMaxCount       int32
+		optRemoteCacheBoostPath     string
+		optRemoteCacheBoostEnable   string
+		optRemoteCacheAutoPrepare   string
+		optRemoteCacheTTL           int64
+		optEnableRemoveDup          string
+		optDelRemoteCacheBoostPath  string
+		optReadConnTimeoutMs        int64
+		optWriteConnTimeoutMs       int64
+		optTruncateEKCountEveryTime int
+		optBitMapSnapFrozenHour     int64
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -377,7 +377,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			var volumeName = args[0]
 			var isChange = false
 			var num1, num2, total int
-			
+
 			defer func() {
 				if err != nil {
 					errout("Error: %v", err)

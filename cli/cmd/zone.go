@@ -28,7 +28,7 @@ func newZoneCmd(mc *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newZoneListCmd(client),
 		newZoneInfoCmd(client),
-		newZoneSetRegionCmd(client),
+		//newZoneSetRegionCmd(client),
 	)
 	return cmd
 }
