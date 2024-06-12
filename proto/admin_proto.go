@@ -312,6 +312,7 @@ const (
 	TopologyForceFetchIntervalSecKey = "topoForceFetchIntervalSec"
 	DataNodeDiskReservedRatioKey     = "dataNodeDiskReservedRatio"
 	BitMapSnapFrozenHour             = "bitmapSnapFrozenHour"
+	EnableCheckDelEK                 = "enableCheckDelEK"
 
 	IDsKey = "ids"
 )
@@ -326,6 +327,12 @@ const (
 )
 
 var IsDbBack bool = false
+
+const (
+	ENV_TEST = "test"
+)
+
+var ENV string
 
 type BucketAccessPolicy uint8
 
@@ -1265,6 +1272,7 @@ type SimpleVolView struct {
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
 	EnableRemoveDupReq     bool
+	EnableCheckDeleteEK    bool
 
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
@@ -1309,6 +1317,7 @@ type VolInfo struct {
 	BitMapSnapFrozenHour          int64
 	FileTotalSize                 int64
 	TrashUsedSize                 int64
+	EnableCheckDeleteEK           bool
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,

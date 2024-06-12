@@ -344,6 +344,7 @@ func ConvertSimpleVolViewPb(vv *SimpleVolViewPb) *SimpleVolView {
 		BitMapSnapFrozenHour:     vv.BitMapSnapFrozenHour,
 		FileTotalSize:            vv.FileTotalSize,
 		TrashUsedSize:            vv.TrashUsedSize,
+		EnableCheckDeleteEK:      vv.EnableCheckDeleteEK,
 	}
 	if vv.SmartRules != nil {
 		simpleVolView.SmartRules = vv.SmartRules
@@ -449,6 +450,7 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		BitMapSnapFrozenHour:   vv.BitMapSnapFrozenHour,
 		FileTotalSize:          vv.FileTotalSize,
 		TrashUsedSize:          vv.TrashUsedSize,
+		EnableCheckDeleteEK:    vv.EnableCheckDeleteEK,
 	}
 }
 

@@ -248,6 +248,7 @@ message SimpleVolViewPb {
     int64                     BitMapSnapFrozenHour   = 94;
     int64                     FileTotalSize          = 95;
     int64                     TrashUsedSize          = 96;
+    bool                      EnableCheckDeleteEK    = 97;
 }
 
 message NodeStatInfoPb {

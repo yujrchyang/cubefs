@@ -31,6 +31,7 @@ func mockMetaPartition(partitionID uint64, metaNodeID uint64, storeMode proto.St
 	node.initFetchTopologyManager()
 	manager := &metadataManager{nodeId: metaNodeID, rocksDBDirs: []string{rootDir}, metaNode: node}
 	conf := &MetaPartitionConfig{
+		VolName:     "test",
 		RocksDBDir:  rootDir,
 		PartitionId: partitionID,
 		NodeId:      metaNodeID,

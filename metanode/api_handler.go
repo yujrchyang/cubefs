@@ -139,6 +139,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/correctInodesTotalSize", m.correctInodesAndDelInodesTotalSize)
 
 	http.HandleFunc("/getDataPartitionViewCache", m.getDataPartitionViewCache)
+	http.HandleFunc("/resetEKDelDelayDuration", m.resetEKDeleteDelayDuration)
 	return
 }
 
@@ -3239,5 +3240,36 @@ func (m *MetaNode) getDataPartitionViewCache(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	resp.Data = m.topoManager.GetPartitionFromCache(volumeName, dpID)
+	return
+}
+
+func (m *MetaNode) resetEKDeleteDelayDuration(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "OK")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getDataPartitionViewCache] response %s", err)
+		}
+	}()
+	if proto.ENV != proto.ENV_TEST {
+		resp.Msg = "only support test env"
+		return
+	}
+
+	minStr := r.FormValue("ekDelDelayMin")
+	if minStr == "" {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = "lack of params: ekDelDelayMin"
+		return
+	}
+
+	delayMin, err := strconv.ParseUint(minStr, 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	ekDelDelayDuration = time.Minute * time.Duration(delayMin)
 	return
 }

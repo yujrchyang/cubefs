@@ -390,6 +390,7 @@ type volValue struct {
 	MpSplitStep              uint64
 	InodeCountThreshold      uint64
 	BitMapSnapFrozenHour     int64
+	EnableCheckDelEK         bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -481,6 +482,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		MpSplitStep:              vol.MpSplitStep,
 		InodeCountThreshold:      vol.InodeCountThreshold,
 		BitMapSnapFrozenHour:     vol.BitMapSnapFrozenHour,
+		EnableCheckDelEK:         vol.EnableCheckDeleteEK,
 	}
 	return
 }

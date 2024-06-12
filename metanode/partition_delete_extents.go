@@ -80,6 +80,7 @@ const (
 var extentsFileHeader = []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08}
 var writeDeleteExtentsLock = &sync.Mutex{}
 var DeleteEKRecordFilesMaxTotalSize = atomic.NewUint64(defDeleteEKRecordFilesMaxTotalSize)
+var ekDelDelayDuration = time.Minute * 10
 
 func (mp *metaPartition) initResouce() {
 	mp.addBatchKey = make([]byte, dbExtentKeySize*maxItemsPerBatch)
@@ -359,6 +360,33 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 	return nil
 }
 
+func (mp *metaPartition) checkDeleteEK(delEK *proto.MetaDelExtentKey) (stillInuse bool) {
+	if enable := mp.topoManager.GetEnableCheckDeleteEKFlag(mp.config.VolName); !enable {
+		log.LogDebugf("disable check delete ek, vol: %s, partitionID: %v", mp.config.VolName, mp.config.PartitionId)
+		return
+	}
+
+	inode, _ := mp.inodeTree.RefGet(delEK.InodeId)
+	if inode == nil {
+		return
+	}
+
+	var checkStartFileOffset = uint64(0)
+	if delEK.FileOffset > delEK.ExtentOffset {
+		checkStartFileOffset = delEK.FileOffset - delEK.ExtentOffset
+	}
+
+	inode.Extents.VisitByFileRange(checkStartFileOffset, unit.ExtentSize, func(ek proto.ExtentKey) bool {
+		if ek.PartitionId == delEK.PartitionId && ek.ExtentId == delEK.ExtentId {
+			log.LogInfof("del ek still in use, partitionID: %v, inodeID: %v, delEK: %v", mp.config.PartitionId, delEK.InodeId, delEK)
+			stillInuse = true
+			return false
+		}
+		return true
+	})
+	return
+}
+
 func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor uint64, err error) {
 	stKey := make([]byte, 1)
 	endKey := make([]byte, 1)
@@ -366,7 +394,7 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor ui
 	cnt := 0
 	var delHandle interface{}
 
-	delStartTime := time.Now().Add(time.Second * (-defEKDelDelaySecond)).Unix()
+	delStartTime := time.Now().Add(-ekDelDelayDuration).Unix()
 
 	delCursor = cur
 	delHandle, err = mp.db.CreateBatchHandler()
@@ -426,6 +454,12 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor ui
 			needDel = false
 		}
 
+		if !proto.IsTinyExtent(ek.ExtentId) {
+			if stillInuse := mp.checkDeleteEK(ek); stillInuse {
+				needDel = false
+			}
+		}
+
 		if needDel {
 			mp.deleteEKWithRateLimit(1)
 			if err = mp.doDeleteMarkedInodes(context.Background(), ek); err != nil {
@@ -433,9 +467,8 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor ui
 				log.LogWarnf("[cleanExpiredExtents] partitionId=%d, %s",
 					mp.config.PartitionId, err.Error())
 			}
+			mp.recordDeleteEkInfo(ino, ek)
 		}
-
-		mp.recordDeleteEkInfo(ino, ek)
 
 		if cnt != 0 && cnt%maxItemsPerBatch == 0 {
 			if err = mp.db.CommitBatchAndRelease(delHandle); err != nil {

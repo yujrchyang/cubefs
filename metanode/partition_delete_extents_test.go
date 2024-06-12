@@ -2,15 +2,19 @@ package metanode
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/diskusage"
+	"github.com/cubefs/cubefs/util/topology"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/stretchr/testify/assert"
 	raftproto "github.com/tiglabs/raft/proto"
 	"github.com/tiglabs/raft/util"
-	"github.com/cubefs/cubefs/util/diskusage"
 	"io/fs"
+	"math/rand"
 	"os"
 	"path"
 	"strconv"
@@ -780,3 +784,234 @@ func TestRemoveOldDeleteEKRecordFileCase04(t *testing.T) {
 	}
 }
 
+func TestEKDelDelay(t *testing.T) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMock)
+	//mp, err := mockMP()
+	if err != nil {
+		t.Fatalf("create mp failed:%s", err.Error())
+	}
+	defer releaseMetaPartition(mp)
+	mp.startToDeleteExtents()
+	mp.topoManager = topology.NewTopologyManager(0, 1, mockMasterClient, mockMasterClient,
+		false, true)
+	mp.topoManager.AddVolume("test")
+	_ = mp.topoManager.Start()
+
+	//gen eks
+	eks := make([]proto.MetaDelExtentKey, 0)
+	for index := 1; index <= 512; index++ {
+		eks = append(eks, proto.MetaDelExtentKey{
+			ExtentKey: proto.ExtentKey{
+				FileOffset:   uint64(index * 100),
+				PartitionId:  uint64(index * 10),
+				ExtentId:     uint64(index * 12),
+				ExtentOffset: uint64(index * 100),
+				Size:         uint32(index * 50),
+			},
+			InodeId:   uint64(index * 2),
+			TimeStamp: time.Now().Add(time.Minute * (-5)).Unix(),
+		})
+	}
+
+	stillInuseEK := eks[100:110]
+	for _, ek := range stillInuseEK {
+		ino := NewInode(ek.InodeId, 460)
+		ino.AppendExtents(context.Background(), []proto.ExtentKey{ek.ExtentKey}, time.Now().Add(time.Minute*(-5)).Unix())
+		_, _, _ = inodeCreate(mp.inodeTree, ino, true)
+	}
+
+	ekDelDelayDuration = time.Minute
+	mp.extDelCh <- eks
+	time.Sleep(time.Minute*2)
+
+	expectEKCount := 502
+	actualEKCount := 0
+	//check rocksdb
+	stKey := []byte{byte(ExtentDelTable)}
+	endKey := []byte{byte(ExtentDelTable + 1)}
+	err = mp.db.Range(stKey, endKey, func(k, v []byte) (bool, error) {
+		actualEKCount++
+		return true, nil
+	})
+	assert.Equal(t, expectEKCount, actualEKCount)
+}
+
+var extentSize = uint64(128*unit.MB)
+
+func genInodeForDeleteEK(inodeID uint64, perEKSize uint64) (ino *Inode, lastEK *proto.ExtentKey) {
+	rand.Seed(time.Now().UnixMicro())
+	ino = NewInode(inodeID, 460)
+	var ekCount int
+	if extentSize%perEKSize == 0 {
+		ekCount = int(extentSize/perEKSize)
+	} else {
+		ekCount = int(extentSize/perEKSize+1)
+	}
+	fileOffset := uint64(0)
+	for index := 0; index < ekCount; index++ {
+		ek := proto.ExtentKey{
+			FileOffset:   fileOffset,
+			PartitionId:  uint64(rand.Intn(100000)),
+			ExtentId:     uint64(rand.Intn(60000)),
+			ExtentOffset: 0,
+			Size:         uint32(perEKSize),
+		}
+		if index == ekCount - 1 {
+			ek.ExtentOffset = fileOffset
+			lastEK = &ek
+		}
+
+		fileOffset += perEKSize
+		ino.AppendExtents(context.Background(), []proto.ExtentKey{ek}, time.Now().Unix())
+	}
+	return
+}
+
+func TestDeleteEKCost(t *testing.T) {
+	//mock mp
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMock)
+	if err != nil {
+		t.Fatalf("create mp failed:%s", err.Error())
+	}
+	defer releaseMetaPartition(mp)
+	mp.topoManager = topology.NewTopologyManager(0, 1, mockMasterClient, mockMasterClient,
+		false, true)
+	mp.topoManager.AddVolume("test")
+	mp.topoManager.AddVolume("test1")
+	_ = mp.topoManager.Start()
+
+	testCount := 1000
+	deleteEks := make([]proto.MetaDelExtentKey, 0, testCount)
+	for index := 0; index < testCount; index++ {
+		//gen inode and eks
+		//set last ek to delete ek chan
+		ino, lastEK := genInodeForDeleteEK(uint64(index), 4*unit.KB)
+		_, _, _ = inodeCreate(mp.inodeTree, ino, true)
+		deleteEks = append(deleteEks, proto.MetaDelExtentKey{
+			ExtentKey:    *lastEK,
+			InodeId:      ino.Inode,
+			TimeStamp:    time.Now().Add(time.Minute*(-10)).Unix(),
+		})
+	}
+
+	mp.config.VolName = "test1"
+	startT := time.Now()
+	for _, deleteEK := range deleteEks {
+		mp.checkDeleteEK(&deleteEK)
+	}
+	cost := time.Since(startT).Microseconds()
+	fmt.Printf("1000 delete eks, no check cost %vus\n", cost)
+
+	mp.config.VolName = "test"
+	startT = time.Now()
+	for _, deleteEK := range deleteEks {
+		mp.checkDeleteEK(&deleteEK)
+	}
+	cost = time.Since(startT).Microseconds()
+	fmt.Printf("1000 delete eks, per ek size 4KB, check cost %vus\n", cost)
+
+	testCount = 1000
+	deleteEks = make([]proto.MetaDelExtentKey, 0, testCount)
+	for index := 0; index < testCount; index++ {
+		ino, lastEK := genInodeForDeleteEK(uint64(index), unit.MB)
+		_, _, _ = inodeCreate(mp.inodeTree, ino, true)
+		deleteEks = append(deleteEks, proto.MetaDelExtentKey{
+			ExtentKey: *lastEK,
+			InodeId:   ino.Inode,
+			TimeStamp: time.Now().Add(time.Minute * (-10)).Unix(),
+		})
+	}
+
+	mp.config.VolName = "test"
+	startT = time.Now()
+	for _, deleteEK := range deleteEks {
+		mp.checkDeleteEK(&deleteEK)
+	}
+	cost = time.Since(startT).Microseconds()
+	fmt.Printf("1000 delete eks, per ek size 1MB, check cost %vus\n", cost)
+}
+
+func BenchmarkCheckDeleteEK_NoCheck(b *testing.B) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMock)
+	if err != nil {
+		fmt.Printf("create mp failed:%s\n", err.Error())
+		return
+	}
+	defer releaseMetaPartition(mp)
+	mp.topoManager = topology.NewTopologyManager(0, 1, mockMasterClient, mockMasterClient,
+		false, true)
+	mp.topoManager.AddVolume("test1")
+	_ = mp.topoManager.Start()
+
+	var deleteEK proto.MetaDelExtentKey
+	ino, lastEK := genInodeForDeleteEK(uint64(1), 4*unit.KB)
+	_, _, _ = inodeCreate(mp.inodeTree, ino, true)
+	deleteEK = proto.MetaDelExtentKey{
+		ExtentKey: *lastEK,
+		InodeId:   ino.Inode,
+		TimeStamp: time.Now().Add(time.Minute * (-10)).Unix(),
+	}
+
+	mp.config.VolName = "test1"
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mp.checkDeleteEK(&deleteEK)
+	}
+	b.StopTimer()
+}
+
+func BenchmarkCheckDeleteEK_Check4KBPerEK(b *testing.B) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMock)
+	if err != nil {
+		fmt.Printf("create mp failed:%s\n", err.Error())
+		return
+	}
+	defer releaseMetaPartition(mp)
+	mp.topoManager = topology.NewTopologyManager(0, 1, mockMasterClient, mockMasterClient,
+		false, true)
+	mp.topoManager.AddVolume("test")
+	_ = mp.topoManager.Start()
+
+	var deleteEK proto.MetaDelExtentKey
+	ino, lastEK := genInodeForDeleteEK(uint64(1), 4*unit.KB)
+	_, _, _ = inodeCreate(mp.inodeTree, ino, true)
+	deleteEK = proto.MetaDelExtentKey{
+		ExtentKey: *lastEK,
+		InodeId:   ino.Inode,
+		TimeStamp: time.Now().Add(time.Minute * (-10)).Unix(),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mp.checkDeleteEK(&deleteEK)
+	}
+	b.StopTimer()
+}
+
+func BenchmarkCheckDeleteEK_Check1MBPerEk(b *testing.B) {
+	mp, err := mockMetaPartition(1, 1, proto.StoreModeMem, "./partition_1", ApplyMock)
+	if err != nil {
+		fmt.Printf("create mp failed:%s\n", err.Error())
+		return
+	}
+	defer releaseMetaPartition(mp)
+	mp.topoManager = topology.NewTopologyManager(0, 1, mockMasterClient, mockMasterClient,
+		false, true)
+	mp.topoManager.AddVolume("test")
+	_ = mp.topoManager.Start()
+
+	var deleteEK proto.MetaDelExtentKey
+	ino, lastEK := genInodeForDeleteEK(uint64(1), unit.MB)
+	_, _, _ = inodeCreate(mp.inodeTree, ino, true)
+	deleteEK = proto.MetaDelExtentKey{
+		ExtentKey: *lastEK,
+		InodeId:   ino.Inode,
+		TimeStamp: time.Now().Add(time.Minute * (-10)).Unix(),
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		mp.checkDeleteEK(&deleteEK)
+	}
+	b.StopTimer()
+}
