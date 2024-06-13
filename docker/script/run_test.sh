@@ -377,12 +377,12 @@ run_s3_test() {
 
 set_trash_days() {
    echo -n "set trash days... "
-   ${cli} volume set ${VolName} --trash-days=2 -y > /dev/null
+   curl -s "http://$LeaderAddr/vol/update?name=${VolName}&authKey=${AuthKey}&trashRemainingDays=2" > /dev/null
    if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
    fi
-   ${cli} volume set ${RocksDBVolName} --trash-days=2 -y > /dev/null
+   curl -s "http://$LeaderAddr/vol/update?name=${RocksDBVolName}&authKey=${AuthKey}&trashRemainingDays=2" > /dev/null
    if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
