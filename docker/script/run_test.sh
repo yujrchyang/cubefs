@@ -33,6 +33,7 @@ EcOwner=ltpectest
 AccessKey=39bEF4RrAQgMj6RV
 SecretKey=TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd
 AuthKey="0e20229116d5a9a4a9e876806b514a85"
+EcAuthKey="65e85cb182cb2cdfb418c94f9a4ebba0"
 
 init_cli() {
     cp ${cli} /usr/bin/
@@ -148,7 +149,7 @@ add_data_partitions() {
       exit 1
     fi
 
-    ${cli} vol add-dp ${RocksDBVolName} 2 &> /dev/null
+    curl -s "${LeaderAddr}/dataPartition/create?name=${RocksDBVolName}&count=2" | grep '"code":0' &> /dev/null
     if [[ $? -eq 0 ]] ; then
         echo -e "\033[32madd dp for rocksdb volume done\033[0m"
         return
@@ -345,7 +346,7 @@ stop_client() {
 
 delete_volume() {
     echo -n "Deleting volume   ... "
-    ${cli} volume delete ${VolName} -y &> /dev/null
+    curl -s "${LeaderAddr}/vol/delete?name=${VolName}&authKey=${AuthKey}" | grep '"code":0' &> /dev/null
     if [[ $? -eq 0 ]]; then
         echo -e "\033[32mdelete mem volume done\033[0m"
     else
@@ -353,7 +354,7 @@ delete_volume() {
       exit 1
     fi
 
-    ${cli} volume delete ${RocksDBVolName} -y &> /dev/null
+    curl -s "${LeaderAddr}/vol/delete?name=${RocksDBVolName}&authKey=${AuthKey}" | grep '"code":0' &> /dev/null
     if [[ $? -eq 0 ]]; then
         echo -e "\033[32mdelete rocksdb volume done\033[0m"
         return
@@ -377,12 +378,12 @@ run_s3_test() {
 
 set_trash_days() {
    echo -n "set trash days... "
-   curl -s "http://$LeaderAddr/vol/update?name=${VolName}&authKey=${AuthKey}&trashRemainingDays=2" > /dev/null
+   curl -s "${LeaderAddr}/vol/update?name=${VolName}&authKey=${AuthKey}&trashRemainingDays=2" | grep '"code":0' &> /dev/null
    if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
    fi
-   curl -s "http://$LeaderAddr/vol/update?name=${RocksDBVolName}&authKey=${AuthKey}&trashRemainingDays=2" > /dev/null
+      curl -s "${LeaderAddr}/vol/update?name=${RocksDBVolName}&authKey=${AuthKey}&trashRemainingDays=2" | grep '"code":0' &> /dev/null
    if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
@@ -501,7 +502,7 @@ ec_consistency_test() {
       fi
 
       if [[ needmigration -eq 1 ]];then
-        ${cli} datapartition migrate-ec ${dps[$idx]} "test" >/dev/null
+        curl -s "${LeaderAddr}/dataPartition/ecmigreate?id=${dps[$idx]}&test=true" &> /dev/null
         migration_status[$idx]=0
       fi
 
@@ -547,7 +548,7 @@ after_ec_consistency_test() {
   echo -e "\033[32mdone\033[0m" || { echo -e "\033[31mfail\033[0m"; exit 1; }
 
   echo -n "Deleting EcVolume   ... "
-  ${cli} volume delete ${EcVolName} -y &> /dev/null
+  curl -s "${LeaderAddr}/vol/delete?name=${EcVolName}&authKey=${EcAuthKey}" | grep '"code":0' &> /dev/null
   if [[ $? -ne 0 ]]; then
       echo -e "\033[31mfail\033[0m"
       return 1
