@@ -68,6 +68,14 @@ const (
 	alarmKeyAdminTaskException  = "admin_task_exception"
 )
 
+const (
+	dpIdIsZero = "dp_id_is_zero"
+)
+
+func (c *Cluster) initMethodMonitorUmpKey() {
+	gAlarmKeyMap[dpIdIsZero] = fmt.Sprintf("%v_%v_%v", c.Name, ModuleName, "getDataPartitonButIdIsZero")
+}
+
 func (c *Cluster) initAlarmKey() {
 	gAlarmKeyMap = make(map[string]string, 0)
 

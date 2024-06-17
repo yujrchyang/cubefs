@@ -613,6 +613,16 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if partitionID == 0 {
+		tmpMetrics := exporter.NewCustomKeyTP(gAlarmKeyMap[dpIdIsZero])
+		hosts := make([]string, 0)
+		hosts = append(hosts, " ")
+		tmpDp := &DataPartition{PartitionID: 0, Hosts: hosts, Status: proto.ReadOnly, ReplicaNum: 1}
+		sendOkReply(w, r, newSuccessHTTPReply(tmpDp.ToProto(m.cluster)))
+		tmpMetrics.Set(nil)
+		return
+	}
+
 	if volName != "" {
 		if vol, err = m.cluster.getVol(volName); err != nil {
 			if dp, err = m.cluster.getDataPartitionByID(partitionID); err == nil {

@@ -4511,3 +4511,14 @@ func TestUnavailableDataPartitions(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestDpIDIsZero(t *testing.T) {
+	api := mc.AdminAPI()
+	partition, err := api.GetDataPartition(commonVolName, 0)
+	if !assert.NoError(t, err) {
+		t.Fail()
+	}
+	if len(partition.Hosts) < 1 {
+		t.Fail()
+	}
+}

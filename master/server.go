@@ -316,6 +316,7 @@ func (m *Server) initCluster() {
 	m.cluster = newCluster(m.clusterName, m.leaderInfo, m.fsm, m.partition, m.config)
 	m.cluster.retainLogs = m.retainLogs
 	m.cluster.initAlarmKey()
+	m.cluster.initMethodMonitorUmpKey()
 }
 
 func (m *Server) initUser() {
