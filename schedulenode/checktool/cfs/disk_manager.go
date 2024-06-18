@@ -3,10 +3,10 @@ package cfs
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/common/xbp"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
-	"strings"
 	"sync"
 	"time"
 )
@@ -24,6 +24,56 @@ func (s *ChubaoFSMonitor) scheduleToCheckDiskError() {
 			return
 		case <-t.C:
 			s.checkDiskError()
+			s.checkUnavailableDataPartition()
+		}
+	}
+}
+
+func (s *ChubaoFSMonitor) checkUnavailableDataPartition() {
+	var wg sync.WaitGroup
+	for _, host := range s.hosts {
+		wg.Add(1)
+		go func(host *ClusterHost) {
+			defer checktool.HandleCrash()
+			defer wg.Done()
+			log.LogDebugf("checkUnavailableDataPartition [%v] begin", host)
+			startTime := time.Now()
+			dps, err := getUnavailableDataPartitions(host)
+			if err != nil {
+				_, ok := err.(*json.SyntaxError)
+				if ok {
+					return
+				}
+				msg := fmt.Sprintf("getUnavailableDataPartitions from %v failed,err:%v", host.host, err)
+				checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+				return
+			}
+			s.doCheckUnavailableDataPartition(dps, host)
+			log.LogDebugf("checkUnavailableDataPartition [%v] end,cost[%v]", host, time.Since(startTime))
+		}(host)
+	}
+	wg.Wait()
+}
+
+func (s *ChubaoFSMonitor) doCheckUnavailableDataPartition(dps map[uint64]map[string]string, host *ClusterHost) {
+	badDPsCount, err := getBadPartitionIDsCount(host)
+	if err != nil {
+		log.LogWarn(fmt.Sprintf("action[offlineDataPartition] getBadPartitionIDsCount host:%v err:%v", host, err))
+		return
+	}
+	if badDPsCount >= maxBadDataPartitionsCount {
+		log.LogWarn(fmt.Sprintf("action[offlineDataPartition] host:%v badDPsCount:%v more than maxBadDataPartitionsCount:%v ",
+			host, badDPsCount, maxBadDataPartitionsCount))
+		return
+	}
+	maxOfflineCount := maxBadDataPartitionsCount - badDPsCount
+	for dpID, badReplicas := range dps {
+		for addr, badReplica := range badReplicas {
+			if maxOfflineCount <= 0 {
+				break
+			}
+			offlineDataPartition(host, dpID, addr, badReplica)
+			maxOfflineCount--
 		}
 	}
 }
@@ -71,13 +121,6 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 	var url string
 	newCheckedDataNodeBadDisk := make(map[string]time.Time, 0)
 	for _, badDiskOnNode := range cv.DataNodeBadDisks {
-		if strings.Contains(badDiskOnNode.Addr, "11.127") {
-			dv, err := getDataNode(host, badDiskOnNode.Addr)
-			if err != nil || strings.EqualFold("rh_hbase_hdd", dv.Zone) {
-				log.LogErrorf("%v ignored", badDiskOnNode.Addr)
-				continue
-			}
-		}
 		for _, badDisk := range badDiskOnNode.BadDiskPath {
 			log.LogDebugf("host:%v,badDisk%v,badDisk:%v", host.host, badDiskOnNode.Addr, badDisk)
 			dataNodeBadDiskKey := fmt.Sprintf("%s#%s", badDiskOnNode.Addr, badDisk)
@@ -257,5 +300,33 @@ func getBadPartitionIDsCount(host *ClusterHost) (badDPsCount int, err error) {
 			badDPsCount++
 		}
 	}
+	return
+}
+
+func offlineDataPartition(host *ClusterHost, dpID uint64, addr, badDisk string) {
+	err := doOfflineDataPartition(host, dpID, addr)
+	log.LogDebugf("action[offlineDataPartition] host[%v] dpID[%v] addr[%v],badDisk[%v] err[%v]", host, dpID, addr, badDisk, err)
+}
+
+func doOfflineDataPartition(host *ClusterHost, dpID uint64, addr string) (err error) {
+	reqURL := fmt.Sprintf("http://%v/dataPartition/decommission?addr=%v&id=%v", host.host, addr, dpID)
+	data, err := doRequest(reqURL, host.isReleaseCluster)
+	if err != nil {
+		log.LogErrorf("action[doOfflineDataPartition] occurred err,url[%v],err %v", reqURL, err)
+		return
+	}
+	msg := fmt.Sprintf("action[doOfflineDataPartition] reqURL[%v],data[%v]", reqURL, string(data))
+	log.LogDebug(msg)
+	return
+}
+
+func getUnavailableDataPartitions(host *ClusterHost) (unavailableDps map[uint64]map[string]string, err error) {
+	reqURL := fmt.Sprintf("http://%v%v", host, proto.AdminGetUnavailDataPartitions)
+	data, err := doRequest(reqURL, host.isReleaseCluster)
+	if err != nil {
+		return
+	}
+	err = json.Unmarshal(data, &unavailableDps)
+	log.LogErrorf("getUnavailableDataPartitions from %v failed ,data:%v,err:%v", host, string(data), err)
 	return
 }

@@ -25,10 +25,10 @@ func (s *ChubaoFSMonitor) checkAvailSpaceAndVolsStatus() {
 	checkVolWg.Wait()
 }
 
-func (c *ChubaoFSMonitor) doProcessMetrics(item, umpKey, msg string) {
-	metric, ok := c.metrics[item]
+func (s *ChubaoFSMonitor) doProcessMetrics(item, umpKey, msg string) {
+	metric, ok := s.metrics[item]
 	if !ok {
-		c.metrics[item] = &AlarmMetric{name: item, lastAlarmTime: time.Now()}
+		s.metrics[item] = &AlarmMetric{name: item, lastAlarmTime: time.Now()}
 		return
 	}
 	if time.Since(metric.lastAlarmTime) < time.Hour {
