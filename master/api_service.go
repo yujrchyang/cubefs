@@ -479,6 +479,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		TopologyFetchIntervalMin:               topoFetchIntervalMin,
 		TopologyForceFetchIntervalSec:          topoForceFetchIntervalSec,
 		DataNodeDiskReservedRatio:              m.cluster.cfg.DataNodeDiskReservedRatio,
+		DisableClusterCheckDeleteEK:            m.cluster.cfg.DisableClusterCheckDeleteEK,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -4142,7 +4143,7 @@ func parseCheckDelEKEnableFlagToUpdateVol(r *http.Request, vol *Vol) (enableChec
 		return
 	}
 
-	flagStr := r.FormValue(proto.EnableCheckDelEK)
+	flagStr := r.FormValue(proto.EnableVolCheckDelEK)
 	if flagStr == "" {
 		enableCheckDelEK = vol.EnableCheckDeleteEK
 		return
@@ -5036,7 +5037,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 	}
 	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey,
-		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey}
+		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey, proto.DisableClusterCheckDelEK}
 	for _, key := range boolKey {
 		if err = parseBoolKey(params, key, r); err != nil {
 			return

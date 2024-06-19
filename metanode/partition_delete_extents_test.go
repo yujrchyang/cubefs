@@ -894,6 +894,7 @@ func TestDeleteEKCost(t *testing.T) {
 		})
 	}
 
+	disableClusterCheckDeleteEK = true
 	mp.config.VolName = "test1"
 	startT := time.Now()
 	for _, deleteEK := range deleteEks {
@@ -943,6 +944,7 @@ func BenchmarkCheckDeleteEK_NoCheck(b *testing.B) {
 	mp.topoManager.AddVolume("test1")
 	_ = mp.topoManager.Start()
 
+	disableClusterCheckDeleteEK = true
 	var deleteEK proto.MetaDelExtentKey
 	ino, lastEK := genInodeForDeleteEK(uint64(1), 4*unit.KB)
 	_, _, _ = inodeCreate(mp.inodeTree, ino, true)

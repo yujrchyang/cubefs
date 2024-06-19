@@ -76,6 +76,8 @@ var (
 	MemModeMaxFsUsedPercent     uint64 = DefaultMemModeMaxFsUsedFactorPercent
 
 	enableRemoveDupReq = defaultEnableRemoveDupReq
+
+	disableClusterCheckDeleteEK = false //default enable check ek
 )
 
 func DeleteBatchCount() uint64 {
@@ -319,6 +321,15 @@ func (m *MetaNode) setRemoveDupReqFlag(enableState bool) {
 	enableRemoveDupReq = enableState
 }
 
+func (m *MetaNode) setClusterDisableCheckEKFlag(disableFlag bool) {
+	if disableClusterCheckDeleteEK == disableFlag {
+		return
+	}
+
+	log.LogInfof("setClusterDisableCheckEKFlag, disableClusterCheckDeleteEK: %v ==> %v", disableClusterCheckDeleteEK, disableFlag)
+	disableClusterCheckDeleteEK = disableFlag
+}
+
 func (m *MetaNode)GetDumpSnapCount() uint64 {
 	dumpCount := uint64(0)
 	dumpCount = atomic.LoadUint64(&nodeInfo.DumpSnapCountCluster)
@@ -437,6 +448,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.setRequestRecordsReservedCount(limitInfo.ClientReqRecordsReservedCount)
 	m.setRequestRecordsReservedMin(limitInfo.ClientReqRecordsReservedMin)
 	m.setRemoveDupReqFlag(limitInfo.ClientReqRemoveDupFlag)
+	m.setClusterDisableCheckEKFlag(limitInfo.DisableClusterCheckDeleteEK)
 	m.updateDumpSnapCountCluster(limitInfo)
 
 	if statistics.StatisticsModule != nil {

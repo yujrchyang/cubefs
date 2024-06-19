@@ -3790,6 +3790,11 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DataNodeDiskReservedRatio = v
 	}
 
+	oldDisableClusterCheckDelEK := c.cfg.DisableClusterCheckDeleteEK
+	if val, ok := params[proto.DisableClusterCheckDelEK]; ok {
+		c.cfg.DisableClusterCheckDeleteEK = val.(bool)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3841,6 +3846,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.TopologyFetchIntervalMin, oldTopologyFetchIntervalMin)
 		atomic.StoreInt64(&c.cfg.TopologyForceFetchIntervalSec, oldTopologyForceFetchIntervalSec)
 		c.cfg.DataNodeDiskReservedRatio = oldDataNodeDiskReservedRatio
+		c.cfg.DisableClusterCheckDeleteEK = oldDisableClusterCheckDelEK
 		err = proto.ErrPersistenceByRaft
 		return
 	}

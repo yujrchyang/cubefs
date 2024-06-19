@@ -312,7 +312,8 @@ const (
 	TopologyForceFetchIntervalSecKey = "topoForceFetchIntervalSec"
 	DataNodeDiskReservedRatioKey     = "dataNodeDiskReservedRatio"
 	BitMapSnapFrozenHour             = "bitmapSnapFrozenHour"
-	EnableCheckDelEK                 = "enableCheckDelEK"
+	EnableVolCheckDelEK              = "enableVolCheckDelEK"
+	DisableClusterCheckDelEK         = "disableClusterCheckDelEK"
 
 	IDsKey = "ids"
 )
@@ -693,8 +694,9 @@ type LimitInfo struct {
 	TopologyFetchIntervalMin      int64
 	TopologyForceFetchIntervalSec int64
 
-	DataNodeDiskReservedRatio float64
-	ApiReqBwRateLimitMap      map[uint8]int64
+	DataNodeDiskReservedRatio   float64
+	ApiReqBwRateLimitMap        map[uint8]int64
+	DisableClusterCheckDeleteEK bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

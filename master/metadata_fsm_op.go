@@ -122,6 +122,7 @@ type clusterValue struct {
 	BandwidthRateLimit                  uint64
 	NodesLiveRatio                      float32
 	APIReqBwRateLimitMap                map[uint8]int64
+	DisableClusterCheckDelEK            bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -211,6 +212,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		BandwidthRateLimit:                  c.cfg.BandwidthRateLimit,
 		NodesLiveRatio:                      c.cfg.NodesLiveRatio,
 		APIReqBwRateLimitMap:                c.cfg.APIReqBwRateLimitMap,
+		DisableClusterCheckDelEK:            c.cfg.DisableClusterCheckDeleteEK,
 	}
 	return cv
 }
@@ -1252,6 +1254,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.NodesLiveRatio < defaultNodesLiveRatio {
 			c.cfg.NodesLiveRatio = defaultNodesLiveRatio
 		}
+		c.cfg.DisableClusterCheckDeleteEK = cv.DisableClusterCheckDelEK
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

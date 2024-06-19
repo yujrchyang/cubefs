@@ -184,6 +184,7 @@ type clusterConfig struct {
 	BandwidthRateLimit                  uint64
 	NodesLiveRatio                      float32
 	APIReqBwRateLimitMap                map[uint8]int64
+	DisableClusterCheckDeleteEK         bool //default false, enable check delete ek
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

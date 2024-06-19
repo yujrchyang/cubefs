@@ -360,8 +360,16 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 	return nil
 }
 
+func (mp *metaPartition) isEnableCheckDeleteEK() (enable bool) {
+	if disableClusterCheckDeleteEK {
+		return mp.topoManager.GetEnableCheckDeleteEKFlag(mp.config.VolName)
+	}
+
+	return true
+}
+
 func (mp *metaPartition) checkDeleteEK(delEK *proto.MetaDelExtentKey) (stillInuse bool) {
-	if enable := mp.topoManager.GetEnableCheckDeleteEKFlag(mp.config.VolName); !enable {
+	if enable := mp.isEnableCheckDeleteEK(); !enable {
 		log.LogDebugf("disable check delete ek, vol: %s, partitionID: %v", mp.config.VolName, mp.config.PartitionId)
 		return
 	}
