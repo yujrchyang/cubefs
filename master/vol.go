@@ -887,9 +887,19 @@ func (vol *Vol) clearViewCachePb() {
 func (vol *Vol) getMetaPartitionsView() (mpViews []*proto.MetaPartitionView) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
+	var maxPartitionID uint64
+	for id := range vol.MetaPartitions {
+		if id > maxPartitionID {
+			maxPartitionID = id
+		}
+	}
 	mpViews = make([]*proto.MetaPartitionView, 0)
 	for _, mp := range vol.MetaPartitions {
-		mpViews = append(mpViews, getMetaPartitionView(mp))
+		view := getMetaPartitionView(mp)
+		if mp.PartitionID == maxPartitionID && view.End != defaultMaxMetaPartitionInodeID {
+			view.End = defaultMaxMetaPartitionInodeID
+		}
+		mpViews = append(mpViews, view)
 	}
 	return
 }
