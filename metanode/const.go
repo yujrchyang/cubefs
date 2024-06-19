@@ -278,8 +278,9 @@ const (
 )
 
 const (
-	PanicBackGroundKey     = "RecoverPanic"
-	PartitionStartFailed   = "MPStartFailed"
+	PanicBackGroundKey      = "RecoverPanic"
+	PartitionStartFailed    = "MPStartFailed"
+	PartitionDumpSnapFailed = "DumpSnapFailed"
 )
 
 const (

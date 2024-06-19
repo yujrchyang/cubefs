@@ -143,13 +143,7 @@ func (p *partition) ResetMember(peers []proto.Peer, learners []proto.Learner, co
 
 // Stop removes the raft partition from raft server and shuts down this partition.
 func (p *partition) Stop() (err error) {
-	if p.raft.Has(p.id) {
-		err = p.raft.RemoveRaft(p.id)
-	} else {
-		if p.ws != nil {
-			p.ws.Close()
-		}
-	}
+	err = p.raft.RemoveRaft(p.id)
 	return
 }
 
@@ -290,6 +284,16 @@ func (p *partition) Start() (err error) {
 	if err = p.initWALStorage(); err != nil {
 		return
 	}
+	defer func() {
+		if err != nil {
+			//if start failed, close wal storage
+			if p.ws != nil {
+				p.ws.Close()
+				p.ws = nil
+			}
+		}
+	}()
+
 	var fi uint64
 	if fi, err = p.ws.FirstIndex(); err != nil {
 		return
