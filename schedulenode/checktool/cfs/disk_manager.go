@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/common/xbp"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,6 +41,9 @@ func (s *ChubaoFSMonitor) checkUnavailableDataPartition() {
 			startTime := time.Now()
 			dps, err := getUnavailableDataPartitions(host)
 			if err != nil {
+				if strings.Contains(host.host, "nl.chubaofs") || strings.Contains(err.Error(), "404 page not found") {
+					return
+				}
 				_, ok := err.(*json.SyntaxError)
 				if ok {
 					return
