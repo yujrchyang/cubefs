@@ -312,6 +312,8 @@ const (
 	TopologyForceFetchIntervalSecKey = "topoForceFetchIntervalSec"
 	DataNodeDiskReservedRatioKey     = "dataNodeDiskReservedRatio"
 	BitMapSnapFrozenHour             = "bitmapSnapFrozenHour"
+	EnableVolCheckDelEK              = "enableVolCheckDelEK"
+	DisableClusterCheckDelEK         = "disableClusterCheckDelEK"
 
 	IDsKey = "ids"
 )
@@ -326,6 +328,12 @@ const (
 )
 
 var IsDbBack bool = false
+
+const (
+	ENV_TEST = "test"
+)
+
+var ENV string
 
 type BucketAccessPolicy uint8
 
@@ -686,8 +694,9 @@ type LimitInfo struct {
 	TopologyFetchIntervalMin      int64
 	TopologyForceFetchIntervalSec int64
 
-	DataNodeDiskReservedRatio float64
-	ApiReqBwRateLimitMap      map[uint8]int64
+	DataNodeDiskReservedRatio   float64
+	ApiReqBwRateLimitMap        map[uint8]int64
+	DisableClusterCheckDeleteEK bool
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1265,6 +1274,7 @@ type SimpleVolView struct {
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
 	EnableRemoveDupReq     bool
+	EnableCheckDeleteEK    bool
 
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
@@ -1309,6 +1319,7 @@ type VolInfo struct {
 	BitMapSnapFrozenHour          int64
 	FileTotalSize                 int64
 	TrashUsedSize                 int64
+	EnableCheckDeleteEK           bool
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,

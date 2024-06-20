@@ -514,6 +514,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  TopologyFetchInterval            : %v Min\n", info.TopologyFetchIntervalMin))
 	sb.WriteString(fmt.Sprintf("  TopologyFroceFetchInterval       : %v Sec\n", info.TopologyForceFetchIntervalSec))
 	sb.WriteString(fmt.Sprintf("  DataNodeDiskReservedRatio        : %v\n", info.DataNodeDiskReservedRatio))
+	sb.WriteString(fmt.Sprintf("  ClusterCheckDeleteEK             : %v\n", formatEnabledDisabled(!info.DisableClusterCheckDeleteEK)))
 	return sb.String()
 }
 

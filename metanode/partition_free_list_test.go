@@ -33,6 +33,10 @@ type MockDataNode struct {
 	tcpListener net.Listener
 }
 
+func init() {
+	mockMaster()
+}
+
 func (s *MockDataNode) handleRequest(packet *proto.Packet, conn net.Conn) {
 	switch packet.Opcode {
 	case proto.OpBatchDeleteExtent:
@@ -115,6 +119,7 @@ func mockMaster() {
 	}()
 	go func() {
 		http.HandleFunc(proto.ClientDataPartitions, fakeClientDataPartitions)
+		http.HandleFunc(proto.AdminListVols, fakeVolList)
 	}()
 }
 
@@ -127,6 +132,53 @@ func send(w http.ResponseWriter, r *http.Request, reply []byte) {
 		return
 	}
 	log.LogInfof("URL[%v],remoteAddr[%v],response ok", r.URL, r.RemoteAddr)
+	return
+}
+
+var VolsConf = map[string]*proto.VolInfo{
+	"test": {
+		Name:                "test",
+		EnableCheckDeleteEK: true,
+	},
+	"test1": {
+		Name:                "test1",
+		EnableCheckDeleteEK: false,
+	},
+}
+
+func fakeVolList(w http.ResponseWriter, r *http.Request) {
+	var err error
+	var reply = &proto.HTTPReply{
+		Code: proto.ErrCodeSuccess,
+		Msg:  "OK",
+		Data: nil,
+	}
+	var volsConf []*proto.VolInfo
+	var respData []byte
+	defer func() {
+		if err != nil {
+			reply.Code = proto.ErrCodeParamError
+			reply.Msg = err.Error()
+			reply.Data = nil
+		} else {
+			reply.Data = volsConf
+		}
+		respData, err = json.Marshal(reply)
+		if err != nil {
+			http.Error(w, "fail to marshal http reply", http.StatusBadRequest)
+			return
+		}
+		send(w, r, respData)
+	}()
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+
+	volsConf = make([]*proto.VolInfo, 0, len(VolsConf))
+	for _, volConf := range VolsConf {
+		volsConf = append(volsConf, volConf)
+	}
 	return
 }
 
@@ -223,7 +275,6 @@ func genNormalExtentKey(fileOffset uint64) proto.ExtentKey {
 }
 
 func TestMetaPartition_FreeInode(t *testing.T) {
-	mockMaster()
 	if err := mockDataNodeServer(); err != nil {
 		t.Errorf("mock data node server failed: %v", err)
 		return

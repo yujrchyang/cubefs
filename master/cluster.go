@@ -2818,7 +2818,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
 	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
 	enableRemoveDupReq bool, truncateEKCountEveryTime int, mpSplitStep, inodeCountThreshold uint64,
-	bitMapSnapFrozenHour int64) (err error) {
+	bitMapSnapFrozenHour int64, enableCheckDelEK bool) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -2978,6 +2978,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.MpSplitStep = mpSplitStep
 	vol.InodeCountThreshold = inodeCountThreshold
 	vol.BitMapSnapFrozenHour = bitMapSnapFrozenHour
+	vol.EnableCheckDeleteEK = enableCheckDelEK
 	if err = c.syncUpdateVol(vol); err != nil {
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
@@ -3789,6 +3790,11 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DataNodeDiskReservedRatio = v
 	}
 
+	oldDisableClusterCheckDelEK := c.cfg.DisableClusterCheckDeleteEK
+	if val, ok := params[proto.DisableClusterCheckDelEK]; ok {
+		c.cfg.DisableClusterCheckDeleteEK = val.(bool)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -3840,6 +3846,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.TopologyFetchIntervalMin, oldTopologyFetchIntervalMin)
 		atomic.StoreInt64(&c.cfg.TopologyForceFetchIntervalSec, oldTopologyForceFetchIntervalSec)
 		c.cfg.DataNodeDiskReservedRatio = oldDataNodeDiskReservedRatio
+		c.cfg.DisableClusterCheckDeleteEK = oldDisableClusterCheckDelEK
 		err = proto.ErrPersistenceByRaft
 		return
 	}

@@ -479,6 +479,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		TopologyFetchIntervalMin:               topoFetchIntervalMin,
 		TopologyForceFetchIntervalSec:          topoForceFetchIntervalSec,
 		DataNodeDiskReservedRatio:              m.cluster.cfg.DataNodeDiskReservedRatio,
+		DisableClusterCheckDeleteEK:            m.cluster.cfg.DisableClusterCheckDeleteEK,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -1758,6 +1759,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		truncateEKCountEveryTime int
 
 		bitMapSnapFrozenHour int64
+		enableCheckDelEK bool
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1904,13 +1906,18 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if enableCheckDelEK, err = parseCheckDelEKEnableFlagToUpdateVol(r, vol); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
-		truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour); err != nil {
+		truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2217,6 +2224,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		BitMapSnapFrozenHour:     vol.BitMapSnapFrozenHour,
 		FileTotalSize:            stat.FileTotalSize,
 		TrashUsedSize:            stat.TrashUsedSize,
+		EnableCheckDeleteEK:      vol.EnableCheckDeleteEK,
 	}
 }
 
@@ -4129,6 +4137,25 @@ func parseBitMapSnapFrozenHourToUpdateVol(r *http.Request, vol *Vol) (bitMapSnap
 	return
 }
 
+func parseCheckDelEKEnableFlagToUpdateVol(r *http.Request, vol *Vol) (enableCheckDelEK bool, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+
+	flagStr := r.FormValue(proto.EnableVolCheckDelEK)
+	if flagStr == "" {
+		enableCheckDelEK = vol.EnableCheckDeleteEK
+		return
+	}
+
+	enableCheckDelEK, err = strconv.ParseBool(flagStr)
+	if err != nil {
+		return
+	}
+	return
+}
+
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
@@ -5010,7 +5037,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 	}
 	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey,
-		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey}
+		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey, proto.DisableClusterCheckDelEK}
 	for _, key := range boolKey {
 		if err = parseBoolKey(params, key, r); err != nil {
 			return
@@ -5634,6 +5661,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
 				volInfo.FileTotalSize = stat.FileTotalSize
 				volInfo.TrashUsedSize = stat.TrashUsedSize
+				volInfo.EnableCheckDeleteEK = vol.EnableCheckDeleteEK
 				volsInfo = append(volsInfo, volInfo)
 			}
 		}
@@ -5723,6 +5751,7 @@ func (m *Server) listSmartVols(w http.ResponseWriter, r *http.Request) {
 			volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
 			volInfo.FileTotalSize = stat.FileTotalSize
 			volInfo.TrashUsedSize = stat.TrashUsedSize
+			volInfo.EnableCheckDeleteEK = vol.EnableCheckDeleteEK
 			volsInfo = append(volsInfo, volInfo)
 		}
 	}
@@ -5754,6 +5783,9 @@ func (m *Server) listCompactVols(w http.ResponseWriter, r *http.Request) {
 			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,
 			vol.TruncateEKCountEveryTime, vol.DefaultStoreMode)
 		volInfo.BitMapSnapFrozenHour = vol.BitMapSnapFrozenHour
+		volInfo.FileTotalSize = stat.FileTotalSize
+		volInfo.TrashUsedSize = stat.TrashUsedSize
+		volInfo.EnableCheckDeleteEK = vol.EnableCheckDeleteEK
 		volsInfo = append(volsInfo, volInfo)
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(volsInfo))

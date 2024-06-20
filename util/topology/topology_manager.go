@@ -241,7 +241,16 @@ func (f *TopologyManager) GetTruncateEKCountConf(name string) (count int) {
 	if volumeTopo.config == nil {
 		count = 0
 	} else {
-		count = volumeTopo.config.truncateEKCount
+		count = volumeTopo.config.GetTruncateEKCount()
+	}
+	return
+}
+
+func (f *TopologyManager) GetEnableCheckDeleteEKFlag(name string) (flag bool) {
+	value, _ := f.vols.LoadOrStore(name, NewVolumeTopologyInfo(name))
+	volumeTopo := value.(*VolumeTopologyInfo)
+	if volumeTopo.config != nil {
+		return volumeTopo.config.GetEnableCheckDeleteEKFlag()
 	}
 	return
 }
@@ -432,15 +441,17 @@ func (f *TopologyManager) updateVolumeConf() (err error) {
 			enableRemoveDupReq:                volConf.EnableRemoveDupReq,
 			truncateEKCount:                   volConf.TruncateEKCountEveryTime,
 			bitmapSnapFrozenHour:              volConf.BitMapSnapFrozenHour,
+			enableCheckDeleteEK:               volConf.EnableCheckDeleteEK,
 		})
 		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, "+
 			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v,"+
 			" enableRemoveDupReq:%v, batchInodeDelCnt: %v, delInodeInterval: %v, truncateEKCountEveryTime: %v," +
-			" bitmapSnapFrozenHour: %v",
+			" bitmapSnapFrozenHour: %v, enableCheckDeleteEK: %v",
 			volConf.Name, volConf.TrashRemainingDays, volConf.ChildFileMaxCnt, volConf.TrashCleanInterval,
 			strconv.FormatBool(volConf.EnableBitMapAllocator), volConf.CleanTrashMaxDurationEachTime,
 			volConf.CleanTrashMaxCountEachTime, strconv.FormatBool(volConf.EnableRemoveDupReq), volConf.BatchInodeDelCnt,
-			volConf.DelInodeInterval, volConf.TruncateEKCountEveryTime, volConf.BitMapSnapFrozenHour)
+			volConf.DelInodeInterval, volConf.TruncateEKCountEveryTime, volConf.BitMapSnapFrozenHour,
+			strconv.FormatBool(volConf.EnableCheckDeleteEK))
 	}
 	return
 }

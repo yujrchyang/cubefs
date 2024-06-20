@@ -3,10 +3,12 @@ mkdir -p /go/src/github.com/cubefs/cubefs/docker/bin;
 failed=0
 
 build_opt=
+build_server_opt="all-test"
 case $1 in
 	test)
 		echo Build mode: TESING
 		build_opt='test'
+        build_server_opt='test'
 		;;
 
 	*)
@@ -34,7 +36,7 @@ echo "Commit: ${CommitID}"
 echo -n 'Building ChubaoFS Server ... ';
 use_original_golang
 cd /go/src/github.com/cubefs/cubefs/cmd;
-bash ./build.sh ${build_opt} &>> /tmp/cfs_build_output
+bash ./build.sh ${build_server_opt} &>> /tmp/cfs_build_output
 if [[ $? -eq 0 ]]; then
     echo -e "\033[32mdone\033[0m";
     mv cfs-server /go/src/github.com/cubefs/cubefs/docker/bin/cfs-server;

@@ -161,6 +161,10 @@ case "$cmd" in
     "all")
         build_server
         ;;
+    "all-test")
+        LDFlags="$LDFlags -X github.com/cubefs/cubefs/proto.ENV=test"
+        build_server
+        ;;
     "test")
         run_test
         ;;

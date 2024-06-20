@@ -219,6 +219,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  MPSplitStep             : %v\n", svv.MpSplitStep))
 	sb.WriteString(fmt.Sprintf("  InodeCountThreshold     : %v\n", svv.InodeCountThreshold))
 	sb.WriteString(fmt.Sprintf("  BitMapSnapFrozenHour    : %v\n", svv.BitMapSnapFrozenHour))
+	sb.WriteString(fmt.Sprintf("  CheckDeleteEK           : %v\n", formatEnabledDisabled(svv.EnableCheckDeleteEK)))
 	return sb.String()
 }
 

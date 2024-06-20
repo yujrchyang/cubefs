@@ -135,6 +135,7 @@ type Vol struct {
 	InodeCountThreshold        uint64 // the threshold of inode count, if the inode count of a meat replica is larger than this value, the meta partition will be readonly,default 1000w
 	needSplitMpByInodeCount    bool
 	BitMapSnapFrozenHour       int64
+	EnableCheckDeleteEK        bool
 	ConnConfig                 proto.ConnConfig
 	sync.RWMutex
 }
@@ -328,6 +329,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.ConnConfig = vv.ConnConfig
 	vol.TruncateEKCountEveryTime = vv.TruncateEKCountEveryTime
 	vol.BitMapSnapFrozenHour = vv.BitMapSnapFrozenHour
+	vol.EnableCheckDeleteEK = vv.EnableCheckDelEK
 	return vol
 }
 
@@ -1394,6 +1396,7 @@ func (vol *Vol) backupConfig() *Vol {
 		MpSplitStep:                vol.MpSplitStep,
 		InodeCountThreshold:        vol.InodeCountThreshold,
 		BitMapSnapFrozenHour:       vol.BitMapSnapFrozenHour,
+		EnableCheckDeleteEK:        vol.EnableCheckDeleteEK,
 	}
 }
 
@@ -1451,6 +1454,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.MpSplitStep = backupVol.MpSplitStep
 	vol.InodeCountThreshold = backupVol.InodeCountThreshold
 	vol.BitMapSnapFrozenHour = backupVol.BitMapSnapFrozenHour
+	vol.EnableCheckDeleteEK = backupVol.EnableCheckDeleteEK
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

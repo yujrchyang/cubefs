@@ -15,6 +15,7 @@ type VolumeConfig struct {
 	enableRemoveDupReq                bool
 	truncateEKCount                   int
 	bitmapSnapFrozenHour              int64
+	enableCheckDeleteEK               bool
 }
 
 func (conf *VolumeConfig) GetEnableBitMapFlag() bool {
@@ -94,6 +95,13 @@ func (conf *VolumeConfig) GetBitMapSnapFrozenHour() int64 {
 	return conf.bitmapSnapFrozenHour
 }
 
+func (conf *VolumeConfig) GetEnableCheckDeleteEKFlag() bool {
+	conf.RLock()
+	defer conf.RUnlock()
+
+	return conf.enableCheckDeleteEK
+}
+
 func (conf *VolumeConfig) update(newConf *VolumeConfig) {
 	conf.Lock()
 	defer conf.Unlock()
@@ -109,4 +117,5 @@ func (conf *VolumeConfig) update(newConf *VolumeConfig) {
 	conf.enableRemoveDupReq = newConf.enableRemoveDupReq
 	conf.truncateEKCount = newConf.truncateEKCount
 	conf.bitmapSnapFrozenHour = newConf.bitmapSnapFrozenHour
+	conf.enableCheckDeleteEK = newConf.enableCheckDeleteEK
 }
