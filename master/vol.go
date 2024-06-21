@@ -643,8 +643,10 @@ func (vol *Vol) checkMetaPartitions(c *Cluster, ctx context.Context) (writableMp
 		err     error
 	)
 	notArrivedThresholdWritableMpCount := vol.getInodeCountNotArrivedThresholdWritableMpCount(mps)
-	log.LogWarnf("vol[%v],WritableMpCount[%v],notArrivedThresholdWritableMpCount[%v],MinWritableMPNum[%v]",
-		vol.Name, vol.getWritableMpCount(), notArrivedThresholdWritableMpCount, vol.MinWritableMPNum)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("vol[%v],WritableMpCount[%v],notArrivedThresholdWritableMpCount[%v],MinWritableMPNum[%v]",
+			vol.Name, vol.getWritableMpCount(), notArrivedThresholdWritableMpCount, vol.MinWritableMPNum)
+	}
 	allowAdjustMpStatus := vol.InodeCountThreshold > 0 && notArrivedThresholdWritableMpCount >= int(vol.MinWritableMPNum)
 	for _, mp := range mps {
 		doSplit = mp.checkStatus(true, int(vol.mpReplicaNum), maxPartitionID, vol, allowAdjustMpStatus)

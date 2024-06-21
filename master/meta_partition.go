@@ -329,10 +329,10 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartition
 	if allowAdjustMpStatus && mp.PartitionID != maxPartitionID && vol.InodeCountThreshold > 0 && mp.Status == proto.ReadWrite && vol.MinWritableMPNum != 0 {
 		mp.adjustStatusByInodeCount(vol.InodeCountThreshold)
 	}
-
-	log.LogWarnf("action[checkMPStatus],vol:%v,writeMpCount:%v,allowAdjustMpStatus:%v,id:%v,status:%v,replicaNum:%v,liveReplicas:%v persistenceHosts:%v",
-		vol.Name, vol.writableMpCount, allowAdjustMpStatus, mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts)
-
+	if log.IsDebugEnabled() {
+		log.LogDebugf("action[checkMPStatus],vol:%v,writeMpCount:%v,allowAdjustMpStatus:%v,id:%v,status:%v,replicaNum:%v,liveReplicas:%v persistenceHosts:%v",
+			vol.Name, vol.writableMpCount, allowAdjustMpStatus, mp.PartitionID, mp.Status, mp.ReplicaNum, len(liveReplicas), mp.Hosts)
+	}
 	if mp.PartitionID == maxPartitionID && mp.Status == proto.ReadOnly {
 		mp.Status = proto.ReadWrite
 	}
