@@ -9,6 +9,9 @@ func (from *DiskInfoPb) ConvertToView() *DiskInfo {
 		Path:          from.Path,
 		UsageRatio:    float64(from.UsageRatio),
 		IsSFX:         from.IsSFX,
+
+		PhysicalUsedRatio: from.PhysicalUsedRatio,
+		CompressionRatio:  from.CompressionRatio,
 	}
 }
 

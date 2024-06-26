@@ -87,6 +87,10 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			RestSize    uint64 `json:"restSize"`
 			Partitions  int    `json:"partitions"`
 
+			IsSFX             bool   `json:"isSFX"`
+			PhysicalUsedRatio uint32 `json:"physicalUsedRatio"`
+			CompressionRatio  uint32 `json:"compressionRatio"`
+
 			// Limits
 			ExecutingRepairTask          uint64 `json:"executing_repair_task"`
 			FixTinyDeleteRecordLimit     uint64 `json:"fix_tiny_delete_record_limit"`
@@ -101,6 +105,10 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 			Status:      diskItem.Status,
 			RestSize:    diskItem.ReservedSpace,
 			Partitions:  diskItem.PartitionCount(),
+
+			IsSFX:             diskItem.IsSfx,
+			PhysicalUsedRatio: diskItem.PhysicalUsedRatio,
+			CompressionRatio:  diskItem.CompressionRatio,
 
 			FixTinyDeleteRecordLimit:     diskItem.fixTinyDeleteRecordLimit,
 			ExecutingFixTinyDeleteRecord: diskItem.executingFixTinyDeleteRecord,

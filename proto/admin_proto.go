@@ -903,6 +903,9 @@ type DiskInfo struct {
 	Path          string
 	UsageRatio    float64
 	IsSFX         bool
+
+	PhysicalUsedRatio uint32
+	CompressionRatio  uint32
 }
 
 // MetaPartitionReport defines the meta partition report.

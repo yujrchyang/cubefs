@@ -1847,7 +1847,17 @@ func (s *DataNode) buildHeartBeatResponsePb(response *proto.DataNodeHeartbeatRes
 		if d.Total != 0 {
 			usageRatio = float64(d.Used) / float64(d.Total)
 		}
-		dInfo := &proto.DiskInfoPb{Total: d.Total, Used: d.Used, ReservedSpace: d.ReservedSpace, Status: int32(d.Status), Path: d.Path, UsageRatio: float32(usageRatio), IsSFX: d.IsSfx}
+		dInfo := &proto.DiskInfoPb{
+			Total:             d.Total,
+			Used:              d.Used,
+			ReservedSpace:     d.ReservedSpace,
+			Status:            int32(d.Status),
+			Path:              d.Path,
+			UsageRatio:        float32(usageRatio),
+			IsSFX:             d.IsSfx,
+			PhysicalUsedRatio: d.PhysicalUsedRatio,
+			CompressionRatio:  d.CompressionRatio,
+		}
 		response.DiskInfos[d.Path] = dInfo
 		if d.Status == proto.Unavailable {
 			response.BadDisks = append(response.BadDisks, d.Path)
@@ -1904,7 +1914,17 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 		if d.Total != 0 {
 			usageRatio = float64(d.Used) / float64(d.Total)
 		}
-		dInfo := &proto.DiskInfo{Total: d.Total, Used: d.Used, ReservedSpace: d.ReservedSpace, Status: d.Status, Path: d.Path, UsageRatio: usageRatio, IsSFX: d.IsSfx}
+		dInfo := &proto.DiskInfo{
+			Total:             d.Total,
+			Used:              d.Used,
+			ReservedSpace:     d.ReservedSpace,
+			Status:            d.Status,
+			Path:              d.Path,
+			UsageRatio:        usageRatio,
+			IsSFX:             d.IsSfx,
+			PhysicalUsedRatio: d.PhysicalUsedRatio,
+			CompressionRatio:  d.CompressionRatio,
+		}
 		response.DiskInfos[d.Path] = dInfo
 		if d.Status == proto.Unavailable {
 			response.BadDisks = append(response.BadDisks, d.Path)

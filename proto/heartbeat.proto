@@ -2,6 +2,8 @@
 syntax = "proto3";
 package proto;
 
+// option go_package = "github.com/cubefs/cubefs/proto";
+
 message PartitionReportPb {
     string VolName = 1;
     uint64 PartitionID = 2;
@@ -24,7 +26,9 @@ message DiskInfoPb {
     int32  Status = 4;
     string Path = 5;
     float  UsageRatio = 6;
-    bool  IsSFX = 7;
+    bool   IsSFX = 7;
+    uint32 PhysicalUsedRatio = 8;
+    uint32 CompressionRatio = 9;
 }
 
 message DataNodeHeartbeatResponsePb {

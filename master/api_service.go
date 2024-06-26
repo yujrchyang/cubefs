@@ -2356,6 +2356,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		SelectedTimes:             dataNode.SelectedTimes,
 		Carry:                     dataNode.Carry,
 		DataPartitionReports:      dataNode.DataPartitionReports,
+		DiskInfos:                 dataNode.DiskInfos,
 		DataPartitionCount:        dataNode.DataPartitionCount,
 		NodeSetID:                 dataNode.NodeSetID,
 		PersistenceDataPartitions: dataNode.PersistenceDataPartitions,

@@ -106,6 +106,7 @@ type DataNodeInfo struct {
 	ToBeOffline               bool
 	ToBeMigrated              bool
 	MType                     string
+	DiskInfos                 map[string]*DiskInfo
 }
 
 type CodecNodeInfo struct {
