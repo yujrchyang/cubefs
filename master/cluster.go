@@ -3884,27 +3884,31 @@ func (c *Cluster) setClusterConnConfig(params map[string]interface{}) (err error
 					return
 				}
 			}
-			if oldCfg, ok := c.cfg.ZoneNetConnConfig[zone]; ok {
-				newConfig = oldCfg
-				if newWriteConnTimeoutMs > 0 {
-					newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
-				}
-				if newReadConnTimeoutMs > 0 {
-					newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
+			if oldCfg, ok := c.cfg.ZoneNetConnConfig.Load(zone); ok {
+				newConfig, ok = oldCfg.(proto.ConnConfig)
+				if ok {
+					if newWriteConnTimeoutMs > 0 {
+						newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
+					}
+					if newReadConnTimeoutMs > 0 {
+						newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
+					}
 				}
 			}
-			c.cfg.ZoneNetConnConfig[zone] = newConfig
+			c.cfg.ZoneNetConnConfig.Store(zone, newConfig)
 		} else {
-			if oldCfg, ok := c.cfg.ZoneNetConnConfig[""]; ok {
-				newConfig = oldCfg
-				if newWriteConnTimeoutMs > 0 {
-					newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
-				}
-				if newReadConnTimeoutMs > 0 {
-					newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
+			if oldCfg, ok := c.cfg.ZoneNetConnConfig.Load(""); ok {
+				newConfig, ok = oldCfg.(proto.ConnConfig)
+				if ok {
+					if newWriteConnTimeoutMs > 0 {
+						newConfig.WriteTimeoutNs = newWriteConnTimeoutMs * int64(time.Millisecond)
+					}
+					if newReadConnTimeoutMs > 0 {
+						newConfig.ReadTimeoutNs = newReadConnTimeoutMs * int64(time.Millisecond)
+					}
 				}
 			}
-			c.cfg.ZoneNetConnConfig[""] = newConfig
+			c.cfg.ZoneNetConnConfig.Store("", newConfig)
 		}
 	}
 	return nil
@@ -6289,5 +6293,35 @@ func (c *Cluster) startHeartbeatPbInfoHandlerWorker() {
 				}
 			}
 		}()
+	}
+}
+
+func (c *Cluster) adjustConnConfigInfo(vv *proto.SimpleVolView) {
+	if vv.ConnConfig == nil {
+		vv.ConnConfig = &proto.ConnConfig{}
+	}
+	zones := strings.Split(vv.ZoneName, commaSeparator)
+	oldConnConfig := *vv.ConnConfig
+	for _, zone := range zones {
+		value, ok := c.cfg.ZoneNetConnConfig.Load(zone)
+		if !ok {
+			continue
+		}
+		tmpConnConfig, ok := value.(proto.ConnConfig)
+		if !ok {
+			continue
+		}
+		if oldConnConfig.ConnectTimeoutNs == 0 && tmpConnConfig.ConnectTimeoutNs > vv.ConnConfig.ConnectTimeoutNs {
+			vv.ConnConfig.ConnectTimeoutNs = tmpConnConfig.ConnectTimeoutNs
+		}
+		if oldConnConfig.ReadTimeoutNs == 0 && tmpConnConfig.ReadTimeoutNs > vv.ConnConfig.ReadTimeoutNs {
+			vv.ConnConfig.ReadTimeoutNs = tmpConnConfig.ReadTimeoutNs
+		}
+		if oldConnConfig.WriteTimeoutNs == 0 && tmpConnConfig.WriteTimeoutNs > vv.ConnConfig.WriteTimeoutNs {
+			vv.ConnConfig.WriteTimeoutNs = tmpConnConfig.WriteTimeoutNs
+		}
+		if oldConnConfig.IdleTimeoutSec == 0 && tmpConnConfig.IdleTimeoutSec > vv.ConnConfig.IdleTimeoutSec {
+			vv.ConnConfig.IdleTimeoutSec = tmpConnConfig.IdleTimeoutSec
+		}
 	}
 }

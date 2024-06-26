@@ -45,8 +45,8 @@ const (
 // default value
 const (
 	defaultTobeFreedDataPartitionCount         = 1000
-	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
-	defaultIntervalToFreeDataPartition         = 10     // in terms of seconds
+	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60                               // a data partition can only be freed after loading 5 mins
+	defaultIntervalToFreeDataPartition         = 10                                   // in terms of seconds
 	defaultIntervalToCheckHeartbeat            = 60
 	defaultIntervalToCheckDataPartition        = 60
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheckHeartbeat // in terms of seconds
@@ -174,7 +174,7 @@ type clusterConfig struct {
 	ClientReqRecordsReservedMin         int32
 	ClientReqRemoveDup                  bool //default false, disable remove dup
 	RemoteReadConnTimeoutMs             int64
-	ZoneNetConnConfig                   map[string]bsProto.ConnConfig
+	ZoneNetConnConfig                   sync.Map
 	MetaNodeDumpSnapCountByZone         map[string]uint64
 	ClusterName                         string
 	TopologyFetchIntervalMin            int64
@@ -226,7 +226,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.DeleteEKRecordFilesMaxSize = 0 // use meta node default value 60MB 10files
 	cfg.MetaRaftLogSize = 0            //use meta node config value
 	cfg.MetaRaftLogCap = 0             // use meta node config value
-	cfg.ZoneNetConnConfig = make(map[string]bsProto.ConnConfig)
+	cfg.ZoneNetConnConfig = sync.Map{}
 	cfg.MetaNodeDumpSnapCountByZone = make(map[string]uint64)
 	cfg.BandwidthRateLimit = maxBw
 	cfg.NodesLiveRatio = defaultNodesLiveRatio
@@ -271,4 +271,21 @@ func (cfg *clusterConfig) parsePeers(peerStr string) error {
 		AddrDatabase[id] = address
 	}
 	return nil
+}
+
+func (cfg *clusterConfig) getZoneNetConnConfigMap() map[string]bsProto.ConnConfig {
+	zoneNetConnConfig := make(map[string]bsProto.ConnConfig)
+	cfg.ZoneNetConnConfig.Range(func(key, value any) bool {
+		zoneName, ok := key.(string)
+		if !ok {
+			return true
+		}
+		connConfig, ok := value.(bsProto.ConnConfig)
+		if !ok {
+			return true
+		}
+		zoneNetConnConfig[zoneName] = connConfig
+		return true
+	})
+	return zoneNetConnConfig
 }
