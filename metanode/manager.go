@@ -64,6 +64,7 @@ type MetadataManager interface {
 	GetDumpSnapRunningCount() uint64
 	GetDumpSnapMPID() []uint64
 	GetStartFailedPartitions() []uint64
+	MetaPartitionCount() int
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -438,6 +439,13 @@ func (m *metadataManager) onStart() (err error) {
 		return
 	}
 	return
+}
+
+func (m *metadataManager) MetaPartitionCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	return len(m.partitions)
 }
 
 func (m *metadataManager) syncMetaPartitionsRocksDBWalLog() {
