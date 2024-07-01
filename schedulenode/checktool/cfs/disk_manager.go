@@ -113,7 +113,12 @@ func (s *ChubaoFSMonitor) doCheckBadDiskCount(cv *ClusterDataNodeBadDisks, host 
 
 	count := 0
 	for _, badDiskNode := range cv.DataNodeBadDisks {
-		count = count + len(badDiskNode.BadDiskPath)
+		for _, badDisk := range badDiskNode.BadDiskPath {
+			if !host.isReleaseCluster && badDiskIsEmpty(host, badDiskNode.Addr, badDisk) {
+				continue
+			}
+			count = count + 1
+		}
 	}
 	if count > badDiskCountToAlarm {
 		msg := fmt.Sprintf("cluster:%v,bad disk count larger than %v,current bad disk count is:%v", cv.Name, badDiskCountToAlarm, count)
@@ -126,6 +131,9 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 	newCheckedDataNodeBadDisk := make(map[string]time.Time, 0)
 	for _, badDiskOnNode := range cv.DataNodeBadDisks {
 		for _, badDisk := range badDiskOnNode.BadDiskPath {
+			if !host.isReleaseCluster && badDiskIsEmpty(host, badDiskOnNode.Addr, badDisk) {
+				continue
+			}
 			log.LogDebugf("host:%v,badDisk%v,badDisk:%v", host.host, badDiskOnNode.Addr, badDisk)
 			dataNodeBadDiskKey := fmt.Sprintf("%s#%s", badDiskOnNode.Addr, badDisk)
 			newCheckedDataNodeBadDisk[dataNodeBadDiskKey] = time.Now()
@@ -189,6 +197,19 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 		}
 	}
 	host.dataNodeBadDisk = newCheckedDataNodeBadDisk
+}
+
+func badDiskIsEmpty(host *ClusterHost, addr, badDisk string) bool {
+	dn, err := getDataNode(host, addr)
+	if err != nil || dn == nil {
+		return true
+	}
+	for _, dp := range dn.DataPartitionReports {
+		if dp.DiskPath == badDisk {
+			return false
+		}
+	}
+	return true
 }
 
 func CreateOfflineXBPTicket(clusterID, nodeAddr, detailMsg, url string, isReleaseCluster bool) (ticketInfo XBPTicketInfo, err error) {

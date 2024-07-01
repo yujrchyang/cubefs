@@ -3,6 +3,7 @@ package cfs
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"sync"
 	"time"
 )
@@ -174,6 +175,7 @@ type DataNodeView struct {
 	Status                    bool
 	ReportTime                time.Time
 	PersistenceDataPartitions []uint64
+	DataPartitionReports      []*proto.PartitionReport
 }
 
 type FlashNodeView struct {
