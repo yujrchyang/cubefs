@@ -352,7 +352,8 @@ func (d *Disk) computeUsageOnSFXDevice() (err error) {
 			available = 0
 		}
 		d.Available = uint64(available)
-		used := int64(dStatus.totalPhysicalCapability) - available
+		used := int64(dStatus.totalPhysicalCapability) -
+			int64(math.Min(float64(dStatus.freePhysicalCapability), float64(int64(fsstat.Bavail)*fsstat.Bsize)))
 		if used < 0 {
 			used = 0
 		}
