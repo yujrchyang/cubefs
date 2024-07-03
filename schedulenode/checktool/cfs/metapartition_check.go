@@ -81,7 +81,7 @@ func (s *ChubaoFSMonitor) checkMpPeerCorrupt() {
 	log.LogInfof("check all metaPartitions corrupt start")
 	for _, host := range s.hosts {
 		checkMpCorruptWg.Add(1)
-		go checkHostMetaPartition(host)
+		go checkHostMetaPartition(host, s.checkPeerConcurrency)
 	}
 	checkMpCorruptWg.Wait()
 	log.LogInfof("check all metaPartitions corrupt end, cost [%v]", time.Since(mpCheckStartTime))
@@ -352,7 +352,7 @@ loop:
 	return
 }
 
-func checkHostMetaPartition(host *ClusterHost) {
+func checkHostMetaPartition(host *ClusterHost, concurrency int) {
 	defer func() {
 		checkMpCorruptWg.Done()
 		if r := recover(); r != nil {
@@ -376,7 +376,7 @@ func checkHostMetaPartition(host *ClusterHost) {
 			continue
 		}
 		mpChan := make(chan *MetaPartition, 8)
-		for i := 0; i < 8; i++ {
+		for i := 0; i < concurrency; i++ {
 			wg.Add(1)
 			go func(w *sync.WaitGroup, ch chan *MetaPartition) {
 				defer w.Done()

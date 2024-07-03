@@ -33,6 +33,7 @@ const (
 	cfgKeyMinOfflineDiskMinute              = "minOfflineDiskMinute"
 	cfgKeyMetaNodeUsedRatioMinThresholdSSD  = "metaNodeUsedRatioMinThresholdSSD"
 	cfgKeyDataNodeUsedRatioMinThresholdSSD  = "dataNodeUsedRatioMinThresholdSSD"
+	cfgKeyCheckPeerConcurrency              = "checkPeerConcurrency"
 	domainSeparator                         = ","
 	UMPCFSNormalWarnKey                     = checktool.UmpKeyStorageBotPrefix + "cfs"
 	UMPCFSBadDiskWarnKey                    = UMPCFSNormalWarnKey + ".bad.disk"
@@ -72,6 +73,7 @@ const (
 	defaultMNDiskMinWarnRatio               = 0.7
 	defaultMetaNodeUsedRatioMinThresholdSSD = 0.87
 	defaultDataNodeUsedRatioMinThresholdSSD = 0.87
+	checkPeerConcurrency                    = 8
 	cfsKeymasterJsonPath                    = "cfsmasterJsonPath"
 	minRWDPAndMPVolsJsonPath                = "minRWDPAndMPVolsJsonPath"
 	cfsKeyWarnFaultToUsersJsonPath          = "cfsWarnFaultToUsersJsonPath"
@@ -166,6 +168,7 @@ type ChubaoFSMonitor struct {
 	nodeRapidMemIncreaseWarnRatio           float64
 	metaNodeUsedRatioMinThresholdSSD        float64
 	dataNodeUsedRatioMinThresholdSSD        float64
+	checkPeerConcurrency                    int
 	checkFlashNode                          bool
 	flashNodeValidVersions                  []string
 	jdosToken                               string
@@ -445,6 +448,11 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	if s.dataNodeUsedRatioMinThresholdSSD <= 0 {
 		fmt.Printf("parse %v failed use default value\n", cfgKeyDataNodeUsedRatioMinThresholdSSD)
 		s.dataNodeUsedRatioMinThresholdSSD = defaultDataNodeUsedRatioMinThresholdSSD
+	}
+	s.checkPeerConcurrency = int(cfg.GetInt(cfgKeyCheckPeerConcurrency))
+	if s.checkPeerConcurrency <= 0 || s.checkPeerConcurrency > 20 {
+		fmt.Printf("parse %v failed use default value\n", cfgKeyCheckPeerConcurrency)
+		s.checkPeerConcurrency = checkPeerConcurrency
 	}
 	s.ExpiredMetaRemainDaysCfg, _ = strconv.Atoi(cfg.GetString(cfgKeyExpiredMetaRemainDays))
 	if s.ExpiredMetaRemainDaysCfg <= 0 {
