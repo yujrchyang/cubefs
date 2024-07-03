@@ -425,9 +425,9 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 		writeSize int
 		rowFlag   bool
 	)
-	if !s.enableOverwrite() && len(requests) > 1 {
+	if ((!s.enableOverwrite() || s.atomicWrite) && len(requests) > 1) || len(requests) > 2 {
 		req := NewExtentRequest(offset, size, data, 0, uint64(size), nil)
-		writeSize, isROW, err = s.doOverWriteOrROW(ctx, req, direct)
+		writeSize, isROW, err = s.doOverWriteOrROW(ctx, req, direct, false)
 		total += writeSize
 	} else {
 		for _, req := range requests {
@@ -436,7 +436,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 				continue
 			}
 			if req.ExtentKey != nil {
-				writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct)
+				writeSize, rowFlag, err = s.doOverWriteOrROW(ctx, req, direct, s.enableOverwrite())
 			} else {
 				writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
 			}
@@ -463,7 +463,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 	return
 }
 
-func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool) (writeSize int, isROW bool, err error) {
+func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool, enableOverwrite bool) (writeSize int, isROW bool, err error) {
 	if s.client.dataWrapper.VolNotExists() {
 		return 0, false, proto.ErrVolNotExists
 	}
@@ -475,7 +475,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		if tryCount%100 == 0 {
 			log.LogWarnf("doOverWriteOrROW failed: try (%v)th times, ctx(%v) ino(%v) req(%v)", tryCount, ctx.Value((proto.ContextReq)), s.inode, req)
 		}
-		if s.enableOverwrite() && req.ExtentKey != nil {
+		if enableOverwrite && req.ExtentKey != nil {
 			if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
 				break
 			}
@@ -917,8 +917,9 @@ func (s *Streamer) flushOverWriteBuffer(ctx context.Context) (errs []error) {
 	overWriteReq := s.overWriteReq
 	s.overWriteReq = nil
 	s.overWriteReqMutex.Unlock()
+
 	for _, req := range overWriteReq {
-		_, isROW, err := s.doOverWriteOrROW(ctx, req, false)
+		_, isROW, err := s.doOverWriteOrROW(ctx, req, false, true)
 		if err != nil {
 			errs = append(errs, err)
 		}

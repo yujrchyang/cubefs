@@ -567,7 +567,7 @@ func TestOpenFile(t *testing.T) {
 		}
 	}()
 	stat := getFileStat(t, testFilePath)
-	_ = ec.OpenStream(stat.Ino, false)
+	_ = ec.OpenStream(stat.Ino, false, false)
 
 	bytes := make([]byte, 512)
 	_, _, err := ec.Write(ctx, stat.Ino, 0, bytes, false)
@@ -970,7 +970,7 @@ func writeRowFileByMountDir(size int, filePath string) {
 func writeRowFileBySdk(t *testing.T, ctx context.Context, inoId uint64, size int, ec *data.ExtentClient) {
 	bufStr := strings.Repeat("A", size)
 	bytes := []byte(bufStr)
-	if err := ec.OpenStream(inoId, false); err != nil {
+	if err := ec.OpenStream(inoId, false, false); err != nil {
 		t.Fatalf("writeRowFileBySdk OpenStream failed: inodeId(%v), err(%v)", inoId, err)
 	}
 	_, _, err := ec.Write(ctx, inoId, 0, bytes, false)

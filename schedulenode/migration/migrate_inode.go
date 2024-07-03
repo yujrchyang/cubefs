@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	limitSize            = 128               // 迁移的ek链片段数据最大大小MB
-	lockTime             = 3 * 24 * 60 * 60  //s
-	reserveTime          = 30                //s
+	limitSize            = 128              // 迁移的ek链片段数据最大大小MB
+	lockTime             = 3 * 24 * 60 * 60 //s
+	reserveTime          = 30               //s
 	maxConsumeTime       = lockTime - reserveTime
 	afterLockSleepTime   = 10 //s
 	retryUnlockExtentCnt = 3
@@ -182,7 +182,7 @@ func (migInode *MigrateInode) OpenFile() (err error) {
 		log.LogDebugf("[inode fileMigrate] open file success ino(%v)", migInode.name)
 		migInode.stage = LookupEkSegment
 	}()
-	if err = migInode.extentClient.OpenStream(migInode.inodeInfo.Inode, false); err != nil {
+	if err = migInode.extentClient.OpenStream(migInode.inodeInfo.Inode, false, false); err != nil {
 		return
 	}
 	if err = migInode.extentClient.RefreshExtentsCache(context.Background(), migInode.inodeInfo.Inode); err != nil {
@@ -511,7 +511,7 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 		migInode.UnlockExtents()
 		return
 	}
-	if ok, canDeleteExtentKeys := migInode.checkMigExtentCanDelete(migEks); !ok{
+	if ok, canDeleteExtentKeys := migInode.checkMigExtentCanDelete(migEks); !ok {
 		migInode.UnlockExtents()
 		err = fmt.Errorf("checkMigExtentCanDelete ino:%v rawEks length:%v delEks length:%v rawEks(%v) canDeleteExtentKeys(%v)", migInode.name, len(migEks), len(canDeleteExtentKeys), migEks, canDeleteExtentKeys)
 		return
@@ -566,7 +566,7 @@ func (migInode *MigrateInode) addInodeMigrateLog(oldEks, newEks []proto.ExtentKe
 	)
 	oldEksByte, _ = json.Marshal(oldEks)
 	newEksByte, _ = json.Marshal(newEks)
-	_ = mysql.AddInodeMigrateLog(migInode.mpOp.task, migInode.inodeInfo.Inode, string(oldEksByte), string(newEksByte), len(oldEks) , len(newEks))
+	_ = mysql.AddInodeMigrateLog(migInode.mpOp.task, migInode.inodeInfo.Inode, string(oldEksByte), string(newEksByte), len(oldEks), len(newEks))
 }
 
 func (migInode *MigrateInode) SummaryStatisticsInfo(newEks []proto.ExtentKey) {

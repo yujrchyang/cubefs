@@ -402,7 +402,7 @@ func (c *client) openInodeStream(f *file) {
 			overWriteBuffer = true
 		}
 	}
-	c.ec.OpenStream(f.ino, overWriteBuffer)
+	c.ec.OpenStream(f.ino, overWriteBuffer, f.isAtomicWrite())
 }
 
 func (c *client) absPath(path string) string {
@@ -649,11 +649,11 @@ func (c *client) copyFile(fd uint, newfd uint) uint {
 	if f == nil {
 		return 0
 	}
-	newfile := &file{fd: f.fd, ino: f.ino, flags: f.flags, mode: f.mode, size: f.size, pos: f.pos, path: f.path, target: f.target, dirp: f.dirp}
+	newfile := &file{fd: f.fd, ino: f.ino, flags: f.flags, mode: f.mode, size: f.size, pos: f.pos, path: f.path, target: f.target, dirp: f.dirp, fileType: f.fileType}
 	newfile.fd = newfd
 	c.fdmap[newfd] = newfile
 	if proto.IsRegular(newfile.mode) {
-		c.ec.OpenStream(newfile.ino, false)
+		c.ec.OpenStream(newfile.ino, false, newfile.isAtomicWrite())
 	}
 	return newfd
 }
@@ -889,6 +889,10 @@ func (c *client) checkReadOnly(absPath string) bool {
 		}
 	}
 	return true
+}
+
+func (f *file) isAtomicWrite() bool {
+	return isMysql() && f.fileType != fileTypeRelaylog && f.fileType != fileTypeBinlog && f.fileType != fileTypeRedolog
 }
 
 func handleError(c *client, act, msg string) {

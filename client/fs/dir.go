@@ -50,7 +50,7 @@ func (d *Node) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.C
 		Sup.ic.PutParent(info.Inode, d.inode)
 	}
 	child := NewNode(info.Inode)
-	Sup.ec.OpenStream(info.Inode, false)
+	Sup.ec.OpenStream(info.Inode, false, false)
 
 	if Sup.keepCache {
 		resp.Flags |= fuse.OpenKeepCache

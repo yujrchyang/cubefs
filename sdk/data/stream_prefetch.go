@@ -675,7 +675,7 @@ func (pManager *PrefetchManager) ReadData(ctx context.Context, dInfo *DownloadFi
 	} else {
 		inodeID = dInfo.fileInfo.inoID
 	}
-	if err = pManager.ec.OpenStream(inodeID, false); err != nil {
+	if err = pManager.ec.OpenStream(inodeID, false, false); err != nil {
 		return
 	}
 	defer func() {

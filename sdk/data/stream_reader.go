@@ -61,6 +61,8 @@ type Streamer struct {
 	overWriteReq      []*ExtentRequest
 	overWriteReqMutex sync.Mutex
 
+	atomicWrite bool
+
 	tinySize   int
 	extentSize int
 
@@ -77,7 +79,7 @@ type Streamer struct {
 }
 
 // NewStreamer returns a new streamer.
-func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment, overWriteBuffer bool) *Streamer {
+func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStreamerMapSegment, overWriteBuffer bool, atomicWrite bool) *Streamer {
 	s := new(Streamer)
 	s.client = client
 	s.inode = inode
@@ -86,6 +88,7 @@ func NewStreamer(client *ExtentClient, inode uint64, streamMap *ConcurrentStream
 	s.done = make(chan struct{})
 	s.dirtylist = NewDirtyExtentList()
 	s.overWriteBuffer = overWriteBuffer
+	s.atomicWrite = atomicWrite
 	s.tinySize = client.tinySize
 	s.extentSize = client.extentSize
 	s.streamerMap = streamMap

@@ -120,8 +120,8 @@ type ExtentConfig struct {
 	MetaWrapper         *meta.MetaWrapper
 	StreamerSegCount    int64
 	ExtentClientType    ExtentClientType
-	ReadAheadMemMB		int64
-	ReadAheadWindowMB	int64
+	ReadAheadMemMB      int64
+	ReadAheadWindowMB   int64
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -255,12 +255,12 @@ func (client *ExtentClient) SaveDataState() *DataState {
 }
 
 // Open request shall grab the lock until request is sent to the request channel
-func (client *ExtentClient) OpenStream(inode uint64, overWriteBuffer bool) error {
+func (client *ExtentClient) OpenStream(inode uint64, overWriteBuffer bool, atomicWrite bool) error {
 	streamerMapSeg := client.streamerConcurrentMap.GetMapSegment(inode)
 	streamerMapSeg.Lock()
 	s, ok := streamerMapSeg.streamers[inode]
 	if !ok {
-		s = NewStreamer(client, inode, streamerMapSeg, overWriteBuffer)
+		s = NewStreamer(client, inode, streamerMapSeg, overWriteBuffer, atomicWrite)
 		streamerMapSeg.streamers[inode] = s
 	}
 	return s.IssueOpenRequest()

@@ -260,7 +260,7 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 func TestROW(t *testing.T) {
 	info, err := create("TestROW")
 	ino := info.Inode
-	ec.OpenStream(ino, false)
+	ec.OpenStream(ino, false, false)
 	oldData := []byte("old")
 	_, _, err = ec.Write(ctx, ino, 0, oldData, false)
 	assert.Nil(t, err)
@@ -271,7 +271,7 @@ func TestROW(t *testing.T) {
 	defer func() {
 		ec1.Close(ctx)
 	}()
-	ec1.OpenStream(ino, false)
+	ec1.OpenStream(ino, false, false)
 	ec1.dataWrapper.forceROW = true
 	newData := []byte("new")
 	_, _, err = ec1.Write(ctx, ino, 0, newData, false)
@@ -333,7 +333,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	sysStat := fInfo.Sys().(*syscall.Stat_t)
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	streamer := NewStreamer(ec, sysStat.Ino, streamMap, false)
+	streamer := NewStreamer(ec, sysStat.Ino, streamMap, false, false)
 	if _, _, eks, err := mw.GetExtents(ctx, sysStat.Ino); err != nil {
 		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, sysStat.Ino)
 	} else {
@@ -569,15 +569,15 @@ func TestStreamer_NotInitServer(t *testing.T) {
 	defer func() {
 		ec1.Close(ctx)
 	}()
-	ec1.OpenStream(inodeID, false)
+	ec1.OpenStream(inodeID, false, false)
 	ec1.Write(ctx, inodeID, 0, []byte("11111"), false)
 	ec1.CloseStream(ctx, info.Inode)
 	fileSize, _, _ := ec1.FileSize(inodeID)
 	assert.NotEqual(t, 0, fileSize, "get size of test file")
 
-	err = ec.OpenStream(inodeID, false)
+	err = ec.OpenStream(inodeID, false, false)
 	assert.Equal(t, nil, err, "open streamer")
-	err = ec.OpenStream(inodeID, false)
+	err = ec.OpenStream(inodeID, false, false)
 	assert.Equal(t, nil, err, "open streamer again")
 	var (
 		readSize int

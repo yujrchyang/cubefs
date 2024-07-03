@@ -27,9 +27,9 @@ func TestReadAhead_Controller(t *testing.T) {
 	}()
 
 	var (
-		inodeInfo	*proto.InodeInfo
-		read		int
-		hole		bool
+		inodeInfo *proto.InodeInfo
+		read      int
+		hole      bool
 	)
 	ec.dataWrapper.readAheadController, err = NewReadAheadController(ec.dataWrapper, 4096, DefaultReadAheadWindowMB*unit.MB)
 	assert.NoErrorf(t, err, "init read ahead controller err")
@@ -38,13 +38,13 @@ func TestReadAhead_Controller(t *testing.T) {
 	inodeInfo, err = mw.Create_ll(context.Background(), 1, "TestReadAhead", 0644, 0, 0, nil)
 	assert.NoErrorf(t, err, "create file TestReadAhead err")
 
-	err = ec.OpenStream(inodeInfo.Inode, false)
+	err = ec.OpenStream(inodeInfo.Inode, false, false)
 	assert.NoErrorf(t, err, "open streamer of inode(%v)", inodeInfo.Inode)
 	s := ec.GetStreamer(inodeInfo.Inode)
 	assert.NotNilf(t, s, "get streamer of inode(%v)", inodeInfo.Inode)
 
 	size := 128 * unit.KB
-	for offset := uint64(0); offset < 10 * unit.MB + 100; offset += uint64(size) {
+	for offset := uint64(0); offset < 10*unit.MB+100; offset += uint64(size) {
 		data := randTestData(size)
 		_, _, err = ec.Write(context.Background(), inodeInfo.Inode, offset, data, false)
 		assert.NoErrorf(t, err, "write file ino(%v) offset(%v) size(%v) err", inodeInfo.Inode, offset, size)
@@ -61,7 +61,7 @@ func TestReadAhead_Controller(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	assert.Equalf(t, int64(31), ec.dataWrapper.readAheadController.blockCount, "read ahead block count")
 	assert.Equalf(t, int(31), ec.dataWrapper.readAheadController.blockLruList.Len(), "read ahead lru list length")
-	for offset := uint64(128*unit.KB); offset < 10 * unit.MB + 100; offset += uint64(size) {
+	for offset := uint64(128 * unit.KB); offset < 10*unit.MB+100; offset += uint64(size) {
 		data := make([]byte, size)
 		read, hole, err = ec.dataWrapper.readAheadController.ReadFromBlocks(s, data, offset, uint64(size))
 		assert.Equalf(t, size, read, "read ahead ino(%v) offset(%v) size(%v)", inodeInfo.Inode, offset, size)
@@ -104,7 +104,7 @@ func TestReadAhead_ReadAndWrite(t *testing.T) {
 	inodeInfo, err = mw.Create_ll(context.Background(), 1, "TestReadAhead_ReadAndWrite", 0644, 0, 0, nil)
 	assert.NoErrorf(t, err, "create file 'TestReadAhead_ReadAndWrite' err")
 
-	err = ec.OpenStream(inodeInfo.Inode, false)
+	err = ec.OpenStream(inodeInfo.Inode, false, false)
 	assert.NoErrorf(t, err, "open stream of inode(%v)", inodeInfo.Inode)
 
 	localPath := "/tmp/TestReadAhead_ReadAndWrite"
@@ -126,7 +126,7 @@ func TestReadAhead_ReadAndWrite(t *testing.T) {
 			log.LogFlush()
 			panic(err)
 		}
-		if i % 3000 == 0 {
+		if i%3000 == 0 {
 			truncateSize := fileSize/2 + rand.Int63n(fileSize/2)
 			if err = truncateLocalAndCFS(localFile, ec, inodeInfo.Inode, truncateSize); err != nil {
 				log.LogFlush()
@@ -144,7 +144,7 @@ func TestReadAhead_ReadAndWrite(t *testing.T) {
 	cfsSize, _, _ := ec.FileSize(inodeInfo.Inode)
 	localInfo, _ := localFile.Stat()
 	assert.Equal(t, uint64(localInfo.Size()), cfsSize, "file size")
-	verifySize := 1024*1024
+	verifySize := 1024 * 1024
 	for off := int64(0); off < int64(cfsSize); off += int64(verifySize) {
 		if err = verifyLocalAndCFS(localFile, ec, inodeInfo.Inode, off, verifySize); err != nil {
 			log.LogFlush()
@@ -180,255 +180,255 @@ func TestReadAhead_ReadFromBlocks(t *testing.T) {
 		log.LogFlush()
 	}()
 
-	tests := []struct{
-		name					string
-		extentSize				uint64
-		dataTotalSize			int
-		readOffset				uint64
-		readSize				uint64
-		storeBlocks				[]*ReadAheadBlock
-		expectedErr				bool
-		expectedRead			int
-		expectedRemainBlocks	[]uint64
+	tests := []struct {
+		name                 string
+		extentSize           uint64
+		dataTotalSize        int
+		readOffset           uint64
+		readSize             uint64
+		storeBlocks          []*ReadAheadBlock
+		expectedErr          bool
+		expectedRead         int
+		expectedRemainBlocks []uint64
 	}{
 		{
-			name: "test01",
-			extentSize: 10 * unit.MB,
+			name:          "test01",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 100 * unit.KB,
-			readOffset: 0,
-			readSize: 100 * unit.KB,
+			readOffset:    0,
+			readSize:      100 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{128 * unit.KB},
-			expectedErr: false,
-			expectedRead: 100 * unit.KB,
+			expectedErr:          false,
+			expectedRead:         100 * unit.KB,
 		},
 		{
-			name: "test02",
-			extentSize: 10 * unit.MB,
+			name:          "test02",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 128 * unit.KB + 100,
-			readSize: 1 * unit.KB,
+			readOffset:    128*unit.KB + 100,
+			readSize:      1 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{0, 128 * unit.KB},
-			expectedErr: false,
-			expectedRead: 1 * unit.KB,
+			expectedErr:          false,
+			expectedRead:         1 * unit.KB,
 		},
 		{
-			name: "test03",
-			extentSize: 10 * unit.MB,
+			name:          "test03",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 128 * unit.KB + 100,
-			readSize: 100 * unit.KB - 100,
+			readOffset:    128*unit.KB + 100,
+			readSize:      100*unit.KB - 100,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{0},
-			expectedErr: false,
-			expectedRead: 100 * unit.KB - 100,
+			expectedErr:          false,
+			expectedRead:         100*unit.KB - 100,
 		},
 		{
-			name: "test04",
-			extentSize: 10 * unit.MB,
+			name:          "test04",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 128 * unit.KB,
-			readSize: 128 * unit.KB,
+			readOffset:    128 * unit.KB,
+			readSize:      128 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100 * unit.KB + 100, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB), hasHole: true},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100*unit.KB + 100, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB), hasHole: true},
 			},
 			expectedRemainBlocks: []uint64{0, 200 * unit.KB, 2 * 128 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: false,
-			expectedRead: 128 * unit.KB,
+			expectedErr:          false,
+			expectedRead:         128 * unit.KB,
 		},
 		{
-			name: "test05",
-			extentSize: 10 * unit.MB,
+			name:          "test05",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 200 * unit.KB,
-			readSize: 100 * unit.KB,
+			readOffset:    200 * unit.KB,
+			readSize:      100 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100 * unit.KB + 100, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB), hasHole: true},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100*unit.KB + 100, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB), hasHole: true},
 			},
 			expectedRemainBlocks: []uint64{0, 200 * unit.KB, 2 * 128 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: false,
-			expectedRead: 100 * unit.KB,
+			expectedErr:          false,
+			expectedRead:         100 * unit.KB,
 		},
 		{
-			name: "test06",
-			extentSize: 10 * unit.MB,
+			name:          "test06",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 128 * unit.KB,
-			readSize: 3 * 128 * unit.KB,
+			readOffset:    128 * unit.KB,
+			readSize:      3 * 128 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100 * unit.KB + 100, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB), hasHole: true},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100*unit.KB + 100, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB), hasHole: true},
 			},
 			expectedRemainBlocks: []uint64{0, 200 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: true,
-			expectedRead: 128 * unit.KB + 100 * unit.KB + 100,
+			expectedErr:          true,
+			expectedRead:         128*unit.KB + 100*unit.KB + 100,
 		},
 		{
-			name: "test07",
-			extentSize: 10 * unit.MB,
+			name:          "test07",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 2 * 128 * unit.KB,
-			readSize: 129 * unit.KB,
+			readOffset:    2 * 128 * unit.KB,
+			readSize:      129 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100 * unit.KB + 100, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 100 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100*unit.KB + 100, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{0, 128 * unit.KB, 200 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: true,
-			expectedRead: 100 * unit.KB + 100,
+			expectedErr:          true,
+			expectedRead:         100*unit.KB + 100,
 		},
 		{
-			name: "test08",
-			extentSize: 10 * unit.MB,
+			name:          "test08",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 0,
-			readSize: 2 * 128 * unit.KB,
+			readOffset:    0,
+			readSize:      2 * 128 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100 * unit.KB + 100, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100*unit.KB + 100, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{200 * unit.KB, 2 * 128 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: false,
-			expectedRead: 2 * 128 * unit.KB,
+			expectedErr:          false,
+			expectedRead:         2 * 128 * unit.KB,
 		},
 		{
-			name: "test09",
-			extentSize: 10 * unit.MB,
+			name:          "test09",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 0,
-			readSize: 2 * 128 * unit.KB + 120 * unit.KB,
+			readOffset:    0,
+			readSize:      2*128*unit.KB + 120*unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100 * unit.KB + 100, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100*unit.KB + 100, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{200 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: false,
-			expectedRead: 2 * 128 * unit.KB + 100 * unit.KB + 100,
+			expectedErr:          false,
+			expectedRead:         2*128*unit.KB + 100*unit.KB + 100,
 		},
 		{
-			name: "test10",
-			extentSize: 10 * unit.MB,
+			name:          "test10",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 100,
-			readSize: 2 * 128 * unit.KB + 100 * unit.KB,
+			readOffset:    100,
+			readSize:      2*128*unit.KB + 100*unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100 * unit.KB + 100, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100*unit.KB + 100, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{200 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: false,
-			expectedRead: 2 * 128 * unit.KB + 100 * unit.KB,
+			expectedErr:          false,
+			expectedRead:         2*128*unit.KB + 100*unit.KB,
 		},
 		{
-			name: "test11",
-			extentSize: 4 * unit.MB,
+			name:          "test11",
+			extentSize:    4 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 10,
-			readSize: 4 * 128 * unit.KB - 10,
+			readOffset:    10,
+			readSize:      4*128*unit.KB - 10,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{200 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: true,
-			expectedRead: 3 * 128 * unit.KB - 10,
+			expectedErr:          true,
+			expectedRead:         3*128*unit.KB - 10,
 		},
 		{
-			name: "test12",
-			extentSize: 3 * unit.MB,
+			name:          "test12",
+			extentSize:    3 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 10,
-			readSize: 4 * 128 * unit.KB - 10,
+			readOffset:    10,
+			readSize:      4*128*unit.KB - 10,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{0, 128 * unit.KB},
-			expectedErr: false,
-			expectedRead: 0,
+			expectedErr:          false,
+			expectedRead:         0,
 		},
 		{
-			name: "test13",
-			extentSize: 10 * unit.MB,
+			name:          "test13",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 0,
-			readSize: 2 * 128 * unit.KB,
+			readOffset:    0,
+			readSize:      2 * 128 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{128 * unit.KB},
-			expectedErr: true,
-			expectedRead: 128 * unit.KB,
+			expectedErr:          true,
+			expectedRead:         128 * unit.KB,
 		},
 		{
-			name: "test14",
-			extentSize: 10 * unit.MB,
+			name:          "test14",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 3 * 128 * unit.KB -100,
-			readSize: 2,
+			readOffset:    3*128*unit.KB - 100,
+			readSize:      2,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100 * unit.KB + 100, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100*unit.KB + 100, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{0, 128 * unit.KB, 200 * unit.KB, 2 * 128 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: true,
-			expectedRead: 0,
+			expectedErr:          true,
+			expectedRead:         0,
 		},
 		{
-			name: "test15",
-			extentSize: 10 * unit.MB,
+			name:          "test15",
+			extentSize:    10 * unit.MB,
 			dataTotalSize: 1 * unit.MB,
-			readOffset: 128 * unit.KB + 100,
-			readSize: 2 * 128 * unit.KB,
+			readOffset:    128*unit.KB + 100,
+			readSize:      2 * 128 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
-				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100 * unit.KB + 100, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 3 * 128 * unit.KB, endFileOffset: 4 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128 * unit.KB)},
-				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128 * unit.KB)},
+				{startFileOffset: 0, endFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 200 * unit.KB, endFileOffset: 300 * unit.KB, actualDataSize: 50 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 2 * 128 * unit.KB, endFileOffset: 3 * 128 * unit.KB, actualDataSize: 100*unit.KB + 100, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 3 * 128 * unit.KB, endFileOffset: 4 * 128 * unit.KB, actualDataSize: 128 * unit.KB, data: make([]byte, 128*unit.KB)},
+				{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB, actualDataSize: 1024, data: make([]byte, 128*unit.KB)},
 			},
 			expectedRemainBlocks: []uint64{0, 200 * unit.KB, 3 * 128 * unit.KB, 4 * 128 * unit.KB},
-			expectedErr: true,
-			expectedRead: 128 * unit.KB + 100 * unit.KB,
+			expectedErr:          true,
+			expectedRead:         128*unit.KB + 100*unit.KB,
 		},
 	}
 	for _, tt := range tests {
@@ -439,7 +439,7 @@ func TestReadAhead_ReadFromBlocks(t *testing.T) {
 			actualData := randTestData(tt.dataTotalSize)
 			for _, block := range tt.storeBlocks {
 				block.inodeID = inodeID
-				copy(block.data[:block.actualDataSize], actualData[block.startFileOffset:(block.startFileOffset + block.actualDataSize)])
+				copy(block.data[:block.actualDataSize], actualData[block.startFileOffset:(block.startFileOffset+block.actualDataSize)])
 				s.readAheadBlocks.Store(block.startFileOffset, block)
 			}
 			c := &ReadAheadController{windowSize: 2 * unit.MB, blockCntThreshold: 1024}
@@ -475,9 +475,9 @@ func TestReadAhead_EvictAfterTruncate(t *testing.T) {
 	}()
 
 	var (
-		inodeInfo	*proto.InodeInfo
-		read		int
-		hole		bool
+		inodeInfo *proto.InodeInfo
+		read      int
+		hole      bool
 	)
 	ec.dataWrapper.readAheadController, err = NewReadAheadController(ec.dataWrapper, 4096, DefaultReadAheadWindowMB*unit.MB)
 	assert.NoErrorf(t, err, "init read ahead controller err")
@@ -486,71 +486,71 @@ func TestReadAhead_EvictAfterTruncate(t *testing.T) {
 	inodeInfo, err = mw.Create_ll(context.Background(), 1, "TestReadAhead_EvictAfterTruncate", 0644, 0, 0, nil)
 	assert.NoErrorf(t, err, "create file TestReadAhead_EvictAfterTruncate err")
 
-	err = ec.OpenStream(inodeInfo.Inode, false)
+	err = ec.OpenStream(inodeInfo.Inode, false, false)
 	assert.NoErrorf(t, err, "open streamer of inode(%v)", inodeInfo.Inode)
 	s := ec.GetStreamer(inodeInfo.Inode)
 	assert.NotNilf(t, s, "get streamer of inode(%v)", inodeInfo.Inode)
 
-	tests := []struct{
-		name					string
-		truncateSize			uint64
-		firstEvictBlockOffset	uint64
-		expectedBlockCount		int
+	tests := []struct {
+		name                  string
+		truncateSize          uint64
+		firstEvictBlockOffset uint64
+		expectedBlockCount    int
 	}{
 		{
-			name: 					"test01",
-			truncateSize: 			0,
-			firstEvictBlockOffset:	0,
-			expectedBlockCount: 	0,
+			name:                  "test01",
+			truncateSize:          0,
+			firstEvictBlockOffset: 0,
+			expectedBlockCount:    0,
 		},
 		{
-			name: 					"test02",
-			truncateSize: 			1234,
-			firstEvictBlockOffset:	0,
-			expectedBlockCount: 	0,
+			name:                  "test02",
+			truncateSize:          1234,
+			firstEvictBlockOffset: 0,
+			expectedBlockCount:    0,
 		},
 		{
-			name: 					"test03",
-			truncateSize: 			128 * unit.KB,
-			firstEvictBlockOffset:	128 * unit.KB,
-			expectedBlockCount: 	0,
+			name:                  "test03",
+			truncateSize:          128 * unit.KB,
+			firstEvictBlockOffset: 128 * unit.KB,
+			expectedBlockCount:    0,
 		},
 		{
-			name: 					"test04",
-			truncateSize: 			128 * unit.KB + 1234,
-			firstEvictBlockOffset:	128 * unit.KB,
-			expectedBlockCount: 	0,
+			name:                  "test04",
+			truncateSize:          128*unit.KB + 1234,
+			firstEvictBlockOffset: 128 * unit.KB,
+			expectedBlockCount:    0,
 		},
 		{
-			name: 					"test05",
-			truncateSize: 			2 * 128 * unit.KB,
-			firstEvictBlockOffset:	2 * 128 * unit.KB,
-			expectedBlockCount: 	1,
+			name:                  "test05",
+			truncateSize:          2 * 128 * unit.KB,
+			firstEvictBlockOffset: 2 * 128 * unit.KB,
+			expectedBlockCount:    1,
 		},
 		{
-			name: 					"test06",
-			truncateSize: 			4 * unit.MB - 1234,
-			firstEvictBlockOffset:	4 * unit.MB - 128 * unit.KB,
-			expectedBlockCount: 	30,
+			name:                  "test06",
+			truncateSize:          4*unit.MB - 1234,
+			firstEvictBlockOffset: 4*unit.MB - 128*unit.KB,
+			expectedBlockCount:    30,
 		},
 		{
-			name: 					"test07",
-			truncateSize: 			4 * unit.MB,
-			firstEvictBlockOffset:	4 * unit.MB,
-			expectedBlockCount: 	31,
+			name:                  "test07",
+			truncateSize:          4 * unit.MB,
+			firstEvictBlockOffset: 4 * unit.MB,
+			expectedBlockCount:    31,
 		},
 		{
-			name: 					"test08",
-			truncateSize: 			5 * unit.MB - 1234,
-			firstEvictBlockOffset:	4 * unit.MB,
-			expectedBlockCount: 	31,
+			name:                  "test08",
+			truncateSize:          5*unit.MB - 1234,
+			firstEvictBlockOffset: 4 * unit.MB,
+			expectedBlockCount:    31,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// write
 			size := 128 * unit.KB
-			for offset := uint64(0); offset < 4 * unit.MB + 100; offset += uint64(size) {
+			for offset := uint64(0); offset < 4*unit.MB+100; offset += uint64(size) {
 				data := randTestData(size)
 				_, _, err = ec.Write(context.Background(), inodeInfo.Inode, offset, data, false)
 				assert.NoErrorf(t, err, "write file ino(%v) offset(%v) size(%v) err", inodeInfo.Inode, offset, size)
@@ -571,12 +571,12 @@ func TestReadAhead_EvictAfterTruncate(t *testing.T) {
 			err = ec.Truncate(context.Background(), inodeInfo.Inode, 0, tt.truncateSize)
 			assert.NoErrorf(t, err, "truncate to size(%v)", tt.truncateSize)
 
-			for startOffset := uint64(128*unit.KB); startOffset < tt.firstEvictBlockOffset; startOffset += readAheadBlockSize {
+			for startOffset := uint64(128 * unit.KB); startOffset < tt.firstEvictBlockOffset; startOffset += readAheadBlockSize {
 				value, ok := s.readAheadBlocks.Load(startOffset)
 				assert.Truef(t, ok, "block(%v) at offset(%v) should be reserved before truncate size(%v)", value, startOffset, tt.truncateSize)
 				assert.NotZerof(t, value.(*ReadAheadBlock).actualDataSize, "block(%v) at offset(%v) should have data but actual size is 0", value, startOffset)
 			}
-			for startOffset := tt.firstEvictBlockOffset; startOffset < 4 * unit.MB + 100; startOffset += readAheadBlockSize {
+			for startOffset := tt.firstEvictBlockOffset; startOffset < 4*unit.MB+100; startOffset += readAheadBlockSize {
 				value, ok := s.readAheadBlocks.Load(startOffset)
 				assert.Falsef(t, ok, "block(%v) at offset(%v) should be evicted before truncate size(%v)", value, startOffset, tt.truncateSize)
 			}
@@ -594,16 +594,16 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 		log.LogFlush()
 	}()
 
-	tests := []struct{
-		name			string
-		writeOff		uint64
-		writeSize		int
-		storeBlocks		[]*ReadAheadBlock
-		expectBlocks	[]uint64
+	tests := []struct {
+		name         string
+		writeOff     uint64
+		writeSize    int
+		storeBlocks  []*ReadAheadBlock
+		expectBlocks []uint64
 	}{
 		{
-			name: "test01",
-			writeOff: 0,
+			name:      "test01",
+			writeOff:  0,
 			writeSize: 1024,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0, actualDataSize: 1024},
@@ -613,8 +613,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{20 * unit.KB, 100 * unit.KB},
 		},
 		{
-			name: "test02",
-			writeOff: 0,
+			name:      "test02",
+			writeOff:  0,
 			writeSize: 128 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0, actualDataSize: 128 * unit.KB},
@@ -624,8 +624,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{128 * unit.KB, 256 * unit.KB},
 		},
 		{
-			name: "test03",
-			writeOff: 0,
+			name:      "test03",
+			writeOff:  0,
 			writeSize: 129 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0, actualDataSize: 120 * unit.KB},
@@ -635,8 +635,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{256 * unit.KB},
 		},
 		{
-			name: "test04",
-			writeOff: 0,
+			name:      "test04",
+			writeOff:  0,
 			writeSize: 260 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0, actualDataSize: 120 * unit.KB},
@@ -646,8 +646,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{},
 		},
 		{
-			name: "test05",
-			writeOff: 1024,
+			name:      "test05",
+			writeOff:  1024,
 			writeSize: 1 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0, actualDataSize: 120 * unit.KB},
@@ -657,9 +657,9 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{128 * unit.KB, 256 * unit.KB},
 		},
 		{
-			name: "test06",
-			writeOff: 1024,
-			writeSize: 128 * unit.KB - 1024,
+			name:      "test06",
+			writeOff:  1024,
+			writeSize: 128*unit.KB - 1024,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0, actualDataSize: 128 * unit.KB},
 				{startFileOffset: 128 * unit.KB, actualDataSize: 200 * unit.KB},
@@ -668,8 +668,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{128 * unit.KB, 256 * unit.KB},
 		},
 		{
-			name: "test07",
-			writeOff: 1024,
+			name:      "test07",
+			writeOff:  1024,
 			writeSize: 128 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 128 * unit.KB, actualDataSize: 128 * unit.KB},
@@ -678,8 +678,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{256 * unit.KB},
 		},
 		{
-			name: "test08",
-			writeOff: 1024,
+			name:      "test08",
+			writeOff:  1024,
 			writeSize: 256 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0 * unit.KB, actualDataSize: 300 * unit.KB},
@@ -691,8 +691,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{512 * unit.KB},
 		},
 		{
-			name: "test09",
-			writeOff: 128 * unit.KB,
+			name:      "test09",
+			writeOff:  128 * unit.KB,
 			writeSize: 256,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0 * unit.KB, actualDataSize: 64 * unit.KB},
@@ -703,8 +703,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{0, 256 * unit.KB, 512 * unit.KB},
 		},
 		{
-			name: "test10",
-			writeOff: 128 * unit.KB,
+			name:      "test10",
+			writeOff:  128 * unit.KB,
 			writeSize: 128 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0 * unit.KB, actualDataSize: 128 * unit.KB},
@@ -715,8 +715,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{0, 256 * unit.KB, 512 * unit.KB},
 		},
 		{
-			name: "test11",
-			writeOff: 128 * unit.KB,
+			name:      "test11",
+			writeOff:  128 * unit.KB,
 			writeSize: 256 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0 * unit.KB, actualDataSize: 128 * unit.KB},
@@ -728,8 +728,8 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 			expectBlocks: []uint64{0, 384 * unit.KB, 512 * unit.KB},
 		},
 		{
-			name: "test12",
-			writeOff: 128 * unit.KB + 1024,
+			name:      "test12",
+			writeOff:  128*unit.KB + 1024,
 			writeSize: 256 * unit.KB,
 			storeBlocks: []*ReadAheadBlock{
 				{startFileOffset: 0 * unit.KB, actualDataSize: 128 * unit.KB},
@@ -773,115 +773,115 @@ func TestReadAhead_prepareReadAhead(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name        		string
-		windowSize			uint64
-		inodeSize			uint64
-		readOff				uint64
-		expectPrepare		bool
-		expectPrepareBlock	*ReadAheadBlock
+		name               string
+		windowSize         uint64
+		inodeSize          uint64
+		readOff            uint64
+		expectPrepare      bool
+		expectPrepareBlock *ReadAheadBlock
 	}{
 		{
-			name: "test01",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 1 * unit.MB,
-			readOff: 0,
-			expectPrepare: false,
+			name:               "test01",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          1 * unit.MB,
+			readOff:            0,
+			expectPrepare:      false,
 			expectPrepareBlock: nil,
 		},
 		{
-			name: "test02",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: DefaultReadAheadWindowMB * unit.MB,
-			readOff: 1000,
-			expectPrepare: false,
+			name:               "test02",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          DefaultReadAheadWindowMB * unit.MB,
+			readOff:            1000,
+			expectPrepare:      false,
 			expectPrepareBlock: nil,
 		},
 		{
-			name: "test03",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 3 * unit.MB + 1234,
-			readOff: 1234,
-			expectPrepare: true,
-			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 128 * unit.KB, endFileOffset: 3 * unit.MB + 1234},
+			name:               "test03",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          3*unit.MB + 1234,
+			readOff:            1234,
+			expectPrepare:      true,
+			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 128 * unit.KB, endFileOffset: 3*unit.MB + 1234},
 		},
 		{
-			name: "test04",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 3 * unit.MB + 1234,
-			readOff: 128 * unit.KB,
-			expectPrepare: true,
-			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 128 * unit.KB, endFileOffset: 3 * unit.MB + 1234},
+			name:               "test04",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          3*unit.MB + 1234,
+			readOff:            128 * unit.KB,
+			expectPrepare:      true,
+			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 128 * unit.KB, endFileOffset: 3*unit.MB + 1234},
 		},
 		{
-			name: "test05",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 4 * unit.MB + 1234,
-			readOff: DefaultReadAheadWindowMB * unit.MB,
-			expectPrepare: true,
-			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 2 * DefaultReadAheadWindowMB * unit.MB, endFileOffset: 4 * unit.MB + 1234},
+			name:               "test05",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          4*unit.MB + 1234,
+			readOff:            DefaultReadAheadWindowMB * unit.MB,
+			expectPrepare:      true,
+			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 2 * DefaultReadAheadWindowMB * unit.MB, endFileOffset: 4*unit.MB + 1234},
 		},
 		{
-			name: "test06",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 3 * unit.MB + 1234,
-			readOff: DefaultReadAheadWindowMB * unit.MB,
-			expectPrepare: false,
+			name:               "test06",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          3*unit.MB + 1234,
+			readOff:            DefaultReadAheadWindowMB * unit.MB,
+			expectPrepare:      false,
 			expectPrepareBlock: nil,
 		},
 		{
-			name: "test07",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 3 * unit.MB + 1234,
-			readOff: 4 * unit.MB,
-			expectPrepare: false,
+			name:               "test07",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          3*unit.MB + 1234,
+			readOff:            4 * unit.MB,
+			expectPrepare:      false,
 			expectPrepareBlock: nil,
 		},
 		{
-			name: "test08",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 3 * unit.MB + 1234,
-			readOff: 4 * unit.MB,
-			expectPrepare: false,
+			name:               "test08",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          3*unit.MB + 1234,
+			readOff:            4 * unit.MB,
+			expectPrepare:      false,
 			expectPrepareBlock: nil,
 		},
 		{
-			name: "test09",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 2 * DefaultReadAheadWindowMB * unit.MB,
-			readOff: DefaultReadAheadWindowMB * unit.MB + 1234,
-			expectPrepare: false,
+			name:               "test09",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          2 * DefaultReadAheadWindowMB * unit.MB,
+			readOff:            DefaultReadAheadWindowMB*unit.MB + 1234,
+			expectPrepare:      false,
 			expectPrepareBlock: nil,
 		},
 		{
-			name: "test10",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 5 * unit.MB,
-			readOff: DefaultReadAheadWindowMB * unit.MB - 1234,
-			expectPrepare: true,
+			name:               "test10",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          5 * unit.MB,
+			readOff:            DefaultReadAheadWindowMB*unit.MB - 1234,
+			expectPrepare:      true,
 			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 128 * unit.KB, endFileOffset: 2 * DefaultReadAheadWindowMB * unit.MB},
 		},
 		{
-			name: "test11",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 5 * unit.MB + 123,
-			readOff: DefaultReadAheadWindowMB * unit.MB + 1234,
-			expectPrepare: true,
-			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 2 * DefaultReadAheadWindowMB * unit.MB, endFileOffset: 5 * unit.MB + 123},
+			name:               "test11",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          5*unit.MB + 123,
+			readOff:            DefaultReadAheadWindowMB*unit.MB + 1234,
+			expectPrepare:      true,
+			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 2 * DefaultReadAheadWindowMB * unit.MB, endFileOffset: 5*unit.MB + 123},
 		},
 		{
-			name: "test12",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: DefaultReadAheadWindowMB * unit.MB,
-			readOff: DefaultReadAheadWindowMB * unit.MB,
-			expectPrepare: false,
+			name:               "test12",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          DefaultReadAheadWindowMB * unit.MB,
+			readOff:            DefaultReadAheadWindowMB * unit.MB,
+			expectPrepare:      false,
 			expectPrepareBlock: nil,
 		},
 		{
-			name: "test13",
-			windowSize: DefaultReadAheadWindowMB * unit.MB,
-			inodeSize: 6 * unit.MB,
-			readOff: DefaultReadAheadWindowMB * unit.MB,
-			expectPrepare: true,
+			name:               "test13",
+			windowSize:         DefaultReadAheadWindowMB * unit.MB,
+			inodeSize:          6 * unit.MB,
+			readOff:            DefaultReadAheadWindowMB * unit.MB,
+			expectPrepare:      true,
 			expectPrepareBlock: &ReadAheadBlock{startFileOffset: 2 * DefaultReadAheadWindowMB * unit.MB, endFileOffset: 3 * DefaultReadAheadWindowMB * unit.MB},
 		},
 	}
@@ -894,7 +894,7 @@ func TestReadAhead_prepareReadAhead(t *testing.T) {
 			assert.Equalf(t, tt.expectPrepare, preparing, "trigger prepare blocks")
 			if preparing {
 				assert.Equalf(t, 1, len(controller.prepareChan), "prepare channel length should be 1")
-				prepareBlock := <- controller.prepareChan
+				prepareBlock := <-controller.prepareChan
 				assert.Equalf(t, s.inode, prepareBlock.inodeID, "inode of prepare block")
 				assert.Equalf(t, tt.expectPrepareBlock.startFileOffset, prepareBlock.startFileOffset, "start offset of prepare block")
 				assert.Equalf(t, tt.expectPrepareBlock.endFileOffset, prepareBlock.endFileOffset, "end offset of prepare block")
@@ -913,12 +913,12 @@ func TestReadAhead_splitReadAheadBlock(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name               	string
-		prepareBlock        *ReadAheadBlock
-		expectSplitBlocks	[]*ReadAheadBlock
+		name              string
+		prepareBlock      *ReadAheadBlock
+		expectSplitBlocks []*ReadAheadBlock
 	}{
 		{
-			name: "test01",
+			name:         "test01",
 			prepareBlock: &ReadAheadBlock{inodeID: 5, startFileOffset: 128 * unit.KB, endFileOffset: 1 * unit.MB},
 			expectSplitBlocks: []*ReadAheadBlock{
 				{inodeID: 5, startFileOffset: 128 * unit.KB, endFileOffset: 2 * 128 * unit.KB},
@@ -931,43 +931,43 @@ func TestReadAhead_splitReadAheadBlock(t *testing.T) {
 			},
 		},
 		{
-			name: "test02",
-			prepareBlock: &ReadAheadBlock{inodeID: 5, startFileOffset: 0, endFileOffset: 128 * unit.KB - 1000},
+			name:         "test02",
+			prepareBlock: &ReadAheadBlock{inodeID: 5, startFileOffset: 0, endFileOffset: 128*unit.KB - 1000},
 			expectSplitBlocks: []*ReadAheadBlock{
-				{inodeID: 5, startFileOffset: 0, endFileOffset: 128 * unit.KB - 1000},
+				{inodeID: 5, startFileOffset: 0, endFileOffset: 128*unit.KB - 1000},
 			},
 		},
 		{
-			name: "test03",
+			name:         "test03",
 			prepareBlock: &ReadAheadBlock{inodeID: 5, startFileOffset: 0, endFileOffset: 128 * unit.KB},
 			expectSplitBlocks: []*ReadAheadBlock{
 				{inodeID: 5, startFileOffset: 0, endFileOffset: 128 * unit.KB},
 			},
 		},
 		{
-			name: "test04",
-			prepareBlock: &ReadAheadBlock{inodeID: 5, startFileOffset: 1000, endFileOffset: 128 * unit.KB + 2000},
+			name:         "test04",
+			prepareBlock: &ReadAheadBlock{inodeID: 5, startFileOffset: 1000, endFileOffset: 128*unit.KB + 2000},
 			expectSplitBlocks: []*ReadAheadBlock{
-				{inodeID: 5, startFileOffset: 1000, endFileOffset: 128 * unit.KB + 1000},
-				{inodeID: 5, startFileOffset: 128 * unit.KB + 1000, endFileOffset: 128 * unit.KB + 2000},
+				{inodeID: 5, startFileOffset: 1000, endFileOffset: 128*unit.KB + 1000},
+				{inodeID: 5, startFileOffset: 128*unit.KB + 1000, endFileOffset: 128*unit.KB + 2000},
 			},
 		},
 		{
-			name: "test05",
+			name:         "test05",
 			prepareBlock: &ReadAheadBlock{inodeID: 5, startFileOffset: 1000, endFileOffset: 128 * unit.KB},
 			expectSplitBlocks: []*ReadAheadBlock{
 				{inodeID: 5, startFileOffset: 1000, endFileOffset: 128 * unit.KB},
 			},
 		},
 		{
-			name: "test06",
+			name:         "test06",
 			prepareBlock: &ReadAheadBlock{inodeID: 5, startFileOffset: 128 * unit.KB, endFileOffset: 129 * unit.KB},
 			expectSplitBlocks: []*ReadAheadBlock{
 				{inodeID: 5, startFileOffset: 128 * unit.KB, endFileOffset: 129 * unit.KB},
 			},
 		},
 		{
-			name: "test07",
+			name:         "test07",
 			prepareBlock: &ReadAheadBlock{inodeID: 5, startFileOffset: 130 * unit.KB, endFileOffset: 400 * unit.KB},
 			expectSplitBlocks: []*ReadAheadBlock{
 				{inodeID: 5, startFileOffset: 130 * unit.KB, endFileOffset: 258 * unit.KB},
@@ -982,7 +982,7 @@ func TestReadAhead_splitReadAheadBlock(t *testing.T) {
 			controller.splitReadAheadBlock(tt.prepareBlock)
 			assert.Equalf(t, len(tt.expectSplitBlocks), len(controller.blockChan), "block count in channel")
 			for i := 0; i < len(tt.expectSplitBlocks); i++ {
-				block := <- controller.blockChan
+				block := <-controller.blockChan
 				assert.Equalf(t, tt.expectSplitBlocks[i].inodeID, block.inodeID, "block inode")
 				assert.Equalf(t, tt.expectSplitBlocks[i].startFileOffset, block.startFileOffset, "block start offset")
 				assert.Equalf(t, tt.expectSplitBlocks[i].endFileOffset, block.endFileOffset, "block end offset")
@@ -1013,72 +1013,72 @@ func TestReadAhead_doReadAhead(t *testing.T) {
 	inodeInfo, err = mw.Create_ll(context.Background(), 1, "TestReadAhead_doReadAhead", 0644, 0, 0, nil)
 	assert.NoErrorf(t, err, "create file TestReadAhead_doReadAhead err")
 
-	err = ec.OpenStream(inodeInfo.Inode, false)
+	err = ec.OpenStream(inodeInfo.Inode, false, false)
 	assert.NoErrorf(t, err, "open streamer of inode(%v)", inodeInfo.Inode)
 	s := ec.GetStreamer(inodeInfo.Inode)
 	assert.NotNilf(t, s, "get streamer of inode(%v)", inodeInfo.Inode)
 
-	size := 3 * 128 * unit.KB + 1234
+	size := 3*128*unit.KB + 1234
 	fileData := randTestData(size)
 	_, _, err = ec.Write(context.Background(), inodeInfo.Inode, 0, fileData, false)
 	assert.NoErrorf(t, err, "write file ino(%v) offset(%v) size(%v) err", inodeInfo.Inode, 0, size)
 
-	tests := []struct{
-		name			string
-		readBlock		*ReadAheadBlock
-		expectedBlock	*ReadAheadBlock
-		expectedErr		bool
+	tests := []struct {
+		name          string
+		readBlock     *ReadAheadBlock
+		expectedBlock *ReadAheadBlock
+		expectedErr   bool
 	}{
 		{
-			name: "test01",
+			name:      "test01",
 			readBlock: &ReadAheadBlock{startFileOffset: 0, endFileOffset: 128 * unit.KB},
 			expectedBlock: &ReadAheadBlock{
 				startFileOffset: 0,
-				endFileOffset: 128 * unit.KB,
-				actualDataSize: 128 * unit.KB,
-				data: make([]byte, 128 * unit.KB),
+				endFileOffset:   128 * unit.KB,
+				actualDataSize:  128 * unit.KB,
+				data:            make([]byte, 128*unit.KB),
 			},
 			expectedErr: false,
 		},
 		{
-			name: "test02",
+			name:      "test02",
 			readBlock: &ReadAheadBlock{startFileOffset: 4 * 128 * unit.KB, endFileOffset: 5 * 128 * unit.KB},
 			expectedBlock: &ReadAheadBlock{
 				startFileOffset: 4 * 128 * unit.KB,
-				endFileOffset: 5 * 128 * unit.KB,
-				actualDataSize: 0,
+				endFileOffset:   5 * 128 * unit.KB,
+				actualDataSize:  0,
 			},
 			expectedErr: true,
 		},
 		{
-			name: "test03",
+			name:      "test03",
 			readBlock: &ReadAheadBlock{startFileOffset: 3 * 128 * unit.KB, endFileOffset: 4 * 128 * unit.KB},
 			expectedBlock: &ReadAheadBlock{
 				startFileOffset: 3 * 128 * unit.KB,
-				endFileOffset: 4 * 128 * unit.KB,
-				actualDataSize: 1234,
-				data: make([]byte, 128 * unit.KB),
+				endFileOffset:   4 * 128 * unit.KB,
+				actualDataSize:  1234,
+				data:            make([]byte, 128*unit.KB),
 			},
 			expectedErr: false,
 		},
 		{
-			name: "test04",
-			readBlock: &ReadAheadBlock{startFileOffset: 2 * 128 * unit.KB + 1234, endFileOffset: 3 * 128 * unit.KB + 1234},
+			name:      "test04",
+			readBlock: &ReadAheadBlock{startFileOffset: 2*128*unit.KB + 1234, endFileOffset: 3*128*unit.KB + 1234},
 			expectedBlock: &ReadAheadBlock{
-				startFileOffset: 2 * 128 * unit.KB + 1234,
-				endFileOffset: 3 * 128 * unit.KB + 1234,
-				actualDataSize: 128 * unit.KB,
-				data: make([]byte, 128 * unit.KB),
+				startFileOffset: 2*128*unit.KB + 1234,
+				endFileOffset:   3*128*unit.KB + 1234,
+				actualDataSize:  128 * unit.KB,
+				data:            make([]byte, 128*unit.KB),
 			},
 			expectedErr: false,
 		},
 		{
-			name: "test05",
-			readBlock: &ReadAheadBlock{startFileOffset: 3 * 128 * unit.KB + 1234, endFileOffset: 4 * 128 * unit.KB + 1234},
+			name:      "test05",
+			readBlock: &ReadAheadBlock{startFileOffset: 3*128*unit.KB + 1234, endFileOffset: 4*128*unit.KB + 1234},
 			expectedBlock: &ReadAheadBlock{
-				startFileOffset: 3 * 128 * unit.KB + 1234,
-				endFileOffset: 4 * 128 * unit.KB + 1234,
-				actualDataSize: 0,
+				startFileOffset: 3*128*unit.KB + 1234,
+				endFileOffset:   4*128*unit.KB + 1234,
+				actualDataSize:  0,
 			},
 			expectedErr: true,
 		},
@@ -1100,12 +1100,12 @@ func TestReadAhead_doReadAhead(t *testing.T) {
 }
 
 type readAheadConfigRule struct {
-	source			string
-	memMB			int64
-	windowMB		int64
-	expectMemMB		int64
-	expectWindowMB	int64
-	isErr			bool
+	source         string
+	memMB          int64
+	windowMB       int64
+	expectMemMB    int64
+	expectWindowMB int64
+	isErr          bool
 }
 
 func TestReadAhead_Config(t *testing.T) {
@@ -1117,40 +1117,40 @@ func TestReadAhead_Config(t *testing.T) {
 
 	Remote_Config := "remote"
 	Local_Config := "local"
-	tests := []struct{
-		name		string
-		configRules	[]*readAheadConfigRule
+	tests := []struct {
+		name        string
+		configRules []*readAheadConfigRule
 	}{
 		{
-			name:		 "test01",
+			name: "test01",
 			configRules: []*readAheadConfigRule{
 				{source: Local_Config, memMB: 0, windowMB: 0, expectMemMB: 0, expectWindowMB: 0, isErr: false},                                 // 无操作
 				{source: Local_Config, memMB: -1, windowMB: -1, expectMemMB: 0, expectWindowMB: 0, isErr: false},                               // 无操作
 				{source: Local_Config, memMB: 0, windowMB: 0, expectMemMB: 0, expectWindowMB: 0, isErr: false},                                 // 无操作
 				{source: Local_Config, memMB: 0, windowMB: 1, expectMemMB: 0, expectWindowMB: 0, isErr: false},                                 // 无操作
 				{source: Local_Config, memMB: 10, windowMB: 0, expectMemMB: 10, expectWindowMB: int64(DefaultReadAheadWindowMB), isErr: false}, // 初始化
-				{source: Remote_Config, memMB: 5, windowMB: 1, expectMemMB: 10, expectWindowMB: 1, isErr: false}, 								// local优先
+				{source: Remote_Config, memMB: 5, windowMB: 1, expectMemMB: 10, expectWindowMB: 1, isErr: false},                               // local优先
 				{source: Local_Config, memMB: -1, windowMB: -1, expectMemMB: 5, expectWindowMB: 1, isErr: false},                               // local取消设置，改用remote设置值
 				{source: Remote_Config, memMB: 0, windowMB: -1, expectMemMB: 5, expectWindowMB: int64(DefaultReadAheadWindowMB), isErr: false}, // remote window取消，设置为默认值
 				{source: Remote_Config, memMB: -1, windowMB: 5, expectMemMB: 0, expectWindowMB: 5, isErr: false},                               // 关闭预读
 			},
 		},
 		{
-			name:		 "test02",
+			name: "test02",
 			configRules: []*readAheadConfigRule{
 				{source: Local_Config, memMB: 10, windowMB: 1, expectMemMB: 10, expectWindowMB: 1, isErr: false},
 				{source: Local_Config, memMB: 0, windowMB: 1, expectMemMB: 10, expectWindowMB: 1, isErr: false},
 				{source: Local_Config, memMB: 5, windowMB: 0, expectMemMB: 5, expectWindowMB: 1, isErr: false},
-				{source: Local_Config, memMB: -1, windowMB: -1, expectMemMB: 0, expectWindowMB: int64(DefaultReadAheadWindowMB), isErr: false},		// 取消
+				{source: Local_Config, memMB: -1, windowMB: -1, expectMemMB: 0, expectWindowMB: int64(DefaultReadAheadWindowMB), isErr: false}, // 取消
 				{source: Local_Config, memMB: 10, windowMB: -1, expectMemMB: 10, expectWindowMB: int64(DefaultReadAheadWindowMB), isErr: false},
-				{source: Local_Config, memMB: -1, windowMB: 10, expectMemMB: 0, expectWindowMB: 10, isErr: false},		// 取消
+				{source: Local_Config, memMB: -1, windowMB: 10, expectMemMB: 0, expectWindowMB: 10, isErr: false}, // 取消
 				{source: Local_Config, memMB: 10, windowMB: 0, expectMemMB: 10, expectWindowMB: 10, isErr: false},
 				{source: Remote_Config, memMB: 5, windowMB: 1, expectMemMB: 10, expectWindowMB: 10, isErr: false},
-				{source: Local_Config, memMB: 0, windowMB: -1, expectMemMB: 10, expectWindowMB: 1, isErr: false},	// local取消window设置，改用remote设置值
+				{source: Local_Config, memMB: 0, windowMB: -1, expectMemMB: 10, expectWindowMB: 1, isErr: false}, // local取消window设置，改用remote设置值
 			},
 		},
-		{	// 非法值
-			name:		 "test03",
+		{ // 非法值
+			name: "test03",
 			configRules: []*readAheadConfigRule{
 				{source: Remote_Config, memMB: 5, windowMB: 0, expectMemMB: 5, expectWindowMB: int64(DefaultReadAheadWindowMB), isErr: false},
 				{source: Local_Config, memMB: 102400, windowMB: -1, expectMemMB: 5, expectWindowMB: int64(DefaultReadAheadWindowMB), isErr: true},

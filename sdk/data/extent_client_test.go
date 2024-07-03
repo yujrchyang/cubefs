@@ -66,7 +66,7 @@ func TestSetExtentSize(t *testing.T) {
 func TestRateLimit(t *testing.T) {
 	file := "TestRateLimit"
 	info, _ := create(file)
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	data := []byte("a")
 	offset := uint64(unit.DefaultTinySizeLimit)
 
@@ -121,7 +121,7 @@ func TestRateLimit(t *testing.T) {
 func TestOverWriteBuffer(t *testing.T) {
 	info, err := create("TestOverWriteBuffer")
 	ino := info.Inode
-	ec.OpenStream(ino, true)
+	ec.OpenStream(ino, true, false)
 	streamer := ec.GetStreamer(ino)
 	data0 := make([]byte, 6)
 	data1 := []byte{1, 2, 3}
@@ -158,7 +158,7 @@ func TestOverWriteBuffer(t *testing.T) {
 func BenchmarkExtentClient(b *testing.B) {
 	info, _ := create("BenchmarkExtentClient")
 	ino := info.Inode
-	ec.OpenStream(ino, false)
+	ec.OpenStream(ino, false, false)
 	bs := 16 * 1024
 	data := make([]byte, bs)
 	b.Run("write", func(b *testing.B) {

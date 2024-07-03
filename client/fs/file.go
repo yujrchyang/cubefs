@@ -119,7 +119,7 @@ func (f *Node) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}()
 
 	start := time.Now()
-	Sup.ec.OpenStream(ino, false)
+	Sup.ec.OpenStream(ino, false, false)
 	if Sup.prefetchManager == nil {
 		Sup.ec.RefreshExtentsCache(ctx, ino)
 	}

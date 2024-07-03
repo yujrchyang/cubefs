@@ -58,7 +58,7 @@ func TestInodeReuse_MultiFD(t *testing.T) {
 	ino := fInfo.Sys().(*syscall.Stat_t).Ino
 	data := make([]byte, 1024)
 	ctx := context.Background()
-	err := ec.OpenStream(ino, false)
+	err := ec.OpenStream(ino, false, false)
 	assert.Nil(t, err)
 	_, _, err = ec.Write(ctx, ino, 0, data, false)
 	assert.Nil(t, err)

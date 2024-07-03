@@ -487,7 +487,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 			_ = v.mw.Evict(context.Background(), invisibleTempDataInode.Inode, true)
 		}
 	}()
-	if err = v.ec.OpenStream(invisibleTempDataInode.Inode, false); err != nil {
+	if err = v.ec.OpenStream(invisibleTempDataInode.Inode, false, false); err != nil {
 		return
 	}
 	defer func() {
@@ -716,7 +716,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 			// Check if the directory is empty and cannot delete non-empty directories.
 			var info *proto.InodeInfo
 			info, err = v.mw.InodeGet_ll(context.Background(), ino)
-			if err != nil  || info.Nlink > 2 {
+			if err != nil || info.Nlink > 2 {
 				return
 			}
 		}
@@ -818,7 +818,7 @@ func (v *Volume) WritePart(path string, multipartId string, partId uint16, reade
 		}
 	}()
 
-	if err = v.ec.OpenStream(tempInodeInfo.Inode, false); err != nil {
+	if err = v.ec.OpenStream(tempInodeInfo.Inode, false, false); err != nil {
 		log.LogErrorf("WritePart: data open stream fail: volume(%v) path(%v) multipartID(%v) partID(%v) inode(%v) err(%v)",
 			v.name, path, multipartId, partId, tempInodeInfo.Inode, err)
 		return nil, err
@@ -1136,7 +1136,7 @@ func (v *Volume) streamWrite(inode uint64, reader io.Reader, h hash.Hash) (size 
 }
 
 func (v *Volume) appendInodeHash(h hash.Hash, inode uint64, total uint64, preAllocatedBuf []byte) (err error) {
-	if err = v.ec.OpenStream(inode, false); err != nil {
+	if err = v.ec.OpenStream(inode, false, false); err != nil {
 		log.LogErrorf("appendInodeHash: data open stream fail: inode(%v) err(%v)",
 			inode, err)
 		return
@@ -1259,7 +1259,7 @@ func (v *Volume) ReadInode(ino uint64, writer io.Writer, offset, size uint64) (i
 		return 0, nil
 	}
 
-	if err = v.ec.OpenStream(ino, false); err != nil {
+	if err = v.ec.OpenStream(ino, false, false); err != nil {
 		log.LogErrorf("ReadFile: data open stream fail: volume(%v) inode(%v) err(%v)", v.name, ino, err)
 		return 0, err
 	}
@@ -1539,8 +1539,9 @@ func (v *Volume) Close() error {
 // and the actual search result is a non-directory, an ENOENT error is returned.
 //
 // ENOENT:
-// 		0x2 ENOENT No such file or directory. A component of a specified
-// 		pathname did not exist, or the pathname was an empty string.
+//
+//	0x2 ENOENT No such file or directory. A component of a specified
+//	pathname did not exist, or the pathname was an empty string.
 func (v *Volume) recursiveLookupTarget(ctx context.Context, path string, targetRedirect bool) (entries POSIXDentries, err error) {
 	defer func() {
 		if err == syscall.ELOOP {
@@ -2498,7 +2499,7 @@ func (v *Volume) CopyFile(ctx context.Context, sv *Volume, sourcePath, targetPat
 			_ = v.mw.Evict(context.Background(), tInodeInfo.Inode, true)
 		}
 	}()
-	if err = v.ec.OpenStream(tInodeInfo.Inode, false); err != nil {
+	if err = v.ec.OpenStream(tInodeInfo.Inode, false, false); err != nil {
 		return
 	}
 	defer func() {
