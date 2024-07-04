@@ -1514,7 +1514,7 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		log.LogErrorf("action[handleDataNodeHeartbeatResp] dataNode[%v],zone[%v],node set[%v], err[%v]", dataNode.Addr, dataNode.ZoneName, dataNode.NodeSetID, err)
 	}
 	c.updateDataNode(dataNode, resp.PartitionReports)
-	if dataNode.BadDisks != nil {
+	if dataNode.BadDisks != nil && len(dataNode.BadDisks) > 0 {
 		c.DataNodeBadDisks.Store(dataNode.Addr, dataNode.BadDisks)
 	} else {
 		c.DataNodeBadDisks.Delete(dataNode.Addr)

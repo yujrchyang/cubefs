@@ -21,6 +21,7 @@ import (
 	"github.com/cubefs/cubefs/raftstore"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -203,7 +204,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		ClientReqRecordsReservedMin:         c.cfg.ClientReqRecordsReservedMin,
 		ClientReqRemoveDupFlag:              c.cfg.ClientReqRemoveDup,
 		RemoteReadConnTimeoutMs:             c.cfg.RemoteReadConnTimeoutMs,
-		ZoneNetConnConfig:                   c.cfg.ZoneNetConnConfig,
+		ZoneNetConnConfig:                   c.cfg.getZoneNetConnConfigMap(),
 		MetaNodeDumpSnapCountByZone:         c.cfg.MetaNodeDumpSnapCountByZone,
 		ClusterName:                         c.cfg.ClusterName,
 		TopologyFetchIntervalMin:            c.cfg.TopologyFetchIntervalMin,
@@ -1227,9 +1228,13 @@ func (c *Cluster) loadClusterValue() (err error) {
 			atomic.StoreInt32(&c.cfg.ClientReqRecordsReservedMin, cv.ClientReqRecordsReservedMin)
 		}
 		c.cfg.RemoteReadConnTimeoutMs = cv.RemoteReadConnTimeoutMs
-		c.cfg.ZoneNetConnConfig = cv.ZoneNetConnConfig
-		if c.cfg.ZoneNetConnConfig == nil {
-			c.cfg.ZoneNetConnConfig = make(map[string]bsProto.ConnConfig)
+
+		if cv.ZoneNetConnConfig == nil {
+			c.cfg.ZoneNetConnConfig = sync.Map{}
+		} else {
+			for zoneName, connConfig := range cv.ZoneNetConnConfig {
+				c.cfg.ZoneNetConnConfig.Store(zoneName, connConfig)
+			}
 		}
 
 		c.cfg.MetaNodeDumpSnapCountByZone = cv.MetaNodeDumpSnapCountByZone

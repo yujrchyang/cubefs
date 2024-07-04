@@ -407,6 +407,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	topoFetchIntervalMin := atomic.LoadInt64(&m.cluster.cfg.TopologyFetchIntervalMin)
 	topoForceFetchIntervalSec := atomic.LoadInt64(&m.cluster.cfg.TopologyForceFetchIntervalSec)
+	zoneNetConnConfig := m.cluster.cfg.getZoneNetConnConfigMap()
 	cInfo := &proto.LimitInfo{
 		Cluster:                                m.cluster.Name,
 		MetaNodeDeleteBatchCount:               batchCount,
@@ -474,7 +475,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		ClientReqRecordsReservedMin:            clientReqRecordsReservedMin,
 		ClientReqRemoveDupFlag:                 m.cluster.cfg.ClientReqRemoveDup,
 		RemoteReadConnTimeout:                  m.cluster.cfg.RemoteReadConnTimeoutMs,
-		ZoneNetConnConfig:                      m.cluster.cfg.ZoneNetConnConfig,
+		ZoneNetConnConfig:                      zoneNetConnConfig,
 		MetaNodeDumpSnapCountByZone:            m.cluster.cfg.MetaNodeDumpSnapCountByZone,
 		TopologyFetchIntervalMin:               topoFetchIntervalMin,
 		TopologyForceFetchIntervalSec:          topoForceFetchIntervalSec,
@@ -610,6 +611,16 @@ func (m *Server) getDataPartition(w http.ResponseWriter, r *http.Request) {
 	defer func() { metrics.Set(err) }()
 	if partitionID, volName, err = parseRequestToGetDataPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if partitionID == 0 {
+		tmpMetrics := exporter.NewCustomKeyTP(gAlarmKeyMap[dpIdIsZero])
+		hosts := make([]string, 0)
+		hosts = append(hosts, " ")
+		tmpDp := &DataPartition{PartitionID: 0, Hosts: hosts, Status: proto.ReadOnly, ReplicaNum: 1}
+		sendOkReply(w, r, newSuccessHTTPReply(tmpDp.ToProto(m.cluster)))
+		tmpMetrics.Set(nil)
 		return
 	}
 
@@ -2090,6 +2101,7 @@ func (m *Server) getVolSimpleInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	volView = newSimpleView(vol)
+	m.cluster.adjustConnConfigInfo(volView)
 	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 		if masterRegionZoneName, slaveRegionZone, err := m.cluster.getMasterAndSlaveRegionZoneName(vol.zoneName); err == nil {
 			volView.MasterRegionZone = convertSliceToVolZoneName(masterRegionZoneName)
@@ -6752,7 +6764,7 @@ func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
 		UmpJmtpBatch:           m.cluster.cfg.UmpJmtpBatch,
 		RemoteCacheBoostEnable: m.cluster.cfg.RemoteCacheBoostEnable,
 		RemoteReadTimeoutMs:    m.cluster.cfg.RemoteReadConnTimeoutMs,
-		ZoneConnConfig:         m.cluster.cfg.ZoneNetConnConfig,
+		ZoneConnConfig:         m.cluster.cfg.getZoneNetConnConfigMap(),
 	}
 	cf.DataNodes = m.cluster.allDataNodes()
 	cf.EcNodes = m.cluster.allEcNodes()

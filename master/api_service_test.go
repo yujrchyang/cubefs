@@ -4511,3 +4511,55 @@ func TestUnavailableDataPartitions(t *testing.T) {
 		t.Fail()
 	}
 }
+
+func TestDpIDIsZero(t *testing.T) {
+	api := mc.AdminAPI()
+	partition, err := api.GetDataPartition(commonVolName, 0)
+	if !assert.NoError(t, err) {
+		t.Fail()
+	}
+	if len(partition.Hosts) < 1 {
+		t.Fail()
+	}
+}
+
+func TestVolNetConnConfig(t *testing.T) {
+	emptyConnConfig := proto.ConnConfig{}
+	zoneConnConfig :=
+		proto.ConnConfig{
+			IdleTimeoutSec:   1000,
+			WriteTimeoutNs:   10000,
+			ReadTimeoutNs:    10000,
+			ConnectTimeoutNs: 10000,
+		}
+	oldConnConfig := commonVol.ConnConfig
+	oldZoneName := commonVol.zoneName
+	commonVol.zoneName = testZone2
+	commonVol.ConnConfig = emptyConnConfig
+	server.cluster.cfg.ZoneNetConnConfig.Store(testZone2, zoneConnConfig)
+	volView := newSimpleView(commonVol)
+	server.cluster.adjustConnConfigInfo(volView)
+	if !assert.Equal(t, zoneConnConfig.ConnectTimeoutNs, commonVol.ConnConfig.ConnectTimeoutNs) ||
+		!assert.Equal(t, zoneConnConfig.IdleTimeoutSec, commonVol.ConnConfig.IdleTimeoutSec) ||
+		!assert.Equal(t, zoneConnConfig.ReadTimeoutNs, commonVol.ConnConfig.ReadTimeoutNs) ||
+		!assert.Equal(t, zoneConnConfig.WriteTimeoutNs, commonVol.ConnConfig.WriteTimeoutNs) {
+		t.Fail()
+	}
+	connConfig1 := proto.ConnConfig{
+		IdleTimeoutSec:   100,
+		WriteTimeoutNs:   1000,
+		ReadTimeoutNs:    1000,
+		ConnectTimeoutNs: 1000,
+	}
+	commonVol.ConnConfig = connConfig1
+	volView = newSimpleView(commonVol)
+	server.cluster.adjustConnConfigInfo(volView)
+	if !assert.Equal(t, connConfig1.ConnectTimeoutNs, commonVol.ConnConfig.ConnectTimeoutNs) ||
+		!assert.Equal(t, connConfig1.IdleTimeoutSec, commonVol.ConnConfig.IdleTimeoutSec) ||
+		!assert.Equal(t, connConfig1.ReadTimeoutNs, commonVol.ConnConfig.ReadTimeoutNs) ||
+		!assert.Equal(t, connConfig1.WriteTimeoutNs, commonVol.ConnConfig.WriteTimeoutNs) {
+		t.Fail()
+	}
+	commonVol.zoneName = oldZoneName
+	commonVol.ConnConfig = oldConnConfig
+}
