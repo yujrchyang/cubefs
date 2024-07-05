@@ -1833,6 +1833,7 @@ func (s *DataNode) buildHeartBeatResponsePb(response *proto.DataNodeHeartbeatRes
 			NeedCompare:     true,
 			IsLearner:       partition.IsRaftLearner(),
 			IsRecover:       partition.DataPartitionCreateType == proto.DecommissionedCreateDataPartition,
+			IsSFX:           partition.disk.IsSfx,
 		}
 		log.LogDebugf("action[Heartbeats] dpid(%v), status(%v) total(%v) used(%v) leader(%v) isLeader(%v) isLearner(%v).",
 			vr.PartitionID, vr.PartitionStatus, vr.Total, vr.Used, leaderAddr, vr.IsLeader, vr.IsLearner)
@@ -1863,6 +1864,7 @@ func (s *DataNode) buildHeartBeatResponsePb(response *proto.DataNodeHeartbeatRes
 			response.BadDisks = append(response.BadDisks, d.Path)
 		}
 	}
+	response.Medium = proto.MediumTypePb(s.medium)
 }
 
 func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatResponse) {
@@ -1930,4 +1932,5 @@ func (s *DataNode) buildHeartBeatResponse(response *proto.DataNodeHeartbeatRespo
 			response.BadDisks = append(response.BadDisks, d.Path)
 		}
 	}
+	response.Medium = s.medium
 }

@@ -2,7 +2,15 @@
 syntax = "proto3";
 package proto;
 
-// option go_package = "github.com/cubefs/cubefs/proto";
+//option go_package = "github.com/cubefs/cubefs/proto";
+
+enum MediumTypePb {
+    INIT = 0;
+    SSD  = 1;
+    HDD  = 2;
+    EC   = 3;
+    SFX  = 4;
+}
 
 message PartitionReportPb {
     string VolName = 1;
@@ -17,6 +25,7 @@ message PartitionReportPb {
     bool   IsLearner = 10;
     int64  LastUpdateTime = 11;
     bool   IsRecover = 12;
+    bool   IsSFX = 13;
 }
 
 message DiskInfoPb {
@@ -47,6 +56,7 @@ message DataNodeHeartbeatResponsePb {
     repeated string BadDisks = 13;
     map<string, DiskInfoPb> DiskInfos = 14;
     string Version = 15;
+    MediumTypePb medium = 16;
 }
 
 message MetaPartitionReportPb {

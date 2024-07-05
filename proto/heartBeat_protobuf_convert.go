@@ -1,5 +1,9 @@
 package proto
 
+func (from MediumTypePb) ConvertToView() MediumType {
+	return MediumType(from)
+}
+
 func (from *DiskInfoPb) ConvertToView() *DiskInfo {
 	return &DiskInfo{
 		Total:         from.Total,
@@ -29,6 +33,7 @@ func (from *PartitionReportPb) ConvertToView() *PartitionReport {
 		IsLearner:       from.IsLearner,
 		LastUpdateTime:  from.LastUpdateTime,
 		IsRecover:       from.IsRecover,
+		IsSFX:           from.IsSFX,
 	}
 }
 
@@ -61,6 +66,7 @@ func (from *DataNodeHeartbeatResponsePb) ConvertToView() *DataNodeHeartbeatRespo
 			return res
 		}(from.DiskInfos),
 		Version: from.Version,
+		Medium:  from.Medium.ConvertToView(),
 	}
 }
 

@@ -109,6 +109,7 @@ type DataNode struct {
 	port                     string
 	httpPort                 string
 	zoneName                 string
+	medium                   proto.MediumType
 	clusterID                string
 	localIP                  string
 	localServerAddr          string
@@ -260,6 +261,7 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	if s.zoneName == "" {
 		s.zoneName = DefaultZoneName
 	}
+	s.medium = proto.ParseMediumTypeFromZoneName(s.zoneName)
 
 	s.tickInterval = int(cfg.GetFloat(cfgTickIntervalMs))
 	if s.tickInterval <= 300 {

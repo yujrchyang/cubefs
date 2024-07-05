@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 	"sync/atomic"
 
 	"github.com/cubefs/cubefs/util/exporter"
@@ -406,6 +407,34 @@ const (
 	MediumECName             = "ec"
 	MediumSFXName            = "sfx"
 )
+
+func (m MediumType) Valid() bool {
+	switch m {
+	case MediumSSD, MediumHDD, MediumEC, MediumSFX:
+		return true
+	default:
+	}
+	return false
+}
+
+func ParseMediumTypeFromZoneName(zoneName string) MediumType {
+	var parts = strings.Split(zoneName, "_")
+	if len(parts) < 2 {
+		return MediumHDD
+	}
+	switch strings.ToLower(parts[1]) {
+	case MediumSSDName:
+		return MediumSSD
+	case MediumHDDName:
+		return MediumHDD
+	case MediumECName:
+		return MediumEC
+	case MediumSFXName:
+		return MediumSFX
+	default:
+		return MediumHDD
+	}
+}
 
 func StrToMediumType(str string) (mType MediumType, err error) {
 	switch str {
@@ -893,6 +922,7 @@ type DataNodeHeartbeatResponse struct {
 	BadDisks            []string
 	DiskInfos           map[string]*DiskInfo
 	Version             string
+	Medium              MediumType
 }
 
 type DiskInfo struct {
