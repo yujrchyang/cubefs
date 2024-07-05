@@ -2334,6 +2334,15 @@ func TestSetIDC(t *testing.T) {
 	if !assert.Equal(t, proto.MediumHDD, idc.getMediumType(testZone2)) {
 		t.FailNow()
 	}
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		node := value.(*DataNode)
+		if node.ZoneName == testZone2 {
+			if !assert.Equal(t, idc.getMediumType(testZone2), node.MType) {
+				t.FailNow()
+			}
+		}
+		return true
+	})
 }
 
 func TestSmartVolRules(t *testing.T) {
