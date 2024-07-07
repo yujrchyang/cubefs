@@ -1572,7 +1572,7 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 				return
 			}
 			var linkTarget = string(symlinkInodeInfo.Target)
-			var redirectPath = base + pathSep + linkTarget
+			var redirectPath = libpath.Join(base, linkTarget)
 			if pathItem.IsDirectory {
 				redirectPath += pathSep
 			}
