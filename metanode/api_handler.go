@@ -1013,6 +1013,18 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 	cpuUsageList, maxCPUUsage := m.processStatInfo.GetProcessCPUStatInfo()
 	_, memoryUsedGBList, maxMemoryUsedGB, maxMemoryUsage := m.processStatInfo.GetProcessMemoryStatInfo()
 	nodeCfg := getGlobalConfNodeInfo()
+	usedMem, err := m.getProcessMemUsed()
+	if err != nil {
+		resp.Msg = fmt.Sprintf("get used mem failed: %v", err)
+		return
+	}
+
+	var ratio float64
+	if configTotalMem == 0 {
+		ratio = 0
+	} else {
+		ratio = float64(usedMem) / float64(configTotalMem)
+	}
 	//get disk info
 	disks := m.getDisks()
 	diskList := make([]interface{}, 0, len(disks))
@@ -1039,6 +1051,10 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"zone":                              m.zoneName,
 		"versionInfo":                       proto.MakeVersion("MetaNode"),
 		"statTime":                          m.processStatInfo.ProcessStartTime,
+		"totalMem":                          configTotalMem,
+		"usedMem":                           usedMem,
+		"ratio":                             ratio,
+		"metaPartitionCount":                m.metadataManager.MetaPartitionCount(),
 		"cpuUsageList":                      cpuUsageList,
 		"maxCPUUsage":                       maxCPUUsage,
 		"cpuCoreNumber":                     cpu.GetCPUCoreNumber(),
