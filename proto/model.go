@@ -105,6 +105,7 @@ type DataNodeInfo struct {
 	BadDisks                  []string
 	ToBeOffline               bool
 	ToBeMigrated              bool
+	MType                     string
 }
 
 type CodecNodeInfo struct {

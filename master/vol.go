@@ -18,6 +18,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/tiglabs/raft/util"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -753,6 +754,7 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	if realUsedSize < 0 {
 		realUsedSize = 0
 	}
+	realUsedSize = realUsedSize / util.GB
 	if uint64(realUsedSize) >= vol.capacity() {
 		vol.setAllDataPartitionsToReadOnly()
 		return

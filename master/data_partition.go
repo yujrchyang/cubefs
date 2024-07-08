@@ -639,8 +639,7 @@ func (partition *DataPartition) updateMetric(vr *proto.PartitionReport, dataNode
 	if len(dataNode.MType) > 0 {
 		replica.MType = dataNode.MType
 	} else {
-		zone, err := c.t.getZone(dataNode.ZoneName)
-		if err == nil {
+		if zone, zoneErr := c.t.getZone(dataNode.ZoneName); zoneErr == nil {
 			replica.MType = zone.MType.String()
 			dataNode.MType = zone.MType.String()
 		}

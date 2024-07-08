@@ -412,7 +412,7 @@ func (partition *DataPartition) checkReplicationTask(c *Cluster, dataPartitionSi
 		return
 	}
 
-	if lackAddr, lackErr := partition.missingReplicaAddress(dataPartitionSize); lackErr != nil {
+	if lackAddr, lackErr := partition.missingReplicaAddress(dataPartitionSize); lackErr != nil && !partition.isOffline {
 		msg = fmt.Sprintf("action[%v], partitionID:%v  Lack Replication"+
 			" On :%v  Err:%v  Hosts:%v  new task to create DataReplica",
 			addMissingReplicaErr, partition.PartitionID, lackAddr, lackErr.Error(), partition.Hosts)

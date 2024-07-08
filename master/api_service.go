@@ -1770,7 +1770,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		truncateEKCountEveryTime int
 
 		bitMapSnapFrozenHour int64
-		enableCheckDelEK bool
+		enableCheckDelEK     bool
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -2360,6 +2360,7 @@ func (m *Server) getDataNode(w http.ResponseWriter, r *http.Request) {
 		ToBeOffline:               dataNode.ToBeOffline,
 		ToBeMigrated:              dataNode.ToBeMigrated,
 		Version:                   dataNode.Version,
+		MType:                     dataNode.MType,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(dataNodeInfo))
@@ -6605,12 +6606,23 @@ func (m *Server) setZoneIDC(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
+	zone, err := m.cluster.t.getZone(zoneName)
+	if err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	if err = m.cluster.setZoneIDC(zoneName, idcName, mType); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-
+	zone.dataNodes.Range(func(key, value any) bool {
+		node, ok := value.(*DataNode)
+		if !ok {
+			return true
+		}
+		node.MType = zone.MType.String()
+		return true
+	})
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set idc to: %v, medium type to: %v  for zone: %v successfully", idcName, mType, zoneName)))
 }
 
