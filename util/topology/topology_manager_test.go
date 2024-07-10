@@ -6,6 +6,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"net"
 	"net/http"
@@ -70,9 +71,14 @@ func fakeClientDataPartitions(w http.ResponseWriter, r *http.Request) {
 	var respData []byte
 	defer func() {
 		if err != nil {
-			reply.Code = proto.ErrCodeParamError
+			code, ok := proto.Err2CodeMap[err]
+			if ok {
+				reply.Code = code
+			} else {
+				reply.Code = proto.ErrCodeInternalError
+			}
+			reply.Code = proto.Err2CodeMap[err]
 			reply.Msg = err.Error()
-			reply.Data = nil
 		} else {
 			reply.Data = dataPartitionsView
 		}
@@ -115,7 +121,8 @@ func fakeClientDataPartitions(w http.ResponseWriter, r *http.Request) {
 
 	dps, ok := volumes[volName]
 	if !ok {
-		err = fmt.Errorf("vol %s not exist", volName)
+		err = proto.ErrVolNotExists
+		return
 	}
 
 	if len(ids) == 0 {
@@ -651,4 +658,20 @@ func TestFetchTopologyManager_UpdateVolConf(t *testing.T) {
 		t.Errorf("get vol config failed, expect is null")
 		t.FailNow()
 	}
+}
+
+func TestFetchTopologyManager_TestVolNotExist(t *testing.T) {
+	topoManager := NewTopologyManager(0, 0, masterClient, masterClient, true, true)
+	for volName := range volumes {
+		topoManager.AddVolume(volName)
+	}
+	topoManager.AddVolume("mark_delete_vol")
+	topoManager.Start()
+	defer topoManager.Stop()
+
+	time.Sleep(time.Second*3)
+	topoManager.vols.Range(func(key, value interface{}) bool {
+		assert.NotEqual(t, key.(string), "mark_delete_vol", fmt.Sprintf("volumeName: %v", key.(string)))
+		return true
+	})
 }
