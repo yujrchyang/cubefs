@@ -291,6 +291,7 @@ func (eh *ExtentHandler) sender() {
 				log.LogWarnf("sender writeTo: failed, eh(%v) err(%v) packet(%v)", eh, err, packet)
 				eh.setClosed()
 				eh.setRecovery()
+				eh.dataWrapper.removeDpForWrite(packet.PartitionID)
 			}
 			packet.SendT = time.Now().UnixNano()
 			eh.lastAccessTime = time.Now().Unix()
@@ -385,7 +386,6 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 			cost, time.Since(time.Unix(0, packet.SendT)), packet)
 	}
 	err := reply.ReadFromConnNs(eh.conn, eh.dataWrapper.connConfig.ReadTimeoutNs)
-	eh.dp.checkErrorIsTimeout(err)
 	if err != nil {
 		errmsg = fmt.Sprintf("ReadFromConn timeout(%vns) err(%v) costBeforeRecv(%v) costFromStart(%v) costFromSend(%v)",
 			eh.dataWrapper.connConfig.ReadTimeoutNs, err.Error(), cost, time.Since(time.Unix(0, packet.StartT)),
@@ -400,12 +400,6 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 	}
 
 	if reply.ResultCode != proto.OpOk {
-		if reply.ResultCode == proto.OpDiskNoSpaceErr {
-			eh.dataWrapper.RemoveDataPartitionForWrite(packet.PartitionID)
-			if log.IsDebugEnabled() {
-				log.LogDebugf("processReply: receive NoSpaceErr, packet(%v), remove dp[%v]", packet, packet.PartitionID)
-			}
-		}
 		eh.dp.checkAddrNotExist(eh.dp.Hosts[0], reply)
 		errmsg = fmt.Sprintf("reply NOK: reply(%v)", reply)
 		eh.processReplyError(packet, errmsg)
@@ -473,6 +467,7 @@ func (eh *ExtentHandler) processReplyError(packet *common.Packet, errmsg string)
 	} else {
 		log.LogWarnf("processReplyError recover packet: from eh(%v) to recoverHandler(%v) packet(%v) errmsg(%v) errCount(%v)", eh, eh.recoverHandler, packet, errmsg, packet.ErrCount)
 	}
+	eh.dataWrapper.removeDpForWrite(packet.PartitionID)
 }
 
 func (eh *ExtentHandler) flush(ctx context.Context) (err error) {
@@ -669,10 +664,6 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 		extID int
 	)
 
-	//log.LogDebugf("ExtentHandler allocateExtent enter: eh(%v)", eh)
-
-	excludeDP := make(map[uint64]struct{})
-	excludeHost := make(map[string]struct{})
 	loopCount := 0
 	start := time.Now()
 
@@ -680,58 +671,42 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 	for {
 		loopCount++
 		if loopCount%50 == 0 {
-			log.LogWarnf("allocateExtent: err(%v) try (%v)th times because of failing to create extent, eh(%v) excludeHost(%v) noSpaceDp(%v)", err, loopCount, eh, excludeHost, excludeDP)
+			log.LogWarnf("allocateExtent: err(%v) try (%v)th times because of failing to create extent, eh(%v)", err, loopCount, eh)
 			umpMsg := fmt.Sprintf("create extent failed(%v), eh(%v), try count(%v)", err, eh, loopCount)
 			handleUmpAlarm(eh.dataWrapper.clusterName, eh.dataWrapper.volName, "allocateExtent", umpMsg)
 		}
 		if time.Since(start) > StreamRetryTimeout {
-			log.LogWarnf("allocateExtent failed: retry (%v)th times err(%v) eh(%v) excludeHost(%v) noSpaceDp(%v)", loopCount, err, eh, excludeHost, excludeDP)
+			log.LogWarnf("allocateExtent failed: retry (%v)th times err(%v) eh(%v)", loopCount, err, eh)
 			break
 		}
-		if dp != nil && dp.checkDataPartitionForRemove(err, eh.stream.client.dpTimeoutCntThreshold, excludeHost, excludeDP) {
-			eh.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
-			log.LogWarnf("allocateExtent: remove rwDp(%v) eHost(%v) eDp(%v), err(%v)", dp.PartitionID, excludeHost, excludeDP, err)
-		}
 
-		if dp, err = eh.dataWrapper.GetDataPartitionForWrite(excludeHost); err != nil {
-			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) excludeHost(%v) noSpaceDp(%v) err(%v)", eh, excludeHost, excludeDP, err)
-			if len(excludeHost) > 0 || len(excludeDP) > 0 {
-				// if all dp is excluded, clean exclude map
-				log.LogWarnf("allocateExtent: clean exclude because of no writable partition, eh(%v) excludeHost(%v) noSpaceDp(%v)", eh, excludeHost, excludeDP)
-				excludeHost = make(map[string]struct{})
-				excludeDP = make(map[uint64]struct{})
-			}
-			time.Sleep(5 * time.Second)
+		if dp, err = eh.dataWrapper.getDpForWrite(); err != nil {
+			log.LogWarnf("allocateExtent: failed to get write data partition, eh(%v) err(%v)", eh, err)
+			eh.dataWrapper.clearRemoveInfo()
 			continue
 		}
 
 		if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
-			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v) excludeHost(%v)",
-				eh, err, dp, excludeHost)
-			// If storeMode is tinyExtentType and can't create connection, we also check host status.
+			log.LogWarnf("allocateExtent: failed to create connection, eh(%v) err(%v) dp(%v)",
+				eh, err, dp)
+			eh.dataWrapper.removeHostForWrite(dp.Hosts[0])
 			continue
 		}
 
-		var status uint8
 		if eh.storeMode == proto.NormalExtentType {
-			extID, status, err = eh.ehCreateExtent(ctx, conn, dp)
-		}
-		if err != nil {
-			if status == proto.OpDiskNoSpaceErr {
-				excludeDP[dp.PartitionID] = struct{}{}
+			extID, err = CreateExtent(ctx, conn, eh.inode, dp, eh.dataWrapper.quorum)
+			if err != nil {
+				log.LogWarnf("allocateExtent: create extent failed, dp(%v) eh(%v) err(%v)", dp, eh, err)
+				eh.dataWrapper.removeDpForWrite(dp.PartitionID)
+				StreamConnPool.PutConnectWithErr(conn, err)
+				continue
 			}
-			StreamConnPool.PutConnectWithErr(conn, err)
-			log.LogWarnf("allocateExtent: create extent failed, dp(%v) eh(%v) err(%v) excludeHost(%v) noSpaceDp(%v)", dp, eh, err, excludeHost, excludeDP)
-			continue
 		}
 
 		// success
 		eh.dp = dp
 		eh.conn = conn
 		eh.extID = extID
-
-		//log.LogDebugf("ExtentHandler allocateExtent exit: eh(%v) dp(%v) extID(%v)", eh, dp, extID)
-		dp.checkErrorIsTimeout(nil)
 		return nil
 	}
 
@@ -745,33 +720,29 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 	return err
 }
 
-func (eh *ExtentHandler) ehCreateExtent(ctx context.Context, conn *net.TCPConn, dp *DataPartition) (extID int, status uint8, err error) {
-	return CreateExtent(ctx, conn, eh.inode, dp, eh.dataWrapper.quorum)
-}
-
-func CreateExtent(ctx context.Context, conn *net.TCPConn, inode uint64, dp *DataPartition, quorum int) (extID int, status uint8, err error) {
+func CreateExtent(ctx context.Context, conn *net.TCPConn, inode uint64, dp *DataPartition, quorum int) (extID int, err error) {
 	allHosts := dp.GetAllHosts()
 	reqPacket := common.NewCreateExtentPacket(ctx, dp.PartitionID, allHosts, quorum, inode)
 	if err = reqPacket.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
 		errors.Trace(err, "createExtent: failed to WriteToConn, packet(%v) host(%v)", reqPacket, allHosts[0])
-		return 0, reqPacket.ResultCode, err
+		return 0, err
 	}
 
 	replyPacket := new(common.Packet)
 	if err = replyPacket.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
 		err = errors.Trace(err, "createExtent: failed to ReadFromConn, packet(%v) host(%v)", reqPacket, allHosts[0])
-		return 0, reqPacket.ResultCode, err
+		return 0, err
 	}
 
 	if !replyPacket.IsValidWriteReply(reqPacket) {
 		err = errors.New(fmt.Sprintf("createExtent: mismatch packet req(%v) and reply(%v) host(%v)", reqPacket, replyPacket, allHosts[0]))
-		return 0, reqPacket.ResultCode, err
+		return 0, err
 	}
 	if replyPacket.ResultCode != proto.OpOk {
 		err = errors.New(fmt.Sprintf("createExtent: ResultCode NOK, packet(%v) quorum(%v) host(%v) ResultCode(%v)",
 			reqPacket, quorum, allHosts[0], replyPacket.GetResultMsg()))
 		dp.checkAddrNotExist(allHosts[0], replyPacket)
-		return 0, replyPacket.ResultCode, err
+		return 0, err
 	}
 
 	extID = int(replyPacket.ExtentID)
@@ -780,7 +751,7 @@ func CreateExtent(ctx context.Context, conn *net.TCPConn, inode uint64, dp *Data
 		return
 	}
 
-	return extID, replyPacket.ResultCode, nil
+	return extID, nil
 }
 
 func LockExtent(ctx context.Context, conn *net.TCPConn, dp *DataPartition, extentKeys []proto.ExtentKey, lockTime int64) (err error) {
@@ -872,6 +843,7 @@ func (eh *ExtentHandler) updateConn() error {
 	eh.conn.Close()
 	conn, err := StreamConnPool.GetConnect(eh.dp.Hosts[0])
 	if err != nil {
+		eh.dataWrapper.removeHostForWrite(eh.dp.Hosts[0])
 		return err
 	}
 	eh.conn = conn

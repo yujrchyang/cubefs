@@ -41,6 +41,7 @@ var (
 	LocalIP                      string
 	MinWriteAbleDataPartitionCnt = 10
 	MasterNoCacheAPIRetryTimeout = 5 * time.Minute
+	checkRemovedDpTimer          *time.Timer
 )
 
 const (
@@ -476,10 +477,14 @@ func (w *Wrapper) updateWithRecover() (err error) {
 		}
 	}()
 	ticker := time.NewTicker(time.Minute)
-	defer ticker.Stop()
-
+	checkRemovedDpTimer = time.NewTimer(0)
 	refreshLatency := time.NewTimer(0)
-	defer refreshLatency.Stop()
+
+	defer func() {
+		ticker.Stop()
+		checkRemovedDpTimer.Stop()
+		refreshLatency.Stop()
+	}()
 
 	var (
 		retryHosts map[string]bool
@@ -497,7 +502,17 @@ func (w *Wrapper) updateWithRecover() (err error) {
 			hostsLock.Lock()
 			retryHosts = w.retryHostsPingtime(retryHosts)
 			hostsLock.Unlock()
-
+		case <-checkRemovedDpTimer.C:
+			leastCheckCount := w.checkDpForOverWrite()
+			d := time.Second
+			if leastCheckCount == 0 {
+				d = time.Minute
+			} else if leastCheckCount > 20 {
+				d = 10 * time.Second
+			} else if leastCheckCount > 10 {
+				d = 5 * time.Second
+			}
+			checkRemovedDpTimer.Reset(d)
 		case <-refreshLatency.C:
 			if w.IsCacheBoostEnabled() {
 				hostsLock.Lock()

@@ -17,6 +17,7 @@ package data
 import (
 	"errors"
 	"strings"
+	"sync"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -35,10 +36,22 @@ type DataPartitionSelector interface {
 	Refresh(partitions []*DataPartition) error
 
 	// Select returns a data partition picked by selector.
-	Select(excludes map[string]struct{}) (*DataPartition, error)
+	Select() (*DataPartition, error)
 
-	// RemoveDP removes specified data partition.
-	RemoveDP(partitionID uint64)
+	// RemoveDpForWrite removes specified data partition.
+	RemoveDpForWrite(partitionID uint64)
+
+	RemoveDpForOverWrite(partitionID uint64)
+
+	RangeRemoveDpForOverWrite(checkFunc func(partitionID uint64) bool) (leastCheckCount int)
+
+	// RemoveHost removes specified host.
+	RemoveHost(host string)
+
+	// ClearRemoveInfo clear all the removed dp and host.
+	ClearRemoveInfo()
+
+	DpAvailableForOverWrite(dp *DataPartition) bool
 
 	// SummaryMetrics summaries the metrics of dp write operate
 	SummaryMetrics() []*proto.DataPartitionMetrics
@@ -48,8 +61,8 @@ type DataPartitionSelector interface {
 }
 
 type DpSelectorParam struct {
-	kValue	string
-	quorum	int
+	kValue string
+	quorum int
 }
 
 var (
@@ -77,6 +90,76 @@ func newDataPartitionSelector(name string, param *DpSelectorParam) (newDpSelecto
 		return nil, ErrDataPartitionSelectorConstructorNotExist
 	}
 	return constructor(param)
+}
+
+type BaseSelector struct {
+	removeDpForWrite     sync.Map // map[dpid]struct{}
+	removeDpForOverWrite sync.Map // map[dpid]checkCount
+	removeHost           sync.Map // map[host]struct{}
+}
+
+func (s *BaseSelector) RemoveDpForWrite(partitionID uint64) {
+	s.removeDpForWrite.Store(partitionID, struct{}{})
+	log.LogWarnf("RemoveDpForWrite: dpId(%v)", partitionID)
+	return
+}
+
+func (s *BaseSelector) RemoveDpForOverWrite(partitionID uint64) {
+	if _, ok := s.removeDpForOverWrite.Load(partitionID); !ok {
+		s.removeDpForOverWrite.Store(partitionID, 0)
+	}
+	log.LogWarnf("RemoveDpForOverWrite: dpId(%v)", partitionID)
+	return
+}
+
+func (s *BaseSelector) RangeRemoveDpForOverWrite(checkFunc func(uint64) bool) (leastCheckCount int) {
+	s.removeDpForOverWrite.Range(func(key, value interface{}) bool {
+		dpId := key.(uint64)
+		count := value.(int)
+		if checkFunc(dpId) {
+			s.removeDpForOverWrite.Delete(dpId)
+			return true
+		}
+		if count+1 < leastCheckCount {
+			leastCheckCount = count + 1
+			s.removeDpForOverWrite.Store(dpId, count+1)
+		}
+		return true
+	})
+	return
+}
+
+func (s *BaseSelector) RemoveHost(host string) {
+	s.removeHost.Store(host, struct{}{})
+	log.LogWarnf("RemoveHost: host(%v)", host)
+	return
+}
+
+func (s *BaseSelector) ClearRemoveInfo() {
+	s.removeDpForWrite.Range(func(key, value interface{}) bool {
+		s.removeDpForWrite.Delete(key)
+		return true
+	})
+	s.removeDpForOverWrite.Range(func(key, value interface{}) bool {
+		s.removeDpForOverWrite.Delete(key)
+		return true
+	})
+	s.removeHost.Range(func(key, value interface{}) bool {
+		s.removeHost.Delete(key)
+		return true
+	})
+}
+
+func (s *BaseSelector) DpAvailableForOverWrite(dp *DataPartition) bool {
+	if _, ok := s.removeDpForOverWrite.Load(dp.PartitionID); ok {
+		return false
+	}
+	for host := range dp.Hosts {
+		if _, ok := s.removeHost.Load(host); ok {
+			return false
+		}
+	}
+	return true
 }
 
 func (w *Wrapper) initDpSelector() (err error) {
@@ -137,21 +220,63 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 	_ = dpSelector.Refresh(partitions)
 }
 
-// getDataPartitionForWrite returns an available data partition for write.
-func (w *Wrapper) GetDataPartitionForWrite(exclude map[string]struct{}) (*DataPartition, error) {
+// getDpForWrite returns an available data partition for write.
+func (w *Wrapper) getDpForWrite() (*DataPartition, error) {
 	w.RLock()
 	dpSelector := w.dpSelector
 	w.RUnlock()
 
-	return dpSelector.Select(exclude)
+	return dpSelector.Select()
 }
 
-func (w *Wrapper) RemoveDataPartitionForWrite(partitionID uint64) {
+func (w *Wrapper) removeDpForWrite(partitionID uint64) {
 	w.RLock()
 	dpSelector := w.dpSelector
 	w.RUnlock()
 
-	dpSelector.RemoveDP(partitionID)
+	dpSelector.RemoveDpForWrite(partitionID)
+}
+
+func (w *Wrapper) removeDpForOverWrite(partitionID uint64) {
+	w.RLock()
+	dpSelector := w.dpSelector
+	w.RUnlock()
+
+	dpSelector.RemoveDpForOverWrite(partitionID)
+}
+
+func (w *Wrapper) removeHostForWrite(host string) {
+	w.RLock()
+	dpSelector := w.dpSelector
+	w.RUnlock()
+
+	dpSelector.RemoveHost(host)
+}
+
+func (w *Wrapper) clearRemoveInfo() {
+	w.RLock()
+	dpSelector := w.dpSelector
+	w.RUnlock()
+
+	dpSelector.ClearRemoveInfo()
+}
+
+func (w *Wrapper) dpAvailableForOverWrite(dp *DataPartition) bool {
+	w.RLock()
+	dpSelector := w.dpSelector
+	w.RUnlock()
+
+	return dpSelector.DpAvailableForOverWrite(dp)
+}
+
+func (w *Wrapper) checkDpForOverWrite() int {
+	return w.dpSelector.RangeRemoveDpForOverWrite(func(partitionID uint64) bool {
+		dp, err := w.GetDataPartition(partitionID)
+		if err == nil {
+			err = dp.OverWriteDetect()
+		}
+		return err == nil
+	})
 }
 
 func (w *Wrapper) RefreshDataPartitionMetrics(enableRemote bool, dpMetricsMap map[uint64]*proto.DataPartitionMetrics) error {

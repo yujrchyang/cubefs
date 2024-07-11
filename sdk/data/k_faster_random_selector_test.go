@@ -98,13 +98,21 @@ func TestKFaster(t *testing.T) {
 	//excludes = append(excludes, m3)
 	excludes = append(excludes, m4)
 	for _, exclude := range excludes {
-		dp, err2 := selector1.Select(exclude)
+		selector1.Refresh(multiPartitions[1])
+		for k := range exclude {
+			selector1.RemoveHost(k)
+		}
+		dp, err2 := selector1.Select()
 		if err2 != nil {
 			t.Fatalf("Select falied, dp %v err %v", dp, err2)
 		}
 	}
 
-	dp, err := selector1.Select(m3)
+	selector1.Refresh(multiPartitions[1])
+	for k := range m3 {
+		selector1.RemoveHost(k)
+	}
+	dp, err := selector1.Select()
 	if err == nil {
 		t.Fatalf("expected Select falied, but success, dp %v err %v", dp, err)
 	}
@@ -113,14 +121,17 @@ func TestKFaster(t *testing.T) {
 	partitionIds[0] = 0
 	partitionIds[1] = 1
 	for _, p := range partitionIds {
-		selector1.RemoveDP(p)
+		selector1.RemoveDpForWrite(p)
 	}
 
 	err = selector1.Refresh(multiPartitions[0])
 	if err != nil {
 		t.Fatalf("Refresh failed, err %v", err)
 	}
-	dp, err2 := selector1.Select(excludes[0])
+	for k := range excludes[0] {
+		selector1.RemoveHost(k)
+	}
+	dp, err2 := selector1.Select()
 	if err2 == nil {
 		t.Fatalf("%v", err2)
 	}

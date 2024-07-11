@@ -1134,7 +1134,8 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 	)
 	defer func() {
 		r := recover()
-		if r == nil && re >= 0 && !log.IsDebugEnabled() {
+		cost := time.Since(start)
+		if r == nil && re >= 0 && !log.IsDebugEnabled() && cost < warnCost {
 			return
 		}
 		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), fd, path, ino, re, err)
@@ -1144,8 +1145,10 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			handleError(c, "cfs_flush", fmt.Sprintf("%s%s", msg, stack))
+		} else if cost >= warnCost {
+			log.LogWarnf("cfs_flush: %s time(%v)", msg, cost.Microseconds())
 		} else {
-			log.LogDebugf("cfs_flush: %s time(%v)", msg, time.Since(start).Microseconds())
+			log.LogDebugf("cfs_flush: %s time(%v)", msg, cost.Microseconds())
 		}
 	}()
 
@@ -3119,7 +3122,8 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	)
 	defer func() {
 		r := recover()
-		if r == nil && re >= 0 && !log.IsDebugEnabled() {
+		cost := time.Since(start)
+		if r == nil && re >= 0 && !log.IsDebugEnabled() && cost < warnCost {
 			return
 		}
 		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), fd, path, ino, size, offset, re, err)
@@ -3129,8 +3133,10 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
 			}
 			handleError(c, "cfs_read", fmt.Sprintf("%s%s", msg, stack))
+		} else if cost >= warnCost {
+			log.LogWarnf("cfs_write: %s time(%v)", msg, cost.Microseconds())
 		} else {
-			log.LogDebugf("cfs_read: %s time(%v)", msg, time.Since(start).Microseconds())
+			log.LogDebugf("cfs_read: %s time(%v)", msg, cost.Microseconds())
 		}
 	}()
 
@@ -3270,7 +3276,8 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 			fileSize = f.size
 		}
 		r := recover()
-		if r == nil && re == C.ssize_t(size) && !log.IsDebugEnabled() {
+		cost := time.Since(start)
+		if r == nil && re == C.ssize_t(size) && !log.IsDebugEnabled() && cost < warnCost {
 			return
 		}
 		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
@@ -3282,8 +3289,10 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 			handleError(c, "cfs_write", fmt.Sprintf("%s%s", msg, stack))
 		} else if re < C.ssize_t(size) {
 			log.LogWarnf("cfs_write: %s", msg)
+		} else if cost >= warnCost {
+			log.LogWarnf("cfs_write: %s time(%v)", msg, cost.Microseconds())
 		} else {
-			log.LogDebugf("cfs_write: %s time(%v)", msg, time.Since(start).Microseconds())
+			log.LogDebugf("cfs_write: %s time(%v)", msg, cost.Microseconds())
 		}
 	}()
 

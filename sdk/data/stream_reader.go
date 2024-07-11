@@ -370,6 +370,7 @@ func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr st
 	}()
 	if conn, err = StreamConnPool.GetConnect(addr); err != nil {
 		errmsg = "failed to create connection"
+		dp.ClientWrapper.removeHostForWrite(addr)
 		return
 	}
 	defer func() {

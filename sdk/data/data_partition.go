@@ -23,12 +23,10 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
-	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -101,7 +99,6 @@ type DataPartition struct {
 	hostErrMap         sync.Map //key: host; value: last error access time
 	ecEnable           bool
 	ReadMetrics        *proto.ReadMetrics
-	timeoutCnt         int32
 
 	pingElapsedSortedHosts *PingElapsedSortedHosts
 }
@@ -236,65 +233,6 @@ func (dp *DataPartition) String() string {
 		dp.PartitionID, dp.Status, dp.ReplicaNum, dp.PartitionType, dp.Hosts, dp.NearHosts)
 }
 
-func (dp *DataPartition) checkErrorIsTimeout(err error) {
-	if err == nil {
-		atomic.StoreInt32(&dp.timeoutCnt, 0)
-		return
-	}
-	if strings.Contains(err.Error(), "i/o timeout") {
-		atomic.AddInt32(&dp.timeoutCnt, 1)
-	}
-}
-
-func (dp *DataPartition) checkDataPartitionForRemove(err error, threshold int, excludeHost map[string]struct{}, excludeDp map[uint64]struct{}) bool {
-	if err == nil {
-		return false
-	}
-	log.LogDebugf("checkDataPartitionForRemove: err: %s, threshold:%v, eHost:%v, eDp:%v", err.Error(), threshold, excludeHost, excludeDp)
-	// cond 1. timeout
-	if threshold > 0 {
-		dp.checkErrorIsTimeout(err)
-		count := atomic.LoadInt32(&dp.timeoutCnt)
-		if int(count) >= threshold {
-			excludeDp[dp.PartitionID] = struct{}{}
-		}
-	}
-	// cond 2. dp noSpace or all host is unreachable
-	dp.CheckAllHostsIsAvail(excludeHost)
-
-	return isExcludedByDp(dp, excludeDp) || isExcludedByHost(dp, excludeHost, dp.ClientWrapper.quorum)
-}
-
-func (dp *DataPartition) CheckAllHostsIsAvail(exclude map[string]struct{}) {
-	var (
-		wg   sync.WaitGroup
-		lock sync.Mutex
-	)
-	allHosts := dp.GetAllHosts()
-	for _, host := range allHosts {
-		wg.Add(1)
-		go func(addr string) {
-			var (
-				conn net.Conn
-				err  error
-			)
-			defer wg.Done()
-			if conn, err = connpool.DailTimeOut(addr, time.Duration(dp.ClientWrapper.connConfig.ConnectTimeoutNs)*time.Nanosecond); err != nil {
-				log.LogWarnf("Dail to Host (%v) err(%v)", addr, err.Error())
-				if strings.Contains(err.Error(), syscall.ECONNREFUSED.Error()) {
-					lock.Lock()
-					exclude[addr] = struct{}{}
-					lock.Unlock()
-				}
-			} else {
-				conn.Close()
-			}
-		}(host)
-	}
-	wg.Wait()
-	log.LogDebugf("CheckAllHostsIsAvail: dp(%v) exclude(%v)", dp.PartitionID, exclude)
-}
-
 // GetAllHosts returns the addresses of all the replicas of the data partition.
 func (dp *DataPartition) GetAllHosts() []string {
 	return dp.Hosts
@@ -319,14 +257,11 @@ func isExcludedByHost(dp *DataPartition, exclude map[string]struct{}, quorum int
 			aliveCount++
 		}
 	}
-	// 'quorum == 0' means all hosts must succeed
-	if quorum <= 0 && aliveCount < len(allHosts) {
-		return true
+	minAliveCount := len(allHosts)
+	if quorum > 0 && quorum < len(allHosts) {
+		minAliveCount = quorum
 	}
-	if quorum > 0 && aliveCount < quorum {
-		return true
-	}
-	return false
+	return aliveCount < minAliveCount
 }
 
 func (dp *DataPartition) LeaderRead(reqPacket *common.Packet, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
@@ -542,6 +477,16 @@ func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *com
 		return
 	}
 	dp.checkAddrNotExist(sc.currAddr, reply)
+	return
+}
+
+func (dp *DataPartition) OverWriteDetect() (err error) {
+	reqPacket := common.NewOverwritePacket(nil, dp.PartitionID, 0, 0, 0, 0)
+	replyPacket := common.GetOverWritePacketFromPool()
+	sc := NewStreamConn(dp, false)
+	err = dp.OverWrite(sc, reqPacket, replyPacket)
+	common.PutOverWritePacketToPool(reqPacket)
+	common.PutOverWritePacketToPool(replyPacket)
 	return
 }
 

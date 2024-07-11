@@ -138,6 +138,7 @@ type ExtentClient struct {
 	writeLimiter          *rate.Limiter
 	masterClient          *masterSDK.MasterClient
 	dpTimeoutCntThreshold int
+	dpConsistencyMode     proto.ConsistencyMode
 
 	dataWrapper     *Wrapper
 	metaWrapper     *meta.MetaWrapper
@@ -766,6 +767,7 @@ func (client *ExtentClient) updateConfig() {
 		client.writeLimiter.SetLimit(rate.Limit(defaultWriteLimitRate))
 	}
 	client.dpTimeoutCntThreshold = limitInfo.DpTimeoutCntThreshold
+	client.dpConsistencyMode = limitInfo.DataPartitionConsistencyMode
 	log.LogInfof("updateConfig: vol(%v) limit(%v)", client.dataWrapper.volName, limitInfo)
 }
 

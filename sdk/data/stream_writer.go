@@ -28,7 +28,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
-
 	"golang.org/x/net/context"
 )
 
@@ -529,12 +528,6 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 		reply := common.NewReply(packet.Ctx(), packet.ReqID, packet.PartitionID, packet.ExtentID)
 		err = reply.ReadFromConnNs(conn, s.client.dataWrapper.connConfig.ReadTimeoutNs)
 		if err != nil || reply.ResultCode != proto.OpOk || !packet.IsValidWriteReply(reply) || reply.CRC != packet.CRC {
-			if reply.ResultCode == proto.OpDiskNoSpaceErr {
-				s.client.dataWrapper.RemoveDataPartitionForWrite(packet.PartitionID)
-				if log.IsDebugEnabled() {
-					log.LogDebugf("writeToExtent: remove dp[%v] which returns NoSpaceErr, packet[%v]", packet.PartitionID, packet)
-				}
-			}
 			dp.checkAddrNotExist(allHosts[0], reply)
 			err = fmt.Errorf("err[%v]-packet[%v]-reply[%v]", err, packet, reply)
 			break
@@ -554,57 +547,41 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 	extID, total int, err error) {
 	defer func() {
 		if err != nil {
-			log.LogWarnf("writeToNewExtent: oriReq %v exceed max retry times(%v), err %v",
-				oriReq, MaxSelectDataPartitionForWrite, err)
+			log.LogWarnf("writeToNewExtent: ino(%v) oriReq(%v) exceed max retry times(%v), err(%v)",
+				s.inode, oriReq, MaxSelectDataPartitionForWrite, err)
 		}
 		if log.IsDebugEnabled() {
-			log.LogDebugf("writeToNewExtent: inode %v, oriReq %v direct %v", s.inode, oriReq, direct)
+			log.LogDebugf("writeToNewExtent: ino(%v), oriReq(%v) direct(%v)", s.inode, oriReq, direct)
 		}
 	}()
 
-	excludeDp := make(map[uint64]struct{})
-	excludeHost := make(map[string]struct{})
-	var conn *net.TCPConn
+	var (
+		conn *net.TCPConn
+	)
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
-		if dp != nil && dp.checkDataPartitionForRemove(err, s.client.dpTimeoutCntThreshold, excludeHost, excludeDp) {
-			s.client.dataWrapper.RemoveDataPartitionForWrite(dp.PartitionID)
-			log.LogWarnf("writeToNewExtent: remove rwDp(%v) extID(%v) total[%v] stream:%v, oriReq:%v, err:%v, retry(%v/%v) eHost(%v) eDp(%v)",
-				dp, extID, total, s, oriReq, err, i, MaxSelectDataPartitionForWrite, excludeHost, excludeDp)
-			dp, extID, total = nil, 0, 0
-		}
-
-		dp, err = s.client.dataWrapper.GetDataPartitionForWrite(excludeHost)
+		dp, err = s.client.dataWrapper.getDpForWrite()
 		if err != nil {
-			if len(excludeHost) > 0 || len(excludeDp) > 0 {
-				// if all dp is excluded, clean exclude map
-				log.LogWarnf("writeToNewExtent: clean exclude because no writable partition, stream(%v) oriReq(%v) excludeHost(%v) noSpaceDp(%v)",
-					s, oriReq, excludeHost, excludeDp)
-				excludeHost = make(map[string]struct{})
-				excludeDp = make(map[uint64]struct{})
-			}
-			time.Sleep(5 * time.Second)
+			log.LogWarnf("writeToNewExtent: failed to get write data partition, ino(%v) oriReq(%v) err(%v)", s.inode, oriReq, err)
+			s.client.dataWrapper.clearRemoveInfo()
 			continue
 		}
 		conn, err = StreamConnPool.GetConnect(dp.Hosts[0])
 		if err != nil {
-			log.LogWarnf("writeToNewExtent: failed to create connection, err(%v) dp(%v) exclude(%v)", err, dp, excludeHost)
+			log.LogWarnf("writeToNewExtent: failed to create connection, ino(%v) oriReq(%v) host(%v) err(%v)", s.inode, oriReq, dp.Hosts[0], err)
+			s.client.dataWrapper.removeHostForWrite(dp.Hosts[0])
 			continue
 		}
-		var status uint8
-		extID, status, err = CreateExtent(ctx, conn, s.inode, dp, s.client.dataWrapper.quorum)
-		if err != nil {
-			if status == proto.OpDiskNoSpaceErr {
-				excludeDp[dp.PartitionID] = struct{}{}
-			}
-			StreamConnPool.PutConnectWithErr(conn, err)
-			continue
-		}
-		total, err = s.writeToExtent(ctx, oriReq, dp, extID, direct, conn)
-		StreamConnPool.PutConnectWithErr(conn, err)
+		extID, err = CreateExtent(ctx, conn, s.inode, dp, s.client.dataWrapper.quorum)
 		if err == nil {
-			dp.checkErrorIsTimeout(nil)
-			break
+			total, err = s.writeToExtent(ctx, oriReq, dp, extID, direct, conn)
 		}
+		StreamConnPool.PutConnectWithErr(conn, err)
+		if err != nil {
+			log.LogWarnf("writeToNewExtent: ino(%v) oriReq(%v) dp(%v) extID(%v) err(%v)", s.inode, oriReq, dp, extID, err)
+			s.client.dataWrapper.removeDpForWrite(dp.PartitionID)
+			continue
+		}
+		break
 	}
 	return
 }
@@ -721,13 +698,15 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 		err = errors.Trace(err, "doOverwrite: ino(%v) failed to get datapartition, ek(%v)", s.inode, req.ExtentKey)
 		return
 	}
-
 	if proto.IsEcStatus(dp.EcMigrateStatus) {
 		err = errors.New("Ec not support RandomWrite")
 		return
 	}
-	sc := NewStreamConn(dp, false)
+	if s.client.dpConsistencyMode == proto.StrictMode && !s.client.dataWrapper.dpAvailableForOverWrite(dp) {
+		err = errors.Trace(err, "doOverwrite: ino(%v) dp not available, ek(%v), dp(%v)", s.inode, req.ExtentKey, dp)
+	}
 
+	sc := NewStreamConn(dp, false)
 	for total < size {
 		reqPacket := common.NewOverwritePacket(ctx, dp.PartitionID, req.ExtentKey.ExtentId, int(offset-ekFileOffset)+total+ekExtOffset, s.inode, offset)
 		if direct {
@@ -746,7 +725,11 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 			log.LogDebugf("doOverwrite: ino(%v) req(%v) reqPacket(%v) err(%v) replyPacket(%v)", s.inode, req, reqPacket, err, replyPacket)
 		}
 
-		if err != nil {
+		if err != nil && s.client.dpConsistencyMode == proto.StrictMode {
+			s.client.dataWrapper.removeDpForOverWrite(dp.PartitionID)
+			if checkRemovedDpTimer != nil {
+				checkRemovedDpTimer.Reset(time.Second)
+			}
 			break
 		}
 
@@ -1128,6 +1111,7 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 
 	if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
 		log.LogWarnf("usePreExtentHandler: GetConnect failed, ino(%v) dp(%v) err(%v)", s.inode, dp, err)
+		s.client.dataWrapper.removeHostForWrite(dp.Hosts[0])
 		return false
 	}
 

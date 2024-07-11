@@ -109,6 +109,7 @@ func (sc *StreamConn) String() string {
 func (sc *StreamConn) sendToDataPartition(req *common.Packet) (conn *net.TCPConn, err error) {
 	if conn, err = StreamConnPool.GetConnect(sc.currAddr); err != nil {
 		log.LogWarnf("sendToDataPartition: get connection to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		sc.dp.ClientWrapper.removeHostForWrite(sc.currAddr)
 		return
 	}
 	if req.Opcode == proto.OpStreamFollowerRead {

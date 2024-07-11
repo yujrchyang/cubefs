@@ -71,6 +71,7 @@ const (
 	ListenRetryTime            = 300
 
 	DefaultPidFile = "cfs.pid"
+	warnCost       = 3 * time.Second
 )
 
 var (

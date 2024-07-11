@@ -42,9 +42,9 @@ func newDefaultRandomSelector(param *DpSelectorParam) (selector DataPartitionSel
 
 type DefaultRandomSelector struct {
 	sync.RWMutex
+	BaseSelector
 	partitions []*DataPartition
 	param      *DpSelectorParam
-	removeDp   sync.Map
 }
 
 func (s *DefaultRandomSelector) Name() string {
@@ -53,37 +53,22 @@ func (s *DefaultRandomSelector) Name() string {
 
 func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error) {
 	s.Lock()
-	defer s.Unlock()
-
 	s.partitions = partitions
-	s.removeDp.Range(func(key, value interface{}) bool {
-		s.removeDp.Delete(key)
-		return true
-	})
+	s.Unlock()
+
+	s.ClearRemoveInfo()
 	return
 }
 
-func (s *DefaultRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
+func (s *DefaultRandomSelector) Select() (dp *DataPartition, err error) {
 	s.RLock()
 	partitions := s.partitions
 	s.RUnlock()
 
-	dp = s.getRandomDataPartition(partitions, exclude)
-	length := len(partitions)
-	if dp == nil && length > 0 {
-		dp = partitions[rand.Intn(length)]
-	}
+	dp = s.getRandomDataPartition(partitions)
 	if dp == nil {
 		err = fmt.Errorf("no writable data partition")
 	}
-	return
-}
-
-func (s *DefaultRandomSelector) RemoveDP(partitionID uint64) {
-	s.Lock()
-	defer s.Unlock()
-	s.removeDp.Store(partitionID, true)
-	log.LogWarnf("RemoveDP: dpId(%v), rwDpLen(%v)", partitionID, len(s.partitions))
 	return
 }
 
@@ -105,8 +90,7 @@ func (s *DefaultRandomSelector) RefreshMetrics(enableRemote bool, dpMetrics map[
 	return nil
 }
 
-func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition, exclude map[string]struct{}) (
-	dp *DataPartition) {
+func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartition) (dp *DataPartition) {
 	length := len(partitions)
 	if length == 0 {
 		return nil
@@ -115,7 +99,12 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(length)
 	dp = partitions[index]
-	_, removed := s.removeDp.Load(dp.PartitionID)
+	_, removed := s.removeDpForWrite.Load(dp.PartitionID)
+	exclude := make(map[string]struct{})
+	s.removeHost.Range(func(key, value interface{}) bool {
+		exclude[key.(string)] = struct{}{}
+		return true
+	})
 	if !isExcludedByHost(dp, exclude, s.param.quorum) && !removed {
 		log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", dp, index)
 		return dp
@@ -126,7 +115,7 @@ func (s *DefaultRandomSelector) getRandomDataPartition(partitions []*DataPartiti
 	var currIndex int
 	for i := 0; i < length; i++ {
 		currIndex = (index + i) % length
-		_, removed := s.removeDp.Load(dp.PartitionID)
+		_, removed := s.removeDpForWrite.Load(partitions[currIndex].PartitionID)
 		if !isExcludedByHost(partitions[currIndex], exclude, s.param.quorum) && !removed {
 			log.LogDebugf("DefaultRandomSelector: select dp[%v], index %v", partitions[currIndex], currIndex)
 			return partitions[currIndex]

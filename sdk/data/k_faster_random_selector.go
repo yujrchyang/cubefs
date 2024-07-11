@@ -54,6 +54,7 @@ func newKFasterRandomSelector(param *DpSelectorParam) (selector DataPartitionSel
 
 type KFasterRandomSelector struct {
 	sync.RWMutex
+	BaseSelector
 	kValueHundred int
 	kValue        int
 	partitions    []*DataPartition
@@ -69,11 +70,11 @@ func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition) (err error)
 	selectKminDataPartition(partitions, kValue)
 
 	s.Lock()
-	defer s.Unlock()
-
 	s.kValue = kValue
 	s.partitions = partitions
+	defer s.Unlock()
 
+	s.ClearRemoveInfo()
 	return
 }
 
@@ -82,7 +83,7 @@ func (s *KFasterRandomSelector) updateKValue(partitions []*DataPartition) (kValu
 	return
 }
 
-func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPartition, err error) {
+func (s *KFasterRandomSelector) Select() (dp *DataPartition, err error) {
 	s.RLock()
 	partitions := s.partitions
 	kValue := s.kValue
@@ -96,7 +97,13 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	rand.Seed(time.Now().UnixNano())
 	index := rand.Intn(kValue)
 	dp = partitions[index]
-	if !isExcludedByHost(dp, exclude, s.param.quorum) {
+	_, removed := s.removeDpForWrite.Load(dp.PartitionID)
+	exclude := make(map[string]struct{})
+	s.removeHost.Range(func(key, value interface{}) bool {
+		exclude[key.(string)] = struct{}{}
+		return true
+	})
+	if !removed && !isExcludedByHost(dp, exclude, s.param.quorum) {
 		log.LogDebugf("KFasterRandomSelector: select faster dp[%v], index %v, kValue(%v/%v)",
 			dp, index, kValue, len(partitions))
 		return dp, nil
@@ -120,7 +127,8 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	slowerRwPartitionsNum := len(partitions) - kValue
 	for i := 0; i < slowerRwPartitionsNum; i++ {
 		dp = partitions[(index+i)%slowerRwPartitionsNum+kValue]
-		if !isExcludedByHost(dp, exclude, s.param.quorum) {
+		_, removed := s.removeDpForWrite.Load(dp.PartitionID)
+		if !isExcludedByHost(dp, exclude, s.param.quorum) && !removed {
 			log.LogDebugf("KFasterRandomSelector: select slower dp[%v], index %v, kValue(%v/%v)",
 				dp, (index+i)%slowerRwPartitionsNum+kValue, kValue, len(partitions))
 			return dp, nil
@@ -128,33 +136,6 @@ func (s *KFasterRandomSelector) Select(exclude map[string]struct{}) (dp *DataPar
 	}
 
 	return nil, fmt.Errorf("no writable data partition")
-}
-
-func (s *KFasterRandomSelector) RemoveDP(partitionID uint64) {
-	s.Lock()
-	defer s.Unlock()
-
-	partitions := s.partitions
-
-	var i int
-	for i = 0; i < len(partitions); i++ {
-		if partitions[i].PartitionID == partitionID {
-			break
-		}
-	}
-	if i >= len(partitions) {
-		return
-	}
-	newRwPartition := make([]*DataPartition, 0)
-	newRwPartition = append(newRwPartition, partitions[:i]...)
-	newRwPartition = append(newRwPartition, partitions[i+1:]...)
-
-	kValue := s.updateKValue(newRwPartition)
-	s.kValue = kValue
-	s.partitions = newRwPartition
-	log.LogWarnf("RemoveDP: dpId(%v), rwDpLen(%v)", partitionID, len(s.partitions))
-
-	return
 }
 
 func (s *KFasterRandomSelector) SummaryMetrics() []*proto.DataPartitionMetrics {
