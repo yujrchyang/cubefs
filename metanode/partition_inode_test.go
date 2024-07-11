@@ -1997,7 +1997,7 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 		}
 		inodeIDs = append(inodeIDs, ino)
 	}
-	assert.Equal(t, int64(0), mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, uint64(0), mp.inodeTree.GetInodesTotalSize())
 	assert.Equal(t, inodeCnt, uint64(len(inodeIDs)))
 
 	t.Logf("create %v inode success", inodeCnt)
@@ -2021,7 +2021,7 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 			}
 		}
 	}
-	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, expectInodesTotalSize, mp.inodeTree.GetInodesTotalSize())
 
 	t.Logf("insert ek success")
 
@@ -2040,7 +2040,7 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 			}
 		}
 	}
-	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, expectInodesTotalSize, mp.inodeTree.GetInodesTotalSize())
 
 	t.Logf("truncate inode count: %v", truncateInodeCnt)
 
@@ -2077,8 +2077,8 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 			expectInodesTotalSize -= inodeSize
 		}
 	}
-	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
-	assert.Equal(t, int64(expectDelInodeTotalSize), mp.inodeDeletedTree.GetDelInodesTotalSize())
+	assert.Equal(t, expectInodesTotalSize, mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, expectDelInodeTotalSize, mp.inodeDeletedTree.GetDelInodesTotalSize())
 
 	t.Logf("del inode count: %v", len(delInodesID))
 
@@ -2101,8 +2101,8 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 			newDelInodeIDs = append(newDelInodeIDs, delInodeID)
 		}
 	}
-	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
-	assert.Equal(t, int64(expectDelInodeTotalSize), mp.inodeDeletedTree.GetDelInodesTotalSize())
+	assert.Equal(t, expectInodesTotalSize, mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, expectDelInodeTotalSize, mp.inodeDeletedTree.GetDelInodesTotalSize())
 
 	t.Logf("recover inode success count: %v", len(delInodesID)-len(newDelInodeIDs))
 
@@ -2128,8 +2128,8 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 		t.Error(err)
 		t.FailNow()
 	}
-	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
-	assert.Equal(t, int64(expectDelInodeTotalSize), mp.inodeDeletedTree.GetDelInodesTotalSize())
+	assert.Equal(t, expectInodesTotalSize, mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, expectDelInodeTotalSize, mp.inodeDeletedTree.GetDelInodesTotalSize())
 	t.Logf("clean del inode success count: %v", len(needCleanDelInodes))
 
 	err = mp.store(&storeMsg{
@@ -2163,8 +2163,8 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 		t.FailNow()
 	}
 
-	assert.Equal(t, int64(expectInodesTotalSize), mp.inodeTree.GetInodesTotalSize())
-	assert.Equal(t, int64(expectDelInodeTotalSize), mp.inodeDeletedTree.GetDelInodesTotalSize())
+	assert.Equal(t, expectInodesTotalSize, mp.inodeTree.GetInodesTotalSize())
+	assert.Equal(t, expectDelInodeTotalSize, mp.inodeDeletedTree.GetDelInodesTotalSize())
 	releaseMetaPartition(mp)
 }
 

@@ -190,17 +190,17 @@ func (c *Cluster) updateVolStatInfo() {
 		if c.leaderHasChanged() {
 			return
 		}
-		total := vol.Capacity * unit.GB
+		used, total := vol.totalUsedSpace(), vol.Capacity * unit.GB
 		if total <= 0 {
 			continue
 		}
-		used, _ := vol.getFileTotalSizeAndTrashUsedSize()
-		if used < 0 {
-			used = 0
+		realUsed := used
+		fileTotalSize, _ := vol.getFileTotalSizeAndTrashUsedSize()
+		if fileTotalSize < used {
+			realUsed = fileTotalSize
 		}
-		readUsed := uint64(used)
-		useRate := float64(readUsed) / float64(total)
-		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, readUsed, strconv.FormatFloat(useRate, 'f', 3, 32), vol.enableToken, vol.enableWriteCache))
+		useRate := float64(realUsed) / float64(total)
+		c.volStatInfo.Store(vol.Name, newVolStatInfo(vol.Name, total, realUsed, strconv.FormatFloat(useRate, 'f', 3, 32), vol.enableToken, vol.enableWriteCache))
 	}
 }
 

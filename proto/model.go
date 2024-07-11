@@ -331,11 +331,11 @@ type NodeStatInfo struct {
 
 type VolStatInfo struct {
 	Name             string
-	TotalSize        uint64
-	UsedSize         uint64
-	RealUsedSize     uint64
-	FileTotalSize    int64
-	TrashUsedSize    int64
+	TotalSize        uint64 //capacity
+	UsedSize         uint64 //min(TotalSize,ReadUsedSize,FileTotalSize)
+	RealUsedSize     uint64 //the sum of the used space of all data partitions
+	FileTotalSize    uint64 //the sum of the size of all valid files.
+	TrashUsedSize    uint64 //the sum of the size of all trash files
 	UsedRatio        string
 	EnableToken      bool
 	EnableWriteCache bool

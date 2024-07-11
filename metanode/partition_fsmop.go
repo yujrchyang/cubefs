@@ -483,15 +483,15 @@ func (mp *metaPartition) fsmCorrectInodesAndDelInodesTotalSize(req *proto.Correc
 	go func() {
 		var (
 			wg                 sync.WaitGroup
-			inodesTotalSize    int64
-			delInodesTotalSize int64
+			inodesTotalSize    uint64
+			delInodesTotalSize uint64
 		)
 		wg.Add(2)
 		go func() {
 			defer wg.Done()
 			_ = snap.Range(InodeType, func(item interface{}) (bool, error) {
 				ino := item.(*Inode)
-				inodesTotalSize += int64(ino.Size)
+				inodesTotalSize += ino.Size
 				return true, nil
 			})
 		}()
@@ -500,24 +500,24 @@ func (mp *metaPartition) fsmCorrectInodesAndDelInodesTotalSize(req *proto.Correc
 			defer wg.Done()
 			_ = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
 				delIno := item.(*DeletedINode)
-				delInodesTotalSize += int64(delIno.Size)
+				delInodesTotalSize += delIno.Size
 				return true, nil
 			})
 		}()
 		wg.Wait()
 
 		if inodesTotalSize >= inodesOldTotalSize {
-			mp.updateInodesTotalSize(uint64(inodesTotalSize - inodesOldTotalSize), 0)
+			mp.updateInodesTotalSize(inodesTotalSize - inodesOldTotalSize, 0)
 		} else {
-			mp.updateInodesTotalSize(0, uint64(inodesOldTotalSize - inodesTotalSize))
+			mp.updateInodesTotalSize(0, inodesOldTotalSize - inodesTotalSize)
 		}
 		log.LogDebugf("fsmCorrectInodesAndDelInodesTotalSize, correct inodes total size partitionID: %v, changeSize: %v",
 			mp.config.PartitionId, inodesTotalSize - inodesOldTotalSize)
 
 		if delInodesTotalSize > delInodesOldTotalSize {
-			mp.updateDelInodesTotalSize(uint64(delInodesTotalSize - delInodesOldTotalSize), 0)
+			mp.updateDelInodesTotalSize(delInodesTotalSize - delInodesOldTotalSize, 0)
 		} else {
-			mp.updateDelInodesTotalSize(0, uint64(delInodesOldTotalSize - delInodesTotalSize))
+			mp.updateDelInodesTotalSize(0, delInodesOldTotalSize - delInodesTotalSize)
 		}
 		log.LogDebugf("fsmCorrectInodesAndDelInodesTotalSize, correct delInodes total size partitionID: %v, changeSize: %v",
 			mp.config.PartitionId, delInodesTotalSize - delInodesOldTotalSize)
