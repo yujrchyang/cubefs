@@ -125,7 +125,7 @@ type InodeTree interface {
 	MaxItem() *Inode
 	GetMaxInode() (uint64, error)
 	UpdateInodeTotalSize(addSize, subSize uint64)
-	GetInodesTotalSize() int64
+	GetInodesTotalSize() uint64
 }
 
 type DentryTree interface {
@@ -197,7 +197,7 @@ type DeletedInodeTree interface {
 	Count() uint64
 	Update(dbHandle interface{}, delIno *DeletedINode) error
 	UpdateDelInodeTotalSize(addSize, subSize uint64)
-	GetDelInodesTotalSize() int64
+	GetDelInodesTotalSize() uint64
 }
 
 type MetaTree struct {

@@ -754,12 +754,14 @@ func (vol *Vol) checkAutoDataPartitionCreation(c *Cluster) {
 	if vol.capacity() == 0 {
 		return
 	}
-	realUsedSize, _ := vol.getFileTotalSizeAndTrashUsedSize()
-	if realUsedSize < 0 {
-		realUsedSize = 0
+	usedSpace := vol.totalUsedSpace()
+	realUsedSize := usedSpace
+	fileTotalSize, _ := vol.getFileTotalSizeAndTrashUsedSize()
+	if fileTotalSize < usedSpace {
+		realUsedSize = fileTotalSize
 	}
 	realUsedSize = realUsedSize / util.GB
-	if uint64(realUsedSize) >= vol.capacity() {
+	if realUsedSize >= vol.capacity() {
 		vol.setAllDataPartitionsToReadOnly()
 		return
 	}
@@ -1593,7 +1595,7 @@ func (vol *Vol) getDentryCntAndInodeCnt() (dentryCnt, inodeCnt uint64) {
 	return
 }
 
-func (vol *Vol) getFileTotalSizeAndTrashUsedSize() (filesTotalSize, trashUsedSize int64) {
+func (vol *Vol) getFileTotalSizeAndTrashUsedSize() (filesTotalSize, trashUsedSize uint64) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
 	for _, mp := range vol.MetaPartitions {

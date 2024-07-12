@@ -48,8 +48,8 @@ type MetaReplica struct {
 	StoreMode          proto.StoreMode
 	ApplyId            uint64
 	AllocatorInUseCnt  uint64
-	InodesTotalSize    int64
-	DelInodesTotalSize int64
+	InodesTotalSize    uint64
+	DelInodesTotalSize uint64
 	metaNode           *MetaNode
 	createTime         int64
 }
@@ -65,8 +65,8 @@ type MetaPartition struct {
 	DelInodeCount        uint64
 	MaxExistIno          uint64
 	InoAllocatorInuseCnt uint64
-	InodesTotalSize      int64
-	DelInodesTotalSize   int64
+	InodesTotalSize      uint64
+	DelInodesTotalSize   uint64
 	Replicas             []*MetaReplica
 	ReplicaNum           uint8
 	LearnerNum           uint8
@@ -1073,23 +1073,23 @@ func (mp *MetaPartition) setInoAllocatorUsedCount() {
 }
 
 func (mp *MetaPartition) setInodesTotalSize() {
-	totalSize := int64(0)
+	totalSize := uint64(0)
 	for _, r := range mp.Replicas {
 		if r.InodesTotalSize > totalSize {
 			totalSize = r.InodesTotalSize
 		}
 	}
-	atomic.StoreInt64(&mp.InodesTotalSize, totalSize)
+	atomic.StoreUint64(&mp.InodesTotalSize, totalSize)
 }
 
 func (mp *MetaPartition) setDelInodesTotalSize() {
-	totalSize := int64(0)
+	totalSize := uint64(0)
 	for _, r := range mp.Replicas {
 		if r.DelInodesTotalSize > totalSize {
 			totalSize = r.DelInodesTotalSize
 		}
 	}
-	atomic.StoreInt64(&mp.DelInodesTotalSize, totalSize)
+	atomic.StoreUint64(&mp.DelInodesTotalSize, totalSize)
 }
 
 func (mp *MetaPartition) getAllNodeSets() (nodeSets []uint64) {

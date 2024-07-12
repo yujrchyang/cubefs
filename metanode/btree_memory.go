@@ -204,7 +204,7 @@ var _ DeletedInodeTree = &DeletedInodeBTree{}
 
 type InodeBTree struct {
 	*BTree
-	inodesTotalSize int64
+	inodesTotalSize uint64
 }
 
 type DentryBTree struct {
@@ -225,7 +225,7 @@ type DeletedDentryBTree struct {
 
 type DeletedInodeBTree struct {
 	*BTree
-	delInodesTotalSize int64
+	delInodesTotalSize uint64
 }
 
 func (i *InodeBTree) GetMaxInode() (uint64, error) {
@@ -627,11 +627,21 @@ func (i *InodeBTree) UpdateInodeTotalSize(addSize, subSize uint64) {
 	}
 
 	if addSize != 0 {
-		atomic.AddInt64(&i.inodesTotalSize, int64(addSize))
+		atomic.AddUint64(&i.inodesTotalSize, addSize)
 	}
 
 	if subSize != 0 {
-		atomic.AddInt64(&i.inodesTotalSize, int64(^(subSize-1)))
+		for {
+			current := atomic.LoadUint64(&i.inodesTotalSize)
+			newValue := uint64(0)
+			if current > subSize {
+				newValue = current - subSize
+			}
+
+			if atomic.CompareAndSwapUint64(&i.inodesTotalSize, current, newValue) {
+				break
+			}
+		}
 	}
 	return
 }
@@ -642,20 +652,30 @@ func (i *DeletedInodeBTree) UpdateDelInodeTotalSize(addSize, subSize uint64) {
 	}
 
 	if addSize != 0 {
-		atomic.AddInt64(&i.delInodesTotalSize, int64(addSize))
+		atomic.AddUint64(&i.delInodesTotalSize, addSize)
 	}
 
 	if subSize != 0 {
-		atomic.AddInt64(&i.delInodesTotalSize, int64(^(subSize-1)))
+		for {
+			current := atomic.LoadUint64(&i.delInodesTotalSize)
+			newValue := uint64(0)
+			if current > subSize {
+				newValue = current - subSize
+			}
+
+			if atomic.CompareAndSwapUint64(&i.delInodesTotalSize, current, newValue) {
+				break
+			}
+		}
 	}
 }
 
-func (i *InodeBTree) GetInodesTotalSize() int64 {
-	return atomic.LoadInt64(&i.inodesTotalSize)
+func (i *InodeBTree) GetInodesTotalSize() uint64 {
+	return atomic.LoadUint64(&i.inodesTotalSize)
 }
 
-func (i *DeletedInodeBTree) GetDelInodesTotalSize() int64 {
-	return atomic.LoadInt64(&i.delInodesTotalSize)
+func (i *DeletedInodeBTree) GetDelInodesTotalSize() uint64 {
+	return atomic.LoadUint64(&i.delInodesTotalSize)
 }
 
 // BTree is the wrapper of Google's btree.

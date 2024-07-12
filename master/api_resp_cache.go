@@ -33,7 +33,7 @@ func (c *Cluster) updateVolInfoResponseCache() (body []byte, err error) {
 			continue
 		}
 		stat := volStat(vol)
-		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
+		volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 			vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 			vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
 			vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,

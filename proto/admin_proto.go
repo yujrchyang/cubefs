@@ -924,8 +924,8 @@ type MetaPartitionReport struct {
 	ApplyId            uint64
 	IsRecover          bool
 	AllocatorInUseCnt  uint64
-	InodesTotalSize    int64
-	DelInodesTotalSize int64
+	InodesTotalSize    uint64
+	DelInodesTotalSize uint64
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -1112,8 +1112,8 @@ type MetaPartitionView struct {
 	StoreMode          StoreMode
 	MemCount           uint8
 	RocksCount         uint8
-	InodesTotalSize    int64
-	DelInodesTotalSize int64
+	InodesTotalSize    uint64
+	DelInodesTotalSize uint64
 }
 
 // You Must modify VolViewPb in admin.proto at the same time when modify this struct
@@ -1285,8 +1285,8 @@ type SimpleVolView struct {
 	InodeCountThreshold      uint64
 	BitMapSnapFrozenHour     int64
 
-	FileTotalSize int64
-	TrashUsedSize int64
+	FileTotalSize uint64
+	TrashUsedSize uint64
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1321,8 +1321,8 @@ type VolInfo struct {
 	TruncateEKCountEveryTime      int
 	StoreMode                     StoreMode
 	BitMapSnapFrozenHour          int64
-	FileTotalSize                 int64
-	TrashUsedSize                 int64
+	FileTotalSize                 uint64
+	TrashUsedSize                 uint64
 	EnableCheckDeleteEK           bool
 }
 

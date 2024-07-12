@@ -273,8 +273,8 @@ var (
 
 func formatVolInfoTableRow(vi *proto.VolInfo) string {
 	return fmt.Sprintf(volumeInfoTablePattern,
-		vi.Name, vi.Owner, formatSize(vi.UsedSize), formatSize(vi.TotalSize), formatFloat(vi.UsedRatio), formatSize(uint64(vi.FileTotalSize)),
-		formatSize(uint64(vi.TrashUsedSize)), formatVolumeStatus(vi.Status), vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
+		vi.Name, vi.Owner, formatSize(vi.UsedSize), formatSize(vi.TotalSize), formatFloat(vi.UsedRatio), formatSize(vi.FileTotalSize),
+		formatSize(vi.TrashUsedSize), formatVolumeStatus(vi.Status), vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 
 var (
@@ -286,7 +286,7 @@ var (
 func formatVolDetailInfoTableRow(vv *proto.SimpleVolView, vi *proto.VolInfo) string {
 	return fmt.Sprintf(volumeDetailInfoTablePattern,
 		vv.Name, vv.Owner, vv.ZoneName, vv.CrossZone, vv.InodeCount, vv.DpCnt, formatSize(vi.UsedSize), formatSize(vi.TotalSize),
-		formatSize(uint64(vv.FileTotalSize)), formatSize(uint64(vv.TrashUsedSize)), formatVolumeStatus(vi.Status),
+		formatSize(vv.FileTotalSize), formatSize(vv.TrashUsedSize), formatVolumeStatus(vi.Status),
 		vi.IsSmart, time.Unix(vi.CreateTime, 0).Local().Format(time.RFC1123))
 }
 

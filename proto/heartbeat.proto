@@ -63,8 +63,8 @@ message MetaPartitionReportPb {
     uint64 ApplyId  = 15;
     bool IsRecover = 16;
     uint64 AllocatorInUseCnt = 17;
-    int64 InodesTotalSize = 18;
-    int64 DelInodesTotalSize = 19;
+    uint64 InodesTotalSize = 18;
+    uint64 DelInodesTotalSize = 19;
 }
 
 message MetaNodeDiskInfoPb {

@@ -1926,7 +1926,7 @@ func (mp *metaPartition) updateDelInodesTotalSize(addSize uint64, subSize uint64
 		return
 	}
 
-	var oldSize, newSize int64
+	var oldSize, newSize uint64
 
 	if log.IsDebugEnabled() {
 		oldSize = mp.inodeDeletedTree.GetDelInodesTotalSize()
@@ -1947,7 +1947,7 @@ func (mp *metaPartition) updateInodesTotalSize(addSize uint64, subSize uint64) {
 		return
 	}
 
-	var oldSize, newSize int64
+	var oldSize, newSize uint64
 
 	if log.IsDebugEnabled() {
 		oldSize = mp.inodeTree.GetInodesTotalSize()

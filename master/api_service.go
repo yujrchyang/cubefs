@@ -2145,7 +2145,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		usedRatio = float64(stat.RealUsedSize) / float64(stat.TotalSize)
 	}
 	if volInodeCount > 0 {
-		fileAvgSize = float64(stat.RealUsedSize) / float64(volInodeCount)
+		fileAvgSize = float64(stat.FileTotalSize) / float64(volInodeCount)
 	}
 	return &proto.SimpleVolView{
 		ID:                       vol.ID,
@@ -5482,10 +5482,11 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	stat.EnableToken = vol.enableToken
 	stat.EnableWriteCache = vol.enableWriteCache
 	stat.FileTotalSize, stat.TrashUsedSize = vol.getFileTotalSizeAndTrashUsedSize()
-	if stat.FileTotalSize < 0 {
-		stat.FileTotalSize = 0
+	stat.UsedSize = stat.RealUsedSize
+	if stat.UsedSize > stat.FileTotalSize {
+		stat.UsedSize = stat.FileTotalSize // The used space is the sum of the total size of all valid files.
 	}
-	stat.UsedSize = uint64(stat.FileTotalSize) // The used space is the sum of the total size of all valid files.
+
 	if stat.UsedSize > stat.TotalSize {
 		stat.UsedSize = stat.TotalSize
 	}
@@ -5700,7 +5701,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				}
 				stat := volStat(vol)
 
-				volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.RealUsedSize,
+				volInfo := proto.NewVolInfo(vol.Name, vol.Owner, vol.createTime, vol.status(), stat.TotalSize, stat.UsedSize,
 					vol.trashRemainingDays, vol.ChildFileMaxCount, vol.isSmart, vol.smartRules, vol.ForceROW, vol.compact(),
 					vol.TrashCleanInterval, vol.enableToken, vol.enableWriteCache, vol.BatchDelInodeCnt, vol.DelInodeInterval,
 					vol.CleanTrashDurationEachTime, vol.TrashCleanMaxCountEachTime, vol.EnableBitMapAllocator, vol.enableRemoveDupReq,

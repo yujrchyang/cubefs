@@ -35,8 +35,8 @@ type RocksBaseInfo struct {
 	delInodeCnt        uint64
 	persistentApplyId  uint64
 	cursor             uint64
-	inodesTotalSize    int64
-	delInodesTotalSize int64
+	inodesTotalSize    uint64
+	delInodesTotalSize uint64
 }
 
 func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
@@ -73,10 +73,10 @@ func (info *RocksBaseInfo) Marshal() (result []byte, err error) {
 		panic(err)
 	}
 	if info.version > BaseInfoBaseVersion {
-		if err = binary.Write(buff, binary.BigEndian, atomic.LoadInt64(&info.inodesTotalSize)); err != nil {
+		if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.inodesTotalSize)); err != nil {
 			panic(err)
 		}
-		if err = binary.Write(buff, binary.BigEndian, atomic.LoadInt64(&info.delInodesTotalSize)); err != nil {
+		if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.delInodesTotalSize)); err != nil {
 			panic(err)
 		}
 	}
@@ -116,10 +116,10 @@ func (info *RocksBaseInfo) MarshalWithoutApplyID() (result []byte, err error) {
 		panic(err)
 	}
 	if info.version > BaseInfoBaseVersion {
-		if err = binary.Write(buff, binary.BigEndian, atomic.LoadInt64(&info.inodesTotalSize)); err != nil {
+		if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.inodesTotalSize)); err != nil {
 			panic(err)
 		}
-		if err = binary.Write(buff, binary.BigEndian, atomic.LoadInt64(&info.delInodesTotalSize)); err != nil {
+		if err = binary.Write(buff, binary.BigEndian, atomic.LoadUint64(&info.delInodesTotalSize)); err != nil {
 			panic(err)
 		}
 	}
@@ -1489,11 +1489,21 @@ func (b *InodeRocks) UpdateInodeTotalSize(addSize, subSize uint64) {
 	}
 
 	if addSize != 0 {
-		atomic.AddInt64(&b.baseInfo.inodesTotalSize, int64(addSize))
+		atomic.AddUint64(&b.baseInfo.inodesTotalSize, addSize)
 	}
 
 	if subSize != 0 {
-		atomic.AddInt64(&b.baseInfo.inodesTotalSize, int64(^(subSize-1)))
+		for {
+			current := atomic.LoadUint64(&b.baseInfo.inodesTotalSize)
+			newValue := uint64(0)
+			if current > subSize {
+				newValue = current - subSize
+			}
+
+			if atomic.CompareAndSwapUint64(&b.baseInfo.inodesTotalSize, current, newValue) {
+				break
+			}
+		}
 	}
 	return
 }
@@ -1504,20 +1514,30 @@ func (b *DeletedInodeRocks) UpdateDelInodeTotalSize(addSize, subSize uint64) {
 	}
 
 	if addSize != 0 {
-		atomic.AddInt64(&b.baseInfo.delInodesTotalSize, int64(addSize))
+		atomic.AddUint64(&b.baseInfo.delInodesTotalSize, addSize)
 	}
 
 	if subSize != 0 {
-		atomic.AddInt64(&b.baseInfo.delInodesTotalSize, int64(^(subSize-1)))
+		for {
+			current := atomic.LoadUint64(&b.baseInfo.delInodesTotalSize)
+			newValue := uint64(0)
+			if current > subSize {
+				newValue = current - subSize
+			}
+
+			if atomic.CompareAndSwapUint64(&b.baseInfo.delInodesTotalSize, current, newValue) {
+				break
+			}
+		}
 	}
 }
 
-func (b *InodeRocks) GetInodesTotalSize() int64 {
-	return atomic.LoadInt64(&b.baseInfo.inodesTotalSize)
+func (b *InodeRocks) GetInodesTotalSize() uint64 {
+	return atomic.LoadUint64(&b.baseInfo.inodesTotalSize)
 }
 
-func (b *DeletedInodeRocks) GetDelInodesTotalSize() int64 {
-	return atomic.LoadInt64(&b.baseInfo.delInodesTotalSize)
+func (b *DeletedInodeRocks) GetDelInodesTotalSize() uint64 {
+	return atomic.LoadUint64(&b.baseInfo.delInodesTotalSize)
 }
 
 var _ Snapshot = &RocksSnapShot{}
