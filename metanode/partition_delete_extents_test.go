@@ -791,7 +791,7 @@ func TestEKDelDelay(t *testing.T) {
 		t.Fatalf("create mp failed:%s", err.Error())
 	}
 	defer releaseMetaPartition(mp)
-	mp.startToDeleteExtents()
+
 	mp.topoManager = topology.NewTopologyManager(0, 1, mockMasterClient, mockMasterClient,
 		false, true)
 	mp.topoManager.AddVolume("test")
@@ -821,8 +821,12 @@ func TestEKDelDelay(t *testing.T) {
 	}
 
 	ekDelDelayDuration = time.Minute
-	mp.extDelCh <- eks
-	time.Sleep(time.Minute*2)
+	key := make([]byte, dbExtentKeySize)
+	updateKeyToNowWithAdjust(key, false)
+	mp.startToDeleteExtents()
+	err = mp.addDelExtentToDb(key, eks)
+	assert.Empty(t, err)
+	time.Sleep(time.Second*70)
 
 	expectEKCount := 502
 	actualEKCount := 0
