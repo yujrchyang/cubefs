@@ -171,40 +171,40 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 		}
 		peerStrings := convertPeersToArray(dnPartition.Peers)
 		sort.Strings(peerStrings)
-		sort.Strings(dnPartition.Replicas)
+		sort.Strings(dp.Hosts)
 
-		diffPeerToHost := diffSliceString(peerStrings, dnPartition.Replicas)
-		diffHostToPeer := diffSliceString(dnPartition.Replicas, peerStrings)
-		if len(peerStrings) == 4 && len(diffPeerToHost) == 1 && len(diffHostToPeer) == 0 {
+		diffPeerToHost := diffSliceString(peerStrings, dp.Hosts)
+		diffHostToPeer := diffSliceString(dp.Hosts, peerStrings)
+		if ((dp.ReplicaNum == 3 && len(peerStrings) == 4) || (dp.ReplicaNum == 5 && len(peerStrings) == 6)) && len(diffPeerToHost) == 1 && len(diffHostToPeer) == 0 {
 			peerReplica := PeerReplica{
 				VolName:       volName,
 				ReplicationID: dp.PartitionID,
-				PeerErrorInfo: "PEER4_HOST3",
+				PeerErrorInfo: "EXCESS_PEER",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffPeerToHost[0],
 			}
 			badReplicas = append(badReplicas, peerReplica)
-		} else if len(peerStrings) == 2 && len(diffHostToPeer) == 1 && len(diffPeerToHost) == 0 {
+		} else if ((dp.ReplicaNum == 3 && len(peerStrings) == 2) || (dp.ReplicaNum == 5 && len(peerStrings) == 4)) && len(diffHostToPeer) == 1 && len(diffPeerToHost) == 0 {
 			peerReplica := PeerReplica{
 				VolName:       volName,
 				ReplicationID: dp.PartitionID,
-				PeerErrorInfo: "HOST3_PEER2",
+				PeerErrorInfo: "LACK_PEER",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffHostToPeer[0],
 			}
 			badReplicas = append(badReplicas, peerReplica)
-		} else if len(peerStrings) == 3 && len(diffPeerToHost) == 1 && len(diffHostToPeer) == 0 {
+		} else if ((dp.ReplicaNum == 3 && len(peerStrings) == 3) || (dp.ReplicaNum == 5 && len(peerStrings) == 5)) && len(diffPeerToHost) == 1 && len(diffHostToPeer) == 0 {
 			peerReplica := PeerReplica{
 				VolName:       volName,
 				ReplicationID: dp.PartitionID,
-				PeerErrorInfo: "PEER3_HOST2",
+				PeerErrorInfo: "LACK_HOST",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffPeerToHost[0],
 			}
 			badReplicas = append(badReplicas, peerReplica)
-		} else if len(peerStrings) != len(dnPartition.Replicas) || len(diffPeerToHost)+len(diffHostToPeer) > 0 {
+		} else if len(peerStrings) != len(dp.Hosts) || len(diffPeerToHost)+len(diffHostToPeer) > 0 {
 			if val, ok := badPeerPartitionMap.Load(dp.PartitionID); ok {
-				msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v, unknown] peerStrings: %v , hostStrings: %v ", ch.host, volName, dp.PartitionID, r.Addr, peerStrings, dnPartition.Replicas)
+				msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v, unknown] peerStrings: %v , hostStrings: %v ", ch.host, volName, dp.PartitionID, r.Addr, peerStrings, dp.Hosts)
 				checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, msg)
 				badPeerPartitionMap.Store(dp.PartitionID, val.(int)+1)
 			} else {
@@ -291,25 +291,26 @@ func dataNodeGetPartition(ch *ClusterHost, addr string, id uint64) (node *DNData
 
 func repairDp(release bool, host string, replica PeerReplica) {
 	switch replica.PeerErrorInfo {
-	case "HOST3_PEER2":
+	case "LACK_PEER":
 		if err := decommissionDp(release, host, replica.VolName, replica.ReplicationID, replica.PeerAddr); err != nil {
-			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] repair failed, err:%v", host, replica.ReplicationID, err)
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair failed, err:%v", host, replica.ReplicationID, replica.PeerErrorInfo, err)
 			return
 		}
-		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST3_PEER2] has been automatically repaired, cmd[cfs-cli datapartition decommission %v %v]", host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
-	case "PEER4_HOST3":
+		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] has been automatically repaired, cmd[cfs-cli datapartition decommission %v %v]", host, replica.ReplicationID,
+			replica.PeerErrorInfo, replica.PeerAddr, replica.ReplicationID)
+	case "EXCESS_PEER":
 		if err := addDpReplica(host, replica.ReplicationID, replica.PeerAddr); err != nil {
-			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-addDpReplica failed, err:%v", host, replica.ReplicationID, err)
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair-addDpReplica failed, err:%v", host, replica.ReplicationID, replica.PeerErrorInfo, err)
 			break
 		}
 		time.Sleep(time.Second * 3)
 		if err := delDpReplica(host, replica.ReplicationID, replica.PeerAddr); err != nil {
-			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-delDpReplica failed, err:%v", host, replica.ReplicationID, err)
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair-delDpReplica failed, err:%v", host, replica.ReplicationID, replica.PeerErrorInfo, err)
 			break
 		}
-		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli datapartition add-replica %v %v && sleep 3 && cfs-cli datapartition del-replica %v %v]",
-			host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
-	case "HOST2_PEER3":
+		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] has been automatically repaired, cmd[cfs-cli datapartition add-replica %v %v && sleep 3 && cfs-cli datapartition del-replica %v %v]",
+			host, replica.ReplicationID, replica.PeerErrorInfo, replica.PeerAddr, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
+	case "LACK_HOST":
 		outputStr := fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] recommond cmd: cfs-cli datapartition add-replica %v %v",
 			host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
 		checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, outputStr)

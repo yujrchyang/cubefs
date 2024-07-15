@@ -172,7 +172,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 			peerReplica := PeerReplica{
 				VolName:       mp.VolName,
 				ReplicationID: mp.PartitionID,
-				PeerErrorInfo: "PEER4_HOST3",
+				PeerErrorInfo: "EXCESS_PEER",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffPeerToHost[0],
 			}
@@ -181,7 +181,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 			peerReplica := PeerReplica{
 				VolName:       mp.VolName,
 				ReplicationID: mp.PartitionID,
-				PeerErrorInfo: "PEER2_HOST3",
+				PeerErrorInfo: "LACK_PEER",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffHostToPeer[0],
 			}
@@ -190,7 +190,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 			peerReplica := PeerReplica{
 				VolName:       mp.VolName,
 				ReplicationID: mp.PartitionID,
-				PeerErrorInfo: "PEER3_HOST2",
+				PeerErrorInfo: "LACK_HOST",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffPeerToHost[0],
 			}
@@ -231,28 +231,30 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 
 func repairMp(release bool, host string, rep PeerReplica) {
 	switch rep.PeerErrorInfo {
-	case "PEER2_HOST3":
+	case "LACK_PEER":
 		if err := decommissionMp(release, host, rep.VolName, rep.ReplicationID, rep.PeerAddr); err != nil {
-			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] repair failed, err:%v", host, rep.ReplicationID, err)
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair failed, err:%v", host, rep.ReplicationID, rep.PeerErrorInfo, err)
 		} else {
-			log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER2_HOST3] has been automatically repaired, cmd[cfs-cli metapartition decommission %v %v]",
-				host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
+			log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] has been automatically repaired, cmd[cfs-cli metapartition decommission %v %v]",
+				host, rep.ReplicationID, rep.PeerErrorInfo, rep.PeerAddr, rep.ReplicationID)
 		}
-	case "PEER4_HOST3":
+	case "EXCESS_PEER":
 		if err := addMpReplica(release, host, rep.ReplicationID, rep.PeerAddr); err != nil {
-			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-addMpReplica failed, err:%v", host, rep.ReplicationID, err)
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair-addMpReplica failed, err:%v", host, rep.ReplicationID,
+				rep.PeerErrorInfo, err)
 			break
 		}
 		time.Sleep(time.Second * 3)
 		if err := delMpReplica(release, host, rep.ReplicationID, rep.PeerAddr); err != nil {
-			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] repair-delMpReplica failed, err:%v", host, rep.ReplicationID, err)
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair-delMpReplica failed, err:%v", host, rep.ReplicationID,
+				rep.PeerErrorInfo, err)
 			break
 		}
-		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: PEER4_HOST3] has been automatically repaired, cmd[cfs-cli metapartition add-replica %v %v && sleep 3 && cfs-cli metapartition del-replica %v %v]",
-			host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
-	case "HOST2_PEER3":
-		outputStr := fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] cmd: cfs-cli metapartition add-replica %v %v",
-			host, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
+		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] has been automatically repaired, cmd[cfs-cli metapartition add-replica %v %v && sleep 3 && cfs-cli metapartition del-replica %v %v]",
+			host, rep.ReplicationID, rep.PeerErrorInfo, rep.PeerAddr, rep.ReplicationID, rep.PeerAddr, rep.ReplicationID)
+	case "LACK_HOST":
+		outputStr := fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] cmd: cfs-cli metapartition add-replica %v %v",
+			host, rep.ReplicationID, rep.PeerErrorInfo, rep.PeerAddr, rep.ReplicationID)
 		checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionPeerInconsistency, outputStr)
 	default:
 		log.LogErrorf("wrong error info, %v", rep.PeerErrorInfo)
@@ -399,7 +401,7 @@ func checkRaftReplicaStatus(host *ClusterHost, replicaRaftStatusMap map[string]*
 	if len(replicaRaftStatusMap) == 0 {
 		return
 	}
-	checkRaftReplicaStatusOfPendingReplica(host, replicaRaftStatusMap, pID, volName, partitionType, hosts)
+	checkRaftReplicaStatusOfPendingReplica(host, replicaRaftStatusMap, pID, volName, partitionType)
 	if isRecover {
 		return
 	}
@@ -528,7 +530,7 @@ func isReplicaStatusUnavailable(replicaAddr string, replicas []*DataReplica) (ok
 // 1.遍历 检查 是否有pending的
 // 2.获取最大、最小applied计算差值，如果距离上次大于24小时/不存在 存入，否则（存在且小于24H）告警
 // 如果差别的副本变更了，只更新记录，不告警
-func checkRaftReplicaStatusOfPendingReplica(host *ClusterHost, replicaRaftStatusMap map[string]*raft.Status, pID uint64, volName, partitionType string, hosts []string) {
+func checkRaftReplicaStatusOfPendingReplica(host *ClusterHost, replicaRaftStatusMap map[string]*raft.Status, pID uint64, volName, partitionType string) {
 	var (
 		maxPendQueueCount       int
 		pendQueueAlarmThreshold int
