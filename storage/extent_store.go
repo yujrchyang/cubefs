@@ -960,6 +960,16 @@ func (s *ExtentStore) MoveAllToBrokenTinyExtentC(cnt int) {
 	}
 }
 
+func (s *ExtentStore) MoveAllToAvailTinyExtentC(cnt int) {
+	for i := 0; i < cnt; i++ {
+		extentID, err := s.GetBrokenTinyExtent()
+		if err != nil {
+			return
+		}
+		s.SendToAvailableTinyExtentC(extentID)
+	}
+}
+
 // SendToBrokenTinyExtentC sends the given extent id to the channel.
 func (s *ExtentStore) SendToBrokenTinyExtentC(extentID uint64) {
 	s.brokenTinyExtentMutex.Lock()
