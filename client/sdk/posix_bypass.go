@@ -676,7 +676,7 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 		if len(name) == 0 {
 			return statusEINVAL
 		}
-		inode, err := c.getDentry(nil, dirInode, name, false)
+		inode, _, err := c.getDentry(nil, dirInode, name, false)
 		var newInfo *proto.InodeInfo
 		if err == nil {
 			if fuseFlags&uint32(C.O_EXCL) != 0 {
@@ -1250,35 +1250,53 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 	fuseMode := uint32(mode)&0777 | uint32(os.ModeDir)
 	uid := uint32(os.Getuid())
 	gid := uint32(os.Getgid())
-	for _, dir := range dirs {
+	for i:=0; i<len(dirs); {
+		dir := dirs[i]
 		if dir == "" {
+			// skip
+			i++
 			continue
 		}
 		var child uint64
-		child, err = c.getDentry(nil, pino, dir, true)
-		if err != nil && err != syscall.ENOENT {
-			re = errorToStatus(err)
-			return
+		var typ   uint32
+		child, typ, err = c.getDentry(nil, pino, dir, true)
+		if err == nil {
+			if !os.FileMode(typ).IsDir() {
+				re = errorToStatus(syscall.ENOTDIR)
+				return
+			}
+			// advance
+			pino = child
+			i++
+			continue
 		}
 		if err == syscall.ENOENT {
 			var info *proto.InodeInfo
 			info, err = c.create(nil, pino, dir, fuseMode, uid, gid, nil)
-			if err != nil && err != syscall.ENOENT {
-				re = errorToStatus(err)
-				return
+			if err == nil {
+				// advance
+				pino = info.Inode
+				i++
+				continue
 			}
 			if err == syscall.EEXIST {
-				if child, err = c.getDentry(nil, pino, dir, true); err != nil {
-					re = errorToStatus(err)
-					return
-				}
-			} else {
-				child = info.Inode
+				// retry this item without advance
+				continue
 			}
+			if err == syscall.ENOENT {
+				// parent maybe deleted by other process, retry from root.
+				i = 0
+				pino = proto.RootIno
+				continue
+			}
+			// unexpected error occurred
+			re = errorToStatus(err)
+			return
 		}
-		pino = child
+		// unexpected error occurred
+		re = errorToStatus(err)
+		return
 	}
-
 	re = statusOK
 	return
 }
@@ -1667,7 +1685,7 @@ func cfs_symlink(id C.int64_t, target *C.char, linkPath *C.char) (re C.int) {
 		return errorToStatus(err)
 	}
 
-	_, err = c.getDentry(nil, dirInode, name, false)
+	_, _, err = c.getDentry(nil, dirInode, name, false)
 	if err == nil {
 		return statusEEXIST
 	} else if err != syscall.ENOENT {

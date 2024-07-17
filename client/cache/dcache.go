@@ -20,9 +20,13 @@ import (
 )
 
 // DentryCache defines the dentry cache.
+type dentry struct {
+	ino   uint64
+	typ  uint32
+}
 type DentryCache struct {
 	sync.RWMutex
-	cache          map[string]uint64
+	cache          map[string]dentry
 	expiration     int64
 	dentryValidSec uint32
 	useCache       bool
@@ -31,7 +35,7 @@ type DentryCache struct {
 // NewDentryCache returns a new dentry cache.
 func NewDentryCache(dentryValidSec uint32, useCache bool) *DentryCache {
 	return &DentryCache{
-		cache:          make(map[string]uint64),
+		cache:          make(map[string]dentry),
 		expiration:     time.Now().Unix() + int64(dentryValidSec),
 		dentryValidSec: dentryValidSec,
 		useCache:       useCache,
@@ -39,33 +43,36 @@ func NewDentryCache(dentryValidSec uint32, useCache bool) *DentryCache {
 }
 
 // Put puts an item into the cache.
-func (dc *DentryCache) Put(name string, ino uint64) {
+func (dc *DentryCache) Put(name string, ino uint64, typ uint32) {
 	if dc == nil || !dc.useCache {
 		return
 	}
 	dc.Lock()
 	defer dc.Unlock()
-	dc.cache[name] = ino
+	dc.cache[name] = dentry{ino: ino, typ: typ}
 	dc.expiration = time.Now().Unix() + int64(dc.dentryValidSec)
 }
 
 // Get gets the item from the cache based on the given key.
-func (dc *DentryCache) Get(name string) (uint64, bool) {
+func (dc *DentryCache) Get(name string) (uint64, uint32, bool) {
 	if dc == nil || !dc.useCache {
-		return 0, false
+		return 0, 0, false
 	}
 
 	dc.RLock()
 	if dc.expiration < time.Now().Unix() {
 		dc.RUnlock()
 		dc.Lock()
-		dc.cache = make(map[string]uint64)
+		dc.cache = make(map[string]dentry)
 		dc.Unlock()
-		return 0, false
+		return 0, 0, false
 	}
-	ino, ok := dc.cache[name]
+	d, ok := dc.cache[name]
 	dc.RUnlock()
-	return ino, ok
+	if !ok {
+		return 0, 0, false
+	}
+	return d.ino, d.typ, true
 }
 
 // Delete deletes the item based on the given key.

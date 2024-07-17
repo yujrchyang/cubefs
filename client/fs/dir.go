@@ -190,12 +190,12 @@ func (d *Node) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.L
 		log.LogDebugf("TRACE Lookup enter: parent(%v) req(%v)", d.inode, req)
 	}
 
-	ino, ok := d.dcache.Get(req.Name)
+	ino, _, ok := d.dcache.Get(req.Name)
 	if !ok && Sup.prefetchManager != nil {
 		dcache := Sup.prefetchManager.GetDentryCache(d.inode)
 		if dcache != nil {
 			d.dcache = dcache
-			ino, ok = d.dcache.Get(req.Name)
+			ino, _, ok = d.dcache.Get(req.Name)
 		}
 	}
 	if !ok {
@@ -250,7 +250,7 @@ func (d *Node) ReadDirAll(ctx context.Context) ([]fuse.Dirent, error) {
 		}
 		inodes = append(inodes, child.Inode)
 		dirents = append(dirents, dentry)
-		dcache.Put(child.Name, child.Inode)
+		dcache.Put(child.Name, child.Inode, child.Type)
 	}
 
 	// batch get inode info is only useful when using stat/fstat to all files, or in shell ls command
@@ -314,7 +314,7 @@ func (d *Node) ReadDirPlusAll(ctx context.Context, resp *fuse.ReadDirPlusRespons
 			dentryPlus.Node = NewNode(info.Inode)
 		}
 		dirents = append(dirents, dentryPlus)
-		dcache.Put(child.Name, child.Inode)
+		dcache.Put(child.Name, child.Inode, child.Type)
 	}
 
 	d.dcache = dcache

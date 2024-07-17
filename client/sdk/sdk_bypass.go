@@ -668,7 +668,7 @@ func (c *client) create(ctx context.Context, parentID uint64, name string, mode,
 		dentryCache = cache.NewDentryCache(dentryValidSec, c.useMetaCache)
 		c.inodeDentryCache[parentID] = dentryCache
 	}
-	dentryCache.Put(name, info.Inode)
+	dentryCache.Put(name, info.Inode, info.Mode)
 	c.inodeDentryCacheLock.Unlock()
 	return
 }
@@ -769,7 +769,7 @@ func (c *client) lookupPath(ctx context.Context, path string) (ino uint64, err e
 			if dir == "/" || dir == "" {
 				continue
 			}
-			child, err = c.getDentry(nil, ino, dir, false)
+			child, _, err = c.getDentry(nil, ino, dir, false)
 			if err != nil {
 				ino = 0
 				return
@@ -781,6 +781,12 @@ func (c *client) lookupPath(ctx context.Context, path string) (ino uint64, err e
 }
 
 func (c *client) getInode(ctx context.Context, ino uint64) (info *proto.InodeInfo, err error) {
+
+	if !c.useMetaCache {
+		info, err = c.mw.InodeGet_ll(nil, ino)
+		return
+	}
+
 	if info = c.inodeCache.Get(nil, ino); info != nil {
 		return
 	}
@@ -792,19 +798,25 @@ func (c *client) getInode(ctx context.Context, ino uint64) (info *proto.InodeInf
 	return
 }
 
-func (c *client) getDentry(ctx context.Context, parentID uint64, name string, strict bool) (ino uint64, err error) {
+func (c *client) getDentry(ctx context.Context, parentID uint64, name string, strict bool) (ino uint64, typ uint32, err error) {
+
+	if !c.useMetaCache {
+		ino, typ, err = c.mw.Lookup_ll(nil, parentID, name)
+		return
+	}
+
 	c.inodeDentryCacheLock.Lock()
 	defer c.inodeDentryCacheLock.Unlock()
 
 	dentryCache, cacheExists := c.inodeDentryCache[parentID]
 	if cacheExists && !strict {
 		var ok bool
-		if ino, ok = dentryCache.Get(name); ok {
+		if ino, typ, ok = dentryCache.Get(name); ok {
 			return
 		}
 	}
 
-	ino, _, err = c.mw.Lookup_ll(nil, parentID, name)
+	ino, typ, err = c.mw.Lookup_ll(nil, parentID, name)
 	if err != nil {
 		return
 	}
@@ -814,11 +826,16 @@ func (c *client) getDentry(ctx context.Context, parentID uint64, name string, st
 		c.inodeDentryCache[parentID] = dentryCache
 	}
 
-	dentryCache.Put(name, ino)
+	dentryCache.Put(name, ino, typ)
 	return
 }
 
 func (c *client) invalidateDentry(parentID uint64, name string) {
+
+	if !c.useMetaCache {
+		return
+	}
+
 	c.inodeDentryCacheLock.Lock()
 	defer c.inodeDentryCacheLock.Unlock()
 	dentryCache, parentOk := c.inodeDentryCache[parentID]
