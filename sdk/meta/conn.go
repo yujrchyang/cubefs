@@ -112,6 +112,9 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 			}
 			return
 		}
+		if proto.IsDbBack {
+			return
+		}
 		log.LogWarnf("sendReadToMP: send to leader failed and try to read consistent, req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp)
 		resp, err = mw.readConsistentFromHosts(ctx, mp, req, true)
 		if err == nil && !resp.ShouldRetry() {

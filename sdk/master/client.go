@@ -200,7 +200,7 @@ func (c *MasterClient) serveRequest(r *request) (respData []byte, contentType st
 				c.setLeader(host)
 			}
 			contentType = resp.Header.Get("content-type")
-			if (c.IsDbBack || proto.IsDbBack) && r.path != proto.AdminSetNodeInfo && r.path != proto.AdminGetLimitInfo {
+			if (c.IsDbBack || proto.IsDbBack) && r.path != proto.AdminSetNodeInfo && r.path != proto.AdminGetLimitInfo && r.path != proto.AdminSetClientPkgAddr && r.path != proto.AdminGetClientPkgAddr {
 				return respData, contentType, nil
 			}
 

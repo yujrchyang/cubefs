@@ -372,6 +372,7 @@ type volValue struct {
 	BatchDelInodeCnt      uint32
 	DelInodeInterval      uint32
 	UmpCollectWay         exporter.UMPCollectMethod
+	UmpKeyPrefix          string
 	ReuseMP               bool
 	EnableBitMapAllocator bool
 	TrashCleanDuration    int32
@@ -469,6 +470,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		BatchDelInodeCnt:      vol.BatchDelInodeCnt,
 		DelInodeInterval:      vol.DelInodeInterval,
 		UmpCollectWay:         vol.UmpCollectWay,
+		UmpKeyPrefix:          vol.UmpKeyPrefix,
 		EnableBitMapAllocator: vol.EnableBitMapAllocator,
 		TrashCleanDuration:    vol.CleanTrashDurationEachTime,
 		TrashCleanMaxCount:    vol.TrashCleanMaxCountEachTime,

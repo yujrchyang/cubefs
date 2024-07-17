@@ -114,6 +114,7 @@ type Wrapper struct {
 	remoteCache             *flash.RemoteCache
 	HostsDelay              sync.Map
 	extentClientType        ExtentClientType
+	umpKeyPrefix            string
 }
 
 type DataState struct {
@@ -243,6 +244,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	w.quorum = view.Quorum
 	w.ecEnable = view.EcEnable
 	w.extentCacheExpireSec = view.ExtentCacheExpireSec
+	w.umpKeyPrefix = view.UmpKeyPrefix
 	w.updateConnConfig(view.ConnConfig, defaultConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
@@ -385,6 +387,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.cacheBoostPath = view.RemoteCacheBoostPath
 	w.enableCacheAutoPrepare = view.RemoteCacheAutoPrepare
 	w.cacheTTL = view.RemoteCacheTTL
+	w.umpKeyPrefix = view.UmpKeyPrefix
 	w.updateConnConfig(view.ConnConfig, volumeConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
@@ -412,6 +415,7 @@ func (w *Wrapper) saveSimpleVolView() *proto.SimpleVolView {
 		Quorum:               w.quorum,
 		EcEnable:             w.ecEnable,
 		ExtentCacheExpireSec: w.extentCacheExpireSec,
+		UmpKeyPrefix:         w.umpKeyPrefix,
 	}
 	view.ConnConfig = &proto.ConnConfig{
 		IdleTimeoutSec:   w.connConfig.IdleTimeoutSec,
@@ -593,6 +597,11 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	if w.ecEnable != view.EcEnable {
 		log.LogInfof("updateSimpleVolView: update EcEnable from old(%v) to new(%v)", w.ecEnable, view.EcEnable)
 		w.ecEnable = view.EcEnable
+	}
+
+	if w.umpKeyPrefix != view.UmpKeyPrefix {
+		log.LogInfof("updateSimpleVolView: update umpKeyPrefix from old(%v) to new(%v)", w.umpKeyPrefix, view.UmpKeyPrefix)
+		w.umpKeyPrefix = view.UmpKeyPrefix
 	}
 
 	w.updateRemoteCacheConfig(view)

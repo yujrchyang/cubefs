@@ -251,6 +251,7 @@ message SimpleVolViewPb {
     bool                      EnableCheckDeleteEK    = 97;
     bool                      NotCacheNode           = 98;
     bool                      Flock                  = 99;
+    string                    UmpKeyPrefix           = 100;
 }
 
 message NodeStatInfoPb {

@@ -1759,6 +1759,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		batchDelInodeCnt      uint32
 		delInodeInterval      uint32
 		umpCollectWay         exporter.UMPCollectMethod
+		umpKeyPrefix          string
 		connConfig            proto.ConnConfig
 
 		trashCleanDuration     int32
@@ -1794,7 +1795,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if zoneName, capacity, storeMode, description, mpLayout, extentCacheExpireSec, umpCollectWay, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
+	if zoneName, capacity, storeMode, description, mpLayout, extentCacheExpireSec, umpCollectWay, umpKeyPrefix, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1928,7 +1929,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
-		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, trashItemCleanMaxCount, trashCleanDuration,
+		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, umpKeyPrefix, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
 		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -2223,6 +2224,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		BatchDelInodeCnt:         vol.BatchDelInodeCnt,
 		DelInodeInterval:         vol.DelInodeInterval,
 		UmpCollectWay:            vol.UmpCollectWay,
+		UmpKeyPrefix:             vol.UmpKeyPrefix,
 		EnableBitMapAllocator:    vol.EnableBitMapAllocator,
 		TrashCleanMaxCount:       vol.TrashCleanMaxCountEachTime,
 		TrashCleanDuration:       vol.CleanTrashDurationEachTime,
@@ -3596,7 +3598,7 @@ func parseRequestToSetVolConvertSt(r *http.Request) (name, authKey string, newSt
 }
 
 func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity, storeMode int, description string,
-	layout proto.MetaPartitionLayout, extentCacheExpireSec int64, umpCollectWay exporter.UMPCollectMethod, err error) {
+	layout proto.MetaPartitionLayout, extentCacheExpireSec int64, umpCollectWay exporter.UMPCollectMethod, umpKeyPrefix string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3652,6 +3654,12 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 		}
 	} else {
 		umpCollectWay = vol.UmpCollectWay
+	}
+
+	if r.Form.Has(proto.UmpKeyPrefixKey) {
+		umpKeyPrefix = r.FormValue(proto.UmpKeyPrefixKey)
+	} else {
+		umpKeyPrefix = vol.UmpKeyPrefix
 	}
 	return
 }

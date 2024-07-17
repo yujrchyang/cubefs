@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/unit"
 	"math"
 	"sort"
 	"strconv"
@@ -24,6 +23,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 func formatClusterView(cv *proto.ClusterView) string {
@@ -182,6 +182,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  Convert state        : %v\n", svv.ConvertState.Str()))
 	sb.WriteString(fmt.Sprintf("  Meta layout          : %3d%% - %3d%%\n", svv.MpLayout.PercentOfMP, svv.MpLayout.PercentOfReplica))
 	sb.WriteString(fmt.Sprintf("  ump collect way      : %v\n", svv.UmpCollectWay))
+	sb.WriteString(fmt.Sprintf("  ump key prefix       : %v\n", svv.UmpKeyPrefix))
 	sb.WriteString(fmt.Sprintf("  smart                : %s\n", formatEnabledDisabled(svv.IsSmart)))
 	sb.WriteString(fmt.Sprintf("  smart enable time    : %v\n", svv.SmartEnableTime))
 	sb.WriteString(fmt.Sprintf("  smart rules          : %v\n", strings.Join(svv.SmartRules, ",")))

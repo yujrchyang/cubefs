@@ -92,7 +92,7 @@ func (d *Node) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fs.Node, erro
 
 // Remove handles the remove request.
 func (d *Node) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) {
-	tpObject := exporter.NewVolumeTPUs("Remove_us", Sup.volname)
+	tpObject := exporter.NewVolumeTPUs("Remove_us", Sup.UmpKeyPrefix())
 	tpObject1 := exporter.NewModuleTPUs("remove_us")
 	defer func() {
 		tpObject.Set(err)
@@ -181,7 +181,7 @@ func (d *Node) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.L
 		err error
 	)
 
-	tpObject := exporter.NewVolumeTPUs("Lookup_us", Sup.volname)
+	tpObject := exporter.NewVolumeTPUs("Lookup_us", Sup.UmpKeyPrefix())
 	defer func() {
 		tpObject.Set(err)
 	}()

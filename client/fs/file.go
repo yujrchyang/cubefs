@@ -111,7 +111,7 @@ func (f *Node) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 		}
 	}
 
-	tpObject := exporter.NewVolumeTPUs("Open_us", Sup.volname)
+	tpObject := exporter.NewVolumeTPUs("Open_us", Sup.UmpKeyPrefix())
 	tpObject1 := exporter.NewModuleTPUs("fileopen_us")
 	defer func() {
 		tpObject.Set(err)
@@ -139,7 +139,7 @@ func (f *Node) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	if req.Dir {
 		return
 	}
-	tpObject := exporter.NewVolumeTPUs("Release_us", Sup.volname)
+	tpObject := exporter.NewVolumeTPUs("Release_us", Sup.UmpKeyPrefix())
 	defer func() {
 		tpObject.Set(err)
 	}()
@@ -171,7 +171,7 @@ func (f *Node) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 // Read handles the read request.
 func (f *Node) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadResponse) (err error) {
-	tpObject := exporter.NewVolumeTPUs("Read_us", Sup.volname)
+	tpObject := exporter.NewVolumeTPUs("Read_us", Sup.UmpKeyPrefix())
 	tpObject1 := exporter.NewModuleTPUs("fileread_us")
 	defer func() {
 		tpObject.Set(err)
@@ -180,7 +180,7 @@ func (f *Node) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	Sup.prefetchManager.AddTotalReadCount()
 	if Sup.prefetchManager.ContainsAppPid(req.Pid) {
 		Sup.prefetchManager.AddAppReadCount()
-		tpObjectPid := exporter.NewVolumeTPUs("AppRead_us", Sup.volname)
+		tpObjectPid := exporter.NewVolumeTPUs("AppRead_us", Sup.UmpKeyPrefix())
 		defer func() {
 			tpObjectPid.Set(err)
 			log.LogWarnf("Read CFS: ino(%v) offset(%v) reqsize(%v) req(%v)", f.inode, req.Offset, req.Size, req)
@@ -226,7 +226,7 @@ func (f *Node) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 		filesize    uint64
 		newFileSize uint64
 	)
-	tpObject := exporter.NewVolumeTPUs("Write_us", Sup.volname)
+	tpObject := exporter.NewVolumeTPUs("Write_us", Sup.UmpKeyPrefix())
 	tpObject1 := exporter.NewModuleTPUs("filewrite_us")
 	defer func() {
 		tpObject.Set(err)
@@ -304,7 +304,7 @@ func (f *Node) Flush(ctx context.Context, req *fuse.FlushRequest) (err error) {
 	log.LogDebugf("TRACE Flush enter: ino(%v)", f.inode)
 	start := time.Now()
 
-	tpObject := exporter.NewVolumeTPUs("Flush_us", Sup.volname)
+	tpObject := exporter.NewVolumeTPUs("Flush_us", Sup.UmpKeyPrefix())
 	tpObject1 := exporter.NewModuleTPUs("filesync_us")
 	defer func() {
 		tpObject.Set(err)
@@ -329,7 +329,7 @@ func (f *Node) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 	if req != nil && req.Dir {
 		return nil
 	}
-	tpObject := exporter.NewVolumeTPUs("Fsync_us", Sup.volname)
+	tpObject := exporter.NewVolumeTPUs("Fsync_us", Sup.UmpKeyPrefix())
 	tpObject1 := exporter.NewModuleTPUs("filefsync_us")
 	defer func() {
 		tpObject.Set(err)
@@ -352,7 +352,7 @@ func (f *Node) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 
 // Setattr handles the setattr request.
 func (f *Node) Setattr(ctx context.Context, req *fuse.SetattrRequest, resp *fuse.SetattrResponse) (err error) {
-	tpObject := exporter.NewVolumeTPUs("Setattr_us", Sup.volname)
+	tpObject := exporter.NewVolumeTPUs("Setattr_us", Sup.UmpKeyPrefix())
 	tpObject1 := exporter.NewModuleTPUs("filesetattr_us")
 	defer func() {
 		tpObject.Set(err)

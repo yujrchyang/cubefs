@@ -859,3 +859,11 @@ func (c *ExtentClient) Flock() bool {
 func (c *ExtentClient) LocalIp() string {
 	return LocalIP
 }
+
+func (c *ExtentClient) UmpKeyPrefix() (prefix string) {
+	prefix = c.dataWrapper.umpKeyPrefix
+	if prefix == "" {
+		prefix = c.dataWrapper.volName
+	}
+	return
+}

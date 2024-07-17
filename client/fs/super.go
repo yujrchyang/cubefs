@@ -430,6 +430,10 @@ func (s *Super) UmpJmtpAddr() string {
 	return s.ec.UmpJmtpAddr()
 }
 
+func (s *Super) UmpKeyPrefix() string {
+	return s.ec.UmpKeyPrefix()
+}
+
 func (s *Super) EnableReadDirPlus() bool {
 	return s.readDirPlus
 }

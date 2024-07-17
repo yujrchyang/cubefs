@@ -2814,7 +2814,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	remainingDays uint32, storeMode proto.StoreMode, layout proto.MetaPartitionLayout, extentCacheExpireSec int64,
 	smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, follReadHostWeight int, connConfig proto.ConnConfig,
-	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod,
+	trashCleanInterval uint64, batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod, umpKeyPrefix string,
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
 	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
 	enableRemoveDupReq bool, notCacheNode bool, flock bool, truncateEKCountEveryTime int, mpSplitStep, inodeCountThreshold uint64,
@@ -2973,6 +2973,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	}
 	vol.compactTag = compactTag
 	vol.UmpCollectWay = umpCollectWay
+	vol.UmpKeyPrefix = umpKeyPrefix
 	vol.RemoteCacheBoostPath = remoteCacheBoostPath
 	vol.RemoteCacheBoostEnable = remoteCacheBoostEnable
 	vol.RemoteCacheAutoPrepare = remoteCacheAutoPrepare

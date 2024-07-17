@@ -320,6 +320,7 @@ const (
 	BitMapSnapFrozenHour             = "bitmapSnapFrozenHour"
 	EnableVolCheckDelEK              = "enableVolCheckDelEK"
 	DisableClusterCheckDelEK         = "disableClusterCheckDelEK"
+	UmpKeyPrefixKey                  = "umpKeyPrefix"
 
 	IDsKey = "ids"
 )
@@ -1297,6 +1298,7 @@ type SimpleVolView struct {
 	BatchDelInodeCnt      uint32
 	DelInodeInterval      uint32
 	UmpCollectWay         exporter.UMPCollectMethod
+	UmpKeyPrefix          string
 	EnableBitMapAllocator bool
 	TrashCleanDuration    int32
 	TrashCleanMaxCount    int32

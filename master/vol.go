@@ -18,19 +18,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/tiglabs/raft/util"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/cubefs/cubefs/util/exporter"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	stringutil "github.com/cubefs/cubefs/util/string"
 	"github.com/cubefs/cubefs/util/unit"
 	pb "github.com/gogo/protobuf/proto"
+	"github.com/tiglabs/raft/util"
 )
 
 // Vol represents a set of meta partitionMap and data partitionMap
@@ -114,6 +113,7 @@ type Vol struct {
 	BatchDelInodeCnt           uint32
 	DelInodeInterval           uint32
 	UmpCollectWay              exporter.UMPCollectMethod
+	UmpKeyPrefix               string
 	reuseMP                    bool
 	VMPsToPartitionMap         map[uint64]uint64 `graphql:"-"`
 	LastSelectReuseMPID        uint64
@@ -317,6 +317,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.compactTagModifyTime = vv.CompactTagModifyTime
 	vol.TrashCleanInterval = vv.TrashCleanInterval
 	vol.UmpCollectWay = vv.UmpCollectWay
+	vol.UmpKeyPrefix = vv.UmpKeyPrefix
 	vol.EnableBitMapAllocator = vv.EnableBitMapAllocator
 	vol.TrashCleanMaxCountEachTime = vv.TrashCleanMaxCount
 	vol.CleanTrashDurationEachTime = vv.TrashCleanDuration
@@ -1417,6 +1418,7 @@ func (vol *Vol) backupConfig() *Vol {
 		BatchDelInodeCnt:           vol.BatchDelInodeCnt,
 		DelInodeInterval:           vol.DelInodeInterval,
 		UmpCollectWay:              vol.UmpCollectWay,
+		UmpKeyPrefix:               vol.UmpKeyPrefix,
 		EnableBitMapAllocator:      vol.EnableBitMapAllocator,
 		enableRemoveDupReq:         vol.enableRemoveDupReq,
 		notCacheNode:               vol.notCacheNode,
@@ -1478,6 +1480,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.BatchDelInodeCnt = backupVol.BatchDelInodeCnt
 	vol.DelInodeInterval = backupVol.DelInodeInterval
 	vol.UmpCollectWay = backupVol.UmpCollectWay
+	vol.UmpKeyPrefix = backupVol.UmpKeyPrefix
 	vol.EnableBitMapAllocator = backupVol.EnableBitMapAllocator
 	vol.TrashCleanMaxCountEachTime = backupVol.TrashCleanMaxCountEachTime
 	vol.CleanTrashDurationEachTime = backupVol.CleanTrashDurationEachTime
