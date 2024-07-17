@@ -266,6 +266,8 @@ type client struct {
 	localAddr string
 	stopC     chan struct{}
 	wg        sync.WaitGroup
+
+	flushLogOnFailure bool
 }
 
 type FileState struct {
@@ -871,7 +873,10 @@ func (c *client) checkReadOnly(absPath string) bool {
 
 func handleError(c *client, act, msg string) {
 	log.LogErrorf("%s: %s", act, msg)
-	log.LogFlush()
+
+	if gFlushLogOnFailure && (c == nil || (c != nil && c.flushLogOnFailure)) {
+		log.LogFlush()
+	}
 
 	if c != nil {
 		key1 := fmt.Sprintf("%s_%s_warning", c.mw.Cluster(), c.volName)
@@ -881,7 +886,10 @@ func handleError(c *client, act, msg string) {
 		key2 := fmt.Sprintf("%s_%s_warning", c.mw.Cluster(), gClientManager.moduleName)
 		errmsg2 := fmt.Sprintf("volume(%s) %s", c.volName, errmsg1)
 		exporter.WarningBySpecialUMPKey(key2, errmsg2)
-		exporter.FlushWarning()
+
+		if gFlushLogOnFailure && c.flushLogOnFailure {
+			exporter.FlushWarning()
+		}
 	}
 }
 

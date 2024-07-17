@@ -46,6 +46,7 @@ typedef struct {
 	const char* log_dir;
 	const char* log_level;
 	const char* prof_port;
+    int   flush_log_on_failure;
 } cfs_sdk_init_t;
 
 typedef struct {
@@ -73,6 +74,8 @@ typedef struct {
 	const char* app;
 	const char* auto_flush;
     const char* master_client;
+    int   use_meta_cache;
+    int   flush_log_on_failure;
 } cfs_config_t;
 
 typedef struct {
@@ -156,6 +159,10 @@ var (
 	statusENOTDIR = errorToStatus(syscall.ENOTDIR)
 	statusERANGE  = errorToStatus(syscall.ERANGE)
 	statusENODATA = errorToStatus(syscall.ENODATA)
+)
+
+var (
+	gFlushLogOnFailure = false
 )
 
 /*
@@ -314,6 +321,8 @@ func initSDK(t *C.cfs_sdk_init_t) C.int {
 		}
 	}
 
+	gFlushLogOnFailure = int(t.flush_log_on_failure) == 1
+
 	syslog.Printf(getVersionInfoString())
 	log.LogDebugf("bypass client started.\n")
 
@@ -437,9 +446,10 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 		c.owner = C.GoString(conf.owner)
 		c.followerRead, _ = strconv.ParseBool(C.GoString(conf.follower_read))
 		c.app = C.GoString(conf.app)
-		c.useMetaCache = (c.app != appCoralDB)
+		c.useMetaCache = (c.app != appCoralDB) && (int(conf.use_meta_cache) == 1)
 		c.autoFlush, _ = strconv.ParseBool(C.GoString(conf.auto_flush))
 		c.masterClient = C.GoString(conf.master_client)
+		c.flushLogOnFailure = int(conf.flush_log_on_failure) == 1
 	} else {
 		cfg, err := ini.Load(configPath)
 		if err != nil {
