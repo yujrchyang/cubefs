@@ -268,6 +268,9 @@ type client struct {
 	wg        sync.WaitGroup
 
 	flushLogOnFailure bool
+
+	umpKeyVolArr     []string
+	umpKeyClusterArr []string
 }
 
 type FileState struct {

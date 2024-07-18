@@ -438,6 +438,9 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 		cwd:              "/",
 		inodeDentryCache: make(map[uint64]*cache.DentryCache),
 		stopC:            make(chan struct{}),
+
+		umpKeyVolArr:     make([]string, 0),
+		umpKeyClusterArr: make([]string, 0),
 	}
 
 	if len(configPath) == 0 {
