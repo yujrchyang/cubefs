@@ -568,10 +568,6 @@ func (m *Server) createHddDataPartition(volName string, dpNum int) (dps []*DataP
 	if vol, err = m.cluster.getVol(volName); err != nil {
 		return
 	}
-	if !vol.isSmart {
-		err = errors.NewErrorf("vol: %v is not smart", volName)
-		return
-	}
 
 	zoneNames := strings.Split(vol.zoneName, ",")
 	for _, name := range zoneNames {
@@ -5722,7 +5718,6 @@ func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request
 		name   string
 		vol    *Vol
 		err    error
-		hddDPs []*DataPartition
 		dprs   []*proto.DataPartitionResponse
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
@@ -5738,19 +5733,24 @@ func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+
+	// the condition to create hdd data partition:
+	// there was no hdd data partition or there was no writable hdd data partition and current node start more than 5 minutes
+	var hddDPs []*DataPartition
+	var writableHddDPs []*DataPartition
 	for _, dp := range vol.dataPartitions.partitionMap {
 		dprs = append(dprs, dp.convertToDataPartitionResponse())
 		if !dp.isHddMedium() {
 			continue
 		}
-		if dp.TransferStatus != proto.ReadWrite {
-			continue
-		}
 		hddDPs = append(hddDPs, dp)
+		if dp.TransferStatus == proto.ReadWrite {
+			writableHddDPs = append(writableHddDPs, dp)
+		}
 	}
 
 	// create data partition in hdd datanode if no writable hdd data partitions
-	if len(hddDPs) <= 0 {
+	if len(hddDPs) <= 0 || (len(writableHddDPs) <= 0 && time.Now().Unix() - m.cluster.metaLoadedTime > 5 * int64(m.config.IntervalToCheckDataPartition)) {
 		var dps []*DataPartition
 		if dps, err = m.createHddDataPartition(vol.Name, 10); err != nil {
 			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
