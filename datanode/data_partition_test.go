@@ -896,4 +896,3 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 	partition.extentStore, err = storage.NewExtentStore(partition.path, partitionID, partitionSize, CacheCapacityPerPartition, nil, isCreatePartition, storage.IOInterceptors{})
 	return
 }
-

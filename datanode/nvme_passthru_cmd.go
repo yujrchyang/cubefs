@@ -33,4 +33,3 @@ func nvmeAdminPassthru(fd int, cmd nvmePassthruCmd) error {
 	}
 	return nil
 }
-

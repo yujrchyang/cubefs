@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	localIP string
+	localIP          string
 	localNodeAddress string
 )
 
@@ -37,7 +37,7 @@ const (
 	mockZone01        = "zone-01"
 )
 
-func getLocalIp () {
+func getLocalIp() {
 	nets, err := net.Interfaces()
 	if err != nil {
 		fmt.Printf("can not get sys interfaces info:%v\n", err.Error())
@@ -49,11 +49,11 @@ func getLocalIp () {
 		if err != nil {
 			continue
 		}
-		if strings.Contains(iter.Name, "bo") ||  strings.Contains(iter.Name, "eth")  || strings.Contains(iter.Name, "enp") {
+		if strings.Contains(iter.Name, "bo") || strings.Contains(iter.Name, "eth") || strings.Contains(iter.Name, "enp") {
 			for _, addr := range addrIp {
 				if ipNet, ok := addr.(*net.IPNet); ok && !ipNet.IP.IsLoopback() && ipNet.IP.To4() != nil {
 					localIP = strings.Split(addr.String(), "/")[0]
-					localNodeAddress  = localIP + ":" + tcpProtoPort
+					localNodeAddress = localIP + ":" + tcpProtoPort
 					return
 				}
 			}
