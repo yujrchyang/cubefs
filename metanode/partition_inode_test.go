@@ -33,6 +33,7 @@ func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreM
 		nodeId:      1,
 		metaNode:    node,
 		rocksDBDirs: []string{rootDir},
+		rootDir:     rootDir,
 	}
 
 	config := &MetaPartitionConfig{
@@ -44,7 +45,7 @@ func mockMetaPartitionReplica(nodeID, partitionID uint64, storeMode proto.StoreM
 		RootDir:     partitionDir,
 		StoreMode:   storeMode,
 		Cursor:      math.MaxUint64 - 100000,
-		RocksDBDir:  partitionDir,
+		RocksDBDir:  rootDir,
 	}
 
 	mp, err := CreateMetaPartition(config, manager)
