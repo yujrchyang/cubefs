@@ -93,6 +93,7 @@ const (
 	cfgKeyNodeRapidMemIncWarnThreshold      = "nodeRapidMemIncWarnThreshold"
 	cfgKeyNodeRapidMemIncreaseWarnRatio     = "nodeRapidMemIncreaseWarnRatio"
 	cfgKeyExpiredMetaRemainDays             = "expiredMetaRemainDays"
+	cfgKeyXbpUsername                       = "xbpUsername"
 	defaultNodeRapidMemIncWarnThreshold     = 20 //内存使用率(%)
 	defaultNodeRapidMemIncreaseWarnRatio    = 0.05
 	minMetaNodeExportDiskUsedRatio          = 70
@@ -179,6 +180,7 @@ type ChubaoFSMonitor struct {
 	ExpiredMetaRemainDaysCfg                int
 	ctx                                     context.Context
 	dpReleaser                              *ChubaoFSDPReleaser
+	xbpUsername                             string
 }
 
 func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
@@ -345,7 +347,7 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("parse availSpaceRatio failed")
 	}
 	s.readWriteDpRatio = readWriteDpRatio
-
+	s.xbpUsername = cfg.GetString(cfgKeyXbpUsername)
 	minRWCnt := cfg.GetFloat(cfgKeyMinRWCnt)
 	if minRWCnt <= 0 {
 		return fmt.Errorf("parse minRWCnt failed")

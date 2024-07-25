@@ -15,7 +15,7 @@ func TestCreateTicket(t *testing.T) {
 		"角色":    "DN",
 		"节点信息":  "11.1.1.1",
 		"执行URL": "url"}
-	ticketId, err := CreateTicket(TestTicketProcessId, TestDomain, "yangqingyuan8", TestAPISign, TestAPIUser, m)
+	ticketId, err := CreateTicket(TestTicketProcessId, TestDomain, "zhuhongyin", TestAPISign, TestAPIUser, m)
 	if err != nil {
 		t.Error(err)
 	} else {

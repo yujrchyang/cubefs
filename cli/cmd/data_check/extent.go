@@ -330,6 +330,7 @@ func CheckBlockCrc(dataReplicas []*proto.DataReplica, dnProf uint16, partitionId
 				continue
 			}
 			if blk.Crc == 0 || rp.blockCrc[blkIdx].Crc != blk.Crc {
+				log.LogDebugf("CheckBlockCrc, pid:%v extent:%v, ", partitionId, extentId, rp.blockCrc[blkIdx].Crc, blk.Crc)
 				wrongBlocks = append(wrongBlocks, blk.BlockNo)
 				break
 			}

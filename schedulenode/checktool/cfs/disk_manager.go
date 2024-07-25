@@ -170,7 +170,7 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 			badDiskXBPTicketKey := fmt.Sprintf("%s#%s", badDiskOnNode.Addr, badDisk)
 			value, ok := s.badDiskXBPTickets.Load(badDiskXBPTicketKey)
 			if !ok {
-				newTicketInfo, err := CreateOfflineXBPTicket(cv.Name, badDiskOnNode.Addr, fmt.Sprintf("datanode disk err %s", badDisk), url, host.isReleaseCluster)
+				newTicketInfo, err := CreateOfflineXBPTicket(cv.Name, badDiskOnNode.Addr, fmt.Sprintf("datanode disk err %s", badDisk), url, s.xbpUsername, host.isReleaseCluster)
 				if err != nil {
 					log.LogErrorf("action[doCheckDataNodeDiskError] err:%v", err)
 					continue
@@ -185,7 +185,7 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 				// 订单号为0 或者单子已经处理（驳回/完结），但是超过一定时间还有告警
 				if ticketInfo.tickerID == 0 || (ticketInfo.status == xbp.TicketStatusReject && time.Now().Sub(ticketInfo.lastUpdateTime) > 5*time.Hour) ||
 					(ticketInfo.status == xbp.TicketStatusFinish && time.Now().Sub(ticketInfo.lastUpdateTime) > 1*time.Hour) {
-					newTicketInfo, err := CreateOfflineXBPTicket(cv.Name, badDiskOnNode.Addr, fmt.Sprintf("datanode disk err %s", badDisk), url, host.isReleaseCluster)
+					newTicketInfo, err := CreateOfflineXBPTicket(cv.Name, badDiskOnNode.Addr, fmt.Sprintf("datanode disk err %s", badDisk), url, s.xbpUsername, host.isReleaseCluster)
 					if err != nil {
 						log.LogErrorf("action[doCheckDataNodeDiskError] err:%v", err)
 						continue
@@ -212,13 +212,13 @@ func badDiskIsEmpty(host *ClusterHost, addr, badDisk string) bool {
 	return true
 }
 
-func CreateOfflineXBPTicket(clusterID, nodeAddr, detailMsg, url string, isReleaseCluster bool) (ticketInfo XBPTicketInfo, err error) {
+func CreateOfflineXBPTicket(clusterID, nodeAddr, detailMsg, url, username string, isReleaseCluster bool) (ticketInfo XBPTicketInfo, err error) {
 	m := map[string]string{
 		"集群ID":  clusterID,
 		"节点信息":  nodeAddr,
 		"故障类型":  detailMsg,
 		"执行URL": url}
-	ticketId, err := xbp.CreateTicket(xbp.OfflineTicketProcessId, xbp.Domain, "yangqingyuan8", xbp.Sign, xbp.Erp, m)
+	ticketId, err := xbp.CreateTicket(xbp.OfflineTicketProcessId, xbp.Domain, username, xbp.Sign, xbp.Erp, m)
 	if err != nil {
 		err = fmt.Errorf("%v:%v add xbp ticket failed, err:%v", nodeAddr, detailMsg, err)
 		return

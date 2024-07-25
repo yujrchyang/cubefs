@@ -106,36 +106,6 @@ func (s *ChubaoFSMonitor) checkXBPTicket() {
 	})
 }
 
-func (s *ChubaoFSMonitor) addDataNodeOfflineXBPTicket(nodeAddr, url, clusterID string, isReleaseCluster bool) {
-	dataNodeXBPTicketKey := fmt.Sprintf("%s", nodeAddr)
-	value, ok := s.badDiskXBPTickets.Load(dataNodeXBPTicketKey)
-	if !ok {
-		newTicketInfo, err := CreateOfflineXBPTicket(clusterID, nodeAddr, fmt.Sprintf("datanode err"), url, isReleaseCluster)
-		if err != nil {
-			log.LogErrorf("action[addDataNodeOfflineXBPTicket] err:%v", err)
-			return
-		}
-		newTicketInfo.ticketType = XBPTicketTypeDataNode
-		s.badDiskXBPTickets.Store(dataNodeXBPTicketKey, newTicketInfo)
-	} else {
-		ticketInfo, ok := value.(XBPTicketInfo)
-		if !ok {
-			return
-		}
-		// 订单号为0 或者单子已经处理（驳回/完结），但是超过一定时间还有告警
-		if ticketInfo.tickerID == 0 || (ticketInfo.status == xbp.TicketStatusReject && time.Now().Sub(ticketInfo.lastUpdateTime) > 5*time.Hour) ||
-			(ticketInfo.status == xbp.TicketStatusFinish && time.Now().Sub(ticketInfo.lastUpdateTime) > 3*time.Hour) {
-			newTicketInfo, err := CreateOfflineXBPTicket(clusterID, nodeAddr, fmt.Sprintf("datanode err"), url, isReleaseCluster)
-			if err != nil {
-				log.LogErrorf("action[addDataNodeOfflineXBPTicket] err:%v", err)
-				return
-			}
-			newTicketInfo.ticketType = XBPTicketTypeDataNode
-			s.badDiskXBPTickets.Store(dataNodeXBPTicketKey, newTicketInfo)
-		}
-	}
-}
-
 func recheckIsNeedOfflineXBPTicket(ticketInfo XBPTicketInfo) (isNeedOffline bool) {
 	switch ticketInfo.ticketType {
 	case XBPTicketTypeDataNode:
