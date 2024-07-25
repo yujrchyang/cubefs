@@ -105,6 +105,7 @@ const (
 	CliFlagEnableAutoFill         = "auto-fill"
 	CliFlagCapacity               = "capacity"
 	CliFlagThreshold              = "threshold"
+	CliFlagMinGB                  = "minGB"
 	CliFlagAutoPromote            = "auto-promote"
 	CliFlagAddress                = "addr"
 	CliFlagDiskPath               = "path"
@@ -142,7 +143,7 @@ const (
 	CliFlagNotCacheNode           = "notCacheNode"
 	CliFlagFlock                  = "flock"
 
-	CliFlagBitMapSnapFrozenHour   = "bitMapSnapFrozenHour"
+	CliFlagBitMapSnapFrozenHour = "bitMapSnapFrozenHour"
 
 	CliOpRollBack              = "rollback"
 	CliOpGetCanEcDel           = "get-can-del"
@@ -201,6 +202,7 @@ const (
 	RaftNoLeader                = "no raft leader"
 	ReplicaNotConsistent        = "replica number not consistent"
 	PartitionNotHealthyInMaster = "partition not healthy in master"
+	InvalidHostsNum             = "invalid hosts num"
 )
 
 // for parse raft log

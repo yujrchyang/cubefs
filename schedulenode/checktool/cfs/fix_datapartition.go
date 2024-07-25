@@ -271,10 +271,8 @@ func fixBadReplicaNumPartition(partition uint64) {
 
 func fix24HourNotRecoverPartition(partition uint64) {
 	var (
-		err        error
-		dp         *proto.DataPartitionInfo
-		minReplica *proto.DataReplica
-		maxReplica *proto.DataReplica
+		err error
+		dp  *proto.DataPartitionInfo
 	)
 	defer func() {
 		if err != nil {
@@ -298,6 +296,14 @@ func fix24HourNotRecoverPartition(partition uint64) {
 		err = fmt.Errorf("missing nodes:%v", dp.MissingNodes)
 		return
 	}
+	err = fixSizeNoEqual(dp)
+}
+
+func fixSizeNoEqual(dp *proto.DataPartitionInfo) (err error) {
+	var (
+		minReplica *proto.DataReplica
+		maxReplica *proto.DataReplica
+	)
 	minReplica = dp.Replicas[0]
 	maxReplica = dp.Replicas[0]
 	for _, r := range dp.Replicas {
@@ -306,7 +312,7 @@ func fix24HourNotRecoverPartition(partition uint64) {
 			return
 		}
 		if r.IsRecover {
-			err = fmt.Errorf("extent repair may be paused due to some reasons, please refer to more information on the hosts ")
+			err = fmt.Errorf("extent is in repairing")
 			return
 		}
 		if r.Used < minReplica.Used {
@@ -318,35 +324,39 @@ func fix24HourNotRecoverPartition(partition uint64) {
 	}
 
 	var maxSum, minSum uint64
-	maxSum, err = sumTinyAvailableSize(maxReplica.Addr, partition)
+	maxSum, err = sumTinyAvailableSize(maxReplica.Addr, dp.PartitionID)
 	if err != nil {
 		return
 	}
-	minSum, err = sumTinyAvailableSize(minReplica.Addr, partition)
+	minSum, err = sumTinyAvailableSize(minReplica.Addr, dp.PartitionID)
 	if err != nil {
 		return
 	}
 	var reason, execute string
-	if maxSum < minSum || maxSum-minSum < unit.GB*9/10 {
-		partitionPath := fmt.Sprintf("datapartition_%v_%v", partition, maxReplica.Total)
-		err = stopReloadReplica(maxReplica.Addr, partition, partitionPath)
+	if maxSum < minSum+unit.GB*9/10 {
+		partitionPath := fmt.Sprintf("datapartition_%v_%v", dp.PartitionID, maxReplica.Total)
+		err = stopReloadReplica(maxReplica.Addr, dp.PartitionID, partitionPath)
 		if err != nil {
 			log.LogErrorf("action[fix24HourNotRecoverPartition] stopReloadReplica max replica failed:%v", err)
 		}
 		time.Sleep(time.Second * 10)
-		err = stopReloadReplica(minReplica.Addr, partition, partitionPath)
+		err = stopReloadReplica(minReplica.Addr, dp.PartitionID, partitionPath)
 		if err != nil {
 			log.LogErrorf("action[fix24HourNotRecoverPartition] stopReloadReplica min replica failed:%v", err)
 		}
 		reason = "size calculation is wrong"
 		execute = "stop-reload data partition"
-	} else {
-		err = playBackTinyDeleteRecord(maxReplica.Addr, partition)
+	} else if maxSum-minSum >= unit.GB {
+		err = playBackTinyDeleteRecord(maxReplica.Addr, dp.PartitionID)
 		reason = "tiny extent deletion is not synchronized"
 		execute = "playback tiny extent delete record"
+	} else {
+		//todo decommission dp with smaller used size
+		reason = "normal extent repair after deleted, decommission replica with smaller size"
+		execute = "decommission replicas with smaller used size"
 	}
-
-	exporter.WarningBySpecialUMPKey(UMPCFSSparkFixPartitionKey, fmt.Sprintf("Domain[%v] 24 hours not recovered partition(%v), replica(%v), reason(%s), execute(%s)", cfsDomain, partition, maxReplica.Addr, reason, execute))
+	exporter.WarningBySpecialUMPKey(UMPCFSSparkFixPartitionKey, fmt.Sprintf("Domain[%v] fix used size, partition(%v), replica(%v), reason(%s), execute(%s)", cfsDomain, dp.PartitionID, maxReplica.Addr, reason, execute))
+	return
 }
 
 func sumTinyAvailableSize(addr string, partitionID uint64) (sum uint64, err error) {

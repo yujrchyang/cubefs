@@ -315,31 +315,39 @@ func formatEcPartitionTableRow(view *proto.EcPartitionResponse) string {
 }
 
 var (
-	partitionInfoTablePattern      = "%-8v    %-25v    %-10v    %-28v    %-10v    %-18v"
-	partitionInfoColorTablePattern = "%-8v    %-25v    %-10v    %-28v    \033[1;40;32m%-10v\033[0m    %-18v"
-	partitionInfoTableHeader       = fmt.Sprintf(partitionInfoTablePattern,
-		"ID", "VOLUME", "STATUS", "POSITION", "REPLICANUM", "HOSTS")
+	partitionInfoTablePattern   = "%-24v    %-32v"
+	partitionInfoTableHeaderLen = len(fmt.Sprintf(partitionInfoTablePattern, "POSITION", "HOSTS"))
 )
 
 func formatDataPartitionInfoRow(partition *proto.DataPartitionInfo) string {
 	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("Partition     : %v\n", partition.PartitionID))
+	sb.WriteString(fmt.Sprintf("Volume        : %v\n", partition.VolName))
+	sb.WriteString(fmt.Sprintf("Status        : %v\n", formatDataPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("ReplicaNum    : %v\n", partition.ReplicaNum))
+	sb.WriteString(fmt.Sprintf("Learner       : %v\n", len(partition.Learners)))
+	sb.WriteString("\n")
 	sort.Strings(partition.Hosts)
-	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-		partition.PartitionID, partition.VolName, formatDataPartitionStatus(partition.Status), "master", fmt.Sprintf("%v/%v", len(partition.Hosts), partition.ReplicaNum), "(hosts)"+strings.Join(partition.Hosts, ",")))
+	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "master",
+		fmt.Sprintf("(hosts) %v", strings.Join(partition.Hosts, ","))))
 	if len(partition.Learners) > 0 {
-		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-			"", "", "", "master", fmt.Sprintf("%v/%v", len(partition.Learners), len(partition.Learners)), "(learners)"+strings.Join(convertLearnersToArray(partition.Learners), ",")))
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "master",
+			fmt.Sprintf("(learners) %v", strings.Join(convertLearnersToArray(partition.Learners), ","))))
 	}
 	return sb.String()
 }
 
 func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
 	var sb = strings.Builder{}
-	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-		partition.PartitionID, partition.VolName, formatDataPartitionStatus(partition.Status), "master", fmt.Sprintf("%v/%v", len(partition.Hosts), partition.ReplicaNum+partition.LearnerNum), "(hosts)"+strings.Join(partition.Hosts, ",")))
+	sb.WriteString(fmt.Sprintf("Partition    : %v\n", partition.PartitionID))
+	sb.WriteString(fmt.Sprintf("Volume       : %v\n", partition.VolName))
+	sb.WriteString(fmt.Sprintf("Status       : %v\n", formatDataPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("ReplicaNum   : %v\n", partition.ReplicaNum))
+	sb.WriteString(fmt.Sprintf("Learner      : %v\n", len(partition.Learners)))
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "master", "(hosts) "+strings.Join(partition.Hosts, ",")))
 	if len(partition.Learners) > 0 {
-		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-			"", "", "", "master", fmt.Sprintf("%v/%v", len(partition.Learners), partition.LearnerNum), "(learners)"+strings.Join(convertLearnersToArray(partition.Learners), ",")))
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "master", "(learners) "+strings.Join(convertLearnersToArray(partition.Learners), ",")))
 	}
 	return sb.String()
 }
@@ -1097,8 +1105,6 @@ func formatEcReplica(indentation string, replica *proto.EcReplica, rowTable bool
 	return sb.String()
 }
 
-var ecNodeDetailTableRowPattern = "%-6v    %-6v    %-6v    %-10v"
-
 func formatSimpleVolEcView(svv *proto.SimpleVolView) string {
 
 	var sb = strings.Builder{}
@@ -1155,9 +1161,16 @@ func formatEcPartitionInfo(partition *proto.EcPartitionInfo) string {
 
 func formatEcPartitionInfoRow(partition *proto.EcPartitionInfo) string {
 	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("Partition      : %v\n", partition.PartitionID))
+	sb.WriteString(fmt.Sprintf("Volume         : %v\n", partition.VolName))
+	sb.WriteString(fmt.Sprintf("Status         : %v\n", formatDataPartitionStatus(partition.Status)))
+	sb.WriteString(fmt.Sprintf("Replicas       : %v\n", partition.ReplicaNum))
+	sb.WriteString(fmt.Sprintf("DataUnitsNum   : %v\n", partition.DataUnitsNum))
+	sb.WriteString(fmt.Sprintf("ParityUnitsNum : %v\n", partition.ParityUnitsNum))
+	sb.WriteString("\n")
 	sort.Strings(partition.Hosts)
 	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-		partition.PartitionID, partition.VolName, formatDataPartitionStatus(partition.Status), "master", fmt.Sprintf("%v/%v", len(partition.Hosts), partition.ReplicaNum), "(hosts)"+strings.Join(partition.Hosts, ",")))
+		"master", "(hosts)"+strings.Join(partition.Hosts, ",")))
 	return sb.String()
 }
 

@@ -85,7 +85,7 @@ func stdoutGreen(str string) {
 
 func stdoutRed(str string) {
 	fmt.Printf("\033[1;40;31m%-8v\033[0m\n", str)
-	stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+10) + "\n")
+	stdoutGreen(strings.Repeat("_ ", partitionInfoTableHeaderLen/2+10) + "\n")
 }
 
 func errout(format string, a ...interface{}) {

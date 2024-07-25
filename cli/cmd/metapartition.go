@@ -161,7 +161,6 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 
 			stdout("\n")
 			stdout("[Corrupt meta partitions](no leader):\n")
-			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.CorruptMetaPartitionIDs, func(i, j int) bool {
 				return diagnosis.CorruptMetaPartitionIDs[i] < diagnosis.CorruptMetaPartitionIDs[j]
 			})
@@ -176,7 +175,6 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 
 			stdout("\n")
 			stdout("%v\n", "[Partition lack replicas]:")
-			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.LackReplicaMetaPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaMetaPartitionIDs[i] < diagnosis.LackReplicaMetaPartitionIDs[j]
 			})
@@ -197,8 +195,7 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 					var err error
 					addr := strings.Split(r.Addr, ":")[0]
 					if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(addr, partition.PartitionID); err != nil {
-						fmt.Printf(partitionInfoColorTablePattern+"\n",
-							"", "", "", r.Addr, fmt.Sprintf("%v/%v", 0, partition.ReplicaNum+partition.LearnerNum), "no data")
+						fmt.Printf(partitionInfoTablePattern+"\n", r.Addr, "no data")
 						continue
 					}
 					mnHosts := make([]string, 0)
@@ -206,10 +203,9 @@ the corrupt nodes, the few remaining replicas can not reach an agreement with on
 						mnHosts = append(mnHosts, peer.Addr)
 					}
 					sort.Strings(mnHosts)
-					fmt.Printf(partitionInfoColorTablePattern+"\n",
-						"", "", "", r.Addr, fmt.Sprintf("%v/%v", len(mnPartition.Peers), partition.ReplicaNum+partition.LearnerNum), strings.Join(mnHosts, "; "))
+					fmt.Printf(partitionInfoTablePattern+"\n", r.Addr, strings.Join(mnHosts, "; "))
 				}
-				fmt.Printf("\033[1;40;32m%-8v\033[0m", strings.Repeat("_ ", len(partitionInfoTableHeader)/2+5)+"\n")
+				fmt.Printf("\033[1;40;32m%-8v\033[0m", strings.Repeat("_ ", partitionInfoTableHeaderLen/2+5)+"\n")
 			}
 			return
 		},
@@ -224,9 +220,6 @@ func checkAllMetaPartitions(client *master.MasterClient) (err error) {
 		stdout("%v\n", err)
 		return
 	}
-	stdout("\n")
-	stdout("%v\n", "[Partition peer info not valid]:")
-	stdout("%v\n", partitionInfoTableHeader)
 	for _, vol := range volInfo {
 		var (
 			volView  *proto.VolView
@@ -255,7 +248,7 @@ func checkAllMetaPartitions(client *master.MasterClient) (err error) {
 				if !isHealthy {
 					drawLock.Lock()
 					fmt.Printf(outPut)
-					stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+					stdoutGreen(strings.Repeat("_ ", partitionInfoTableHeaderLen/2+20) + "\n")
 					drawLock.Unlock()
 				}
 				time.Sleep(time.Millisecond * 10)
@@ -306,11 +299,9 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 		}
 		peerStrings := convertPeersToArray(mnPartition.Peers)
 		learnerStrings := convertLearnersToArray(mnPartition.Learners)
-		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-			"", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum+partition.LearnerNum), "(peer)"+strings.Join(peerStrings, ",")))
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", r.Addr, "(peer) "+strings.Join(peerStrings, ",")))
 		if len(learnerStrings) > 0 {
-			sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n",
-				"", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(learnerStrings), partition.LearnerNum), "(learner)"+strings.Join(learnerStrings, ",")))
+			sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", r.Addr, "(learner) "+strings.Join(learnerStrings, ",")))
 		}
 		sort.Strings(peerStrings)
 		if !isEqualStrings(partition.Hosts, peerStrings) || len(peerStrings) != int(partition.ReplicaNum+partition.LearnerNum) || len(partition.Learners) != len(learnerStrings) {

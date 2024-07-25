@@ -264,7 +264,6 @@ func newListUnHealthEcPartitionsCmd(client *master.MasterClient) *cobra.Command 
 
 			stdout("\n")
 			stdout("%v\n", "[ecPartition lack replicas]:")
-			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.LackReplicaEcPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaEcPartitionIDs[i] < diagnosis.LackReplicaEcPartitionIDs[j]
 			})
@@ -298,7 +297,7 @@ func newListUnHealthEcPartitionsCmd(client *master.MasterClient) *cobra.Command 
 					continue
 				}
 				stdoutGreen(fmt.Sprintf(" The Lack Address is: %v", lackAddr))
-				stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+				stdoutGreen(strings.Repeat("_ ", partitionInfoTableHeaderLen/2+20) + "\n")
 			}
 			return
 		},
@@ -315,9 +314,6 @@ func checkAllEcPartitions(client *master.MasterClient) (err error) {
 		stdout("%v\n", err)
 		return
 	}
-	stdout("\n")
-	stdout("%v\n", "[Partition peer info not valid]:")
-	stdout("%v\n", partitionInfoTableHeader)
 	for _, vol := range volInfo {
 		var (
 			volView *proto.VolView
@@ -345,7 +341,7 @@ func checkAllEcPartitions(client *master.MasterClient) (err error) {
 					volLock.Lock()
 					fmt.Printf(outPut)
 					//stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
-					fmt.Printf(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+					fmt.Printf(strings.Repeat("_ ", partitionInfoTableHeaderLen/2+20) + "\n")
 					volLock.Unlock()
 				}
 			}(ep)

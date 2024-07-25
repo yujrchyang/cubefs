@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/unit"
 	"os"
 	"sort"
 	"strconv"
@@ -297,7 +298,9 @@ func newDataPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 func newDataPartitionCheckCmd(client *master.MasterClient) *cobra.Command {
 	var optEnableAutoFullfill bool
 	var optCheckAll bool
-	var optDiffSizeThreshold int
+	var optAutoFixUsedSize bool
+	var optDiffSizeThreshold = 1
+	var optMinGB int
 	var optSpecifyDP uint64
 	var cmd = &cobra.Command{
 		Use:   CliOpCheck,
@@ -315,22 +318,34 @@ The "reset" command will be released in next version`,
 				err       error
 			)
 			if optSpecifyDP > 0 {
-				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition("", optSpecifyDP); err != nil || partition == nil {
-					stdout("get partition error, err:[%v]", err)
-					return
+				peerMsg, errorReports, partition := checkDataPartition("", optSpecifyDP, optDiffSizeThreshold, optMinGB)
+				//double check
+				if optAutoFixUsedSize && len(errorReports) > 0 {
+					time.Sleep(time.Second * 10)
+					peerMsg, errorReports, partition = checkDataPartition("", optSpecifyDP, optDiffSizeThreshold, optMinGB)
 				}
-				outPut := checkDataPartition(partition, optDiffSizeThreshold)
-				if "" != outPut {
+				if len(errorReports) > 0 {
 					stdout("%v", formatDataPartitionInfoRow(partition))
-					fmt.Printf(outPut)
+					fmt.Printf(peerMsg)
+					for i, msg := range errorReports {
+						fmt.Printf(fmt.Sprintf("%-8v\n", fmt.Sprintf("error %v: %v", i+1, msg)))
+					}
+					if len(errorReports) == 1 && errorReports[0] == UsedSizeNotEqualErr {
+						if len(partition.MissingNodes) > 0 {
+							return
+						}
+						err = fixSizeNoEqual(client, partition)
+						if err != nil {
+							log.LogErrorf("fix size no equal, partition:%v, err:%v", partition.PartitionID, err)
+						}
+					}
 				} else {
 					fmt.Printf("partition is healthy")
 				}
 				return
 			}
 			if optCheckAll {
-				err = checkAllDataPartitions(client, optDiffSizeThreshold)
+				err = checkAllDataPartitions(client, optAutoFixUsedSize, optDiffSizeThreshold, optMinGB)
 				if err != nil {
 					errout("%v\n", err)
 				}
@@ -370,7 +385,6 @@ The "reset" command will be released in next version`,
 
 			stdout("\n")
 			stdout("%v\n", "[Partition lack replicas]:")
-			stdout("%v\n", partitionInfoTableHeader)
 			sort.SliceStable(diagnosis.LackReplicaDataPartitionIDs, func(i, j int) bool {
 				return diagnosis.LackReplicaDataPartitionIDs[i] < diagnosis.LackReplicaDataPartitionIDs[j]
 			})
@@ -399,16 +413,13 @@ The "reset" command will be released in next version`,
 				for i, r := range partition.Replicas {
 					var rps map[uint64]*proto.ReplicaStatus
 					var dnPartition *proto.DNDataPartitionInfo
-					var err error
 					addr := strings.Split(r.Addr, ":")[0]
 					if dnPartition, err = client.NodeAPI().DataNodeGetPartition(addr, partition.PartitionID); err != nil {
-						fmt.Printf(partitionInfoColorTablePattern+"\n",
-							"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", "nil", partition.ReplicaNum), "get partition info failed")
+						fmt.Printf(partitionInfoTablePattern+"\n", r.Addr, fmt.Sprintf("get partition info failed, err:%v", err))
 						continue
 					}
 					sort.Strings(dnPartition.Replicas)
-					fmt.Printf(partitionInfoColorTablePattern+"\n",
-						"", "", "", fmt.Sprintf("%v(hosts)", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), strings.Join(dnPartition.Replicas, "; "))
+					fmt.Printf(partitionInfoTablePattern+"\n", r.Addr, strings.Join(dnPartition.Replicas, ","))
 
 					if rps = dnPartition.RaftStatus.Replicas; rps != nil {
 						leaderRps = rps
@@ -422,8 +433,7 @@ The "reset" command will be released in next version`,
 							canAutoRepair = false
 						}
 					}
-					fmt.Printf(partitionInfoColorTablePattern+"\n",
-						"", "", "", fmt.Sprintf("%v(peers)", r.Addr), fmt.Sprintf("%v/%v", len(peers), partition.ReplicaNum), strings.Join(peers, ","))
+					fmt.Printf(partitionInfoTablePattern+"\n", r.Addr, strings.Join(peers, ","))
 				}
 				if len(leaderRps) != 3 || len(partition.Hosts) != 2 {
 					stdoutRed(fmt.Sprintf("raft peer number(expected is 3, but is %v) or replica number(expected is 2, but is %v) not match ", len(leaderRps), len(partition.Hosts)))
@@ -454,7 +464,7 @@ The "reset" command will be released in next version`,
 					stdoutGreen("     Done.")
 					time.Sleep(2 * time.Second)
 				}
-				stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+				stdoutGreen(strings.Repeat("_ ", partitionInfoTableHeaderLen/2+20) + "\n")
 			}
 			if !optEnableAutoFullfill {
 				stdout(sb.String())
@@ -463,24 +473,139 @@ The "reset" command will be released in next version`,
 		},
 	}
 	cmd.Flags().Uint64Var(&optSpecifyDP, CliFlagId, 0, "check data partition by partitionID")
-	cmd.Flags().IntVar(&optDiffSizeThreshold, CliFlagThreshold, 20, "if the diff size larger than this, report the volume")
+	//cmd.Flags().IntVar(&optDiffSizeThreshold, CliFlagThreshold, 20, "if diff size ratio between replicas larger than threshold, report error")
+	cmd.Flags().IntVar(&optMinGB, CliFlagMinGB, 0, "if diff size between replicas larger than minGB, report error")
+	cmd.Flags().BoolVar(&optAutoFixUsedSize, "auto-fix-size", false, "true - auto fix used size not equal")
 	//cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "true - automatically full fill the missing replica")
-	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions; false - only check partitions which lack of replica")
+	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions and auto fix used size; false - only check partitions which is lack of replica")
 	return cmd
 }
-func checkAllDataPartitions(client *master.MasterClient, optDiffSizeThreshold int) (err error) {
+
+func fixSizeNoEqual(client *master.MasterClient, dp *proto.DataPartitionInfo) (err error) {
 	var (
-		volInfo          []*proto.VolInfo
-		sizeNotEqualPids []uint64
-		noLeaderPids     []uint64
+		minReplica *proto.DataReplica
+		maxReplica *proto.DataReplica
+	)
+	minReplica = dp.Replicas[0]
+	maxReplica = dp.Replicas[0]
+	for _, r := range dp.Replicas {
+		if r.Used == 0 {
+			err = fmt.Errorf("used size is 0, maybe restarted not long ago")
+			return
+		}
+		if r.IsRecover {
+			err = fmt.Errorf("extent is in repairing")
+			return
+		}
+		if r.Used < minReplica.Used {
+			minReplica = r
+		}
+		if r.Used > maxReplica.Used {
+			maxReplica = r
+		}
+	}
+	if minReplica.Used == 0 {
+		err = fmt.Errorf("zero used size")
+		return
+	}
+	if maxReplica.Used-minReplica.Used < unit.GB {
+		err = fmt.Errorf("diff size too small")
+		return
+	}
+	var maxSum, minSum uint64
+	maxSum, err = sumTinyAvailableSize(maxReplica.Addr, dp.PartitionID, client.DataNodeProfPort)
+	if err != nil {
+		return
+	}
+	minSum, err = sumTinyAvailableSize(minReplica.Addr, dp.PartitionID, client.DataNodeProfPort)
+	if err != nil {
+		return
+	}
+	var reason, execute string
+	if maxSum < minSum {
+		/*	partitionPath := fmt.Sprintf("datapartition_%v_%v", dp.PartitionID, maxReplica.Total)
+			err = stopReloadReplica(maxReplica.Addr, dp.PartitionID, partitionPath, maxReplica.DiskPath, client.DataNodeProfPort)
+			if err != nil {
+				log.LogErrorf("action[fixSizeNoEqual] stopReloadReplica max replica failed:%v", err)
+			}
+			time.Sleep(time.Second * 10)
+			err = stopReloadReplica(minReplica.Addr, dp.PartitionID, partitionPath, minReplica.DiskPath, client.DataNodeProfPort)
+			if err != nil {
+				log.LogErrorf("action[fixSizeNoEqual] stopReloadReplica min replica failed:%v", err)
+			}*/
+		reason = "size calculation is wrong"
+		execute = fmt.Sprintf("stop-reload data partition on:%v,%v", maxReplica.Addr, minReplica.Addr)
+	} else if maxSum-minSum >= unit.GB {
+		dHost := fmt.Sprintf("%v:%v", strings.Split(maxReplica.Addr, ":")[0], client.DataNodeProfPort)
+		//dataClient := http_client.NewDataClient(dHost, false)
+		//err = dataClient.PlaybackPartitionTinyDelete(dp.PartitionID)
+		reason = "tiny extent deletion is not synchronized"
+		execute = fmt.Sprintf("playback tiny extent delete record on:%v", dHost)
+	} else {
+		err = client.AdminAPI().DecommissionDataPartition(dp.PartitionID, minReplica.Addr, "")
+		reason = "normal extent repair after deleted, decommission replica with smaller size"
+		execute = fmt.Sprintf("decommission replicas with smaller used size, host:%v", minReplica.Addr)
+	}
+	log.LogWarnf("fix used size, partition(%v), replica(%v), max(%v), min(%v), reason(%s), execute(%s)", dp.PartitionID, maxReplica.Addr, maxReplica.Used, minReplica.Used, reason, execute)
+	return
+}
+
+func sumTinyAvailableSize(addr string, partitionID uint64, profPort uint16) (sum uint64, err error) {
+	dHost := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPort)
+	dataClient := http_client.NewDataClient(dHost, false)
+	for i := uint64(1); i <= uint64(64); i++ {
+		var extentHoleInfo *proto.DNTinyExtentInfo
+		extentHoleInfo, err = dataClient.GetExtentHoles(partitionID, i)
+		if err != nil {
+			return
+		}
+		sum += extentHoleInfo.ExtentAvaliSize
+	}
+	return sum, nil
+}
+
+func stopReloadReplica(addr string, partitionID uint64, partitionPath, diskPath string, profPort uint16) (err error) {
+	dHost := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPort)
+	dataClient := http_client.NewDataClient(dHost, false)
+
+	err = dataClient.StopPartition(partitionID)
+	if err != nil {
+		return err
+	}
+	time.Sleep(time.Second * 10)
+	for i := 0; i < 3; i++ {
+		if err = dataClient.ReLoadPartition(partitionPath, diskPath); err == nil {
+			break
+		}
+	}
+	return
+}
+func checkAllDataPartitions(client *master.MasterClient, optAutoFixUsedSize bool, optDiffSizeThreshold, minGB int) (err error) {
+	var (
+		volInfo    []*proto.VolInfo
+		dpRepairCh chan *proto.DataPartitionInfo
+		failedDps  = new(strings.Builder)
 	)
 	if volInfo, err = client.AdminAPI().ListVols(""); err != nil {
 		stdout("%v\n", err)
 		return
 	}
-	stdout("\n")
-	stdout("%v\n", "[Partition peer info not valid]:")
-	stdout("%v\n", partitionInfoTableHeader)
+	dpRepairCh = make(chan *proto.DataPartitionInfo, 1)
+	go func() {
+		for {
+			select {
+			case dp := <-dpRepairCh:
+				if dp == nil {
+					return
+				}
+				err = fixSizeNoEqual(client, dp)
+				if err != nil {
+					log.LogErrorf("fix size no equal, partition:%v, err:%v", dp.PartitionID, err)
+				}
+				time.Sleep(time.Minute)
+			}
+		}
+	}()
 	for _, vol := range volInfo {
 		var (
 			volView *proto.VolView
@@ -503,55 +628,53 @@ func checkAllDataPartitions(client *master.MasterClient, optDiffSizeThreshold in
 					wg.Done()
 					<-dpCh
 				}()
-				var outPut string
-				var partition *proto.DataPartitionInfo
-				if partition, err = client.AdminAPI().GetDataPartition(vol.Name, dp.PartitionID); err != nil || partition == nil {
-					stdout("get partition error, err:[%v]", err)
-					return
+				peerMsg, errorReports, partition := checkDataPartition(vol.Name, dp.PartitionID, optDiffSizeThreshold, minGB)
+				//double check
+				if optAutoFixUsedSize && len(errorReports) > 0 {
+					time.Sleep(time.Minute)
+					peerMsg, errorReports, partition = checkDataPartition(vol.Name, dp.PartitionID, optDiffSizeThreshold, minGB)
 				}
-				outPut = checkDataPartition(partition, optDiffSizeThreshold)
-				if "" != outPut {
-					stdout("%v", formatDataPartitionInfoRow(partition))
+				if len(errorReports) > 0 {
 					volLock.Lock()
-					if outPut == UsedSizeNotEqualErr {
-						sizeNotEqualPids = append(sizeNotEqualPids, dp.PartitionID)
-					} else if outPut == RaftNoLeader {
-						noLeaderPids = append(noLeaderPids, dp.PartitionID)
-					} else {
-						fmt.Printf(outPut)
-						//stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
-						fmt.Printf(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+					if contains(errorReports, "connection refused") || contains(errorReports, "timeout") || contains(errorReports, "404 page not found") {
+						failedDps.WriteString(fmt.Sprintf("partition:%v, errors:%v\n", partition.PartitionID, strings.Join(errorReports, ";")))
+						volLock.Unlock()
+						return
 					}
+					stdout("%v", formatDataPartitionInfoRow(partition))
+					fmt.Printf(peerMsg)
+					for i, msg := range errorReports {
+						fmt.Printf(fmt.Sprintf("%-8v\n", fmt.Sprintf("error %v: %v", i+1, msg)))
+					}
+					//stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
+					fmt.Printf(strings.Repeat("_ ", partitionInfoTableHeaderLen/2+20) + "\n")
 					volLock.Unlock()
+					if len(errorReports) == 1 && errorReports[0] == UsedSizeNotEqualErr {
+						if len(partition.MissingNodes) > 0 {
+							return
+						}
+						if optAutoFixUsedSize {
+							dpRepairCh <- partition
+						}
+					}
 				}
 			}(dp)
 		}
 		wg.Wait()
 	}
-	if len(noLeaderPids) > 0 {
-		fmt.Printf("raft leader status get failed dps[%v]: %v\n", len(noLeaderPids), noLeaderPids)
-	}
-	if len(sizeNotEqualPids) > 0 {
-		fmt.Printf("used size diff larger than %v percent not equal dps[%v]: %v\n", optDiffSizeThreshold, len(sizeNotEqualPids), sizeNotEqualPids)
-	}
+	dpRepairCh <- nil
 	return
 }
-func checkDataPartition(partition *proto.DataPartitionInfo, optDiffSizeThreshold int) (output string) {
-	var (
-		errorReports []string
-		sb           = new(strings.Builder)
-	)
-	defer func() {
-		if len(errorReports) == 0 {
-			return
-		}
-		for i, msg := range errorReports {
-			sb.WriteString(fmt.Sprintf("%-8v\n", fmt.Sprintf("error %v: %v", i+1, msg)))
-		}
-		output = sb.String()
-	}()
+
+func checkDataPartition(vol string, pid uint64, optDiffSizeThreshold, minGB int) (peerMsg string, errorReports []string, partition *proto.DataPartitionInfo) {
+	var err error
+	if partition, err = client.AdminAPI().GetDataPartition(vol, pid); err != nil || partition == nil {
+		stdout("get partition error, err:[%v]", err)
+		return
+	}
+	var sb = new(strings.Builder)
 	sort.Strings(partition.Hosts)
-	if !isSizeEqual(partition, optDiffSizeThreshold) {
+	if !isSizeEqual(partition, optDiffSizeThreshold, minGB) {
 		errorReports = append(errorReports, UsedSizeNotEqualErr)
 	}
 	if proto.IsDbBack {
@@ -561,6 +684,7 @@ func checkDataPartition(partition *proto.DataPartitionInfo, optDiffSizeThreshold
 		errorReports = append(errorReports, PartitionNotHealthyInMaster)
 	}
 	peerError := checkPeer(partition, sb)
+	peerMsg = sb.String()
 	if len(peerError) > 0 {
 		errorReports = append(errorReports, peerError...)
 	}
@@ -571,7 +695,7 @@ func isBadStatus(partition *proto.DataPartitionInfo) bool {
 	return len(partition.MissingNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum)
 }
 
-func isSizeEqual(partition *proto.DataPartitionInfo, percent int) (isEqual bool) {
+func isSizeEqual(partition *proto.DataPartitionInfo, percent, minGB int) (isEqual bool) {
 	if len(partition.Replicas) < 2 {
 		return true
 	}
@@ -588,7 +712,7 @@ func isSizeEqual(partition *proto.DataPartitionInfo, percent int) (isEqual bool)
 	}
 	sort.Ints(sizeArr)
 	diff := sizeArr[len(sizeArr)-1] - sizeArr[0]
-	if diff*100/percent > sizeArr[len(sizeArr)-1] {
+	if diff*100/percent > sizeArr[len(sizeArr)-1] && diff > minGB*unit.GB {
 		isEqual = false
 	}
 	return
@@ -599,6 +723,9 @@ func checkPeer(partition *proto.DataPartitionInfo, sb *strings.Builder) (errors 
 	var err error
 	var leaderStatus *proto.Status
 	errors = make([]string, 0)
+	if len(partition.Hosts) != int(partition.ReplicaNum) {
+		errors = append(errors, InvalidHostsNum)
+	}
 	for _, r := range partition.Replicas {
 		addr := strings.Split(r.Addr, ":")[0]
 		//check dataPartition by dataNode api
@@ -620,14 +747,13 @@ func checkPeer(partition *proto.DataPartitionInfo, sb *strings.Builder) (errors 
 		peerStrings := convertPeersToArray(dnPartition.Peers)
 		learnerStrings := convertLearnersToArray(dnPartition.Learners)
 		sort.Strings(peerStrings)
-		sort.Strings(dnPartition.Replicas)
+		sort.Strings(partition.Hosts)
 		sort.Strings(learnerStrings)
-		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "", "", "", fmt.Sprintf("%-22v", r.Addr), fmt.Sprintf("%v/%v", len(dnPartition.Replicas), partition.ReplicaNum), "(hosts)"+strings.Join(dnPartition.Replicas, ",")))
-		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "", "", "", fmt.Sprintf("%-22v", ""), fmt.Sprintf("%v/%v", len(peerStrings), partition.ReplicaNum), "(peers)"+strings.Join(peerStrings, ",")))
+		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", r.Addr, "(peers) "+strings.Join(peerStrings, ",")))
 		if len(dnPartition.Learners) > 0 {
-			sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "", "", "", fmt.Sprintf("%-22v", ""), fmt.Sprintf("%v/%v", len(learnerStrings), len(partition.Learners)), "(learners)"+strings.Join(learnerStrings, ",")))
+			sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "", "(learners) "+strings.Join(learnerStrings, ",")))
 		}
-		if !isEqualStrings(peerStrings, dnPartition.Replicas) || !isEqualStrings(partition.Hosts, peerStrings) || len(dnPartition.Replicas) != int(partition.ReplicaNum) || len(partition.Learners) != len(dnPartition.Learners) {
+		if !isEqualStrings(partition.Hosts, peerStrings) || len(partition.Learners) != len(dnPartition.Learners) {
 			errors = append(errors, fmt.Sprintf(ReplicaNotConsistent+" on host[%v]", r.Addr))
 		}
 	}
