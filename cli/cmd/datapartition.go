@@ -15,8 +15,13 @@
 package cmd
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/unit"
+	"math"
 	"os"
 	"sort"
 	"strconv"
@@ -330,10 +335,7 @@ The "reset" command will be released in next version`,
 					for i, msg := range errorReports {
 						fmt.Printf(fmt.Sprintf("%-8v\n", fmt.Sprintf("error %v: %v", i+1, msg)))
 					}
-					if len(errorReports) == 1 && errorReports[0] == UsedSizeNotEqualErr {
-						if len(partition.MissingNodes) > 0 {
-							return
-						}
+					if partition.ReplicaNum > 2 && len(partition.MissingNodes) == 0 && len(errorReports) == 1 && errorReports[0] == UsedSizeNotEqualErr {
 						err = fixSizeNoEqual(client, partition)
 						if err != nil {
 							log.LogErrorf("fix size no equal, partition:%v, err:%v", partition.PartitionID, err)
@@ -483,8 +485,12 @@ The "reset" command will be released in next version`,
 
 func fixSizeNoEqual(client *master.MasterClient, dp *proto.DataPartitionInfo) (err error) {
 	var (
-		minReplica *proto.DataReplica
-		maxReplica *proto.DataReplica
+		minReplica    *proto.DataReplica
+		maxReplica    *proto.DataReplica
+		normalDiff    uint64
+		tinyAvailDiff uint64
+		reason        string
+		execute       string
 	)
 	minReplica = dp.Replicas[0]
 	maxReplica = dp.Replicas[0]
@@ -508,60 +514,189 @@ func fixSizeNoEqual(client *master.MasterClient, dp *proto.DataPartitionInfo) (e
 		err = fmt.Errorf("zero used size")
 		return
 	}
-	if maxReplica.Used-minReplica.Used < unit.GB {
+	diff := maxReplica.Used - minReplica.Used
+	if diff < unit.GB {
 		err = fmt.Errorf("diff size too small")
 		return
 	}
-	var maxSum, minSum uint64
-	maxSum, err = sumTinyAvailableSize(maxReplica.Addr, dp.PartitionID, client.DataNodeProfPort)
-	if err != nil {
+
+	if _, tinyAvailDiff, err = getTinyAvailDiff(dp.PartitionID, maxReplica, minReplica); err != nil {
 		return
 	}
-	minSum, err = sumTinyAvailableSize(minReplica.Addr, dp.PartitionID, client.DataNodeProfPort)
-	if err != nil {
+	if normalDiff, err = normalExtentDiff(dp, maxReplica, minReplica); err != nil {
 		return
 	}
-	var reason, execute string
-	if maxSum < minSum {
-		/*	partitionPath := fmt.Sprintf("datapartition_%v_%v", dp.PartitionID, maxReplica.Total)
-			err = stopReloadReplica(maxReplica.Addr, dp.PartitionID, partitionPath, maxReplica.DiskPath, client.DataNodeProfPort)
-			if err != nil {
-				log.LogErrorf("action[fixSizeNoEqual] stopReloadReplica max replica failed:%v", err)
-			}
-			time.Sleep(time.Second * 10)
-			err = stopReloadReplica(minReplica.Addr, dp.PartitionID, partitionPath, minReplica.DiskPath, client.DataNodeProfPort)
-			if err != nil {
-				log.LogErrorf("action[fixSizeNoEqual] stopReloadReplica min replica failed:%v", err)
-			}*/
-		reason = "size calculation is wrong"
-		execute = fmt.Sprintf("stop-reload data partition on:%v,%v", maxReplica.Addr, minReplica.Addr)
-	} else if maxSum-minSum >= unit.GB {
-		dHost := fmt.Sprintf("%v:%v", strings.Split(maxReplica.Addr, ":")[0], client.DataNodeProfPort)
-		//dataClient := http_client.NewDataClient(dHost, false)
-		//err = dataClient.PlaybackPartitionTinyDelete(dp.PartitionID)
-		reason = "tiny extent deletion is not synchronized"
-		execute = fmt.Sprintf("playback tiny extent delete record on:%v", dHost)
-	} else {
-		err = client.AdminAPI().DecommissionDataPartition(dp.PartitionID, minReplica.Addr, "")
-		reason = "normal extent repair after deleted, decommission replica with smaller size"
-		execute = fmt.Sprintf("decommission replicas with smaller used size, host:%v", minReplica.Addr)
+
+	defer func() {
+		log.LogWarnf("fix used size, partition(%v), replica(%v), max(%v), min(%v), tinyAvailDiff(%v), reason(%s), execute(%s)", dp.PartitionID, maxReplica.Addr, maxReplica.Used, minReplica.Used, tinyAvailDiff, reason, execute)
+	}()
+
+	if math.Abs(float64(int64(tinyAvailDiff)-int64(diff))) < float64(unit.MB*128) {
+		reason, execute, err = executeTinyExtentHoleRepair(client, dp, maxReplica, minReplica)
+		return
 	}
-	log.LogWarnf("fix used size, partition(%v), replica(%v), max(%v), min(%v), reason(%s), execute(%s)", dp.PartitionID, maxReplica.Addr, maxReplica.Used, minReplica.Used, reason, execute)
+
+	if math.Abs(float64(int64(normalDiff)-int64(diff))) < float64(unit.MB*128) {
+		reason, execute, err = executeDecommission(client, dp, maxReplica, minReplica)
+		return
+	}
+	reason, execute = excuteReload(client, dp, maxReplica, minReplica)
 	return
 }
 
-func sumTinyAvailableSize(addr string, partitionID uint64, profPort uint16) (sum uint64, err error) {
-	dHost := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPort)
-	dataClient := http_client.NewDataClient(dHost, false)
-	for i := uint64(1); i <= uint64(64); i++ {
-		var extentHoleInfo *proto.DNTinyExtentInfo
-		extentHoleInfo, err = dataClient.GetExtentHoles(partitionID, i)
+func normalExtentDiff(dp *proto.DataPartitionInfo, maxReplica, minReplica *proto.DataReplica) (diff uint64, err error) {
+	var maxReplicaNormalExtentSize uint64
+	var minReplicaNormalExtentSize uint64
+	if maxReplicaNormalExtentSize, err = calculateNormalExtentDiff(maxReplica.Addr, dp.PartitionID); err != nil {
+		return
+	}
+	if minReplicaNormalExtentSize, err = calculateNormalExtentDiff(minReplica.Addr, dp.PartitionID); err != nil {
+		return
+	}
+	diff = maxReplicaNormalExtentSize - minReplicaNormalExtentSize
+	return
+}
+
+func excuteReload(client *master.MasterClient, dp *proto.DataPartitionInfo, maxReplica, minReplica *proto.DataReplica) (reason, execute string) {
+	/*	partitionPath := fmt.Sprintf("datapartition_%v_%v", dp.PartitionID, maxReplica.Total)
+		err = stopReloadReplica(maxReplica.Addr, dp.PartitionID, partitionPath, maxReplica.DiskPath, client.DataNodeProfPort)
 		if err != nil {
+			log.LogErrorf("action[fixSizeNoEqual] stopReloadReplica max replica failed:%v", err)
+		}
+		time.Sleep(time.Second * 10)
+		err = stopReloadReplica(minReplica.Addr, dp.PartitionID, partitionPath, minReplica.DiskPath, client.DataNodeProfPort)
+		if err != nil {
+			log.LogErrorf("action[fixSizeNoEqual] stopReloadReplica min replica failed:%v", err)
+		}*/
+	reason = "size calculation is wrong"
+	execute = fmt.Sprintf("stop-reload data partition on:%v,%v", maxReplica.Addr, minReplica.Addr)
+	return
+}
+
+func executeDecommission(client *master.MasterClient, dp *proto.DataPartitionInfo, maxReplica, minReplica *proto.DataReplica) (reason, execute string, err error) {
+	if dp.IsRecover {
+		var result string
+		result, err = client.AdminAPI().ResetRecoverDataPartition(dp.PartitionID)
+		if err != nil {
+			log.LogErrorf("reset recover partition:%v, err:%v, result:%v", dp.PartitionID, err, result)
+		}
+	}
+	err = client.AdminAPI().DecommissionDataPartition(dp.PartitionID, minReplica.Addr, "")
+	reason = "normal extent repair after deleted, decommission replica with smaller size"
+	execute = fmt.Sprintf("decommission replicas with smaller used size, host:%v", minReplica.Addr)
+	return
+}
+
+func executeTinyExtentHoleRepair(client *master.MasterClient, dp *proto.DataPartitionInfo, maxReplica, minReplica *proto.DataReplica) (reason, execute string, err error) {
+	var (
+		needRepairTiny []uint64
+		newAvailDiff   uint64
+		extentResults  map[uint64]string
+	)
+	dHost := fmt.Sprintf("%v:%v", strings.Split(maxReplica.Addr, ":")[0], client.DataNodeProfPort)
+	dataClient := http_client.NewDataClient(dHost, false)
+	err = dataClient.PlaybackPartitionTinyDelete(dp.PartitionID)
+	time.Sleep(time.Second * 30)
+	if needRepairTiny, newAvailDiff, err = getTinyAvailDiff(dp.PartitionID, maxReplica, minReplica); err != nil {
+		return
+	}
+	if newAvailDiff < uint64(unit.MB*64) {
+		reason = "tiny extent deletion is not synchronized"
+		execute = fmt.Sprintf("playback tiny extent delete record on:%v", maxReplica.Addr)
+		return
+	}
+
+	partition, err := dataClient.GetPartitionFromNode(dp.PartitionID)
+	if err != nil {
+		return
+	}
+	extentsStrs := make([]string, 0)
+	for _, e := range needRepairTiny {
+		extentsStrs = append(extentsStrs, strconv.FormatUint(e, 10))
+	}
+	extentResults, err = dataClient.RepairExtentBatch(strings.Join(extentsStrs, "-"), partition.Path, dp.PartitionID)
+	log.LogDebugf("repair extentBatch, extentResults:%v, err:%v", extentResults, err)
+	reason = fmt.Sprintf("tiny extent huge hole")
+	execute = fmt.Sprintf("repair tiny extent huge hole on host:%v, extents:%v", maxReplica.Addr, needRepairTiny)
+	return
+}
+
+func getTinyAvailDiff(partition uint64, maxReplica, minReplica *proto.DataReplica) (needRepairTiny []uint64, availDiff uint64, err error) {
+	var maxReplicaTinySizeMap map[uint64][]uint64
+	if maxReplicaTinySizeMap, err = getTinyExtentSize(maxReplica.Addr, partition, client.DataNodeProfPort); err != nil {
+		return
+	}
+	var minReplicaTinySizeMap map[uint64][]uint64
+	if minReplicaTinySizeMap, err = getTinyExtentSize(minReplica.Addr, partition, client.DataNodeProfPort); err != nil {
+		return
+	}
+	for ext, sizeArr := range maxReplicaTinySizeMap {
+		if (sizeArr[0] == 0 || minReplicaTinySizeMap[ext][0] == 0) && sizeArr[0]+minReplicaTinySizeMap[ext][0] > 0 {
+			err = fmt.Errorf("tiny extent:%v is in repairing", ext)
 			return
 		}
-		sum += extentHoleInfo.ExtentAvaliSize
+		if sizeArr[0] == 0 && minReplicaTinySizeMap[ext][0] == 0 {
+			continue
+		}
+		if sizeArr[0] != minReplicaTinySizeMap[ext][0] {
+			continue
+		}
+		if sizeArr[1] <= minReplicaTinySizeMap[ext][1] {
+			continue
+		}
+		availDiff += sizeArr[1] - minReplicaTinySizeMap[ext][1]
+		if sizeArr[1]-minReplicaTinySizeMap[ext][1] >= uint64(16*unit.MB) {
+			needRepairTiny = append(needRepairTiny, ext)
+		}
 	}
-	return sum, nil
+	sort.Slice(needRepairTiny, func(i, j int) bool {
+		return needRepairTiny[i] < needRepairTiny[j]
+	})
+	return
+}
+func calculateNormalExtentDiff(addr string, partition uint64) (sum uint64, err error) {
+	var normalExtents []storage.ExtentInfoBlock
+	if normalExtents, err = getNormalExtentWaterMark(addr, partition); err != nil {
+		return
+	}
+	for _, e := range normalExtents {
+		sum += e[proto.ExtentInfoSize]
+	}
+	return
+}
+func getNormalExtentWaterMark(addr string, partitionID uint64) (extents []storage.ExtentInfoBlock, err error) {
+	ctx := context.Background()
+	var packet = repl.NewPacketToGetAllWatermarks(ctx, partitionID, proto.NormalExtentType)
+	var reply *repl.Packet
+	if reply, err = util.SendTcpPacket(context.Background(), addr, packet); err != nil {
+		return
+	}
+	extents = make([]storage.ExtentInfoBlock, 0)
+	if err = json.Unmarshal(reply.Data[:reply.Size], &extents); err != nil {
+		return
+	}
+	return
+}
+
+func getTinyExtentSize(addr string, partitionID uint64, profPort uint16) (sizeMap map[uint64][]uint64, err error) {
+	sizeMap = make(map[uint64][]uint64, 0)
+	dHost := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPort)
+	dataClient := http_client.NewDataClient(dHost, false)
+	for ext := uint64(1); ext <= uint64(64); ext++ {
+		var extentInfo *proto.ExtentInfoBlock
+		var extentHoleInfo *proto.DNTinyExtentInfo
+		sizeMap[ext] = make([]uint64, 2)
+		if extentInfo, err = dataClient.GetExtentInfo(partitionID, ext); err != nil {
+			return
+		}
+		sizeMap[ext][0] = extentInfo[proto.ExtentInfoSize]
+
+		if extentHoleInfo, err = dataClient.GetExtentHoles(partitionID, ext); err != nil {
+			return
+		}
+		sizeMap[ext][1] = extentHoleInfo.ExtentAvaliSize
+	}
+	return
 }
 
 func stopReloadReplica(addr string, partitionID uint64, partitionPath, diskPath string, profPort uint16) (err error) {
@@ -602,7 +737,7 @@ func checkAllDataPartitions(client *master.MasterClient, optAutoFixUsedSize bool
 				if err != nil {
 					log.LogErrorf("fix size no equal, partition:%v, err:%v", dp.PartitionID, err)
 				}
-				time.Sleep(time.Minute)
+				time.Sleep(time.Second * 20)
 			}
 		}
 	}()
@@ -631,7 +766,7 @@ func checkAllDataPartitions(client *master.MasterClient, optAutoFixUsedSize bool
 				peerMsg, errorReports, partition := checkDataPartition(vol.Name, dp.PartitionID, optDiffSizeThreshold, minGB)
 				//double check
 				if optAutoFixUsedSize && len(errorReports) > 0 {
-					time.Sleep(time.Minute)
+					time.Sleep(time.Second * 20)
 					peerMsg, errorReports, partition = checkDataPartition(vol.Name, dp.PartitionID, optDiffSizeThreshold, minGB)
 				}
 				if len(errorReports) > 0 {
