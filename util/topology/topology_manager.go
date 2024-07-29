@@ -328,6 +328,9 @@ func (f *TopologyManager) updateDataPartitionsInBatches(volName string, dpIDs []
 		partitionsInfo, err := f.fetchDataPartitionsView(volName, dpIDs[start:end])
 		if err != nil {
 			log.LogErrorf("fetch vol(%s) data partition(%v) view failed: %v", volName, dpIDs, err)
+			if err == proto.ErrVolNotExists {
+				f.vols.Delete(volName)
+			}
 			return
 		}
 		f.updateDataPartitionsViewByResp(volName, partitionsInfo.DataPartitions)
