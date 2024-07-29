@@ -29,6 +29,7 @@ void testSymlink();
 #define PATH_LEN 100
 bool is_cfs;
 char* mount;
+bool is_dbbak;
 
 int main(int argc, char **argv) {
     int num = 1;
@@ -44,6 +45,7 @@ int main(int argc, char **argv) {
     }
     is_cfs = getenv("LD_PRELOAD");
     mount = getenv("MOUNT_POINT");
+    is_dbbak = getenv("IS_DBBAK");
     if(mount == NULL) {
         printf("execute with MOUNT_POINT=\n");
         return -1;
@@ -69,7 +71,9 @@ int main(int argc, char **argv) {
     }
     testDup();
     printf("Finish testDup\n");
-    testUnlinkAndRename();
+    if(!is_dbbak) {
+        testUnlinkAndRename();
+    }
     printf("Finish test unlink and rename\n");
     testSymlink();
     printf("Finish test symlink\n");
@@ -165,6 +169,14 @@ void testOp(const char *file) {
     dp = readdir(dirp);
     assertf(dp == NULL, "readdir errno %d", errno);
 
+    // rename dir
+    char new_dir[PATH_LEN] = {0};
+    sprintf(new_dir, "%s/t1", cwd);
+    re = rename(dir, new_dir);
+    assertf(re == 0, "renameat %s to %s returning %d", dir, new_dir, re);
+    re = rename(new_dir, dir);
+    assertf(re == 0, "renameat %s to %s returning %d", new_dir, dir, re);
+
     // file operations
     fd = open(file, O_RDWR);
     assertf(fd > 0, "open %s returning %d", path, fd);
@@ -174,11 +186,13 @@ void testOp(const char *file) {
     assertf(tmp_fd < 0, "open %s after rename with O_RDONLY returning %d", path, tmp_fd);
     re = rename(new_path, path);
     assertf(re == 0, "rename %s to %s returning %d", new_path, path, re);
-    re = truncate(path, 123);
-    assertf(re == 0, "truncate %s returning %d", path, re);
     struct stat statbuf;
-    re = stat(path, &statbuf);
-    assertf(re == 0 && statbuf.st_size == 123, "stat %s returning %d, size: %d", path, re, statbuf.st_size);
+    if(!is_dbbak) {
+        re = truncate(path, 123);
+        assertf(re == 0, "truncate %s returning %d", path, re);
+        re = stat(path, &statbuf);
+        assertf(re == 0 && statbuf.st_size == 123, "stat %s returning %d, size: %d", path, re, statbuf.st_size);
+    }
     re = ftruncate(fd, 0);
     assertf(re == 0, "ftruncate %d returning %d", fd, re);
     re = stat(path, &statbuf);
@@ -216,13 +230,10 @@ void testOp(const char *file) {
     assertf(re == 0, "chmod %s returning %d", path, re);
     re = stat(path, &statbuf);
     // access time is updated in metanode when accessing inode, inconsistent with client inode cache
-    bool atim_valid = is_cfs ?
-        ts[0].tv_sec <= statbuf.st_atime:
-        !memcmp((void*)&ts[0].tv_sec, (void*)&statbuf.st_atime, sizeof(time_t));
-    assertf(re == 0 && statbuf.st_size == 2*LEN-2
-            && atim_valid
-            && !memcmp((void*)&ts[1].tv_sec, (void*)&statbuf.st_mtime, sizeof(time_t))
-            && statbuf.st_mode == S_IFREG | 0611,
+    bool atim_valid = is_dbbak || (is_cfs ? ts[0].tv_sec <= statbuf.st_atime : ts[0].tv_sec == statbuf.st_atime);
+    bool mtim_valid = is_dbbak || ts[1].tv_sec == statbuf.st_mtime;
+    assertf(re == 0 && statbuf.st_size == 2*LEN-2 && atim_valid && mtim_valid
+            && statbuf.st_mode == S_IFREG | (is_dbbak ? 0777 : 0611),
             "stat %s returning %d, size: %d, mode: %o", path, re, statbuf.st_size, statbuf.st_mode);
 
     // chdir to original cwd, in case of calling test() for many times

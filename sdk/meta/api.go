@@ -529,9 +529,11 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 		return syscall.ENOENT
 	}
 
-	status, _, err = mw.ilink(ctx, srcMP, inode)
-	if err != nil || status != statusOK {
-		return statusToErrno(status)
+	if !proto.IsDbBack {
+		status, _, err = mw.ilink(ctx, srcMP, inode)
+		if err != nil || status != statusOK {
+			return statusToErrno(status)
+		}
 	}
 
 	// create dentry in dst parent
@@ -548,9 +550,11 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 		}
 	}
 
-	if status != statusOK {
-		mw.iunlink(ctx, srcMP, inode, true)
-		return statusToErrno(status)
+	if !proto.IsDbBack {
+		if status != statusOK {
+			mw.iunlink(ctx, srcMP, inode, true)
+			return statusToErrno(status)
+		}
 	}
 
 	// delete dentry from src parent
@@ -563,7 +567,9 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 		return statusToErrno(status)
 	}
 
-	mw.iunlink(ctx, srcMP, inode, true)
+	if !proto.IsDbBack {
+		mw.iunlink(ctx, srcMP, inode, true)
+	}
 
 	// As update dentry may be try, the second op will be the result which old inode be the same inode
 	if oldInode != 0 && oldInode != inode {
