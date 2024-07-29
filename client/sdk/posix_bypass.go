@@ -487,6 +487,9 @@ func newClient(conf *C.cfs_config_t, configPath string) *client {
 	// Just skip fd 0, 1, 2, to avoid confusion.
 	c.fdset.Set(0).Set(1).Set(2)
 
+	log.LogInfof("client(%d) inited, masterAddr(%s), volName(%s), owner(%s), followerRead(%v), app(%s), useMetaCache(%v), autoFlush(%v), masterClient(%s), flushLogOnFailure(%v)\n",
+		c.id, c.masterAddr, c.volName, c.owner, c.followerRead, c.app, c.useMetaCache, c.autoFlush, c.masterClient, c.flushLogOnFailure)
+
 	return c
 }
 
@@ -731,7 +734,11 @@ func _cfs_open(id C.int64_t, path *C.char, flags C.int, mode C.mode_t, fd C.int)
 			}
 			info.Size = 0
 		}
-		c.ec.RefreshExtentsCache(nil, f.ino)
+		if err = c.ec.RefreshExtentsCache(nil, f.ino); err != nil {
+			c.closeStream(f)
+			c.releaseFD(f.fd)
+			return statusEIO
+		}
 	}
 	f.size = info.Size
 	f.path = absPath
