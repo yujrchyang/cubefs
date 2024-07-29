@@ -165,6 +165,8 @@ func (m *metadataManager) statisticsOpTimeDelay(p *Packet, startTime time.Time, 
 		statisticsAction = proto.ActionMetaOpExtentsList
 	case proto.OpMetaTruncate:
 		statisticsAction = proto.ActionMetaOpTruncate
+	case proto.OpMetaExtentsInsert:
+		statisticsAction = proto.ActionMetaOpExtentsInsert
 	default:
 		return
 	}
