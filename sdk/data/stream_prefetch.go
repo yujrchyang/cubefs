@@ -409,7 +409,7 @@ func (pManager *PrefetchManager) getFileInode(ctx context.Context, pathDentryInf
 		dInfo = &DentryInfo{parIno: parIno, dcache: allDcache}
 		pathDentryInfoMap[dirPath] = dInfo
 	}
-	if ino, exist := dInfo.dcache.Get(fileName); exist {
+	if ino, typ, exist := dInfo.dcache.Get(fileName); exist {
 		value, ok := pManager.dcacheMap.Load(dInfo.parIno)
 		if !ok {
 			valid := DefaultIndexDentryExpirationSec
@@ -426,7 +426,7 @@ func (pManager *PrefetchManager) getFileInode(ctx context.Context, pathDentryInf
 			}
 		}
 		dcache := value.(*IndexDentryInfo).dcache
-		dcache.Put(fileName, ino)
+		dcache.Put(fileName, ino, typ)
 		inoID = ino
 	} else {
 		err = fmt.Errorf("get inode id failed")
@@ -449,7 +449,7 @@ func (pManager *PrefetchManager) getDirInfo(ctx context.Context, path string) (p
 	}
 	dcache = cache.NewDentryCache(30*60, true)
 	for _, child := range children {
-		dcache.Put(copyString(child.Name), child.Inode)
+		dcache.Put(copyString(child.Name), child.Inode, child.Type)
 	}
 	if log.IsDebugEnabled() {
 		log.LogDebugf("getDirInfo: parIno(%v) cfs path(%v) children(%v) cost(%v)", parIno, path, dcache.Count(), time.Since(start))
@@ -760,7 +760,7 @@ func (pManager *PrefetchManager) LookupPathByCache(ctx context.Context, absPath 
 		value, ok := pManager.lookupDcache.Load(ino)
 		if ok {
 			dcache = value.(*cache.DentryCache)
-			if child, exist := dcache.Get(dir); exist {
+			if child, _, exist := dcache.Get(dir); exist {
 				ino = child
 				continue
 			}
@@ -768,12 +768,12 @@ func (pManager *PrefetchManager) LookupPathByCache(ctx context.Context, absPath 
 			value, _ = pManager.lookupDcache.LoadOrStore(ino, cache.NewDentryCache(DefaultIndexDentryExpirationSec, true))
 			dcache = value.(*cache.DentryCache)
 		}
-		child, _, err := pManager.ec.metaWrapper.Lookup_ll(ctx, ino, dir)
+		child, typ, err := pManager.ec.metaWrapper.Lookup_ll(ctx, ino, dir)
 		if err != nil {
 			return 0, err
 		}
 		if index != len(dirs)-1 {
-			dcache.Put(dir, child)
+			dcache.Put(dir, child, typ)
 		}
 		ino = child
 	}
