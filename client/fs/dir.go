@@ -115,7 +115,7 @@ func (d *Node) Remove(ctx context.Context, req *fuse.RemoveRequest) (err error) 
 	// dbbak doesn't maitain nlink in directory inode, shouldn't rely on it when deleting
 	if req.Dir && proto.IsDbBack {
 		var err2 error
-		target, ok := d.dcache.Get(req.Name)
+		target, _, ok := d.dcache.Get(req.Name)
 		if !ok {
 			target, _, err2 = Sup.mw.Lookup_ll(ctx, d.inode, req.Name)
 			if err2 != nil {
