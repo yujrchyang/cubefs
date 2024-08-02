@@ -784,13 +784,8 @@ func checkAllDataPartitions(client *master.MasterClient, optAutoFixUsedSize bool
 					//stdoutGreen(strings.Repeat("_ ", len(partitionInfoTableHeader)/2+20) + "\n")
 					fmt.Printf(strings.Repeat("_ ", partitionInfoTableHeaderLen/2+20) + "\n")
 					volLock.Unlock()
-					if len(errorReports) == 1 && errorReports[0] == UsedSizeNotEqualErr {
-						if len(partition.MissingNodes) > 0 {
-							return
-						}
-						if optAutoFixUsedSize {
-							dpRepairCh <- partition
-						}
+					if optAutoFixUsedSize && partition.ReplicaNum > 2 && len(partition.MissingNodes) == 0 && len(errorReports) == 1 && errorReports[0] == UsedSizeNotEqualErr {
+						dpRepairCh <- partition
 					}
 				}
 			}(dp)
