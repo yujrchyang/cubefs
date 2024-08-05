@@ -32,9 +32,11 @@ const (
 	ump_cfs_fchown
 	ump_cfs_utimens
 	ump_cfs_faccessat
+	ump_read
 	ump_cfs_read
 	ump_cfs_read_binlog
 	ump_cfs_read_relaylog
+	ump_write
 	ump_cfs_write
 	ump_cfs_write_redolog
 	ump_cfs_write_binlog

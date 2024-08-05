@@ -196,7 +196,7 @@ func (mw *MetaWrapper) updateRanges(mps []*proto.MetaPartitionView, needNewRange
 	)
 
 	if needNewRange {
-		log.LogInfof("updateRanges: clear meta partitions, volNotExistCount(%v)", mw.volNotExistCount)
+		log.LogInfof("updateRanges: clear meta partitions, vol(%v) volNotExistCount(%v)", mw.volname, mw.volNotExistCount)
 		mw.volNotExistCount = 0
 		newRanges = btree.New(32)
 		newPartitions = make(map[uint64]*MetaPartition, 0)
@@ -225,7 +225,7 @@ func (mw *MetaWrapper) updateRanges(mps []*proto.MetaPartitionView, needNewRange
 		mw.partitions = newPartitions
 	}
 	if len(rwPartitions) == 0 {
-		log.LogInfof("updateRanges: no valid rwPartitions")
+		log.LogInfof("updateRanges: no valid rwPartitions, vol(%v)", mw.volname)
 	}
 	mw.rwPartitions = rwPartitions
 	mw.unavailPartitions = unavailPartitions
@@ -237,7 +237,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 		if err == proto.ErrVolNotExists {
 			mw.volNotExistCount++
 		}
-		log.LogWarnf("updateMetaPartitions: fetchVolumeView failed, err(%v) volNotExistCount(%v)", err, mw.volNotExistCount)
+		log.LogWarnf("updateMetaPartitions: fetchVolumeView failed, vol(%v) err(%v) volNotExistCount(%v)", mw.volname, err, mw.volNotExistCount)
 		return err
 	}
 	var needClearRange bool
@@ -250,7 +250,7 @@ func (mw *MetaWrapper) updateMetaPartitions() error {
 	needNewRange := (mw.volNotExistCount > VolNotExistClearViewThresholdMin) || needClearRange
 	mw.updateRanges(vv.MetaPartitions, needNewRange)
 
-	log.LogInfof("updateMetaPartitions: len(rwPartitions)=%v", len(mw.rwPartitions))
+	log.LogInfof("updateMetaPartitions: vol(%v) rwPartitionsLen(%v)", mw.volname, len(mw.rwPartitions))
 	return nil
 }
 
@@ -273,7 +273,7 @@ func (mw *MetaWrapper) updateMetaPartitionsWithNoCache() error {
 
 	mw.updateRanges(views, false)
 
-	log.LogInfof("updateMetaPartitionsWithNoCache: len(rwPartition)=%v", len(mw.rwPartitions))
+	log.LogInfof("updateMetaPartitionsWithNoCache: vol(%v) rwPartitionLen(%v)", mw.volname, len(mw.rwPartitions))
 	return nil
 }
 
@@ -334,15 +334,14 @@ func (mw *MetaWrapper) refreshWithRecover() (panicErr error) {
 		case <-t.C:
 			if err = mw.updateMetaPartitions(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
-				log.LogErrorf("updateMetaPartition fail cause: %v", err)
+				log.LogErrorf("updateMetaPartition fail, vol(%v) err(%v)", mw.volname, err)
 			}
 			if err = mw.updateVolStatInfo(); err != nil {
 				mw.onAsyncTaskError.OnError(err)
-				log.LogErrorf("updateVolStatInfo fail cause: %v", err)
+				log.LogErrorf("updateVolStatInfo fail, vol(%v) err(%v)", mw.volname, err)
 			}
 			t.Reset(RefreshMetaPartitionsInterval)
 		case <-mw.forceUpdate:
-			log.LogInfof("Start forceUpdateMetaPartitions")
 			mw.partMutex.Lock()
 			if err = mw.forceUpdateMetaPartitions(); err == nil {
 				if err = mw.updateVolStatInfo(); err == nil {
@@ -351,7 +350,7 @@ func (mw *MetaWrapper) refreshWithRecover() (panicErr error) {
 			}
 			mw.partMutex.Unlock()
 			mw.partCond.Broadcast()
-			log.LogInfof("End forceUpdateMetaPartitions: err(%v)", err)
+			log.LogInfof("forceUpdateMetaPartitions: vol(%v), err(%v)", mw.volname, err)
 		}
 	}
 }

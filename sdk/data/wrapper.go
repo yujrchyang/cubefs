@@ -813,6 +813,9 @@ func isLeaderExist(addr string, hosts []string) bool {
 }
 
 func (w *Wrapper) getDataPartitionFromMaster(partitionID uint64) (err error) {
+	if partitionID == 0 {
+		err = fmt.Errorf("invalid partitionID(0)")
+	}
 	var dpInfo *proto.DataPartitionInfo
 	start := time.Now()
 	for {

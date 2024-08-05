@@ -31,20 +31,20 @@ func TestMetaAPI(t *testing.T) {
 		t.Fatalf("creat meta wrapper failed!")
 	}
 	// make directory: 1.not exit  2.exit
-	dir1Inode, err := mw.MakeDirectory(proto.RootIno, dir1)
+	dir1Inode, err := mw.makeDirectory(proto.RootIno, dir1)
 	if err != nil {
 		t.Errorf("make directory(%v) failed", dir1)
 	}
-	dir2Inode, err := mw.MakeDirectory(dir1Inode, dir2)
+	dir2Inode, err := mw.makeDirectory(dir1Inode, dir2)
 	if err != nil {
 		t.Errorf("make directory(%v) failed", dir2)
 	}
-	dir2Inode, err = mw.MakeDirectory(dir1Inode, dir2)
+	dir2Inode, err = mw.makeDirectory(dir1Inode, dir2)
 	if err != nil {
 		t.Errorf("make directory(%v) failed", dir2)
 	}
 	// make directory at wrong rootIno
-	if _, err = mw.MakeDirectory(0, dir3); err == nil {
+	if _, err = mw.makeDirectory(0, dir3); err == nil {
 		t.Errorf("make directory(%v) failed", dir3)
 	}
 	// look up path
@@ -73,7 +73,7 @@ func TestMetaAPI(t *testing.T) {
 		t.Errorf("get root inode failed: err(%v), dir(%v)", err, filePath)
 	}
 	// make directory at file
-	if _, err = mw.MakeDirectory(dir2Inode, dir3); err == nil {
+	if _, err = mw.makeDirectory(dir2Inode, dir3); err == nil {
 		t.Errorf("make directory(%v) failed", dir3)
 	}
 	// clean test file

@@ -64,7 +64,7 @@ func (mw *MetaWrapper) GetRootIno(subdir string, autoMakeDir bool) (uint64, erro
 		if err != nil {
 			if autoMakeDir && err == syscall.ENOENT && (dirDeep-idx) < CreateSubDirDeepLimit {
 				// create directory
-				if rootIno, err = mw.MakeDirectory(rootIno, dir); err == nil {
+				if rootIno, err = mw.makeDirectory(rootIno, dir); err == nil {
 					continue
 				}
 			}
@@ -100,7 +100,7 @@ func (mw *MetaWrapper) LookupPath(ctx context.Context, rootIno uint64, subdir st
 	return ino, nil
 }
 
-func (mw *MetaWrapper) MakeDirectory(parIno uint64, dirName string) (uint64, error) {
+func (mw *MetaWrapper) makeDirectory(parIno uint64, dirName string) (uint64, error) {
 	inodeInfo, err := mw.Create_ll(context.Background(), parIno, dirName, proto.Mode(os.ModeDir|0755), 0, 0, nil)
 	if err != nil {
 		if err == syscall.EEXIST {
@@ -125,28 +125,28 @@ func (mw *MetaWrapper) Statfs() (total, used uint64) {
 }
 
 func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name string, mode, uid, gid uint32, target []byte) (info *proto.InodeInfo, err error) {
-	defer func() {
-		if info != nil {
-			if mw.RemoteCacheBloom != nil {
-				cacheBloom := mw.RemoteCacheBloom()
-				if bloomfilter.CheckUint64Exist(cacheBloom, parentID) {
-					bloomfilter.AddUint64ToBloom(cacheBloom, info.Inode)
-				}
-			}
-		}
-	}()
-	var (
-		status int
-		mp     *MetaPartition
-	)
-
 	if mw.VolNotExists() {
 		return nil, proto.ErrVolNotExists
 	}
+	var (
+		status int
+		errmsg string
+		mp     *MetaPartition
+	)
+	defer func() {
+		if err != nil && err != syscall.ENOENT && err != syscall.EEXIST {
+			log.LogErrorf("Create_ll: vol(%v) parentID(%v) name(%v) mode(%v) uid(%v) gid(%v) target(%v) err(%v) errmsg(%v) status(%v)", mw.volname, parentID, name, mode, uid, gid, target, err, errmsg, status)
+		}
+		if err == nil && mw.RemoteCacheBloom != nil && info != nil {
+			cacheBloom := mw.RemoteCacheBloom()
+			if bloomfilter.CheckUint64Exist(cacheBloom, parentID) {
+				bloomfilter.AddUint64ToBloom(cacheBloom, info.Inode)
+			}
+		}
+	}()
 
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
-		log.LogErrorf("Create_ll: No parent partition, parentID(%v)", parentID)
 		return nil, syscall.ENOENT
 	}
 
@@ -167,9 +167,10 @@ func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name stri
 			goto create_dentry
 		}
 		if !mw.InfiniteRetry {
+			errmsg = "create inode failed"
 			return nil, syscall.ENOMEM
 		}
-		log.LogWarnf("Create_ll: create inode failed, err(%v) status(%v) parentID(%v) name(%v) retry time(%v)", err, status, parentID, name, retryCount)
+		log.LogWarnf("Create_ll: create inode failed, vol(%v) err(%v) status(%v) parentID(%v) name(%v) retry time(%v)", mw.volname, err, status, parentID, name, retryCount)
 		umpMsg := fmt.Sprintf("CreateInode err(%v) status(%v) parentID(%v) name(%v) retry time(%v)", err, status, parentID, name, retryCount)
 		handleUmpAlarm(mw.cluster, mw.volname, "CreateInode", umpMsg)
 		time.Sleep(SendRetryInterval)
@@ -187,7 +188,7 @@ create_dentry:
 			if oldInode == info.Inode {
 				return info, nil
 			}
-			if mw.InodeNotExist(ctx, oldInode) {
+			if mw.inodeNotExist(ctx, oldInode) {
 				updateStatus, _, updateErr := mw.dupdate(ctx, parentMP, parentID, name, info.Inode)
 				if updateErr == nil && updateStatus == statusOK {
 					log.LogWarnf("Create_ll: inode(%v) is not exist, update dentry to new inode(%v) parentID(%v) name(%v)",
@@ -208,64 +209,64 @@ create_dentry:
 
 	// Unable to determin create dentry status, rollback may cause unexcepted result.
 	// So we return status error, user should check opration result manually or retry.
-	log.LogErrorf("Create_ll: create_dentry failed, err(%v), status(%v), parentMP(%v), parentID(%v), name(%v), "+
-		"info.Inode(%v), mode(%v)", err, status, parentMP, parentID, name, info.Inode, mode)
 	return nil, statusToErrno(status)
 }
 
-func (mw *MetaWrapper) InodeNotExist(ctx context.Context, inode uint64) bool {
+func (mw *MetaWrapper) inodeNotExist(ctx context.Context, inode uint64) bool {
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		return false
 	}
 	status, _, _, err := mw.iget(ctx, mp, inode, false)
-	if err == nil && status == statusNoent {
-		return true
-	}
-	return false
+	return err == nil && status == statusNoent
 }
 
 func (mw *MetaWrapper) Lookup_ll(ctx context.Context, parentID uint64, name string) (inode uint64, mode uint32, err error) {
+	if mw.VolNotExists() {
+		return 0, 0, proto.ErrVolNotExists
+	}
+	var status int
 	defer func() {
-		if err == nil {
-			if mw.RemoteCacheBloom != nil {
-				cacheBloom := mw.RemoteCacheBloom()
-				if bloomfilter.CheckUint64Exist(cacheBloom, parentID) {
-					bloomfilter.AddUint64ToBloom(cacheBloom, inode)
-				}
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("Lookup_ll: parentID(%v) name(%v) err(%v) status(%v)", parentID, name, err, status)
+		}
+		if err == nil && mw.RemoteCacheBloom != nil {
+			cacheBloom := mw.RemoteCacheBloom()
+			if bloomfilter.CheckUint64Exist(cacheBloom, parentID) {
+				bloomfilter.AddUint64ToBloom(cacheBloom, inode)
 			}
 		}
 	}()
 
-	if mw.VolNotExists() {
-		return 0, 0, proto.ErrVolNotExists
-	}
-
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
-		log.LogErrorf("Lookup_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
 		return 0, 0, syscall.ENOENT
 	}
 
-	status, inode, mode, err := mw.lookup(ctx, parentMP, parentID, name)
+	status, inode, mode, err = mw.lookup(ctx, parentMP, parentID, name)
 	if err != nil || status != statusOK {
 		return 0, 0, statusToErrno(status)
 	}
 	return inode, mode, nil
 }
 
-func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (info *proto.InodeInfo, err error) {
 	if mw.VolNotExists() {
 		return nil, proto.ErrVolNotExists
 	}
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("InodeGet_ll: vol(%v) ino(%v) err(%v) status(%v)", mw.volname, inode, err, status)
+		}
+	}()
 
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("InodeGet_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.ENOENT
 	}
 
-	status, info, _, err := mw.iget(ctx, mp, inode, false)
+	status, info, _, err = mw.iget(ctx, mp, inode, false)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			// For NOENT error, pull the latest mp and give it another try,
@@ -283,24 +284,30 @@ func (mw *MetaWrapper) InodeGet_ll(ctx context.Context, inode uint64) (*proto.In
 	return info, nil
 }
 
-func (mw *MetaWrapper) InodeGetWithXattrs(ctx context.Context, inode uint64) (*proto.InodeInfo, []*proto.ExtendAttrInfo, error) {
+func (mw *MetaWrapper) InodeGetWithXattrs(ctx context.Context, inode uint64) (info *proto.InodeInfo, xattrs []*proto.ExtendAttrInfo, err error) {
 	if mw.VolNotExists() {
 		return nil, nil, proto.ErrVolNotExists
 	}
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("InodeGetWithXattrs: vol(%v) ino(%v) err(%v) status(%v)", mw.volname, inode, err, status)
+		}
+	}()
 
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("InodeGetWithXattrs: No such partition, ino(%v)", inode)
 		return nil, nil, syscall.ENOENT
 	}
 
-	status, info, xattrs, err := mw.iget(ctx, mp, inode, true)
+	status, info, xattrs, err = mw.iget(ctx, mp, inode, true)
 	if err != nil || status != statusOK {
 		if status == statusNoent {
 			// For NOENT error, pull the latest mp and give it another try,
 			// in case the mp view is outdated.
 			mw.triggerAndWaitForceUpdate()
-			return mw.doInodeGet(ctx, inode, true)
+			info, xattrs, err = mw.doInodeGet(ctx, inode, true)
+			return info, xattrs, err
 		}
 		return nil, nil, statusToErrno(status)
 	}
@@ -315,7 +322,6 @@ func (mw *MetaWrapper) InodeGetWithXattrs(ctx context.Context, inode uint64) (*p
 func (mw *MetaWrapper) doInodeGet(ctx context.Context, inode uint64, withXattrs bool) (*proto.InodeInfo, []*proto.ExtendAttrInfo, error) {
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("InodeGet_ll: No such partition, ino(%v)", inode)
 		return nil, nil, syscall.ENOENT
 	}
 
@@ -373,18 +379,23 @@ func (mw *MetaWrapper) BatchInodeGet(ctx context.Context, inodes []uint64) []*pr
 
 // InodeDelete_ll is a low-level api that removes specified inode immediately
 // and do not effect extent data managed by this inode.
-func (mw *MetaWrapper) InodeDelete_ll(ctx context.Context, inode uint64) error {
+func (mw *MetaWrapper) InodeDelete_ll(ctx context.Context, inode uint64) (err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("InodeDelete_ll: vol(%v) ino(%v) err(%v) status(%v)", mw.volname, inode, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("InodeDelete: No such partition, ino(%v)", inode)
 		return syscall.ENOENT
 	}
-	status, err := mw.idelete(ctx, mp, inode)
+	status, err = mw.idelete(ctx, mp, inode)
 	if err != nil || status != statusOK {
-		return statusToErrno(status)
+		err = statusToErrno(status)
 	}
 	log.LogDebugf("InodeDelete_ll: inode(%v)", inode)
-	return nil
+	return
 }
 
 func (mw *MetaWrapper) BatchGetXAttr(ctx context.Context, inodes []uint64, keys []string) ([]*proto.XAttrInfo, error) {
@@ -447,37 +458,42 @@ func (mw *MetaWrapper) BatchGetXAttr(ctx context.Context, inodes []uint64, keys 
  * Note that the return value of InodeInfo might be nil without error,
  * and the caller should make sure InodeInfo is valid before using it.
  */
-func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name string, isDir bool) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name string, isDir bool) (info *proto.InodeInfo, err error) {
 	var (
+		errmsg string
 		status int
 		inode  uint64
 		mode   uint32
-		err    error
-		info   *proto.InodeInfo
 		mp     *MetaPartition
 	)
-
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("Delete_ll: vol(%v) parentID(%v) name(%v) ino(%v) isDir(%v) mode(%v) err(%v) errmsg(%v) status(%v)", mw.volname, parentID, name, inode, isDir, mode, err, errmsg, status)
+		}
+	}()
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
-		log.LogErrorf("Delete_ll: No parent partition, parentID(%v) name(%v)", parentID, name)
 		return nil, syscall.ENOENT
 	}
 
 	if isDir {
 		status, inode, mode, err = mw.lookup(ctx, parentMP, parentID, name)
 		if err != nil || status != statusOK {
+			errmsg = "lookup failed"
 			return nil, statusToErrno(status)
 		}
 		if !proto.IsDir(mode) {
+			errmsg = "mode is not dir"
 			return nil, syscall.EINVAL
 		}
 		mp = mw.getPartitionByInode(ctx, inode)
 		if mp == nil {
-			log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+			errmsg = "no such inode"
 			return nil, syscall.EAGAIN
 		}
 		status, info, _, err = mw.iget(ctx, mp, inode, false)
 		if err != nil || status != statusOK {
+			errmsg = "iget failed"
 			return nil, statusToErrno(status)
 		}
 		if info == nil || info.Nlink > 2 {
@@ -490,48 +506,65 @@ func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name stri
 		if status == statusNoent {
 			return nil, nil
 		}
+		errmsg = "ddelete failed"
 		return nil, statusToErrno(status)
 	}
 
 	// dentry is deleted successfully but inode is not, still returns success.
 	mp = mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("Delete_ll: No inode partition, parentID(%v) name(%v) ino(%v)", parentID, name, inode)
+		errmsg = "iget failed"
 		return nil, nil
 	}
 
 	status, info, err = mw.iunlink(ctx, mp, inode, false)
 	if err != nil || status != statusOK {
+		errmsg = "iunlink failed"
 		return nil, nil
 	}
 	return info, nil
 }
 
 func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcName string, dstParentID uint64, dstName string, notEvict bool) (err error) {
-	var oldInode uint64
-
+	var (
+		oldInode uint64
+		inode    uint64
+		mode     uint32
+		status   int
+		errmsg   string
+	)
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("Rename_ll: vol(%v) srcParentID(%v) srcName(%v) srcIno(%v) dstParentID(%v) dstName(%v) dstOldIno(%v) err(%v) errmsg(%v) status(%v)", mw.volname, srcParentID, srcName, inode, dstParentID, dstName, oldInode, err, errmsg, status)
+		}
+	}()
 	srcParentMP := mw.getPartitionByInode(ctx, srcParentID)
 	if srcParentMP == nil {
+		errmsg = "no srcParentID"
 		return syscall.ENOENT
 	}
 	dstParentMP := mw.getPartitionByInode(ctx, dstParentID)
 	if dstParentMP == nil {
+		errmsg = "no dstParentID"
 		return syscall.ENOENT
 	}
 
 	// look up for the src ino
-	status, inode, mode, err := mw.lookup(ctx, srcParentMP, srcParentID, srcName)
+	status, inode, mode, err = mw.lookup(ctx, srcParentMP, srcParentID, srcName)
 	if err != nil || status != statusOK {
+		errmsg = "no srcName"
 		return statusToErrno(status)
 	}
 	srcMP := mw.getPartitionByInode(ctx, inode)
 	if srcMP == nil {
+		errmsg = "no srcIno"
 		return syscall.ENOENT
 	}
 
 	if !proto.IsDbBack {
 		status, _, err = mw.ilink(ctx, srcMP, inode)
 		if err != nil || status != statusOK {
+			errmsg = "ilink srcIno falied"
 			return statusToErrno(status)
 		}
 	}
@@ -539,6 +572,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	// create dentry in dst parent
 	status, err = mw.dcreate(ctx, dstParentMP, dstParentID, dstName, inode, mode)
 	if err != nil {
+		errmsg = "dcreate failed"
 		return syscall.EAGAIN
 	}
 
@@ -546,6 +580,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	if status == statusExist && (proto.IsRegular(mode) || proto.IsSymlink(mode)) {
 		status, oldInode, err = mw.dupdate(ctx, dstParentMP, dstParentID, dstName, inode)
 		if err != nil {
+			errmsg = "dupdate failed"
 			return syscall.EAGAIN
 		}
 	}
@@ -553,6 +588,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	if !proto.IsDbBack {
 		if status != statusOK {
 			mw.iunlink(ctx, srcMP, inode, true)
+			errmsg = "iunlink failed"
 			return statusToErrno(status)
 		}
 	}
@@ -562,8 +598,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	// Unable to determin delete dentry status, rollback may cause unexcepted result.
 	// So we return error, user should check opration result manually or retry.
 	if err != nil || (status != statusOK && status != statusNoent) {
-		log.LogWarnf("Rename_ll: delete_dentry failed, can't determin dentry status, err(%v), status(%v), srcparentMP(%v),"+
-			" srcParentID(%v), srcName(%v)", err, status, srcParentMP, srcParentID, srcName)
+		errmsg = "ddelete failed"
 		return statusToErrno(status)
 	}
 
@@ -586,17 +621,22 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	return nil
 }
 
-func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) ([]proto.Dentry, error) {
+func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) (children []proto.Dentry, err error) {
 	if mw.VolNotExists() {
 		return nil, proto.ErrVolNotExists
 	}
-
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("ReadDir_ll: vol(%v) parentID(%v) err(%v) status(%v)", mw.volname, parentID, err, status)
+		}
+	}()
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		return nil, syscall.ENOENT
 	}
 
-	status, children, _, err := mw.readdir(ctx, parentMP, parentID, "", "", 0)
+	status, children, _, err = mw.readdir(ctx, parentMP, parentID, "", "", 0)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -604,91 +644,119 @@ func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) ([]proto
 }
 
 // ReadDir_wo means execute read dir with options.
-func (mw *MetaWrapper) ReadDir_wo(parentID uint64, prefix, marker string, count uint64) ([]proto.Dentry, string, error) {
+func (mw *MetaWrapper) ReadDir_wo(parentID uint64, prefix, marker string, count uint64) (children []proto.Dentry, next string, err error) {
 	if mw.VolNotExists() {
 		return nil, "", proto.ErrVolNotExists
 	}
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("ReadDir_wo: vol(%v) parentID(%v) prefix(%v) marker(%v) count(%v) err(%v) status(%v)", mw.volname, parentID, prefix, marker, count, err, status)
+		}
+	}()
 	parentMP := mw.getPartitionByInode(context.Background(), parentID)
 	if parentMP == nil {
 		return nil, "", syscall.ENOENT
 	}
 
-	status, children, next, err := mw.readdir(context.Background(), parentMP, parentID, prefix, marker, count)
+	status, children, next, err = mw.readdir(context.Background(), parentMP, parentID, prefix, marker, count)
 	if err != nil || status != statusOK {
 		return nil, "", statusToErrno(status)
 	}
 	return children, next, nil
 }
 
-func (mw *MetaWrapper) DentryCreate_ll(ctx context.Context, parentID uint64, name string, inode uint64, mode uint32) error {
+func (mw *MetaWrapper) DentryCreate_ll(ctx context.Context, parentID uint64, name string, inode uint64, mode uint32) (err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("DentryCreate_ll: vol(%v) parentID(%v) name(%v) ino(%v) mode(%v) err(%v) status(%v)", mw.volname, parentID, name, inode, mode, err, status)
+		}
+	}()
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		return syscall.ENOENT
 	}
-	var err error
-	var status int
 	if status, err = mw.dcreate(ctx, parentMP, parentID, name, inode, mode); err != nil || status != statusOK {
-		return statusToErrno(status)
+		err = statusToErrno(status)
 	}
-	return nil
+	return
 }
 
 func (mw *MetaWrapper) DentryUpdate_ll(ctx context.Context, parentID uint64, name string, inode uint64) (oldInode uint64, err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("DentryUpdate_ll: vol(%v) parentID(%v) name(%v) ino(%v) err(%v) status(%v)", mw.volname, parentID, name, inode, err, status)
+		}
+	}()
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
 		err = syscall.ENOENT
 		return
 	}
-	var status int
 	status, oldInode, err = mw.dupdate(nil, parentMP, parentID, name, inode)
 	if err != nil || status != statusOK {
 		err = statusToErrno(status)
-		return
 	}
 	return
 }
 
 // AppendExtentKeys append multiple extent key into specified inode with single request.
-func (mw *MetaWrapper) AppendExtentKeys(ctx context.Context, inode uint64, eks []proto.ExtentKey) error {
+func (mw *MetaWrapper) AppendExtentKeys(ctx context.Context, inode uint64, eks []proto.ExtentKey) (err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("AppendExtentKeys: vol(%v) ino(%v) eks(%v) err(%v) status(%v)", mw.volname, inode, eks, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		return syscall.ENOENT
 	}
 
-	status, err := mw.appendExtentKeys(ctx, mp, inode, eks)
+	status, err = mw.appendExtentKeys(ctx, mp, inode, eks)
 	if err != nil || status != statusOK {
-		log.LogErrorf("AppendExtentKeys: inode(%v) extentKeys(%v) err(%v) status(%v)", inode, eks, err, status)
-		return statusToErrno(status)
+		err = statusToErrno(status)
 	}
 	log.LogDebugf("AppendExtentKeys: ino(%v) extentKeys(%v)", inode, eks)
-	return nil
+	return
 }
 
-func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey, isPreExtent bool) error {
+func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey, isPreExtent bool) (err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("InsertExtentKey: vol(%v) ino(%v) ek(%v) isPreExtent(%v) err(%v) status(%v)", mw.volname, inode, ek, isPreExtent, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		return syscall.ENOENT
 	}
 
-	status, err := mw.insertExtentKey(ctx, mp, inode, ek, isPreExtent)
+	status, err = mw.insertExtentKey(ctx, mp, inode, ek, isPreExtent)
 	if err != nil || status != statusOK {
-		log.LogWarnf("InsertExtentKey: inode(%v) ek(%v) isPreExtent(%v) err(%v) status(%v)", inode, ek, isPreExtent, err, status)
-		return statusToErrno(status)
+		err = statusToErrno(status)
 	}
 	log.LogDebugf("InsertExtentKey: ino(%v) ek(%v) isPreExtent(%v)", inode, ek, isPreExtent)
-	return nil
-
+	return
 }
 
 func (mw *MetaWrapper) GetExtents(ctx context.Context, inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("GetExtents: vol(%v) ino(%v) err(%v) status(%v)", mw.volname, inode, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		return 0, 0, nil, syscall.ENOENT
 	}
 
-	status, gen, size, extents, err := mw.getExtents(ctx, mp, inode)
+	status, gen, size, extents, err = mw.getExtents(ctx, mp, inode)
 	if err != nil || status != statusOK {
-		log.LogErrorf("GetExtents: ino(%v) err(%v) status(%v)", inode, err, status)
 		return 0, 0, nil, statusToErrno(status)
 	}
 	log.LogDebugf("GetExtents: ino(%v) gen(%v) size(%v)", inode, gen, size)
@@ -696,50 +764,68 @@ func (mw *MetaWrapper) GetExtents(ctx context.Context, inode uint64) (gen uint64
 }
 
 func (mw *MetaWrapper) GetExtentsNoModifyAccessTime(ctx context.Context, inode uint64) (gen uint64, size uint64, extents []proto.ExtentKey, err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("GetExtentsNoModifyAccessTime: vol(%v) ino(%v) err(%v) status(%v)", mw.volname, inode, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
 		return 0, 0, nil, syscall.ENOENT
 	}
 
-	status, gen, size, extents, err := mw.getExtentsNoModifyAccessTime(ctx, mp, inode)
+	status, gen, size, extents, err = mw.getExtentsNoModifyAccessTime(ctx, mp, inode)
 	if err != nil || status != statusOK {
-		log.LogErrorf("GetExtentsNoModifyAccessTime: ino(%v) err(%v) status(%v)", inode, err, status)
 		return 0, 0, nil, statusToErrno(status)
 	}
 	log.LogDebugf("GetExtentsNoModifyAccessTime: ino(%v) gen(%v) size(%v)", inode, gen, size)
 	return gen, size, extents, nil
 }
 
-func (mw *MetaWrapper) Truncate(ctx context.Context, inode, oldSize, size uint64) error {
+func (mw *MetaWrapper) Truncate(ctx context.Context, inode, oldSize, size uint64) (err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("Truncate: vol(%v) ino(%v) oldSize(%v) size(%v) err(%v) status(%v)", mw.volname, inode, oldSize, size, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("Truncate: No inode partition, ino(%v)", inode)
 		return syscall.ENOENT
 	}
 
-	status, err := mw.truncate(ctx, mp, inode, oldSize, size)
+	status, err = mw.truncate(ctx, mp, inode, oldSize, size)
 	if err != nil || status != statusOK {
-		return statusToErrno(status)
+		err = statusToErrno(status)
 	}
-	return nil
-
+	return
 }
 
-func (mw *MetaWrapper) Link(ctx context.Context, parentID uint64, name string, ino uint64) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) Link(ctx context.Context, parentID uint64, name string, ino uint64) (info *proto.InodeInfo, err error) {
+	var (
+		status int
+		errmsg string
+	)
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogWarnf("Link: vol(%v) parentID(%v) name(%v) ino(%v) err(%v) errmsg(%v) status(%v)", mw.volname, parentID, name, ino, err, errmsg, status)
+		}
+	}()
 	parentMP := mw.getPartitionByInode(ctx, parentID)
 	if parentMP == nil {
-		log.LogErrorf("Link: No parent partition, parentID(%v)", parentID)
+		errmsg = "no parent ino"
 		return nil, syscall.ENOENT
 	}
 
 	mp := mw.getPartitionByInode(ctx, ino)
 	if mp == nil {
-		log.LogErrorf("Link: No target inode partition, ino(%v)", ino)
+		errmsg = "no target ino"
 		return nil, syscall.ENOENT
 	}
 
 	// increase inode nlink
-	status, info, err := mw.ilink(ctx, mp, ino)
+	status, info, err = mw.ilink(ctx, mp, ino)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -757,43 +843,51 @@ func (mw *MetaWrapper) Link(ctx context.Context, parentID uint64, name string, i
 	return info, nil
 }
 
-func (mw *MetaWrapper) Evict(ctx context.Context, inode uint64, noTrash bool) error {
+func (mw *MetaWrapper) Evict(ctx context.Context, inode uint64, noTrash bool) (err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogWarnf("Evict: vol(%v) ino(%v) noTrash(%v) err(%v) status(%v)", mw.volname, inode, noTrash, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogWarnf("Evict: No such partition, ino(%v)", inode)
-		return syscall.EINVAL
+		return syscall.ENOENT
 	}
 
-	status, err := mw.ievict(ctx, mp, inode, noTrash)
+	status, err = mw.ievict(ctx, mp, inode, noTrash)
 	if err != nil || status != statusOK {
-		log.LogWarnf("Evict: ino(%v) err(%v) status(%v)", inode, err, status)
+		err = statusToErrno(status)
+	}
+	return
+}
+
+func (mw *MetaWrapper) Setattr(ctx context.Context, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("Setattr: vol(%v) ino(%v) valid(%v) mode(%v) uid(%v) gid(%v) atime(%v) mtime(%v) err(%v) status(%v)", mw.volname, inode, valid, mode, uid, gid, atime, mtime, err, status)
+		}
+	}()
+	mp := mw.getPartitionByInode(ctx, inode)
+	if mp == nil {
+		return syscall.ENOENT
+	}
+
+	status, err = mw.setattr(ctx, mp, inode, valid, mode, uid, gid, atime, mtime)
+	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
 	return nil
 }
 
-func (mw *MetaWrapper) Setattr(ctx context.Context, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) error {
-	mp := mw.getPartitionByInode(ctx, inode)
-	if mp == nil {
-		log.LogErrorf("Setattr: No such partition, ino(%v)", inode)
-		return syscall.EINVAL
-	}
-
-	status, err := mw.setattr(ctx, mp, inode, valid, mode, uid, gid, atime, mtime)
-	if err != nil || status != statusOK {
-		log.LogErrorf("Setattr: ino(%v) err(%v) status(%v)", inode, err, status)
-		return statusToErrno(status)
-	}
-
-	return nil
-}
-
-func (mw *MetaWrapper) InodeCreate_ll(ctx context.Context, mode, uid, gid uint32, target []byte) (*proto.InodeInfo, error) {
-	var (
-		status int
-		err    error
-		info   *proto.InodeInfo
-	)
+func (mw *MetaWrapper) InodeCreate_ll(ctx context.Context, mode, uid, gid uint32, target []byte) (info *proto.InodeInfo, err error) {
+	var status int
+	defer func() {
+		if err != nil {
+			log.LogErrorf("InodeCreate_ll: vol(%v) mode(%v) uid(%v) gid(%v) err(%v) status(%v)", mw.volname, mode, uid, gid, err, status)
+		}
+	}()
 	var icreateFunc operatePartitionFunc = func(mp *MetaPartition) (bool, int) {
 		status, info, err = mw.icreate(ctx, mp, mode, uid, gid, target)
 		return err == nil && status == statusOK, status
@@ -805,30 +899,38 @@ func (mw *MetaWrapper) InodeCreate_ll(ctx context.Context, mode, uid, gid uint32
 }
 
 // InodeLink_ll is a low-level api that makes specified inode link value +1.
-func (mw *MetaWrapper) InodeLink_ll(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) InodeLink_ll(ctx context.Context, inode uint64) (info *proto.InodeInfo, err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("InodeLink_ll: vol(%v) ino(%v) err(%v) status(%v)", mw.volname, inode, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("InodeLink_ll: No such partition, ino(%v)", inode)
-		return nil, syscall.EINVAL
+		return nil, syscall.ENOENT
 	}
-	status, info, err := mw.ilink(ctx, mp, inode)
+	status, info, err = mw.ilink(ctx, mp, inode)
 	if err != nil || status != statusOK {
-		log.LogErrorf("InodeLink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)
 	}
 	return info, nil
 }
 
 // InodeUnlink_ll is a low-level api that makes specified inode link value -1.
-func (mw *MetaWrapper) InodeUnlink_ll(ctx context.Context, inode uint64) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) InodeUnlink_ll(ctx context.Context, inode uint64) (info *proto.InodeInfo, err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("InodeUnlink_ll: vol(%v) ino(%v) err(%v) status(%v)", mw.volname, inode, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
-		return nil, syscall.EINVAL
+		return nil, syscall.ENOENT
 	}
-	status, info, err := mw.iunlink(ctx, mp, inode, true)
+	status, info, err = mw.iunlink(ctx, mp, inode, true)
 	if err != nil || status != statusOK {
-		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		err = statusToErrno(status)
 		if err == syscall.EAGAIN {
 			err = nil
@@ -850,7 +952,7 @@ func (mw *MetaWrapper) InitMultipart_ll(ctx context.Context, path string, extend
 	if mw.iteratePartitions(createMultipartFunc) {
 		return sessionId, nil
 	}
-	log.LogErrorf("InitMultipart: create multipart id fail, path(%v), status(%v), err(%v)", path, status, err)
+	log.LogErrorf("InitMultipart: create multipart id fail, vol(%v) path(%v) status(%v) err(%v)", mw.volname, path, status, err)
 	if err != nil {
 		return "", err
 	} else {
@@ -877,7 +979,7 @@ func (mw *MetaWrapper) GetMultipart_ll(ctx context.Context, path, multipartId st
 	}
 	status, multipartInfo, err := mw.getMultipart(ctx, mp, path, multipartId)
 	if err != nil || status != statusOK {
-		log.LogErrorf("GetMultipartRequest: err(%v) status(%v)", err, status)
+		log.LogErrorf("GetMultipartRequest: vol(%v) err(%v) status(%v)", mw.volname, err, status)
 		return nil, statusToErrno(status)
 	}
 	return multipartInfo, nil
@@ -904,7 +1006,7 @@ func (mw *MetaWrapper) AddMultipartPart_ll(ctx context.Context, path, multipartI
 	}
 	status, err := mw.addMultipartPart(ctx, mp, path, multipartId, partId, size, md5, inode)
 	if err != nil || status != statusOK {
-		log.LogErrorf("AddMultipartPart_ll: err(%v) status(%v)", err, status)
+		log.LogErrorf("AddMultipartPart_ll: vol(%v) err(%v) status(%v)", mw.volname, err, status)
 		return statusToErrno(status)
 	}
 	return nil
@@ -958,8 +1060,8 @@ func (mw *MetaWrapper) broadcastGetMultipart(ctx context.Context, path, multipar
 				resultMu.Unlock()
 			}
 			if err != nil && err != syscall.ENOENT {
-				log.LogErrorf("broadcastGetMultipart: get multipart fail: partitionId(%v) multipartId(%v)",
-					mp.PartitionID, multipartId)
+				log.LogErrorf("broadcastGetMultipart: get multipart fail: vol(%v) partitionId(%v) multipartId(%v)",
+					mw.volname, mp.PartitionID, multipartId)
 			}
 		}(mp)
 	}
@@ -986,8 +1088,8 @@ func (mw *MetaWrapper) ListMultipart_ll(ctx context.Context, prefix, delimiter, 
 			defer wg.Done()
 			status, response, err := mw.listMultiparts(ctx, mp, prefix, delimiter, keyMarker, multipartIdMarker, maxUploads+1)
 			if err != nil || status != statusOK {
-				log.LogErrorf("ListMultipart: partition list multipart fail, partitionID(%v) err(%v) status(%v)",
-					mp.PartitionID, err, status)
+				log.LogErrorf("ListMultipart: partition list multipart fail, vol(%v) partitionID(%v) err(%v) status(%v)",
+					mw.volname, mp.PartitionID, err, status)
 				err = statusToErrno(status)
 				return
 			}
@@ -1007,31 +1109,42 @@ func (mw *MetaWrapper) ListMultipart_ll(ctx context.Context, prefix, delimiter, 
 	return sessions, nil
 }
 
-func (mw *MetaWrapper) XAttrSet_ll(ctx context.Context, inode uint64, name, value []byte) error {
-	var err error
+func (mw *MetaWrapper) XAttrSet_ll(ctx context.Context, inode uint64, name, value []byte) (err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("XAttrSet_ll: volume(%v) inode(%v) name(%v) value(%v) err(%v) status(%v)", mw.volname, inode, name, value, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("XAttrSet_ll: no such partition, inode(%v)", inode)
 		return syscall.ENOENT
 	}
-	var status int
 	status, err = mw.setXAttr(ctx, mp, inode, name, value)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
-	log.LogDebugf("XAttrSet_ll: set xattr: volume(%v) inode(%v) name(%v) value(%v) status(%v)",
+	log.LogDebugf("XAttrSet_ll: volume(%v) inode(%v) name(%v) value(%v) status(%v)",
 		mw.volname, inode, name, value, status)
-	return nil
+	return
 }
 
-func (mw *MetaWrapper) XAttrGet_ll(ctx context.Context, inode uint64, name string) (*proto.XAttrInfo, error) {
+func (mw *MetaWrapper) XAttrGet_ll(ctx context.Context, inode uint64, name string) (xAttr *proto.XAttrInfo, err error) {
+	var (
+		value  string
+		status int
+	)
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("XAttrGet_ll: volume(%v) inode(%v) name(%v) err(%v) status(%v)", mw.volname, inode, name, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("InodeGet_ll: no such partition, ino(%v)", inode)
 		return nil, syscall.ENOENT
 	}
 
-	value, status, err := mw.getXAttr(ctx, mp, inode, name)
+	value, status, err = mw.getXAttr(ctx, mp, inode, name)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1039,25 +1152,28 @@ func (mw *MetaWrapper) XAttrGet_ll(ctx context.Context, inode uint64, name strin
 	xAttrValues := make(map[string]string)
 	xAttrValues[name] = string(value)
 
-	xAttr := &proto.XAttrInfo{
+	xAttr = &proto.XAttrInfo{
 		Inode:  inode,
 		XAttrs: xAttrValues,
 	}
 
 	log.LogDebugf("XAttrGet_ll: get xattr: volume(%v) inode(%v) name(%v) value(%v)",
 		mw.volname, inode, string(name), string(value))
-	return xAttr, nil
+	return
 }
 
 // XAttrDel_ll is a low-level meta api that deletes specified xattr.
-func (mw *MetaWrapper) XAttrDel_ll(ctx context.Context, inode uint64, name string) error {
-	var err error
+func (mw *MetaWrapper) XAttrDel_ll(ctx context.Context, inode uint64, name string) (err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("XAttrDel_ll: volume(%v) inode(%v) name(%v) err(%v) status(%v)", mw.volname, inode, name, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("XAttrDel_ll: no such partition, inode(%v)", inode)
 		return syscall.ENOENT
 	}
-	var status int
 	status, err = mw.removeXAttr(ctx, mp, inode, name)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
@@ -1066,14 +1182,18 @@ func (mw *MetaWrapper) XAttrDel_ll(ctx context.Context, inode uint64, name strin
 	return nil
 }
 
-func (mw *MetaWrapper) XAttrsList_ll(ctx context.Context, inode uint64) ([]string, error) {
-	var err error
+func (mw *MetaWrapper) XAttrsList_ll(ctx context.Context, inode uint64) (keys []string, err error) {
+	var status int
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("XAttrsList_ll: volume(%v) inode(%v) err(%v) status(%v)", mw.volname, inode, err, status)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, inode)
 	if mp == nil {
-		log.LogErrorf("XAttrsList_ll: no such partition, inode(%v)", inode)
 		return nil, syscall.ENOENT
 	}
-	keys, status, err := mw.listXAttr(ctx, mp, inode)
+	keys, status, err = mw.listXAttr(ctx, mp, inode)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1081,32 +1201,30 @@ func (mw *MetaWrapper) XAttrsList_ll(ctx context.Context, inode uint64) ([]strin
 	return keys, nil
 }
 
-func (mw *MetaWrapper) GetInodeExtents_ll(ctx context.Context, mpId uint64, inos []uint64, cnt int, minEkSize int, minInodeSize uint64, maxEkAvgSize uint64) ([]*proto.InodeExtents, error) {
+func (mw *MetaWrapper) GetInodeExtents_ll(ctx context.Context, mpId uint64, inos []uint64, cnt int, minEkSize int, minInodeSize uint64, maxEkAvgSize uint64) (inodes []*proto.InodeExtents, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("GetInodeExtents_ll: vol(%v) mpId(%v) inos(%v) cnt(%v) minEkSize(%v) minInodeSize(%v) maxEkAvgSize(%v) err(%v)", mw.volname, mpId, inos, cnt, minEkSize, minInodeSize, maxEkAvgSize, err)
+		}
+	}()
 	mp := mw.getPartitionByID(mpId)
 	if mp == nil {
-		log.LogErrorf("GetInodeExtents_ll: no such partition(%v)", mpId)
 		return nil, fmt.Errorf("no such partition(%v)", mpId)
 	}
-	inodes, err := mw.getInodeExtents(ctx, mp, inos, cnt, minEkSize, minInodeSize, maxEkAvgSize)
-	if err != nil {
-		return nil, err
-	}
-
-	return inodes, nil
+	return mw.getInodeExtents(ctx, mp, inos, cnt, minEkSize, minInodeSize, maxEkAvgSize)
 }
 
-func (mw *MetaWrapper) InodeMergeExtents_ll(ctx context.Context, ino uint64, oldEks []proto.ExtentKey, newEks []proto.ExtentKey, mergeType proto.MergeEkType) error {
+func (mw *MetaWrapper) InodeMergeExtents_ll(ctx context.Context, ino uint64, oldEks []proto.ExtentKey, newEks []proto.ExtentKey, mergeType proto.MergeEkType) (err error) {
+	defer func() {
+		if err != nil && err != syscall.ENOENT {
+			log.LogErrorf("InodeMergeExtents_ll: vol(%v) ino(%v) oldEks(%v) newEks(%v) mergeType(%v) err(%v)", mw.volname, ino, oldEks, newEks, mergeType, err)
+		}
+	}()
 	mp := mw.getPartitionByInode(ctx, ino)
 	if mp == nil {
-		log.LogErrorf("InodeMergeExtents_ll: no such ino(%v)", ino)
-		return fmt.Errorf("no such ino(%v)", ino)
+		return syscall.ENOENT
 	}
-	err := mw.mergeInodeExtents(ctx, mp, ino, oldEks, newEks, mergeType)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return mw.mergeInodeExtents(ctx, mp, ino, oldEks, newEks, mergeType)
 }
 
 func (mw *MetaWrapper) getTargetHosts(ctx context.Context, mp *MetaPartition, members []string, judgeErrNum int) (targetHosts []string, isErr bool) {
@@ -1197,6 +1315,7 @@ func contains(arr []string, element string) (ok bool) {
 	}
 	return
 }
+
 func (mw *MetaWrapper) LookupDeleted_ll(ctx context.Context, parentID uint64, name string, startTime, endTime int64) (
 	dentrys []*proto.DeletedDentry, err error) {
 	parentMP := mw.getPartitionByInode(ctx, parentID)

@@ -1986,10 +1986,6 @@ static ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t
 	int req_count = cfs_read_requests(id, fd, buf, count, offset, req, max_count);
     ssize_t read = 0;
     bool has_err = req_count < 0;
-    struct timespec start;
-    if(!has_err) {
-        clock_gettime(CLOCK_REALTIME, &start);
-    }
     for(int i = 0; i < req_count; i++) {
         if(req[i].size == 0) {
             break;
@@ -2033,9 +2029,6 @@ static ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t
             break;
         }
     }
-    if(!has_err) {
-        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_READ, start.tv_sec, start.tv_nsec);
-    }
     free(req);
     #ifdef _CFS_DEBUG
     log_debug("cfs_pread_sock, fd:%d, count:%d, offset:%ld, req_count:%d, read:%d, has_err:%d\n", fd, count, offset, req_count, read, has_err);
@@ -2047,13 +2040,11 @@ static ssize_t cfs_pread_sock(int64_t id, int fd, void *buf, size_t count, off_t
 }
 
 ssize_t real_read(int fd, void *buf, size_t count) {
-    #ifdef _CFS_DEBUG
-    struct timespec start, stop;
-    clock_gettime(CLOCK_REALTIME, &start);
-    #endif
     if(fd < 0) {
         return -1;
     }
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
 
     off_t offset = 0;
     size_t size = 0;
@@ -2141,6 +2132,9 @@ log:
     long time = (stop.tv_sec - start.tv_sec)*1000000000 + stop.tv_nsec - start.tv_nsec;
     log_debug("hook %s, is_cfs:%d, fd:%d, path: %s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, time:%d\n", __func__, is_cfs, fd, fd_path, count, offset, size, re, re_cache, time/1000);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_READ, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 
@@ -2148,8 +2142,11 @@ ssize_t real_readv(int fd, const struct iovec *iov, int iovcnt) {
     if(fd < 0) {
         return -1;
     }
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
     ssize_t re = -1;
     off_t offset;
+
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
@@ -2198,6 +2195,9 @@ log:
     const char *fd_path = get_fd_path(fd);
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, re:%d\n", __func__, is_cfs, fd, fd_path, iovcnt, re);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_READ, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 
@@ -2205,6 +2205,8 @@ ssize_t real_pread(int fd, void *buf, size_t count, off_t offset) {
     if(fd < 0) {
         return -1;
     }
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
     ssize_t re = -1, re_local = 0, re_cache = 0;
 
     bool is_cfs = fd_in_cfs(fd);
@@ -2269,11 +2271,20 @@ log:
     const char *fd_path = get_fd_path(fd);
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_READ, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 
 ssize_t real_preadv(int fd, const struct iovec *iov, int iovcnt, off_t offset) {
-    ssize_t re;
+    if(fd < 0) {
+        return -1;
+    }
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
+    ssize_t re = -1;
+
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
@@ -2312,19 +2323,18 @@ log:
     const char *fd_path = get_fd_path(fd);
     log_debug("hook %s, is_cfs:%d, fd:%d, iovcnt:%d, offset:%ld, re:%d\n", __func__, is_cfs, fd, fd_path, iovcnt, offset, re);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_READ, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 
 ssize_t real_write(int fd, const void *buf, size_t count) {
-    #ifdef _CFS_DEBUG
-    struct timespec start, stop;
-    clock_gettime(CLOCK_REALTIME, &start);
-    #endif
-
     if(fd < 0) {
         return -1;
     }
-
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
     off_t offset = 0;
     size_t size = 0;
     ssize_t re = -1, re_cache = 0, re_local = 0;
@@ -2377,6 +2387,9 @@ log:
     long time = (stop.tv_sec - start.tv_sec)*1000000000 + stop.tv_nsec - start.tv_nsec;
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, size:%d, re:%d, re_cache:%d, re_local:%d time:%d\n", __func__, is_cfs, fd, fd_path, count, offset, size, re, re_cache, re_local, time/1000);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_WRITE, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 
@@ -2384,7 +2397,10 @@ ssize_t real_writev(int fd, const struct iovec *iov, int iovcnt) {
     if(fd < 0) {
         return -1;
     }
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
     ssize_t re = -1;
+
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
@@ -2415,18 +2431,18 @@ log:
     const char *fd_path = get_fd_path(fd);
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, re:%d\n", __func__, is_cfs, fd, fd_path, iovcnt, re);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_WRITE, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 
 ssize_t real_pwrite(int fd, const void *buf, size_t count, off_t offset) {
-    #ifdef _CFS_DEBUG
-    struct timespec start, stop;
-    clock_gettime(CLOCK_REALTIME, &start);
-    #endif
-
     if(fd < 0) {
         return -1;
     }
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
     ssize_t re = -1, re_cache = 0;
 
     bool is_cfs = fd_in_cfs(fd);
@@ -2465,6 +2481,9 @@ log:
     long time = (stop.tv_sec - start.tv_sec)*1000000000 + stop.tv_nsec - start.tv_nsec;
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, count:%d, offset:%ld, re:%d, re_cache:%d, time:%d\n", __func__, is_cfs, fd, fd_path, count, offset, re, re_cache, time/1000);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_WRITE, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 
@@ -2472,7 +2491,10 @@ ssize_t real_pwritev(int fd, const struct iovec *iov, int iovcnt, off_t offset) 
     if(fd < 0) {
         return -1;
     }
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
     ssize_t re = -1;
+
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
@@ -2499,6 +2521,9 @@ log:
     const char *fd_path = get_fd_path(fd);
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, iovcnt:%d, offset:%ld, re:%d\n", __func__, is_cfs, fd, fd_path, iovcnt, offset, re);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_WRITE, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 
@@ -2588,7 +2613,10 @@ int real_fdatasync(int fd) {
     if(fd < 0) {
         return -1;
     }
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
     int re = -1;
+
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
@@ -2617,6 +2645,9 @@ log:
     const char *fd_path = get_fd_path(fd);
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, is_cfs, fd, fd_path, re);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_FLUSH, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 
@@ -2624,7 +2655,10 @@ int real_fsync(int fd) {
     if(fd < 0) {
         return -1;
     }
+    struct timespec start, stop;
+    clock_gettime(CLOCK_REALTIME, &start);
     int re = -1;
+
     bool is_cfs = fd_in_cfs(fd);
     if(g_hook && is_cfs) {
         fd = get_cfs_fd(fd);
@@ -2653,6 +2687,9 @@ log:
     const char *fd_path = get_fd_path(fd);
     log_debug("hook %s, is_cfs:%d, fd:%d, path:%s, re:%d\n", __func__, is_cfs, fd, fd_path, re);
     #endif
+    if(g_hook && is_cfs) {
+        cfs_ump(g_client_info.cfs_client_id, UMP_CFS_FLUSH, start.tv_sec, start.tv_nsec);
+    }
     return re;
 }
 

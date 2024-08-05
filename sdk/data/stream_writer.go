@@ -1121,12 +1121,12 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 	)
 
 	if dp, err = s.client.dataWrapper.GetDataPartition(preEk.PartitionId); err != nil {
-		log.LogWarnf("usePreExtentHandler: GetDataPartition(%v) failed, err(%v)", preEk.PartitionId, err)
+		log.LogWarnf("usePreExtentHandler: GetDataPartition failed, ino(%v) dp(%v) err(%v)", s.inode, preEk.PartitionId, err)
 		return false
 	}
 
 	if conn, err = StreamConnPool.GetConnect(dp.Hosts[0]); err != nil {
-		log.LogWarnf("usePreExtentHandler: GetConnect(%v) failed, err(%v)", dp, err)
+		log.LogWarnf("usePreExtentHandler: GetConnect failed, ino(%v) dp(%v) err(%v)", s.inode, dp, err)
 		return false
 	}
 

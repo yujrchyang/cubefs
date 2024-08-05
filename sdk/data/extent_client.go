@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bits-and-blooms/bloom"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
@@ -31,8 +32,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
-
-	"github.com/bits-and-blooms/bloom"
 	"golang.org/x/time/rate"
 )
 
@@ -336,11 +335,15 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 	if client.dataWrapper.VolNotExists() {
 		return 0, false, proto.ErrVolNotExists
 	}
+	defer func() {
+		if err != nil {
+			log.LogErrorf("Write: ino(%v) offset(%v) size(%v) err(%v)", inode, offset, len(data), err)
+		}
+	}()
 
 	s := client.GetStreamer(inode)
 	if s == nil {
-		prefix := fmt.Sprintf("Write{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
-		return 0, false, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
+		return 0, false, fmt.Errorf("stream is not opened")
 	}
 	s.once.Do(func() {
 		if !s.extents.initialized {
@@ -395,11 +398,15 @@ func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset 
 	if client.dataWrapper.VolNotExists() {
 		return nil, 0, nil, proto.ErrVolNotExists
 	}
+	defer func() {
+		if err != nil {
+			log.LogErrorf("SyncWrite: ino(%v) offset(%v) size(%v) err(%v)", inode, offset, len(data), err)
+		}
+	}()
 
-	prefix := fmt.Sprintf("SyncWrite{ino(%v)offset(%v)size(%v)}", inode, offset, len(data))
 	s := client.GetStreamer(inode)
 	if s == nil {
-		return nil, 0, nil, fmt.Errorf("Prefix(%v): stream is not opened yet", prefix)
+		return nil, 0, nil, fmt.Errorf("stream is not opened")
 	}
 
 	oriReq := &ExtentRequest{FileOffset: offset, Size: len(data), Data: data}
@@ -516,12 +523,16 @@ func (client *ExtentClient) SyncWriteToSpecificExtent(ctx context.Context, dp *D
 	return
 }
 
-func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, oldSize uint64, size uint64) error {
+func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, oldSize uint64, size uint64) (err error) {
 	if client.dataWrapper.VolNotExists() {
 		return proto.ErrVolNotExists
 	}
+	defer func() {
+		if err != nil {
+			log.LogErrorf("Truncate: ino(%v) oldSize(%v) size(%v) err(%v)", inode, oldSize, size, err)
+		}
+	}()
 
-	prefix := fmt.Sprintf("Truncate{ino(%v)size(%v)}", inode, size)
 	s := client.GetStreamer(inode)
 	// fuse Setattr may call Truncate without opening the file
 	if s == nil {
@@ -538,18 +549,19 @@ func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, oldSize 
 		return proto.ErrGetExtentsFailed
 	}
 
-	err := s.IssueTruncRequest(ctx, size)
-	if err != nil {
-		err = errors.Trace(err, prefix)
-		log.LogError(errors.Stack(err))
-	}
-	return err
+	err = s.IssueTruncRequest(ctx, size)
+	return
 }
 
-func (client *ExtentClient) Flush(ctx context.Context, inode uint64) error {
+func (client *ExtentClient) Flush(ctx context.Context, inode uint64) (err error) {
 	if client.dataWrapper.VolNotExists() {
 		return proto.ErrVolNotExists
 	}
+	defer func() {
+		if err != nil {
+			log.LogErrorf("Flush: ino(%v) err(%v)", inode, err)
+		}
+	}()
 
 	s := client.GetStreamer(inode)
 	// fuse Setattr may call Flush without opening the file
@@ -563,15 +575,19 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	if size == 0 {
 		return
 	}
-
 	if client.dataWrapper.VolNotExists() {
 		err = proto.ErrVolNotExists
 		return
 	}
+	defer func() {
+		if err != nil {
+			log.LogErrorf("Read: ino(%v) offset(%v) size(%v) err(%v)", inode, offset, size, err)
+		}
+	}()
 
 	s := client.GetStreamer(inode)
 	if s == nil {
-		err = fmt.Errorf("Read: stream is not opened yet, ino(%v) offset(%v) size(%v)", inode, offset, size)
+		err = fmt.Errorf("stream is not opened")
 		return
 	}
 

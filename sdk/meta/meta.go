@@ -394,7 +394,7 @@ func (mw *MetaWrapper) startUpdateLimiterConfig() {
 		if err == nil {
 			break
 		}
-		log.LogErrorf("refreshMetaLimitInfo: err(%v) try next update", err)
+		log.LogErrorf("refreshMetaLimitInfo: vol(%v) err(%v) try next update", mw.volname, err)
 	}
 }
 
@@ -425,7 +425,7 @@ func (mw *MetaWrapper) startUpdateLimiterConfigWithRecover() (err error) {
 func (mw *MetaWrapper) updateLimiterConfig() {
 	limitInfo, err := mw.mc.AdminAPI().GetLimitInfo(mw.volname)
 	if err != nil {
-		log.LogWarnf("meta: updateLimiterConfig err(%s)", err.Error())
+		log.LogWarnf("meta: updateLimiterConfig vol(%v) err(%s)", mw.volname, err.Error())
 		return
 	}
 	mw.limitMapMutex.Lock()
@@ -547,7 +547,7 @@ func (mw *MetaWrapper) updateConnConfig(config *proto.ConnConfig) {
 	if config == nil {
 		return
 	}
-	log.LogInfof("updateConnConfig: (%v)", config)
+	log.LogInfof("updateConnConfig: vol(%v) (%v)", mw.volname, config)
 	updateConnPool := false
 	if config.IdleTimeoutSec > 0 && config.IdleTimeoutSec != mw.connConfig.IdleTimeoutSec {
 		mw.connConfig.IdleTimeoutSec = config.IdleTimeoutSec

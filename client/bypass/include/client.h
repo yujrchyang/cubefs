@@ -145,7 +145,9 @@ void flush_logs();
 const uint8_t FILE_TYPE_BIN_LOG = 1;
 const uint8_t FILE_TYPE_REDO_LOG = 2;
 const uint8_t FILE_TYPE_RELAY_LOG = 3;
+const int UMP_CFS_FLUSH = 7;
 const int UMP_CFS_READ = 25;
+const int UMP_CFS_WRITE = 29;
 // hook or not, currently for test
 const bool g_hook = true;
 client_info_t g_client_info;
