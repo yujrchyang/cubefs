@@ -254,6 +254,10 @@ const (
 )
 
 const (
+	VolumeKey             = "volume"
+	ClientReadVolRateKey  = "clientReadVolRate"
+	ClientWriteVolRateKey = "clientWriteVolRate"
+
 	RocksDBDiskReservedSpaceKey      = "rocksDBDiskReservedSpace"
 	LogMaxMB                         = "logMaxMB"
 	MetaRockDBWalFileMaxMB           = "metaRockDBWalFileMaxMB"

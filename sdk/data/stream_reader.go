@@ -21,10 +21,9 @@ import (
 	"net"
 	"sync"
 
-	"github.com/cubefs/cubefs/sdk/flash"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
+	"github.com/cubefs/cubefs/sdk/flash"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -155,7 +154,9 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 	)
 	ctx = context.Background()
 	if s.client.readRate > 0 {
+		tpObject := exporter.NewModuleTPUs("read_wait")
 		s.client.readLimiter.Wait(ctx)
+		tpObject.Set(nil)
 	}
 
 	requests, fileSize = s.extents.PrepareRequests(offset, size, data)

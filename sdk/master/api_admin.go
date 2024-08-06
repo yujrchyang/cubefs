@@ -1018,6 +1018,15 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	return
 }
 
+func (api *AdminAPI) SetRateLimitWithMap(params map[string]string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
+	for k, v := range params {
+		request.addParam(k, v)
+	}
+	_, _, err = api.mc.serveRequest(request)
+	return
+}
+
 func (api *AdminAPI) ZoneList() (zoneViews []*proto.ZoneView, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.GetAllZones)
 	var data []byte

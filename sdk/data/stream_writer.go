@@ -391,7 +391,9 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 	}
 	ctx = context.Background()
 	if s.client.writeRate > 0 {
+		tpObject := exporter.NewModuleTPUs("write_wait")
 		s.client.writeLimiter.Wait(ctx)
+		tpObject.Set(nil)
 	}
 
 	requests, _ := s.extents.PrepareRequests(offset, size, data)

@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -437,7 +438,7 @@ func (mw *MetaWrapper) updateLimiterConfig() {
 		}
 	}
 	for op, val := range limitInfo.ClientVolOpRateLimit {
-		if val < 0 {
+		if val <= 0 {
 			delete(mw.opLimiter, op)
 			continue
 		}
@@ -460,7 +461,7 @@ func (mw *MetaWrapper) updateLimiterConfig() {
 			log.LogWarnf("updateLimiterConfig: invalid objectNode action, vol(%v) action(%v)", mw.volname, as)
 			continue
 		}
-		if av < 0 {
+		if av <= 0 {
 			delete(mw.actionLimiter, action)
 			continue
 		}
@@ -478,13 +479,12 @@ func (mw *MetaWrapper) checkLimiter(ctx context.Context, opCode uint8) error {
 	limiter := mw.getOpLimiter(opCode)
 	if limiter != nil {
 		log.LogDebugf("check limiter begin: op(%v) limit(%v) burst(%v)", opCode, limiter.Limit(), limiter.Burst())
-		if limiter.Burst() == 0 {
-			return syscall.EPERM
-		}
 		if ctx == nil {
 			ctx = context.Background()
 		}
+		tpObject := exporter.NewModuleTPUs(fmt.Sprintf("%s_wait", proto.GetOpMsg(opCode)))
 		limitErr := limiter.Wait(ctx)
+		tpObject.Set(nil)
 		log.LogDebugf("check limiter end: op(%v) limit(%v) burst(%v) err(%v)", opCode, limiter.Limit(), limiter.Burst(), limitErr)
 	}
 	return nil
@@ -494,9 +494,6 @@ func (mw *MetaWrapper) CheckActionLimiter(ctx context.Context, action proto.Acti
 	limiter := mw.getActionLimiter(action)
 	if limiter != nil {
 		log.LogDebugf("check action limiter begin: vol(%v), action(%v), limit(%v), burst(%v)", mw.volname, action.String(), limiter.Limit(), limiter.Burst())
-		if limiter.Burst() == 0 {
-			return syscall.EPERM
-		}
 		limitErr := limiter.Wait(ctx)
 		log.LogDebugf("check action limiter end: vol(%v), action(%v), limit(%v), burst(%v), err(%v)", mw.volname, action.String(), limiter.Limit(), limiter.Burst(), limitErr)
 	}

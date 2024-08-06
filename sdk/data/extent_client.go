@@ -657,6 +657,7 @@ func (client *ExtentClient) SetWriteRate(val int) string {
 func setRate(lim *rate.Limiter, val int) string {
 	if val > 0 {
 		lim.SetLimit(rate.Limit(val))
+		lim.SetBurst(val)
 		return fmt.Sprintf("%v", val)
 	}
 	lim.SetLimit(rate.Inf)
@@ -714,6 +715,7 @@ func (client *ExtentClient) updateConfig() {
 	client.readRate = readRate
 	if readRate > 0 {
 		client.readLimiter.SetLimit(rate.Limit(readRate))
+		client.readLimiter.SetBurst(int(readRate))
 	} else {
 		client.readLimiter.SetLimit(rate.Limit(defaultReadLimitRate))
 	}
@@ -725,6 +727,7 @@ func (client *ExtentClient) updateConfig() {
 	client.writeRate = writeRate
 	if writeRate > 0 {
 		client.writeLimiter.SetLimit(rate.Limit(writeRate))
+		client.writeLimiter.SetBurst(int(writeRate))
 	} else {
 		client.writeLimiter.SetLimit(rate.Limit(defaultWriteLimitRate))
 	}

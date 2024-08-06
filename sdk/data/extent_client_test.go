@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/unit"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 )
@@ -62,18 +64,28 @@ func TestSetExtentSize(t *testing.T) {
 	}
 }
 
-func TestGetRate(t *testing.T) {
-	assert.NotEmpty(t, ec.GetRate())
-}
+func TestRateLimit(t *testing.T) {
+	info, _ := create("TestRateLimit")
+	ec.OpenStream(info.Inode, false)
+	data := []byte("a")
+	limit := map[string]string{proto.VolumeKey: ltptestVolume, proto.ClientWriteVolRateKey: "1000"}
+	err := mc.AdminAPI().SetRateLimitWithMap(limit)
+	assert.Nil(t, err)
+	ec.updateConfig()
+	// wait limiter to fill burst
+	time.Sleep(time.Second)
+	begin := time.Now()
+	offset := uint64(unit.DefaultTinySizeLimit)
+	for i := 0; i < 500; i++ {
+		ec.Write(ctx, info.Inode, offset, data, false)
+		offset++
+	}
+	cost := time.Since(begin)
+	assert.True(t, cost < 5*time.Millisecond)
 
-func TestSetReadRate(t *testing.T) {
-	assert.NotEmpty(t, ec.SetReadRate(10))
-	assert.NotEmpty(t, ec.SetReadRate(0))
-}
-
-func TestSetWriteRate(t *testing.T) {
-	assert.NotEmpty(t, ec.SetWriteRate(10))
-	assert.NotEmpty(t, ec.SetWriteRate(0))
+	limit[proto.ClientWriteVolRateKey] = "0"
+	mc.AdminAPI().SetRateLimitWithMap(limit)
+	ec.updateConfig()
 }
 
 // with OverWriteBuffer enabled, ek of prepared request may have been modified by ROW, resulting data loss

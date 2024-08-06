@@ -2519,7 +2519,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if val, ok := params[volumeKey]; ok {
+	if val, ok := params[proto.VolumeKey]; ok {
 		vol = val.(string)
 		if vol != "" {
 			if _, err = m.cluster.getVol(vol); err != nil {
@@ -2646,10 +2646,10 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if val, ok := params[clientReadVolRateKey]; ok {
+	if val, ok := params[proto.ClientReadVolRateKey]; ok {
 		v := val.(uint64)
 		if v > 0 && v < minRateLimit {
-			err = errors.NewErrorf("parameter %s can't be less than %d", clientReadVolRateKey, minRateLimit)
+			err = errors.NewErrorf("parameter %s can't be less than %d", proto.ClientReadVolRateKey, minRateLimit)
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -2658,10 +2658,10 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if val, ok := params[clientWriteVolRateKey]; ok {
+	if val, ok := params[proto.ClientWriteVolRateKey]; ok {
 		v := val.(uint64)
 		if v > 0 && v < minRateLimit {
-			err = errors.NewErrorf("parameter %s can't be less than %d", clientWriteVolRateKey, minRateLimit)
+			err = errors.NewErrorf("parameter %s can't be less than %d", proto.ClientWriteVolRateKey, minRateLimit)
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -2729,7 +2729,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if val, ok := params[proto.MetaNodeDelEKVolRateLimitKey]; ok {
-		volName := params[volumeKey].(string)
+		volName := params[proto.VolumeKey].(string)
 		if volName == "" {
 			err = errors.NewErrorf("vol name can not be empty when setting vol delete ek rate limit")
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -5075,8 +5075,8 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	if val := r.FormValue(zoneNameKey); val != "" {
 		params[zoneNameKey] = val
 	}
-	if val := r.FormValue(volumeKey); val != "" {
-		params[volumeKey] = val
+	if val := r.FormValue(proto.VolumeKey); val != "" {
+		params[proto.VolumeKey] = val
 	}
 	if val := r.FormValue(actionKey); val != "" {
 		params[actionKey] = val
@@ -5086,7 +5086,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 
 	uintKeys := []string{nodeDeleteBatchCountKey, proto.DataNodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs,
-		proto.NetworkFlowRatioKey, proto.RateLimitKey, proto.RateLimitIndexKey, dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, clientReadVolRateKey, clientWriteVolRateKey,
+		proto.NetworkFlowRatioKey, proto.RateLimitKey, proto.RateLimitIndexKey, dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, proto.ClientReadVolRateKey, proto.ClientWriteVolRateKey,
 		dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
