@@ -37,6 +37,7 @@ type DPReloadRecord struct {
 	DpId           uint64
 	Replica        string
 	LastReloadTime int64
+	ReloadCount    int
 }
 
 func NewDPReloadRecord(cluster, vol string, dpId uint64, replica string) *DPReloadRecord {
@@ -109,6 +110,15 @@ func (s *ChubaoFSMonitor) doReload(umpKey, domainName string) {
 		}
 		dpRecord.LastReloadTime = time.Now().UnixMilli()
 		ReloadedDPRecords[key] = dpRecord
+		ReloadedDPRecords[key].ReloadCount++
+		if ReloadedDPRecords[key].ReloadCount > 10 {
+			if err = decommissionDp(false, domainName, "", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica); err != nil {
+				log.LogErrorf("action[doReload] reload data partition failed, dpId(%v), replica(%v), err(%v)",
+					dpRecord.DpId, dpRecord.Replica, err.Error())
+				continue
+			}
+			ReloadedDPRecords[key].ReloadCount = 0
+		}
 	}
 
 	// 从ReloadedDPRecords清理之前reload过且已经超过10分钟的dp
