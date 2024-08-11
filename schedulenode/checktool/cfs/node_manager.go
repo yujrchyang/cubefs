@@ -354,6 +354,7 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 					log.LogErrorf("action[isPhysicalMachineFailure],addr[%v],err[%v]", dn.Addr, err)
 					//超过一定时间 尝试重启机器
 					if host.host == "cn.chubaofs.jd.local" {
+						//deprecated
 						if err1 := s.checkThenRestartNode(dn.Addr, host.host); err1 != nil {
 							log.LogErrorf("action[checkThenRestartNode] addr[%v] err1[%v]", dn.Addr, err1)
 						}

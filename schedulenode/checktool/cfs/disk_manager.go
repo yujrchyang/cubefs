@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/common/xbp"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"strings"
@@ -204,9 +205,29 @@ func badDiskIsEmpty(host *ClusterHost, addr, badDisk string) bool {
 	if err != nil || dn == nil {
 		return true
 	}
+	masterClient := master.NewMasterClient([]string{host.host}, false)
+	reportDps := make(map[uint64]bool, 0)
+	//DataPartitionReports is not all partitions, some partitions may be stopped and no reports
 	for _, dp := range dn.DataPartitionReports {
+		reportDps[dp.PartitionID] = true
 		if dp.DiskPath == badDisk {
 			return false
+		}
+	}
+	for _, pid := range dn.PersistenceDataPartitions {
+		if _, ok := reportDps[pid]; ok {
+			continue
+		}
+		var partition *proto.DataPartitionInfo
+		if partition, err = masterClient.AdminAPI().GetDataPartition("", pid); err != nil {
+			log.LogErrorf("action[badDiskIsEmpty] get data partition from master failed, dpId(%v), err(%v)", pid, err.Error())
+			continue
+		}
+		log.LogInfof("action[badDiskIsEmpty] get data partition, dpId(%v), replicas(%v)", pid, len(partition.Replicas))
+		for _, replica := range partition.Replicas {
+			if replica.Addr == addr && replica.DiskPath == badDisk {
+				return false
+			}
 		}
 	}
 	return true
