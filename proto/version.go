@@ -48,9 +48,8 @@ const (
 
 	/*
 
-	*/
+	 */
 	BitMapDelayAllocate = "4.7.0"
-
 
 	BaseVersion = "4.7.0"
 )

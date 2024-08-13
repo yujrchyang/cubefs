@@ -619,8 +619,16 @@ func (p *Packet) GetResultMsg() (m string) {
 	if p == nil {
 		return ""
 	}
+	m = GetResultMsg(p.ResultCode)
+	resp := p.GetRespData()
+	if p.ResultCode != OpInitResultCode && p.ResultCode != OpOk && len(resp) > 0 {
+		m = fmt.Sprintf("%v: %v", m, resp)
+	}
+	return
+}
 
-	switch p.ResultCode {
+func GetResultMsg(resultCode uint8) (m string) {
+	switch resultCode {
 	case OpInitResultCode:
 		m = "init"
 	case OpInodeOutOfRange:
@@ -656,11 +664,7 @@ func (p *Packet) GetResultMsg() (m string) {
 	case OpInodeMergeErr:
 		m = "OpInodeMergeErr"
 	default:
-		m = fmt.Sprintf("Unknown ResultCode(%v)", p.ResultCode)
-	}
-	resp := p.GetRespData()
-	if p.ResultCode != OpInitResultCode && p.ResultCode != OpOk && len(resp) > 0 {
-		m = fmt.Sprintf("%v: %v", m, resp)
+		return fmt.Sprintf("Unknown ResultCode(%v)", resultCode)
 	}
 	return
 }

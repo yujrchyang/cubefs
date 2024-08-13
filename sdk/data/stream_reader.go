@@ -206,7 +206,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 
 	var read int
 	if read, err = s.readFromDataNode(ctx, requests, offset, uint64(size)); err != nil {
-		log.LogErrorf("Stream read: readFromDataNode err, ino(%v), userExpectOffset(%v) userExpectSize(%v) requests(%v) err(%v)", s.inode, offset, size, requests, err)
+		log.LogWarnf("Stream read: readFromDataNode err, ino(%v), userExpectOffset(%v) userExpectSize(%v) requests(%v) err(%v)", s.inode, offset, size, requests, err)
 	} else {
 		total += read
 		err = ioErr

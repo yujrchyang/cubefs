@@ -17,11 +17,15 @@ package data
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"math/rand"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestKmin(t *testing.T) {
@@ -192,4 +196,17 @@ func TestDpLeaderAddressSerialization(t *testing.T) {
 	if leader != host {
 		t.Errorf("TestDpLeaderAddressSerialization: expect(%v) but(%v)", host, leader)
 	}
+}
+
+func TestReadFullErrMsg(t *testing.T) {
+	var dp *DataPartition
+	ec.dataWrapper.partitions.Range(func(k, v interface{}) bool {
+		dp = v.(*DataPartition)
+		return false
+	})
+	key := &proto.ExtentKey{PartitionId: dp.PartitionID, ExtentId: math.MaxUint64}
+	extentRequest := ExtentRequest{Size: 1, Data: make([]byte, 1), ExtentKey: key}
+	reqPacket := common.NewReadPacket(nil, key, 0, 1, 1, 0, true)
+	_, _, err := dp.FollowerRead(reqPacket, &extentRequest)
+	assert.True(t, strings.Contains(err.Error(), proto.ExtentNotFoundError.Error()))
 }

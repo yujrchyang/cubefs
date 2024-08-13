@@ -279,9 +279,12 @@ func (p *Packet) ReadFromConn(c net.Conn, deadlineTimeNs int64) (err error) {
 		}
 	}
 
-	size := int(p.Size)
-	if size > len(p.Data) {
-		size = len(p.Data)
+	var size int
+	if p.ResultCode == proto.OpOk {
+		size = unit.Min(len(p.Data), int(p.Size))
+	} else {
+		size = int(p.Size)
+		p.Data = make([]byte, size)
 	}
 
 	_, err = io.ReadFull(c, p.Data[:size])

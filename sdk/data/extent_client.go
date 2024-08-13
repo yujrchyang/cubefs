@@ -61,6 +61,7 @@ const (
 	updateConfigTicket     = 1 * time.Minute
 
 	defaultMaxAlignSize = 128 * 1024
+	maxReadRetryLimit   = 3
 )
 
 var (
@@ -603,20 +604,16 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 
 	s.UpdateExpiredExtentCache(ctx, offset+uint64(size))
 
-	read, hasHole, err = s.read(ctx, data, offset, size)
-	if err != nil && strings.Contains(err.Error(), proto.ExtentNotFoundError.Error()) {
-		if !s.extents.IsExpired(1) {
-			return
-		}
-
-		err = s.IssueFlushRequest(ctx)
-		if err != nil {
-			return
+	for i := 0; i < maxReadRetryLimit; i++ {
+		read, hasHole, err = s.read(ctx, data, offset, size)
+		if err == nil ||
+			(!strings.Contains(err.Error(), proto.ExtentNotFoundError.Error()) &&
+				!strings.Contains(err.Error(), proto.GetResultMsg(proto.OpNotExistErr))) {
+			break
 		}
 		if err = s.GetExtents(ctx); err != nil {
 			return
 		}
-		read, hasHole, err = s.read(ctx, data, offset, size)
 		log.LogWarnf("Retry read after refresh extent keys: ino(%v) offset(%v) size(%v) result size(%v) hasHole(%v) err(%v)",
 			s.inode, offset, size, read, hasHole, err)
 	}
