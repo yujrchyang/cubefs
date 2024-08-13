@@ -83,6 +83,7 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 		newExtentRepairCmd(),
 		newExtentCheckByIdCmd(mc),
 		newExtentParseCmd(),
+		newListTinyExtentAvailable(mc),
 	)
 	return cmd
 }
@@ -659,7 +660,7 @@ func garbageCheck(vol string, all bool, active bool, dir string, clean bool, dpC
 						continue
 					}
 					if (!proto.IsDbBack && extent[storage.FileID] > storage.MinNormalExtentID) ||
-						(proto.IsDbBack && extent[storage.FileID] < 50000000){
+						(proto.IsDbBack && extent[storage.FileID] < 50000000) {
 						dataExtentMap[dp][extent[storage.FileID]] = extent[storage.Size]
 					}
 				}
@@ -1127,5 +1128,79 @@ func newExtentParseCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&srcDir, "dir", ".", "src file")
 	cmd.Flags().StringVar(&decoder, "type", "meta", "meta/data")
+	return cmd
+}
+
+func newListTinyExtentAvailable(client *sdk.MasterClient) *cobra.Command {
+	var address string
+	var cmd = &cobra.Command{
+		Use:   "list-tiny-avail [Partition] [Extent]",
+		Short: "list tiny extent available blocks",
+		Args:  cobra.MinimumNArgs(2),
+		Run: func(cmd *cobra.Command, args []string) {
+			var (
+				err         error
+				partition   *proto.DataPartitionInfo
+				partitionID uint64
+				extentID    uint64
+			)
+			partitionID, err = strconv.ParseUint(args[0], 10, 64)
+			if err != nil {
+				stdout(err.Error())
+				return
+			}
+			extentID, err = strconv.ParseUint(args[1], 10, 64)
+			if err != nil {
+				stdout(err.Error())
+				return
+			}
+			if partitionID == 0 || extentID == 0 {
+				stdout("invalid id, pid[%d], extent id[%d]\n", partitionID, extentID)
+				return
+			}
+			partition, err = client.AdminAPI().GetDataPartition("", partitionID)
+			if err != nil {
+				stdout(err.Error())
+				return
+			}
+			for _, r := range partition.Replicas {
+				if address != "" && r.Addr != address {
+					continue
+				}
+				sdnHost := fmt.Sprintf("%v:%v", strings.Split(r.Addr, ":")[0], client.DataNodeProfPort)
+				dataClient := http_client.NewDataClient(sdnHost, false)
+				var tinyExtentInfo *proto.DNTinyExtentInfo
+				if tinyExtentInfo, err = dataClient.GetExtentHoles(partitionID, extentID); err != nil {
+					stdout(err.Error())
+					continue
+				}
+				fmt.Printf("host:%v\n", r.Addr)
+				availableBlocks := make([][2]uint64, 0)
+				if len(tinyExtentInfo.Holes) == 0 {
+					continue
+				}
+				var curDataOffset uint64
+				for _, hole := range tinyExtentInfo.Holes {
+					if curDataOffset < hole.Offset {
+						availableBlocks = append(availableBlocks, [2]uint64{curDataOffset, hole.Offset - curDataOffset})
+					}
+					curDataOffset = hole.Offset + hole.Size
+				}
+				var extentBlock *proto.ExtentInfoBlock
+				if extentBlock, err = dataClient.GetExtentInfo(partitionID, extentID); err != nil {
+					stdout(err.Error())
+					continue
+				}
+				if curDataOffset < extentBlock[proto.ExtentInfoSize] {
+					availableBlocks = append(availableBlocks, [2]uint64{curDataOffset, extentBlock[proto.ExtentInfoSize] - curDataOffset})
+				}
+				for _, blk := range availableBlocks {
+					fmt.Printf("%v\n", blk)
+				}
+				fmt.Printf("\n")
+			}
+		},
+	}
+	cmd.Flags().StringVar(&address, "addr", "", "specify replica address")
 	return cmd
 }
