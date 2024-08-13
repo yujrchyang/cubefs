@@ -1,5 +1,7 @@
 package proto
 
+import math "math"
+
 const (
 	OpExtentRepairWrite_ = iota + 512
 	OpFlushDelete_
@@ -19,6 +21,10 @@ const (
 )
 
 func GetOpMsgExtend(opcode int) (m string) {
+	if opcode <= math.MaxUint8 {
+		return GetOpMsg(uint8(opcode))
+	}
+
 	switch opcode {
 	case OpExtentRepairWrite_:
 		m = "OpExtentRepairWrite_"
