@@ -114,6 +114,9 @@ func IncludeString(target string, filter []string) bool {
 
 func FuzzyMatchString(target string, filter []string) bool {
 	for _, item := range filter {
+		if item == "" {
+			continue
+		}
 		if strings.Contains(target, item) {
 			return true
 		}

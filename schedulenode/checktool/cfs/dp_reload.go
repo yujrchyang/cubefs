@@ -102,6 +102,14 @@ func (s *ChubaoFSMonitor) doReload(umpKey, domainName string) {
 				continue
 			}
 		}
+		if ReloadedDPRecords[key].ReloadCount > 8 {
+			log.LogWarnf("action[doReload] dp:%v, reload data partition failed for many times, decommission bad replica:%v", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica)
+			if err = decommissionDp(false, domainName, "", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica); err != nil {
+				log.LogErrorf("action[doReload] reload data partition failed, dpId(%v), replica(%v), err(%v)",
+					dpRecord.DpId, dpRecord.Replica, err.Error())
+				continue
+			}
+		}
 		// reload data partition
 		if err = reloadDataPartition(dpRecord, domainName); err != nil {
 			log.LogErrorf("action[doReload] reload data partition failed, dpId(%v), replica(%v), err(%v)",
@@ -111,19 +119,11 @@ func (s *ChubaoFSMonitor) doReload(umpKey, domainName string) {
 		dpRecord.LastReloadTime = time.Now().UnixMilli()
 		ReloadedDPRecords[key] = dpRecord
 		ReloadedDPRecords[key].ReloadCount++
-		if ReloadedDPRecords[key].ReloadCount > 10 {
-			if err = decommissionDp(false, domainName, "", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica); err != nil {
-				log.LogErrorf("action[doReload] reload data partition failed, dpId(%v), replica(%v), err(%v)",
-					dpRecord.DpId, dpRecord.Replica, err.Error())
-				continue
-			}
-			ReloadedDPRecords[key].ReloadCount = 0
-		}
 	}
 
-	// 从ReloadedDPRecords清理之前reload过且已经超过10分钟的dp
-	for key, record := range ReloadedDPRecords {
-		if time.Now().UnixMilli()-record.LastReloadTime > DpReloadReloadInterval*60*1000 {
+	// 从ReloadedDPRecords清理之前reload超过8次的dp
+	for key := range ReloadedDPRecords {
+		if ReloadedDPRecords[key].ReloadCount > 8 {
 			delete(ReloadedDPRecords, key)
 		}
 	}

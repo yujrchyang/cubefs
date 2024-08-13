@@ -21,6 +21,7 @@ const (
 	cfgKeyReadWriteDpRatio                  = "readWriteDpRatio"
 	cfgKeyClusterUsedRatio                  = "clusterUsedRatio"
 	cfgKeyCheckFlashNode                    = "checkFlashNode"
+	cfgKeyCheckRiskFix                      = "checkRiskFix"
 	cfgKeyFlashNodeValidVersions            = "flashNodeVersions"
 	cfgKeyNlClusterUsedRatio                = "nlClusterUsedRatio"
 	cfgKeyMinRWCnt                          = "minRWCnt"
@@ -181,6 +182,7 @@ type ChubaoFSMonitor struct {
 	ctx                                     context.Context
 	dpReleaser                              *ChubaoFSDPReleaser
 	xbpUsername                             string
+	checkRiskFix                            bool
 }
 
 func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
@@ -295,6 +297,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.scheduleToCheckCFSHighIncreaseMemNodes()
 	go s.scheduleToCheckClusterConfig()
 	go s.scheduleToReloadDP()
+	go s.scheduleToCheckDataNodeRiskData()
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
@@ -425,6 +428,7 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		s.offlineDiskMinDuration = defaultMinOfflineDiskDuration
 	}
 	s.checkFlashNode = cfg.GetBool(cfgKeyCheckFlashNode)
+	s.checkRiskFix = cfg.GetBool(cfgKeyCheckRiskFix)
 	s.flashNodeValidVersions = cfg.GetStringSlice(cfgKeyFlashNodeValidVersions)
 	if cfsWarnFaultToUsersJsonPath := cfg.GetString(cfsKeyWarnFaultToUsersJsonPath); cfsWarnFaultToUsersJsonPath != "" {
 		if err = s.extractWarnFaultToUsers(cfsWarnFaultToUsersJsonPath); err != nil {
