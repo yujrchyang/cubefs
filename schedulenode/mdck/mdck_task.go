@@ -192,6 +192,7 @@ func (t *MetaDataCheckTask) doCheckMetaPartitionMetaData(pid uint64, hosts []str
 		retryCnt               = 3
 		needHandleDelInodeTree = false
 		leaderResultIndex      = -1
+		requestTimeOut         = time.Second * 30
 	)
 	for retryCnt > 0 {
 		errCh := make(chan error, len(hosts))
@@ -206,9 +207,14 @@ func (t *MetaDataCheckTask) doCheckMetaPartitionMetaData(pid uint64, hosts []str
 				}
 				addr := fmt.Sprintf("%s:%v", hostSplitArr[0], t.masterClient.MetaNodeProfPort)
 				metaHttpClient := meta.NewMetaHttpClient(addr, false)
+				metaHttpClient.ResetRequestTimeOut(requestTimeOut)
 				r, e := metaHttpClient.GetMetaDataCrcSum(pid)
 				if e != nil {
 					errCh <- fmt.Errorf("get mp(%v) meta data crc sum from %s failed, error:%v", pid, addr, e)
+					if strings.Contains(e.Error(), "Client.Timeout") {
+						requestTimeOut = requestTimeOut*2
+					}
+					time.Sleep(time.Minute)
 					return
 				}
 				if leaderAddr == host {

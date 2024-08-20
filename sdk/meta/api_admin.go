@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	requestTimeout = 30 * time.Second
+	defRequestTimeout = 30 * time.Second
 )
 
 type request struct {
@@ -50,18 +50,27 @@ func (r *request) addBody(body []byte) {
 
 type MetaHttpClient struct {
 	sync.RWMutex
-	useSSL   bool
-	host     string
-	isDBBack bool
+	useSSL         bool
+	host           string
+	isDBBack       bool
+	requestTimeOut time.Duration
 }
 
 // NewMasterHelper returns a new MasterClient instance.
 func NewMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
-	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: false}
+	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: false, requestTimeOut: defRequestTimeout}
 }
 
 func NewDBBackMetaHttpClient(host string, useSSL bool) *MetaHttpClient {
-	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: true}
+	return &MetaHttpClient{host: host, useSSL: useSSL, isDBBack: true, requestTimeOut: defRequestTimeout}
+}
+
+func (c *MetaHttpClient) ResetRequestTimeOut(duration time.Duration) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.requestTimeOut = duration
+	return
 }
 
 func isDbBackOldApi(path string) bool {
@@ -131,7 +140,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 func (c *MetaHttpClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
 	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
-	client.Timeout = requestTimeout
+	client.Timeout = c.requestTimeOut
 	var req *http.Request
 	fullUrl := c.mergeRequestUrl(url, param)
 	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
