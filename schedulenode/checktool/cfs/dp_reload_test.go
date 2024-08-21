@@ -13,7 +13,7 @@ func TestParseFailedDpInfo(t *testing.T) {
 	}
 	assert.Equal(t, "spark", record.Cluster, "parsed cluster name is invalid")
 	assert.Equal(t, "jdrtc_lf_rh_ssd", record.VolName, "parsed cluster name is invalid")
-	assert.Equal(t, 1182752, record.DpId, "parsed cluster name is invalid")
+	assert.Equal(t, uint64(1182752), record.DpId, "parsed cluster name is invalid")
 	assert.Equal(t, "11.163.49.139:6000", record.Replica, "parsed cluster name is invalid")
 }
 

@@ -6,10 +6,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 	"testing"
-	"time"
 )
 
 func TestName(t *testing.T) {
+	t.Skipf("skip for unnessary ump warning")
 	interval := 100
 	clusterConfigCheck := fmt.Sprintf(`{
 		"interval": %v,
@@ -32,11 +32,11 @@ func TestName(t *testing.T) {
 	}
 	assert.Equal(t, interval, monitor.clusterConfigCheck.Interval)
 	monitor.CheckClusterConfig()
-	ticker := time.NewTicker(time.Duration(interval) * time.Second)
-	for {
-		select {
-		case <-ticker.C:
-			monitor.CheckClusterConfig()
-		}
-	}
+	/*	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+		for {
+			select {
+			case <-ticker.C:
+				monitor.CheckClusterConfig()
+			}
+		}*/
 }

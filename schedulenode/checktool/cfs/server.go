@@ -16,25 +16,6 @@ import (
 )
 
 const (
-	cfgKeyUsedRatio                         = "usedRatio"
-	cfgKeyAvailSpaceRatio                   = "availSpaceRatio"
-	cfgKeyReadWriteDpRatio                  = "readWriteDpRatio"
-	cfgKeyClusterUsedRatio                  = "clusterUsedRatio"
-	cfgKeyCheckFlashNode                    = "checkFlashNode"
-	cfgKeyCheckRiskFix                      = "checkRiskFix"
-	cfgKeyFlashNodeValidVersions            = "flashNodeVersions"
-	cfgKeyNlClusterUsedRatio                = "nlClusterUsedRatio"
-	cfgKeyMinRWCnt                          = "minRWCnt"
-	cfgKeyDomains                           = "cfsDomains"
-	cfgKeyInterval                          = "interval"
-	cfgKeyDpCheckInterval                   = "dpCheckInterval"
-	cfgKeyMpCheckInterval                   = "mpCheckInterval"
-	cfgKeyMaxOfflineDataNodes               = "maxOfflineDataNodes"
-	cfgKeyMaxOfflineDisks                   = "maxOfflineDisks"
-	cfgKeyMinOfflineDiskMinute              = "minOfflineDiskMinute"
-	cfgKeyMetaNodeUsedRatioMinThresholdSSD  = "metaNodeUsedRatioMinThresholdSSD"
-	cfgKeyDataNodeUsedRatioMinThresholdSSD  = "dataNodeUsedRatioMinThresholdSSD"
-	cfgKeyCheckPeerConcurrency              = "checkPeerConcurrency"
 	domainSeparator                         = ","
 	UMPCFSNormalWarnKey                     = checktool.UmpKeyStorageBotPrefix + "cfs"
 	UMPCFSBadDiskWarnKey                    = UMPCFSNormalWarnKey + ".bad.disk"
@@ -60,6 +41,7 @@ const (
 	UMPCFSMySqlMemWarnKey                   = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.mem"
 	UMPCFSSparkFixPartitionKey              = checktool.UmpKeyStorageBotPrefix + "cfs.fix_bad_replica"
 	UMPCFSSparkFlashNodeVersionKey          = checktool.UmpKeyStorageBotPrefix + "cfs.flashnode.version"
+	UMPCFSMasterMetaCompareKey              = checktool.UmpKeyStorageBotPrefix + "cfs.master.rocksdb.compare"
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024
 	defaultMpNoLeaderWarnInternal           = 10 * 60
@@ -75,26 +57,6 @@ const (
 	defaultMetaNodeUsedRatioMinThresholdSSD = 0.87
 	defaultDataNodeUsedRatioMinThresholdSSD = 0.87
 	checkPeerConcurrency                    = 8
-	cfsKeymasterJsonPath                    = "cfsmasterJsonPath"
-	minRWDPAndMPVolsJsonPath                = "minRWDPAndMPVolsJsonPath"
-	cfsKeyWarnFaultToUsersJsonPath          = "cfsWarnFaultToUsersJsonPath"
-	cfgKeyClusterConfigCheckJsonPath        = "clusterConfigCheckJsonPath"
-	cfgKeyDPMaxPendQueueCount               = "dpMaxPendQueueCount"
-	cfgKeyDPMaxAppliedIDDiffCount           = "dpMaxAppliedIDDiffCount"
-	cfgKeyMPMaxPendQueueCount               = "mpMaxPendQueueCount"
-	cfgKeyMPMaxAppliedIDDiffCount           = "mpMaxAppliedIDDiffCount"
-	cfgKeyDPPendQueueAlarmThreshold         = "dpPendQueueAlarmThreshold"
-	cfgKeyMPPendQueueAlarmThreshold         = "mpPendQueueAlarmThreshold"
-	cfgKeySreDbConfigDSNPort                = "sreDbConfig"
-	cfgKeyJdosToken                         = "jdosToken"
-	cfgKeyJdosURl                           = "jdosURL"
-	cfgKeyJdosErp                           = "jdosErp"
-	cfgKeyMetaNodeExportDiskUsedRatio       = "metaNodeExportDiskUsedRatio"
-	cfgKeyIgnoreCheckMP                     = "ignoreCheckMP"
-	cfgKeyNodeRapidMemIncWarnThreshold      = "nodeRapidMemIncWarnThreshold"
-	cfgKeyNodeRapidMemIncreaseWarnRatio     = "nodeRapidMemIncreaseWarnRatio"
-	cfgKeyExpiredMetaRemainDays             = "expiredMetaRemainDays"
-	cfgKeyXbpUsername                       = "xbpUsername"
 	defaultNodeRapidMemIncWarnThreshold     = 20 //内存使用率(%)
 	defaultNodeRapidMemIncreaseWarnRatio    = 0.05
 	minMetaNodeExportDiskUsedRatio          = 70
@@ -106,6 +68,55 @@ const (
 	defaultMaxOfflineFlashNodesIn24Hour     = 5
 	defaultExpiredMetaRemainDays            = 1
 )
+
+// config key
+const (
+	cfgKeyUsedRatio                        = "usedRatio"
+	cfgKeyAvailSpaceRatio                  = "availSpaceRatio"
+	cfgKeyReadWriteDpRatio                 = "readWriteDpRatio"
+	cfgKeyClusterUsedRatio                 = "clusterUsedRatio"
+	cfgKeyCheckFlashNode                   = "checkFlashNode"
+	cfgKeyCheckRiskFix                     = "checkRiskFix"
+	cfgKeyFlashNodeValidVersions           = "flashNodeVersions"
+	cfgKeyNlClusterUsedRatio               = "nlClusterUsedRatio"
+	cfgKeyMinRWCnt                         = "minRWCnt"
+	cfgKeyDomains                          = "cfsDomains"
+	cfgKeyInterval                         = "interval"
+	cfgKeyDpCheckInterval                  = "dpCheckInterval"
+	cfgKeyMpCheckInterval                  = "mpCheckInterval"
+	cfgKeyMaxOfflineDataNodes              = "maxOfflineDataNodes"
+	cfgKeyMaxOfflineDisks                  = "maxOfflineDisks"
+	cfgKeyMinOfflineDiskMinute             = "minOfflineDiskMinute"
+	cfgKeyMetaNodeUsedRatioMinThresholdSSD = "metaNodeUsedRatioMinThresholdSSD"
+	cfgKeyDataNodeUsedRatioMinThresholdSSD = "dataNodeUsedRatioMinThresholdSSD"
+	cfgKeyCheckPeerConcurrency             = "checkPeerConcurrency"
+	cfsKeymasterJsonPath                   = "cfsmasterJsonPath"
+	cfgMinRWDPAndMPVolsJsonPath            = "minRWDPAndMPVolsJsonPath"
+	cfsKeyWarnFaultToUsersJsonPath         = "cfsWarnFaultToUsersJsonPath"
+	cfgKeyClusterConfigCheckJsonPath       = "clusterConfigCheckJsonPath"
+	cfgKeyDPMaxPendQueueCount              = "dpMaxPendQueueCount"
+	cfgKeyDPMaxAppliedIDDiffCount          = "dpMaxAppliedIDDiffCount"
+	cfgKeyMPMaxPendQueueCount              = "mpMaxPendQueueCount"
+	cfgKeyMPMaxAppliedIDDiffCount          = "mpMaxAppliedIDDiffCount"
+	cfgKeyDPPendQueueAlarmThreshold        = "dpPendQueueAlarmThreshold"
+	cfgKeyMPPendQueueAlarmThreshold        = "mpPendQueueAlarmThreshold"
+	cfgKeySreDbConfigDSNPort               = "sreDbConfig"
+	cfgKeyJdosToken                        = "jdosToken"
+	cfgKeyJdosURl                          = "jdosURL"
+	cfgKeyJdosErp                          = "jdosErp"
+	cfgKeyMetaNodeExportDiskUsedRatio      = "metaNodeExportDiskUsedRatio"
+	cfgKeyIgnoreCheckMP                    = "ignoreCheckMP"
+	cfgKeyNodeRapidMemIncWarnThreshold     = "nodeRapidMemIncWarnThreshold"
+	cfgKeyNodeRapidMemIncreaseWarnRatio    = "nodeRapidMemIncreaseWarnRatio"
+	cfgKeyExpiredMetaRemainDays            = "expiredMetaRemainDays"
+	cfgKeyXbpUsername                      = "xbpUsername"
+	cfgKeyOssDomain                        = "jcloudOssDomain"
+	cfgMasterAddrs                         = "Master"
+)
+
+var configKeys = []string{
+	cfgKeyOssDomain,
+}
 
 const (
 	errorConnRefused = "connection refused"
@@ -120,7 +131,6 @@ const (
 var (
 	checkVolWg         sync.WaitGroup
 	checkNodeWg        sync.WaitGroup
-	checkMetaDataWg    sync.WaitGroup
 	noLeaderMps        *sync.Map
 	checkMasterNodesWg sync.WaitGroup
 	masterNodesMutex   sync.Mutex
@@ -183,6 +193,7 @@ type ChubaoFSMonitor struct {
 	dpReleaser                              *ChubaoFSDPReleaser
 	xbpUsername                             string
 	checkRiskFix                            bool
+	configMap                               map[string]string
 }
 
 func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
@@ -196,6 +207,7 @@ func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
 		WarnFaultToUsers:                make([]*WarnFaultToTargetUsers, 0),
 		lastCheckStartTime:              make(map[string]time.Time),
 		clusterConfigCheck:              new(ClusterConfigCheck),
+		configMap:                       make(map[string]string, 0),
 		ctx:                             ctx,
 	}
 }
@@ -298,6 +310,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.scheduleToCheckClusterConfig()
 	go s.scheduleToReloadDP()
 	go s.scheduleToCheckDataNodeRiskData()
+	go s.NewSchedule(s.checkMasterMetadata, time.Hour)
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
@@ -319,21 +332,21 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("cfsMasterJsonPath is empty")
 	}
 	if err = s.extractChubaoFSInfo(cfsMasterJsonPath); err != nil {
-		return fmt.Errorf("parse cfsmasterJsonPath failed, cfsmasterJsonPath can't be nil err:%v", err)
+		return fmt.Errorf("parse cfsmasterJsonPath failed, cfsmasterJsonPath can not be nil err:%v", err)
 	}
-	minRWDPAndMPVolsJson := cfg.GetString(minRWDPAndMPVolsJsonPath)
+	minRWDPAndMPVolsJson := cfg.GetString(cfgMinRWDPAndMPVolsJsonPath)
 	if minRWDPAndMPVolsJson == "" {
-		return fmt.Errorf("minRWDPAndMPVolsJsonPath is empty")
+		return fmt.Errorf("cfgMinRWDPAndMPVolsJsonPath is empty")
 	}
 	if err = s.extractMinRWDPAndMPVols(minRWDPAndMPVolsJson); err != nil {
-		return fmt.Errorf("parse minRWDPAndMPVolsJsonPath failed, cfsmasterJsonPath can't be nil err:%v", err)
+		return fmt.Errorf("parse cfgMinRWDPAndMPVolsJsonPath failed, cfsmasterJsonPath can not be nil err:%v", err)
 	}
 	clusterConfigCheckJsonPath := cfg.GetString(cfgKeyClusterConfigCheckJsonPath)
 	if clusterConfigCheckJsonPath == "" {
 		return fmt.Errorf("clusterConfigCheckJsonPath is empty")
 	}
 	if err = s.extractClusterConfigCheck(clusterConfigCheckJsonPath); err != nil {
-		return fmt.Errorf("parse clusterConfigCheckJsonPath failed, clusterConfigCheckJsonPath can't be nil err:%v", err)
+		return fmt.Errorf("parse clusterConfigCheckJsonPath failed, clusterConfigCheckJsonPath can not be nil err:%v", err)
 	}
 	useRatio := cfg.GetFloat(cfgKeyUsedRatio)
 	if useRatio <= 0 {
@@ -358,7 +371,7 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	s.minReadWriteCount = int64(minRWCnt)
 	domains := cfg.GetString(cfgKeyDomains)
 	if domains == "" {
-		return fmt.Errorf("parse cfsDomains failed,cfsDomains can't be nil")
+		return fmt.Errorf("parse cfsDomains failed,cfsDomains can not be nil")
 	}
 	hosts := strings.Split(domains, domainSeparator)
 
@@ -376,7 +389,7 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	s.updateMaxPendQueueAndMaxAppliedIDDiffCountByConfig(cfg)
 	interval := cfg.GetString(cfgKeyInterval)
 	if interval == "" {
-		return fmt.Errorf("parse interval failed,interval can't be nil")
+		return fmt.Errorf("parse interval failed,interval can not be nil")
 	}
 
 	if s.scheduleInterval, err = strconv.Atoi(interval); err != nil {
@@ -385,7 +398,7 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	// dp corrupt check
 	dpCheckInterval := cfg.GetString(cfgKeyDpCheckInterval)
 	if dpCheckInterval == "" {
-		return fmt.Errorf("parse dpCheckInterval failed,dpCheckInterval can't be nil")
+		return fmt.Errorf("parse dpCheckInterval failed,dpCheckInterval can not be nil")
 	}
 	if s.scheduleDpCheckInterval, err = strconv.Atoi(dpCheckInterval); err != nil {
 		return err
@@ -393,7 +406,7 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	// mp corrupt check
 	mpCheckInterval := cfg.GetString(cfgKeyMpCheckInterval)
 	if mpCheckInterval == "" {
-		return fmt.Errorf("parse mpCheckInterval failed,mpCheckInterval can't be nil")
+		return fmt.Errorf("parse mpCheckInterval failed,mpCheckInterval can not be nil")
 	}
 	if s.scheduleMpCheckInterval, err = strconv.Atoi(mpCheckInterval); err != nil {
 		return err
@@ -468,6 +481,13 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		return
 	}
 	s.parseJdosToken(cfg)
+	for _, k := range configKeys {
+		val := cfg.GetString(k)
+		if val == "" {
+			return fmt.Errorf("config key: %v can not be nil", k)
+		}
+		s.configMap[k] = cfg.GetString(k)
+	}
 	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
 		",offlineDataNodeMaxCountIn24Hour[%v],offlineDiskMaxCountIn24Hour[%v],offlineDiskMinDuration[%v],  mpCheckInterval[%v], "+
 		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v]\n",

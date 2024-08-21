@@ -995,6 +995,22 @@ func (ch *ClusterHost) getDataNodePProfPort() (port string) {
 	return
 }
 
+func getClusterName(domain string) (cluster string) {
+	switch domain {
+	case "nl.chubaofs.jd.local", "nl.chubaofs.ochama.com":
+		cluster = "cfs_AMS_MCA"
+	case "cn.chubaofs.jd.local", "sparkchubaofs.jd.local":
+		cluster = "spark"
+	case "cn.elasticdb.jd.local":
+		cluster = "mysql"
+	case "cn.chubaofs-seqwrite.jd.local":
+		cluster = "cfs_dbBack"
+	default:
+		cluster = "unknown"
+	}
+	return
+}
+
 func (ch *ClusterHost) getFlashNodeProfPort() string {
 	return "8001"
 }
