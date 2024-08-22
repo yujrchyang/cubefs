@@ -1682,7 +1682,7 @@ func (r *RocksSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 	cb := func(k, v []byte) (bool, error) {
 		if tp == InodeType || tp == DelInodeType {
 			if len(v) < AccessTimeOffset + 8 {
-				return false, fmt.Errorf("")
+				return false, fmt.Errorf("invalid data, len: %v", len(v))
 			}
 			binary.BigEndian.PutUint64(v[AccessTimeOffset: AccessTimeOffset+8], 0)
 		}

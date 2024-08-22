@@ -90,6 +90,17 @@ func InitDeletedDentryTree(rocksTree *RocksTree) (memDeletedDentryTree, rocksDel
 	return
 }
 
+func InitDeletedInodeTree(rocksTree *RocksTree) (memDeletedInodeTree, rocksDeletedInodeTree DeletedInodeTree) {
+	if rocksTree == nil {
+		fmt.Printf("rocksTree(%v) is nil", rocksTree)
+		os.Exit(1)
+	}
+	memItem, rocksItem := mockTree(rocksTree, DelInodeType)
+	memDeletedInodeTree = memItem.(DeletedInodeTree)
+	rocksDeletedInodeTree = rocksItem.(DeletedInodeTree)
+	return
+}
+
 func inodeCreate(inodeTree InodeTree, inode *Inode, replace bool) (ino *Inode, ok bool, err error) {
 	var dbWriteHandle interface{}
 	dbWriteHandle, err = inodeTree.CreateBatchWriteHandle()
@@ -951,4 +962,140 @@ func TestBtreeRocksBaseInfoMarshalUnmarshal(t *testing.T) {
 	err = baseInfo.Unmarshal(data)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, newBaseInfo, baseInfo)
+}
+
+func mockINodeWithEkCount(id uint64, ekCount int) *Inode {
+	ino := new(Inode)
+	ino.Inode = id
+	ino.Type = 460
+	ino.Uid = 500
+	ino.Gid = 501
+	ino.Size = 1024
+	ino.Generation = 2
+	ino.CreateTime = time.Now().Unix()
+	ino.ModifyTime = time.Now().Unix() + 1
+	ino.AccessTime = time.Now().Unix() + 2
+	ino.LinkTarget = []byte("link")
+	ino.NLink = 2
+	ino.Flag = 1
+	ino.Reserved = 1024 * 1024
+	ino.Extents = sortedextent.NewSortedExtents()
+	var i uint64
+	for i = 1; i <= uint64(ekCount); i++ {
+		var ek proto.ExtentKey
+		ek.Size = uint32(1024 * i)
+		ek.FileOffset = uint64(1024 * (i - 1))
+		ek.ExtentOffset = i
+		ek.ExtentId = i
+		ek.CRC = uint32(10 * i)
+		ek.PartitionId = i
+		ino.Extents.Insert(nil, ek, id)
+	}
+	return ino
+}
+
+func TestMetaTreeCrcSum(t *testing.T) {
+	rocksDir := "./test_calc_meta_item_crc"
+	rocksTree := newTestRocksTree(rocksDir)
+	defer func() {
+		rocksTree.Release()
+		_ = os.RemoveAll(rocksDir)
+	}()
+	memDentryTree, rocksDentryTree := InitDentryTree(rocksTree)
+	memInodeTree, rocksInodeTree := InitInodeTree(rocksTree)
+	memDelDentryTree, rocksDelDentryTree := InitDeletedDentryTree(rocksTree)
+	memDelInodeTree, rocksDelInodeTree := InitDeletedInodeTree(rocksTree)
+
+	inodeCount := uint64(100)
+	dentryCount := uint64(1000)
+	delInodeCount := uint64(100)
+	delDentryCount := uint64(1000)
+
+	inodeStart := uint64(1000)
+	for index := uint64(0); index < inodeCount; index++ {
+		ino := mockINodeWithEkCount(inodeStart, int(index*2000))
+		_, _, _ = inodeCreate(memInodeTree, ino, true)
+		_, _, _ = inodeCreate(rocksInodeTree, ino, true)
+		inodeStart++
+	}
+	assert.Equal(t, inodeCount, memInodeTree.Count())
+	assert.Equal(t, inodeCount, rocksInodeTree.Count())
+
+	for index := uint64(0); index < dentryCount; index++ {
+		den := &Dentry{
+			ParentId: 1,
+			Name:     fmt.Sprintf("test_%v", index),
+			Inode:    inodeStart,
+			Type:     460,
+		}
+		_, _, _ = dentryCreate(memDentryTree, den, true)
+		_, _, _ = dentryCreate(rocksDentryTree, den, true)
+		inodeStart++
+	}
+	assert.Equal(t, dentryCount, memDentryTree.Count())
+	assert.Equal(t, dentryCount, rocksDentryTree.Count())
+
+	for index := uint64(0); index < delInodeCount; index++ {
+		ino := mockINodeWithEkCount(inodeStart, int(index*2000))
+		delIno := NewDeletedInode(ino, time.Now().UnixNano()/1000)
+		_, _, _ = deletedInodeCreate(memDelInodeTree, delIno, true)
+		_, _, _ = deletedInodeCreate(rocksDelInodeTree, delIno, true)
+		inodeStart++
+	}
+	assert.Equal(t, delInodeCount, memDelInodeTree.Count())
+	assert.Equal(t, delInodeCount, rocksDelInodeTree.Count())
+
+	for index := uint64(0); index < delDentryCount; index++ {
+		den := &Dentry{
+			ParentId: 1,
+			Name:     fmt.Sprintf("trash_test_%v", index),
+			Inode:    inodeStart,
+			Type:     460,
+		}
+		delDentry := newDeletedDentry(den, time.Now().UnixNano()/1000, "127.0.0.1")
+		_, _, _ = deletedDentryCreate(memDelDentryTree, delDentry, true)
+		_, _, _ = deletedDentryCreate(rocksDelDentryTree, delDentry, true)
+		inodeStart++
+	}
+	assert.Equal(t, delDentryCount, memDelDentryTree.Count())
+	assert.Equal(t, delDentryCount, rocksDelDentryTree.Count())
+
+	memSnap := MemSnapShot{
+		applyID:   1,
+		inode:     &InodeBTree{memInodeTree.(*InodeBTree).GetTree(), 0},
+		dentry:    &DentryBTree{memDentryTree.(*DentryBTree).GetTree()},
+		extend:    &ExtendBTree{NewBtree()},
+		multipart: &MultipartBTree{NewBtree()},
+		delDentry: &DeletedDentryBTree{memDelDentryTree.(*DeletedDentryBTree).GetTree()},
+		delInode:  &DeletedInodeBTree{memDelInodeTree.(*DeletedInodeBTree).GetTree(), 0},
+	}
+
+	dbSnap := rocksTree.db.OpenSnap()
+	if dbSnap == nil {
+		t.Errorf("get rocks tree snap failed")
+		return
+	}
+	rocksSnap := RocksSnapShot{
+		snap:     dbSnap,
+		tree:     rocksTree,
+		baseInfo: rocksTree.baseInfo,
+	}
+
+	var err error
+	for itemType := DentryType; itemType < MaxType; itemType++ {
+		var memCrcSum, rocksCrcSum uint32
+		memCrcSum, err = memSnap.CrcSum(itemType)
+		if err != nil {
+			t.Errorf("calc mem tree (type: %v) crc sum failed: %v", itemType, err)
+			return
+		}
+
+		rocksCrcSum, err = rocksSnap.CrcSum(itemType)
+		if err != nil {
+			t.Errorf("calc rocks tree (type: %v) crc sum failed: %v", itemType, err)
+			return
+		}
+
+		assert.Equal(t, memCrcSum, rocksCrcSum)
+	}
 }

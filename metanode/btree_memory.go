@@ -17,6 +17,7 @@ package metanode
 import (
 	"encoding/binary"
 	"github.com/cubefs/cubefs/util/btree"
+	"github.com/cubefs/cubefs/util/unit"
 	"hash/crc32"
 	"sync"
 	"sync/atomic"
@@ -109,17 +110,25 @@ func (b *MemSnapShot) Count(tp TreeType) uint64 {
 
 func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 	var (
-		crc  = crc32.NewIEEE()
-		data []byte
+		crc           = crc32.NewIEEE()
+		data          = make([]byte, 4*unit.MB)
+		maxRetryCount = 2
+		dataLen       int
 	)
 	switch tp {
 	case InodeType:
 		cb := func(i *Inode) (bool, error) {
-			if data, err = i.MarshalV2(); err != nil {
+			for retryCnt := 0; retryCnt < maxRetryCount; retryCnt++ {
+				if dataLen, err = i.EncodeBinary(data); err == nil {
+					break
+				}
+				data = make([]byte, dataLen*2)
+			}
+			if err != nil {
 				return false, err
 			}
 			binary.BigEndian.PutUint64(data[AccessTimeOffset:AccessTimeOffset+8], 0)
-			if _, err = crc.Write(data); err != nil {
+			if _, err = crc.Write(data[:dataLen]); err != nil {
 				return false, err
 			}
 			return true, nil
@@ -127,10 +136,16 @@ func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 		err = b.inode.Range(&Inode{}, nil, cb)
 	case DentryType:
 		cb := func(d *Dentry) (bool, error) {
-			if data, err = d.MarshalV2(); err != nil {
+			for retryCnt := 0; retryCnt < maxRetryCount; retryCnt++ {
+				if dataLen, err = d.EncodeBinary(data); err == nil {
+					break
+				}
+				data = make([]byte, dataLen*2)
+			}
+			if err != nil {
 				return false, err
 			}
-			if _, err = crc.Write(data); err != nil {
+			if _, err = crc.Write(data[:dataLen]); err != nil {
 				return false, err
 			}
 			return true, nil
@@ -160,10 +175,16 @@ func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 		err = b.multipart.Range(&Multipart{}, nil, cb)
 	case DelDentryType:
 		cb := func(delDentry *DeletedDentry) (bool, error) {
-			if data, err = delDentry.Marshal(); err != nil {
+			for retryCnt := 0; retryCnt < maxRetryCount; retryCnt++ {
+				if dataLen, err = delDentry.EncodeBinary(data); err == nil {
+					break
+				}
+				data = make([]byte, dataLen*2)
+			}
+			if err != nil {
 				return false, err
 			}
-			if _, err = crc.Write(data); err != nil {
+			if _, err = crc.Write(data[:dataLen]); err != nil {
 				return false, err
 			}
 			return true, nil
@@ -171,11 +192,17 @@ func (b *MemSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 		err = b.delDentry.Range(&DeletedDentry{}, nil, cb)
 	case DelInodeType:
 		cb := func(delInode *DeletedINode) (bool, error) {
-			if data, err = delInode.Marshal(); err != nil {
+			for retryCnt := 0; retryCnt < maxRetryCount; retryCnt++ {
+				if dataLen, err = delInode.EncodeBinary(data); err == nil {
+					break
+				}
+				data = make([]byte, dataLen*2)
+			}
+			if err != nil {
 				return false, err
 			}
 			binary.BigEndian.PutUint64(data[AccessTimeOffset:AccessTimeOffset+8], 0)
-			if _, err = crc.Write(data); err != nil {
+			if _, err = crc.Write(data[:dataLen]); err != nil {
 				return false, err
 			}
 			return true, nil
