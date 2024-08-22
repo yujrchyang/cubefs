@@ -1417,22 +1417,29 @@ func (m *MetaNode) getAllInodesCrcSum(w http.ResponseWriter, r *http.Request) {
 	defer snap.Close()
 
 	var (
-		inodeCnt  = snap.Count(InodeType)
-		crcSumSet = make([]uint32, 0, inodeCnt)
-		inodes    = make([]uint64, 0, inodeCnt)
-		crc       = crc32.NewIEEE()
+		inodeCnt      = snap.Count(InodeType)
+		crcSumSet     = make([]uint32, 0, inodeCnt)
+		inodes        = make([]uint64, 0, inodeCnt)
+		crc           = crc32.NewIEEE()
+		data          = make([]byte, 4*unit.MB)
+		maxRetryCount = 2
+		dataLen       int
 	)
 	err = snap.Range(InodeType, func(item interface{}) (bool, error) {
 		inode := item.(*Inode)
-		var inodeBinary []byte
-		inodeBinary, err = inode.MarshalV2()
+		for retryCnt := 0; retryCnt < maxRetryCount; retryCnt++ {
+			if dataLen, err = inode.EncodeBinary(data); err == nil {
+				break
+			}
+			data = make([]byte, dataLen*2)
+		}
 		if err != nil {
 			return false, err
 		}
-		binary.BigEndian.PutUint64(inodeBinary[AccessTimeOffset:AccessTimeOffset+8], 0)
+		binary.BigEndian.PutUint64(data[AccessTimeOffset:AccessTimeOffset+8], 0)
 		inodes = append(inodes, inode.Inode)
-		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(inodeBinary[0:]))
-		if _, err = crc.Write(inodeBinary); err != nil {
+		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(data[:dataLen]))
+		if _, err = crc.Write(data[:dataLen]); err != nil {
 			return false, fmt.Errorf("crc sum write failed:%v", err)
 		}
 		return true, nil
@@ -2047,22 +2054,29 @@ func (m *MetaNode) getAllDeletedInodesCrcSum(w http.ResponseWriter, r *http.Requ
 	}
 	defer snap.Close()
 	var (
-		inodeCnt  = snap.Count(InodeType)
-		crcSumSet = make([]uint32, 0, inodeCnt)
-		delInodes = make([]uint64, 0, inodeCnt)
-		crc       = crc32.NewIEEE()
+		inodeCnt      = snap.Count(InodeType)
+		crcSumSet     = make([]uint32, 0, inodeCnt)
+		delInodes     = make([]uint64, 0, inodeCnt)
+		crc           = crc32.NewIEEE()
+		data          = make([]byte, 4*unit.MB)
+		maxRetryCount = 2
+		dataLen       int
 	)
 	err = snap.Range(DelInodeType, func(item interface{}) (bool, error) {
 		delIno := item.(*DeletedINode)
-		var delInodeBinary []byte
-		delInodeBinary, err = delIno.Marshal()
+		for retryCnt := 0; retryCnt < maxRetryCount; retryCnt++ {
+			if dataLen, err = delIno.EncodeBinary(data); err == nil {
+				break
+			}
+			data = make([]byte, dataLen*2)
+		}
 		if err != nil {
 			return false, err
 		}
-		binary.BigEndian.PutUint64(delInodeBinary[AccessTimeOffset:AccessTimeOffset+8], 0)
+		binary.BigEndian.PutUint64(data[AccessTimeOffset:AccessTimeOffset+8], 0)
 		delInodes = append(delInodes, delIno.Inode.Inode)
-		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(delInodeBinary[0:]))
-		if _, err = crc.Write(delInodeBinary); err != nil {
+		crcSumSet = append(crcSumSet, crc32.ChecksumIEEE(data[:dataLen]))
+		if _, err = crc.Write(data[:dataLen]); err != nil {
 			return false, fmt.Errorf("crc sum write failed:%v", err)
 		}
 		return true, nil
