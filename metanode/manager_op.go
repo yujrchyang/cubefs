@@ -2179,7 +2179,7 @@ func (m *metadataManager) responseHeartbeatPb(adminTask *proto.AdminTask, remote
 			ExistMaxInodeID:    mConf.Cursor, //unUse
 			StoreMode:          uint32(mConf.StoreMode),
 			ApplyId:            applyID,
-			IsRecover:          mp.CreationType == proto.DecommissionedCreateDataPartition,
+			IsRecover:          mp.CreationType == proto.DecommissionedCreateMetaPartition,
 			AllocatorInUseCnt:  mp.inodeIDAllocator.GetUsed(),
 			InodesTotalSize:    mp.inodeTree.GetInodesTotalSize(),
 			DelInodesTotalSize: mp.inodeDeletedTree.GetDelInodesTotalSize(),
@@ -2269,7 +2269,7 @@ func (m *metadataManager) responseHeartbeat(adminTask *proto.AdminTask, remoteAd
 			ExistMaxInodeID:    mConf.Cursor, //unUse
 			StoreMode:          mConf.StoreMode,
 			ApplyId:            applyID,
-			IsRecover:          mp.CreationType == proto.DecommissionedCreateDataPartition,
+			IsRecover:          mp.CreationType == proto.DecommissionedCreateMetaPartition,
 			AllocatorInUseCnt:  mp.inodeIDAllocator.GetUsed(),
 			InodesTotalSize:    mp.inodeTree.GetInodesTotalSize(),
 			DelInodesTotalSize: mp.inodeDeletedTree.GetDelInodesTotalSize(),

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/proto"
 	"golang.org/x/time/rate"
 )
 
@@ -80,6 +81,20 @@ type Property struct {
 	Value string
 }
 type Properties []Property
+
+func (ps Properties) OpDesc() string {
+	for _, p := range ps {
+		if p.Type == PropertyTypeOp {
+			opcode, _ := strconv.ParseUint(p.Value, 10, 64)
+			if msg := proto.GetOpMsgExtend(int(opcode)); msg != "" {
+				return msg
+			} else {
+				return p.Value
+			}
+		}
+	}
+	return ""
+}
 
 type PropertiesBuilder struct {
 	properties Properties
@@ -457,13 +472,13 @@ func (ml *MultiLimiter) setStatus(status bool) {
 	ml.status = status
 }
 
-func (ml *MultiLimiter) Wait(ctx context.Context, ps Properties) error {
+func (ml *MultiLimiter) Wait(ctx context.Context, ps Properties) (bool, error) {
 	return ml.WaitN(ctx, ps, Stat{Count: 1})
 }
 
-func (ml *MultiLimiter) WaitN(ctx context.Context, ps Properties, stat Stat) error {
+func (ml *MultiLimiter) WaitN(ctx context.Context, ps Properties, stat Stat) (bool, error) {
 	if ctx == nil {
-		return fmt.Errorf("nil context")
+		return false, fmt.Errorf("nil context")
 	}
 	return ml.waitOrAlowN(ctx, ps, stat, false)
 }
@@ -473,25 +488,25 @@ func (ml *MultiLimiter) Allow(ps Properties) bool {
 }
 
 func (ml *MultiLimiter) AllowN(ps Properties, stat Stat) bool {
-	err := ml.waitOrAlowN(nil, ps, stat, false)
+	_, err := ml.waitOrAlowN(nil, ps, stat, false)
 	return err == nil
 }
 
 // if ctx doesn't has Deadline, use rule timeout
-func (ml *MultiLimiter) WaitUseDefaultTimeout(ctx context.Context, ps Properties) error {
+func (ml *MultiLimiter) WaitUseDefaultTimeout(ctx context.Context, ps Properties) (bool, error) {
 	if ctx == nil {
-		return fmt.Errorf("nil context")
+		return false, fmt.Errorf("nil context")
 	}
 	return ml.WaitNUseDefaultTimeout(ctx, ps, Stat{Count: 1})
 }
 
-func (ml *MultiLimiter) WaitNUseDefaultTimeout(ctx context.Context, ps Properties, stat Stat) error {
+func (ml *MultiLimiter) WaitNUseDefaultTimeout(ctx context.Context, ps Properties, stat Stat) (bool, error) {
 	return ml.waitOrAlowN(ctx, ps, stat, true)
 }
 
-func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Stat, useDefault bool) (err error) {
+func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Stat, useDefault bool) (hit bool, err error) {
 	if !ml.status {
-		return nil
+		return false, nil
 	}
 
 	statIndex := stat.index()
@@ -526,6 +541,7 @@ func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Sta
 				continue
 			}
 
+			hit = true
 			// ctx is nil only in Allow()
 			if ctx == nil {
 				if !limiter.AllowN(time.Now(), stat.val(statType(i))) {

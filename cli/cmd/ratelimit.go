@@ -560,9 +560,6 @@ func getRateLimitDesc(rateLimit map[string]map[string]map[int]proto.AllLimitGrou
 }
 
 func getOpDesc(module string, opcode int) string {
-	if opcode <= math.MaxUint8 {
-		return strings.TrimPrefix(proto.GetOpMsg(uint8(opcode)), "Op")
-	}
 	if msg := strings.TrimPrefix(proto.GetOpMsgExtend(opcode), "Op"); msg != "" {
 		return msg
 	}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/time/rate"
 )
@@ -179,17 +180,22 @@ func GetLimiterManager() *LimiterManager {
 }
 
 func Wait(ctx context.Context, ps Properties) error {
-	if limiterManager == nil {
-		return nil
-	}
-	return limiterManager.ml.Wait(ctx, ps)
+	return WaitN(ctx, ps, Stat{Count: 1})
 }
 
 func WaitN(ctx context.Context, ps Properties, stat Stat) error {
 	if limiterManager == nil {
 		return nil
 	}
-	return limiterManager.ml.WaitN(ctx, ps, stat)
+	start := time.Now()
+	hit, err := limiterManager.ml.WaitN(ctx, ps, stat)
+	if hit {
+		if op := ps.OpDesc(); op != "" {
+			metric := exporter.NewModuleTPUsWithStart(op+"_ratelimit", start)
+			metric.Set(err)
+		}
+	}
+	return err
 }
 
 func Allow(ps Properties) bool {
@@ -207,17 +213,23 @@ func AllowN(ps Properties, stat Stat) bool {
 }
 
 func WaitUseDefaultTimeout(ctx context.Context, ps Properties) error {
-	if limiterManager == nil {
-		return nil
-	}
-	return limiterManager.ml.WaitUseDefaultTimeout(ctx, ps)
+	return WaitNUseDefaultTimeout(ctx, ps, Stat{Count: 1})
 }
 
 func WaitNUseDefaultTimeout(ctx context.Context, ps Properties, stat Stat) error {
 	if limiterManager == nil {
 		return nil
 	}
-	return limiterManager.ml.WaitNUseDefaultTimeout(ctx, ps, stat)
+	start := time.Now()
+	hit, err := limiterManager.ml.WaitNUseDefaultTimeout(ctx, ps, stat)
+	if hit {
+		op := ps.OpDesc()
+		if op != "" {
+			metric := exporter.NewModuleTPUsWithStart(op+"_wait", start)
+			metric.Set(err)
+		}
+	}
+	return err
 }
 
 func WaitConcurrency(ctx context.Context, op int, disk string) error {

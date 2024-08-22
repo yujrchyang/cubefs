@@ -1683,6 +1683,7 @@ func (mp *metaPartition) checkRecoverAfterStart() {
 		case <-ticker.C:
 			leaderAddr, ok := mp.IsLeader()
 			if ok {
+				mp.CreationType = proto.NormalCreateMetaPartition
 				log.LogInfof("CheckRecoverAfterStart mp[%v] is leader, skip check recover", mp.config.PartitionId)
 				return
 			}
