@@ -408,6 +408,9 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	if dp, err = disk.createPartition(dpCfg, request); err != nil {
 		return
 	}
+	if dp.isReplLeader {
+		dp.extentStore.MoveAllToAvailTinyExtentC(proto.TinyExtentCount)
+	}
 	disk.AttachDataPartition(dp)
 	manager.AttachPartition(dp)
 	if err = dp.Start(); err != nil {
