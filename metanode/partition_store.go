@@ -599,8 +599,8 @@ func (mp *metaPartition) loadBitMapAllocatorInfo(rootDir string) (err error) {
 		log.LogErrorf("unmarshal bitmap allocator info failed, partitionID: %v, err: %v", mp.config.PartitionId, err)
 		return
 	}
-	log.LogInfof("load complete: partitionID(%v) bitmapAllocatorStatus(%v) freezeTime(%v) cancelFreezeTime(%v)",
-		mp.config.PartitionId, mp.inodeIDAllocator.Status, mp.inodeIDAllocator.FreezeTime, mp.inodeIDAllocator.CancelFreezeTime)
+	log.LogInfof("load complete: partitionID(%v) bitmapAllocatorStatus(%v) freezeTime(%v) activeTime(%v)",
+		mp.config.PartitionId, mp.inodeIDAllocator.Status, mp.inodeIDAllocator.FreezeTime, mp.inodeIDAllocator.ActiveTime)
 	return
 }
 
