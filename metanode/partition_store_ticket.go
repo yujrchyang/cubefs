@@ -81,7 +81,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 	timerCursor := time.NewTimer(intervalToSyncCursor)
 	timerSyncReqRecordsEvictTimestamp := time.NewTimer(time.Second * 5)
 	storeTicker := time.NewTicker(intervalDumpSnap)
-	cancelFreezeBitMapAllocateTicker := time.NewTicker(intervalToCheckCancelFreeze)
+	activeBitMapAllocateTicker := time.NewTicker(intervalToCheckActiveAllocator)
 	dumpFunc := func(msg *storeMsg) {
 		defer func() {
 			mp.manager.tokenM.ReleaseToken(mp.config.PartitionId)
@@ -208,12 +208,12 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
-			case <- cancelFreezeBitMapAllocateTicker.C:
+			case <- activeBitMapAllocateTicker.C:
 				if _, ok := mp.IsLeader(); !ok {
 					continue
 				}
 
-				mp.cancelFreezeBitmapAllocator()
+				mp.activeBitmapAllocator()
 			}
 		}
 	}(mp.stopC)

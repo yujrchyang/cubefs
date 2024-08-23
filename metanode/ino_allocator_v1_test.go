@@ -20,21 +20,21 @@ func TestInoAllocatorV1_MaxId(t *testing.T) {
 	_, needFreeze, _ := allocator.AllocateId()
 	assert.Equal(t, true, needFreeze)
 	allocator.FreezeAllocator(time.Now().Unix(), time.Now().Unix())
-	allocator.CancelFreezeAllocator(false)
+	allocator.Active(false)
 	id, _, _ := allocator.AllocateId()
-	assert.Equal(t, uint64(2000002), id, "expect id is 2000001")
+	assert.Equal(t, allocator.Start+bitmapCursorStart+1, id, fmt.Sprintf("expect id is %v, but allocate %v", allocator.Start+bitmapCursorStart+1, id))
 	allocator.SetId(id)
 	id, _, _ = allocator.AllocateId()
-	assert.Equal(t, uint64(2000003), id, "expect id is 2000002")
+	assert.Equal(t, allocator.Start+bitmapCursorStart+2, id, fmt.Sprintf("expect id is %v, but allocate %v", allocator.Start+bitmapCursorStart+2, id))
 	allocator.SetId(id)
 	allocator.ResetBitCursorToEnd()
 	allocator.ClearId(4000000)
 	id, needFreeze, _ = allocator.AllocateId()
 	assert.Equal(t, true, needFreeze)
 	allocator.FreezeAllocator(time.Now().Unix(), time.Now().Unix())
-	allocator.CancelFreezeAllocator(false)
+	allocator.Active(false)
 	id, _, _ = allocator.AllocateId()
-	assert.Equal(t, uint64(2000004), id, "expect id is 2000003")
+	assert.Equal(t, allocator.Start+bitmapCursorStart+3, id, fmt.Sprintf("expect id is %v, but allocate %v", allocator.Start+bitmapCursorStart+3, id))
 }
 
 func TestInoAllocatorV1_MaxCost(t *testing.T) {
@@ -95,29 +95,49 @@ func TestInoAllocatorV1_U64Len(t *testing.T) {
 }
 
 func InoAlloterv1UsedCnt(t *testing.T, allocator *inoAllocatorV1) {
-	for i := uint64(0) ; i < 100; i++ {
-		allocator.SetId(i * 100 + i)
+	var cnt = 0
+	for i := uint64(0); cnt < 100; i++ {
+		if i*100+i <= bitmapCursorStart {
+			continue
+		}
+		cnt++
+		allocator.SetId(i*100 + i + allocator.Start)
 	}
 	if allocator.GetUsed() != 100 {
 		t.Fatalf("allocate 100, but record:%d, cap:%d", allocator.GetUsed(), allocator.Cnt)
 	}
 
-	for i := uint64(0); i < 100; i++ {
-		if allocator.Bits.IsBitFree(int((i * 100 + i - allocator.Start) % allocator.Cnt)) {
-			t.Fatalf("id allocator:%d but now free, cap:%d", i * 100 + i, allocator.Cnt)
+	cnt = 0
+	for i := uint64(0); cnt < 100; i++ {
+		if i*100+i <= bitmapCursorStart {
+			continue
 		}
+		if allocator.Bits.IsBitFree(int((i*100 + i - allocator.Start) % allocator.Cnt)) {
+			t.Fatalf("id allocator:%d but now free, cap:%d", i*100+i, allocator.Cnt)
+		}
+		cnt++
 	}
 
-	for i := uint64(0) ; i < 100; i++ {
-		allocator.ClearId(i * 100 + i)
+	cnt = 0
+	for i := uint64(0); cnt < 100; i++ {
+		if i*100+i <= bitmapCursorStart {
+			continue
+		}
+		cnt++
+		allocator.ClearId(i*100 + i + allocator.Start)
 	}
 	if allocator.GetUsed() != 0 {
 		t.Fatalf("allocate 0, but record:%d, cap:%d", allocator.GetUsed(), allocator.Cnt)
 	}
-	for i := uint64(0); i < 100; i++ {
-		if !allocator.Bits.IsBitFree(int((i * 100 + i - allocator.Start) % allocator.Cnt)) {
-			t.Fatalf("id allocator:%d but now free, cap:%d", i * 100 + i, allocator.Cnt)
+	cnt = 0
+	for i := uint64(0); cnt < 100; i++ {
+		if i*100+i <= bitmapCursorStart {
+			continue
 		}
+		if !allocator.Bits.IsBitFree(int((i*100 + i - allocator.Start) % allocator.Cnt)) {
+			t.Fatalf("id allocator:%d but now free, cap:%d", i*100+i, allocator.Cnt)
+		}
+		cnt++
 	}
 }
 
@@ -265,8 +285,8 @@ func TestInoAllocatorV1_AllocateIdBySnap(t *testing.T) {
 		assert.Equal(t, false, allocator.BitsSnap.IsBitFree(int(releaseID)), fmt.Sprintf("%v expect has been occupied", releaseID))
 	}
 
-	if !waitAllocatorCancelFreeze(allocator) {
-		t.Fatalf("allocator cancel freeze failed")
+	if !waitAllocatorActive(allocator) {
+		t.Fatalf("active allocator failed")
 		return
 	}
 
@@ -290,7 +310,7 @@ func TestInoAllocatorV1_AllocateIdBySnap(t *testing.T) {
 		allocator.SetId(allocateID)
 	}
 
-	assert.Equal(t, proto.DefaultMetaPartitionInodeIDStep - uint64(1+cnt), uint64(allocateCnt))
+	assert.Equal(t, proto.DefaultMetaPartitionInodeIDStep - uint64(cnt+3), uint64(allocateCnt))
 
 	FreezeAllocator(allocator)
 	if _, _, err := allocator.AllocateId(); err == nil {
@@ -303,8 +323,8 @@ func TestInoAllocatorV1_AllocateIdBySnap(t *testing.T) {
 		allocator.ClearId(index)
 	}
 
-	if !waitAllocatorCancelFreeze(allocator) {
-		t.Fatalf("allocator cancel freeze failed")
+	if !waitAllocatorActive(allocator) {
+		t.Fatalf("allocator active failed")
 		return
 	}
 
@@ -336,23 +356,23 @@ func TestInoAllocatorV1_AllocateIdBySnap(t *testing.T) {
 func FreezeAllocator(allocator *inoAllocatorV1) {
 	allocator.FreezeAllocator(time.Now().Unix(), time.Now().Add(time.Second*5).Unix())
 	go func() {
-		intervalCheckCancelFreeze := time.Second*1
-		timer := time.NewTimer(intervalCheckCancelFreeze)
+		intervalCheckActive := time.Second*1
+		timer := time.NewTimer(intervalCheckActive)
 		for {
 			select {
 			case <- timer.C:
-				timer.Reset(intervalCheckCancelFreeze)
-				if time.Now().Before(time.Unix(allocator.CancelFreezeTime, 0)) {
+				timer.Reset(intervalCheckActive)
+				if time.Now().Before(time.Unix(allocator.ActiveTime, 0)) {
 					continue
 				}
-				allocator.CancelFreezeAllocator(false)
+				allocator.Active(false)
 				return
 			}
 		}
 	}()
 }
 
-func waitAllocatorCancelFreeze(allocator *inoAllocatorV1) (cancelFreezeSuccess bool) {
+func waitAllocatorActive(allocator *inoAllocatorV1) (activeSuccess bool) {
 	time.Sleep(time.Second * 5)
 	retryCnt := 5
 	for retryCnt > 0 {
@@ -366,7 +386,7 @@ func waitAllocatorCancelFreeze(allocator *inoAllocatorV1) (cancelFreezeSuccess b
 	if retryCnt == 0 {
 		return
 	}
-	cancelFreezeSuccess = true
+	activeSuccess = true
 	return
 }
 
@@ -395,8 +415,8 @@ func TestInoAllocatorV1_BitCursor(t *testing.T) {
 		allocator.ClearId(index)
 	}
 
-	if !waitAllocatorCancelFreeze(allocator) {
-		t.Fatalf("allocator cancel freeze failed")
+	if !waitAllocatorActive(allocator) {
+		t.Fatalf("active allocator failed")
 		return
 	}
 
@@ -428,6 +448,6 @@ func TestInoAllocatorV1_MarshalAndUnmarshal(t *testing.T) {
 	assert.Equal(t, allocator.Status, newAllocator.Status)
 	assert.Equal(t, allocator.BitCursor, newAllocator.BitCursor)
 	assert.Equal(t, allocator.FreezeTime, newAllocator.FreezeTime)
-	assert.Equal(t, allocator.CancelFreezeTime, newAllocator.CancelFreezeTime)
+	assert.Equal(t, allocator.ActiveTime, newAllocator.ActiveTime)
 	assert.Equal(t, allocator.BitsSnap, newAllocator.BitsSnap)
 }

@@ -185,8 +185,8 @@ const (
 	opFSMFileMigExtentMerge
 
 	opFSMFreezeBitmapAllocator
-	opFSMCancelFreezeBitmapAllocator
-	opFSMUpdateCancelFreezeTime
+	opFSMActiveBitmapAllocator
+	opFSMUpdateActiveTime
 
 	opFSMSyncBitmapAllocator
 
@@ -246,7 +246,7 @@ const (
 	defRaftLogCap                   = 4
 	defRaftLogSize                  = unit.MB * 8
 	defIntervalToCleanTrash         = time.Minute * 5
-	intervalToCheckCancelFreeze     = time.Minute * 5
+	intervalToCheckActiveAllocator  = time.Minute * 5
 
 	intervalFailOverLeader = time.Second
 	defTryFailOverCnt      = 3

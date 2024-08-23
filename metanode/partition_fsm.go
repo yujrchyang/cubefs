@@ -381,13 +381,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		mp.evictExpiredRequestRecords(dbWriteHandle, int64(binary.BigEndian.Uint64(msg.V)))
 	case opFSMFreezeBitmapAllocator:
 		freezeTime := int64(binary.BigEndian.Uint64(msg.V[:8]))
-		cancelFreezeTime := int64(binary.BigEndian.Uint64(msg.V[8:]))
-		mp.fsmFreezeBitmapAllocator(freezeTime, cancelFreezeTime)
-	case opFSMUpdateCancelFreezeTime:
-		newCancelFreezeTime := int64(binary.BigEndian.Uint64(msg.V[:8]))
-		mp.fsmUpdateAllocatorCancelFreezeTime(newCancelFreezeTime)
-	case opFSMCancelFreezeBitmapAllocator:
-		mp.fsmCancelFreezeBitmapAllocator()
+		activeTime := int64(binary.BigEndian.Uint64(msg.V[8:]))
+		mp.fsmFreezeBitmapAllocator(freezeTime, activeTime)
+	case opFSMUpdateActiveTime:
+		newActiveTime := int64(binary.BigEndian.Uint64(msg.V[:8]))
+		mp.fsmUpdateAllocatorActiveTime(newActiveTime)
+	case opFSMActiveBitmapAllocator:
+		mp.fsmActiveAllocator()
 	case opFSMCorrectInodesAndDelInodesTotalSize:
 		req := &proto.CorrectMPInodesAndDelInodesTotalSizeReq{}
 		if err = json.Unmarshal(msg.V, req); err != nil {
@@ -1111,9 +1111,6 @@ func (mp *metaPartition) afterApplySnapshotHandle(newDBDir string, appIndexID, n
 
 	if newInodeIDAllocator != nil {
 		mp.inodeIDAllocator = newInodeIDAllocator
-		if mp.isVolFirstPartition() {
-			mp.inodeIDAllocator.OccupiedInvalidAndRootInoBits()
-		}
 	}
 
 	mp.reqRecords = InitRequestRecords(requestInfos)
@@ -1235,30 +1232,30 @@ func (mp *metaPartition) uploadApplyID(applyId uint64) {
 	}
 }
 
-func (mp *metaPartition) fsmFreezeBitmapAllocator(freezeTime, cancelFreezeTime int64) {
+func (mp *metaPartition) fsmFreezeBitmapAllocator(freezeTime, activeTime int64) {
 	if mp.inodeIDAllocator == nil {
 		return
 	}
 
-	mp.inodeIDAllocator.FreezeAllocator(freezeTime, cancelFreezeTime)
-	log.LogDebugf("freeze bitmap allocator, partitionID: %v, freezeTime: %v, cancelFreezeTime: %v", mp.config.PartitionId,
-		freezeTime, cancelFreezeTime)
+	mp.inodeIDAllocator.FreezeAllocator(freezeTime, activeTime)
+	log.LogDebugf("freeze bitmap allocator, partitionID: %v, freezeTime: %v, activeTime: %v", mp.config.PartitionId,
+		freezeTime, activeTime)
 }
 
-func (mp *metaPartition) fsmUpdateAllocatorCancelFreezeTime(newCancelFreezeTime int64) {
+func (mp *metaPartition) fsmUpdateAllocatorActiveTime(newActiveTime int64) {
 	if mp.inodeIDAllocator == nil {
 		return
 	}
 
-	mp.inodeIDAllocator.ResetCancelFreezeTime(newCancelFreezeTime)
-	log.LogDebugf("update cancel freeze time, partitionID: %v, newCancelFreezeTime: %v", mp.config.PartitionId,
-		newCancelFreezeTime)
+	mp.inodeIDAllocator.ResetActiveTime(newActiveTime)
+	log.LogDebugf("update active time, partitionID: %v, newActiveTime: %v", mp.config.PartitionId,
+		newActiveTime)
 }
 
-func (mp *metaPartition) fsmCancelFreezeBitmapAllocator() {
+func (mp *metaPartition) fsmActiveAllocator() {
 	if mp.inodeIDAllocator == nil {
 		return
 	}
 
-	mp.inodeIDAllocator.CancelFreezeAllocator(false)
+	mp.inodeIDAllocator.Active(false)
 }
