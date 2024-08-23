@@ -162,6 +162,4 @@ type InodeInfoWithEK struct {
 
 type CorrectMPInodesAndDelInodesTotalSizeReq struct {
 	NeedCorrectHosts        []string `json:"needCorrectHosts"`
-	InodesTotalSizeDelta    int64    `json:"inosTotalSizeDelta"`
-	DelInodesTotalSizeDelta int64    `json:"delInosTotalSizeDelta"`
 }
