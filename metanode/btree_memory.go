@@ -631,17 +631,12 @@ func (i *InodeBTree) UpdateInodeTotalSize(addSize, subSize uint64) {
 	}
 
 	if subSize != 0 {
-		for {
-			current := atomic.LoadUint64(&i.inodesTotalSize)
-			newValue := uint64(0)
-			if current > subSize {
-				newValue = current - subSize
-			}
-
-			if atomic.CompareAndSwapUint64(&i.inodesTotalSize, current, newValue) {
-				break
-			}
+		current := atomic.LoadUint64(&i.inodesTotalSize)
+		newValue := uint64(0)
+		if current > subSize {
+			newValue = current - subSize
 		}
+		atomic.StoreUint64(&i.inodesTotalSize, newValue)
 	}
 	return
 }
@@ -656,17 +651,12 @@ func (i *DeletedInodeBTree) UpdateDelInodeTotalSize(addSize, subSize uint64) {
 	}
 
 	if subSize != 0 {
-		for {
-			current := atomic.LoadUint64(&i.delInodesTotalSize)
-			newValue := uint64(0)
-			if current > subSize {
-				newValue = current - subSize
-			}
-
-			if atomic.CompareAndSwapUint64(&i.delInodesTotalSize, current, newValue) {
-				break
-			}
+		current := atomic.LoadUint64(&i.delInodesTotalSize)
+		newValue := uint64(0)
+		if current > subSize {
+			newValue = current - subSize
 		}
+		atomic.StoreUint64(&i.delInodesTotalSize, newValue)
 	}
 }
 

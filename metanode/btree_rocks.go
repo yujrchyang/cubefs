@@ -1493,17 +1493,12 @@ func (b *InodeRocks) UpdateInodeTotalSize(addSize, subSize uint64) {
 	}
 
 	if subSize != 0 {
-		for {
-			current := atomic.LoadUint64(&b.baseInfo.inodesTotalSize)
-			newValue := uint64(0)
-			if current > subSize {
-				newValue = current - subSize
-			}
-
-			if atomic.CompareAndSwapUint64(&b.baseInfo.inodesTotalSize, current, newValue) {
-				break
-			}
+		current := atomic.LoadUint64(&b.baseInfo.inodesTotalSize)
+		newValue := uint64(0)
+		if current > subSize {
+			newValue = current - subSize
 		}
+		atomic.StoreUint64(&b.baseInfo.inodesTotalSize, newValue)
 	}
 	return
 }
@@ -1518,17 +1513,12 @@ func (b *DeletedInodeRocks) UpdateDelInodeTotalSize(addSize, subSize uint64) {
 	}
 
 	if subSize != 0 {
-		for {
-			current := atomic.LoadUint64(&b.baseInfo.delInodesTotalSize)
-			newValue := uint64(0)
-			if current > subSize {
-				newValue = current - subSize
-			}
-
-			if atomic.CompareAndSwapUint64(&b.baseInfo.delInodesTotalSize, current, newValue) {
-				break
-			}
+		current := atomic.LoadUint64(&b.baseInfo.delInodesTotalSize)
+		newValue := uint64(0)
+		if current > subSize {
+			newValue = current - subSize
 		}
+		atomic.StoreUint64(&b.baseInfo.delInodesTotalSize, newValue)
 	}
 }
 
