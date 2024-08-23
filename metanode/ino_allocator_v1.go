@@ -16,6 +16,7 @@ const (
 	allocatorStatusFrozen      int8 = 3
 	bitPerU64                       = 64
 	marshalBinaryBaseDataLen        = 44
+	bitmapCursorStart               = 2
 )
 
 var (
@@ -25,17 +26,17 @@ var (
 
 type inoAllocatorV1 struct {
 	mu               sync.RWMutex
-	Bits             bitmap.U64BitMap `json:"-"`
-	Start            uint64           `json:"start"`
-	End              uint64           `json:"end"`
-	Cnt              uint64           `json:"count"`
-	Used             uint64           `json:"used"`
-	BitCursor        int              `json:"lastBitIndex"`
-	Status           int8             `json:"status"`
-	Version          uint64           `json:"version"`
-	BitsSnap         bitmap.U64BitMap `json:"-"`
-	FreezeTime       int64            `json:"-"`
-	CancelFreezeTime int64            `json:"-"`
+	Bits       bitmap.U64BitMap `json:"-"`
+	Start      uint64           `json:"start"`
+	End        uint64           `json:"end"`
+	Cnt        uint64           `json:"count"`
+	Used       uint64           `json:"used"`
+	BitCursor  int              `json:"lastBitIndex"`
+	Status     int8             `json:"status"`
+	Version    uint64           `json:"version"`
+	BitsSnap   bitmap.U64BitMap `json:"-"`
+	FreezeTime int64            `json:"-"`
+	ActiveTime int64            `json:"-"`
 }
 
 func (allocator *inoAllocatorV1) String() string {
@@ -71,47 +72,25 @@ func NewInoAllocatorV1(start, end uint64) *inoAllocatorV1 {
 		allocator.Bits.SetBit(int(overBitIndex))
 		allocator.BitsSnap.SetBit(int(overBitIndex))
 	}
-	allocator.BitCursor = 0
+
+	allocator.BitCursor = bitmapCursorStart
+	//occupied 0 and 1 permanent
+	for index := 0; index < bitmapCursorStart; index++ {
+		allocator.Bits.SetBit(index)
+		allocator.BitsSnap.SetBit(index)
+	}
+
 	return allocator
 }
 
-func (allocator *inoAllocatorV1) OccupiedInvalidAndRootInoBits() {
-	allocator.mu.Lock()
-	defer allocator.mu.Unlock()
-
-	if allocator.Status == allocatorStatusUnavailable {
-		return
-	}
-
-	if allocator.Start == 0 {
-		//for first meta partition, occupied 0(invalid inode) and 1(root inode)
-		if allocator.Bits.IsBitFree(0) {
-			allocator.Bits.SetBit(0)
-			allocator.Used++
-		}
-
-		if allocator.Bits.IsBitFree(1) {
-			allocator.Bits.SetBit(1)
-			allocator.Used++
-		}
-
-		allocator.BitsSnap.SetBit(0)
-		allocator.BitsSnap.SetBit(1)
-		if allocator.BitCursor < 1 {
-			allocator.BitCursor = 1
-		}
-	}
-	return
-}
-
-func (allocator *inoAllocatorV1) GetAllocatorSnapInfo() (bits bitmap.U64BitMap, cancelFreezeTime int64, allocatorStatus int8) {
+func (allocator *inoAllocatorV1) GetAllocatorSnapInfo() (bits bitmap.U64BitMap, activeTime int64, allocatorStatus int8) {
 	allocator.mu.RLock()
 	defer allocator.mu.RUnlock()
 
-	return allocator.BitsSnap.Copy(), allocator.CancelFreezeTime, allocator.Status
+	return allocator.BitsSnap.Copy(), allocator.ActiveTime, allocator.Status
 }
 
-func (allocator *inoAllocatorV1) FreezeAllocator(freezeTime, cancelFreezeTime int64) {
+func (allocator *inoAllocatorV1) FreezeAllocator(freezeTime, activeTime int64) {
 	allocator.mu.Lock()
 	defer allocator.mu.Unlock()
 
@@ -119,14 +98,14 @@ func (allocator *inoAllocatorV1) FreezeAllocator(freezeTime, cancelFreezeTime in
 		return
 	}
 
-	allocator.Status = allocatorStatusFrozen           //置状态
-	allocator.BitsSnap = allocator.Bits.Copy()         //打快照
+	allocator.Status = allocatorStatusFrozen   //置状态
+	allocator.BitsSnap = allocator.Bits.Copy() //打快照
 
 	allocator.FreezeTime = freezeTime
-	allocator.CancelFreezeTime = cancelFreezeTime
+	allocator.ActiveTime = activeTime
 }
 
-func (allocator *inoAllocatorV1) CancelFreezeAllocator(force bool) {
+func (allocator *inoAllocatorV1) Active(force bool) {
 	allocator.mu.Lock()
 	defer allocator.mu.Unlock()
 
@@ -134,17 +113,17 @@ func (allocator *inoAllocatorV1) CancelFreezeAllocator(force bool) {
 		return
 	}
 
-	if !force && allocator.CancelFreezeTime > time.Now().Unix() {
+	if !force && allocator.ActiveTime > time.Now().Unix() {
 		return
 	}
 
-	allocator.Status = allocatorStatusAvailable //解除冻结
+	allocator.Status = allocatorStatusAvailable //激活分配器
 	allocator.FreezeTime = 0
-	allocator.CancelFreezeTime = 0              //清除解除冻结时间
-	allocator.BitCursor = 0                     //重置cursor
+	allocator.ActiveTime = 0 //清除激活时间
+	allocator.BitCursor = bitmapCursorStart  //重置cursor
 }
 
-func (allocator *inoAllocatorV1) ResetCancelFreezeTime(newCancelFreezeTime int64) {
+func (allocator *inoAllocatorV1) ResetActiveTime(newActiveime int64) {
 	allocator.mu.Lock()
 	defer allocator.mu.Unlock()
 
@@ -152,17 +131,17 @@ func (allocator *inoAllocatorV1) ResetCancelFreezeTime(newCancelFreezeTime int64
 		return
 	}
 
-	if allocator.CancelFreezeTime < newCancelFreezeTime {
-		allocator.CancelFreezeTime = newCancelFreezeTime
+	if allocator.ActiveTime < newActiveime {
+		allocator.ActiveTime = newActiveime
 	}
 	return
 }
 
-func (allocator *inoAllocatorV1) GetAllocatorFreezeState() (status int8, freezeTime, cancelFreezeTime int64) {
+func (allocator *inoAllocatorV1) GetAllocatorFreezeState() (status int8, freezeTime, activeTime int64) {
 	allocator.mu.RLock()
 	defer allocator.mu.RUnlock()
 
-	return allocator.Status, allocator.FreezeTime, allocator.CancelFreezeTime
+	return allocator.Status, allocator.FreezeTime, allocator.ActiveTime
 }
 
 func (allocator *inoAllocatorV1) AllocateId() (id uint64, needFreeze bool, err error) {
@@ -212,7 +191,7 @@ func (allocator *inoAllocatorV1) SetId(id uint64) {
 }
 
 func (allocator *inoAllocatorV1) ClearId(id uint64) {
-	if id >= allocator.End {
+	if id >= allocator.End || id < bitmapCursorStart {
 		return
 	}
 	allocator.mu.Lock()
@@ -262,7 +241,7 @@ func (allocator *inoAllocatorV1) ReleaseBitMapMemory() {
 		allocator.End = 0
 		allocator.Start = 0
 		allocator.FreezeTime = 0
-		allocator.CancelFreezeTime = 0
+		allocator.ActiveTime = 0
 	}
 }
 
@@ -343,12 +322,6 @@ func (allocator *inoAllocatorV1) GetStatus() int8 {
 	return allocator.Status
 }
 
-func (allocator *inoAllocatorV1) ResetLastBitIndex() {
-	allocator.mu.RLock()
-	defer allocator.mu.RUnlock()
-	allocator.BitCursor = 0
-}
-
 func (allocator *inoAllocatorV1) GetUsedInos() []uint64 {
 	allocator.mu.RLock()
 	defer allocator.mu.RUnlock()
@@ -384,16 +357,16 @@ func (allocator *inoAllocatorV1) GenAllocatorSnap() *inoAllocatorV1 {
 	}
 
 	return &inoAllocatorV1{
-		Start:            allocator.Start,
-		End:              allocator.End,
-		Cnt:              allocator.Cnt,
-		Used:             allocator.Used,
-		BitCursor:        allocator.BitCursor,
-		Status:           allocator.Status,
-		Version:          allocator.Version,
-		BitsSnap:         allocator.BitsSnap.Copy(),
-		FreezeTime:       allocator.FreezeTime,
-		CancelFreezeTime: allocator.CancelFreezeTime,
+		Start:      allocator.Start,
+		End:        allocator.End,
+		Cnt:        allocator.Cnt,
+		Used:       allocator.Used,
+		BitCursor:  allocator.BitCursor,
+		Status:     allocator.Status,
+		Version:    allocator.Version,
+		BitsSnap:   allocator.BitsSnap.Copy(),
+		FreezeTime: allocator.FreezeTime,
+		ActiveTime: allocator.ActiveTime,
 	}
 }
 
@@ -401,7 +374,7 @@ func (allocator *inoAllocatorV1) MarshalBinary() []byte {
 	allocator.mu.RLock()
 	defer allocator.mu.RUnlock()
 
-	//version, used, cursor, status, freezeTime, cancelFreezeTime, reserved filed, bitmapCount, bitmap
+	//version, used, cursor, status, freezeTime, activeTime, reserved filed, bitmapCount, bitmap
 	dataLen := marshalBinaryBaseDataLen + len(allocator.BitsSnap)*8
 	data := make([]byte, dataLen)
 
@@ -414,7 +387,7 @@ func (allocator *inoAllocatorV1) MarshalBinary() []byte {
 	offset += Uint32Size
 	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(allocator.FreezeTime))
 	offset += Uint64Size
-	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(allocator.CancelFreezeTime))
+	binary.BigEndian.PutUint64(data[offset:offset+Uint64Size], uint64(allocator.ActiveTime))
 	offset += Uint64Size
 	offset += Uint64Size //reserved filed
 	binary.BigEndian.PutUint32(data[offset:offset+Uint32Size], uint32(len(allocator.BitsSnap)))
@@ -437,7 +410,7 @@ func (allocator *inoAllocatorV1) UnmarshalBinary(data []byte) (err error) {
 	offset += Uint32Size
 	allocator.FreezeTime = int64(binary.BigEndian.Uint64(data[offset:offset+Uint64Size]))
 	offset += Uint64Size
-	allocator.CancelFreezeTime = int64(binary.BigEndian.Uint64(data[offset:offset+Uint64Size]))
+	allocator.ActiveTime = int64(binary.BigEndian.Uint64(data[offset:offset+Uint64Size]))
 	offset += Uint64Size
 	offset += Uint64Size
 	bitmapLen := binary.BigEndian.Uint32(data[offset:offset+Uint32Size])

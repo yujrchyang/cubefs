@@ -136,7 +136,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getAllDentryByParentIno", m.getAllDentriesByParentInoHandler)
 
 	http.HandleFunc("/getStartFailedPartitions", m.getStartFailedPartitions)
-	http.HandleFunc("/cancelFrozenMPBitMapAllocator", m.cancelFreezeMPBitMapAllocator)
+	http.HandleFunc("/activeMPBitMapAllocator", m.activeMPBitMapAllocator)
 	http.HandleFunc("/correctInodesTotalSize", m.correctInodesAndDelInodesTotalSize)
 
 	http.HandleFunc("/getDataPartitionViewCache", m.getDataPartitionViewCache)
@@ -3101,7 +3101,7 @@ func (m *MetaNode) getStartFailedPartitions(w http.ResponseWriter, r *http.Reque
 	return
 }
 
-func (m *MetaNode) cancelFreezeMPBitMapAllocator(w http.ResponseWriter, r *http.Request) {
+func (m *MetaNode) activeMPBitMapAllocator(w http.ResponseWriter, r *http.Request) {
 	var err error
 	resp := NewAPIResponse(http.StatusOK, "OK")
 	defer func() {
@@ -3148,17 +3148,17 @@ func (m *MetaNode) cancelFreezeMPBitMapAllocator(w http.ResponseWriter, r *http.
 		return
 	}
 
-	var forceCancel = false
-	forceCancelFlagStr := r.FormValue("force")
-	if forceCancelFlagStr != "" {
-		forceCancel, err = strconv.ParseBool(forceCancelFlagStr)
+	var forceActive = false
+	forceActiveFlagStr := r.FormValue("force")
+	if forceActiveFlagStr != "" {
+		forceActive, err = strconv.ParseBool(forceActiveFlagStr)
 		if err != nil {
 			resp.Code = http.StatusBadRequest
-			resp.Msg = fmt.Sprintf("parse force flag str (%s) failed: %v", forceCancelFlagStr, err)
+			resp.Msg = fmt.Sprintf("parse force flag str (%s) failed: %v", forceActiveFlagStr, err)
 			return
 		}
 	}
-	mp.inodeIDAllocator.CancelFreezeAllocator(forceCancel)
+	mp.inodeIDAllocator.Active(forceActive)
 	return
 }
 

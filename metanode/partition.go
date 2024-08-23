@@ -1178,10 +1178,10 @@ func (mp *metaPartition) freezeBitmapAllocator() {
 	curTime := time.Now()
 	frozenTimeDuration := mp.getBitmapSnapFrozenDuration()
 	freeTime := curTime.Unix()
-	cancelFreezeTime := curTime.Add(frozenTimeDuration).Unix()
+	activeTime := curTime.Add(frozenTimeDuration).Unix()
 	data := make([]byte, 16)
 	binary.BigEndian.PutUint64(data[:8], uint64(freeTime))
-	binary.BigEndian.PutUint64(data[8:], uint64(cancelFreezeTime))
+	binary.BigEndian.PutUint64(data[8:], uint64(activeTime))
 	if _, err = mp.submit(context.Background(), opFSMFreezeBitmapAllocator, "", data, nil); err != nil {
 		log.LogErrorf("freezeBitmapAllocator partitionID(%v) submit raft cmd failed:%v", mp.config.PartitionId, err)
 	}
@@ -1189,45 +1189,45 @@ func (mp *metaPartition) freezeBitmapAllocator() {
 	return
 }
 
-func (mp *metaPartition) updateCancelFreezeTime(newCancelFreezeTime int64) {
+func (mp *metaPartition) updateBitmapAllocatorActiveTime(newActiveTime int64) {
 	data := make([]byte, 8)
-	binary.BigEndian.PutUint64(data[:8], uint64(newCancelFreezeTime))
-	if _, err := mp.submit(context.Background(), opFSMUpdateCancelFreezeTime, "", data, nil); err != nil {
-		log.LogErrorf("submit update cancel freeze time failed, partitionID: %v, err: %v", mp.config.PartitionId,
+	binary.BigEndian.PutUint64(data[:8], uint64(newActiveTime))
+	if _, err := mp.submit(context.Background(), opFSMUpdateActiveTime, "", data, nil); err != nil {
+		log.LogErrorf("submit update allocator active time failed, partitionID: %v, err: %v", mp.config.PartitionId,
 			err)
 	}
 }
 
-func (mp *metaPartition) cancelFreezeBitmapAllocator() {
+func (mp *metaPartition) activeBitmapAllocator() {
 	if mp.inodeIDAllocator == nil {
-		log.LogDebugf("cancelFreezeBitmapAllocator allocator disabled, partitionID: %v", mp.config.PartitionId)
+		log.LogDebugf("activeBitmapAllocator allocator disabled, partitionID: %v", mp.config.PartitionId)
 		return
 	}
 
-	status, freezeTime, cancelFreezeTime := mp.inodeIDAllocator.GetAllocatorFreezeState()
+	status, freezeTime, activeTime := mp.inodeIDAllocator.GetAllocatorFreezeState()
 	if status != allocatorStatusFrozen {
-		log.LogDebugf("cancelFreezeBitmapAllocator not froze, partitionID: %v", mp.config.PartitionId)
+		log.LogDebugf("activeBitmapAllocator not froze, partitionID: %v", mp.config.PartitionId)
 		return
 	}
 
 	freezeSecond := mp.getBitmapSnapFrozenDuration()/time.Second
-	newCancelFreezeTime := freezeTime + int64(freezeSecond)
-	if newCancelFreezeTime > cancelFreezeTime && time.Now().Before(time.Unix(newCancelFreezeTime, 0)) {
-		mp.updateCancelFreezeTime(newCancelFreezeTime)
+	newActiveTime := freezeTime + int64(freezeSecond)
+	if newActiveTime > activeTime && time.Now().Before(time.Unix(newActiveTime, 0)) {
+		mp.updateBitmapAllocatorActiveTime(newActiveTime)
 		return
 	}
 
-	if time.Now().Before(time.Unix(cancelFreezeTime, 0)) {
-		log.LogDebugf("cancelFreezeBitmapAllocator not yet reach to cancel frozen time, partitionID: %v", mp.config.PartitionId)
+	if time.Now().Before(time.Unix(activeTime, 0)) {
+		log.LogDebugf("activeBitmapAllocator not yet reach to active time, partitionID: %v", mp.config.PartitionId)
 		return
 	}
 
-	if _, err := mp.submit(context.Background(), opFSMCancelFreezeBitmapAllocator, "", nil, nil); err != nil {
-		log.LogErrorf("submit cancel freeze raft cmd failed, partitionID: %v, err: %v", mp.config.PartitionId, err)
+	if _, err := mp.submit(context.Background(), opFSMActiveBitmapAllocator, "", nil, nil); err != nil {
+		log.LogErrorf("submit active allocator raft cmd failed, partitionID: %v, err: %v", mp.config.PartitionId, err)
 		return
 	}
 
-	log.LogDebugf("submit cancel freeze raft cmd success, partitionID: %v", mp.config.PartitionId)
+	log.LogDebugf("submit active allocator raft cmd success, partitionID: %v", mp.config.PartitionId)
 	return
 }
 
@@ -1788,9 +1788,6 @@ func (mp *metaPartition) initInodeIDAllocator() (err error) {
 		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusInit)
 		if err =  mp.loadBitMapAllocatorInfo(path.Join(mp.config.RootDir, snapshotDir)); err != nil {
 			return
-		}
-		if mp.isVolFirstPartition() {
-			mp.inodeIDAllocator.OccupiedInvalidAndRootInoBits()
 		}
 	}
 	return

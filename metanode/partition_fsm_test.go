@@ -768,7 +768,7 @@ func validateApplySnapshotResult(t *testing.T, leaderMp, followerMp *metaPartiti
 		assert.Equal(t, leaderMp.inodeIDAllocator.BitCursor, followerMp.inodeIDAllocator.BitCursor)
 		assert.Equal(t, leaderMp.inodeIDAllocator.BitsSnap, followerMp.inodeIDAllocator.BitsSnap)
 		assert.Equal(t, leaderMp.inodeIDAllocator.FreezeTime, followerMp.inodeIDAllocator.FreezeTime)
-		assert.Equal(t, leaderMp.inodeIDAllocator.CancelFreezeTime, followerMp.inodeIDAllocator.CancelFreezeTime)
+		assert.Equal(t, leaderMp.inodeIDAllocator.ActiveTime, followerMp.inodeIDAllocator.ActiveTime)
 	}
 	return true
 }
