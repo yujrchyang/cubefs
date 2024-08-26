@@ -949,6 +949,30 @@ func (s *ExtentStore) BrokenTinyExtentCnt() int {
 	return len(s.brokenTinyExtentC)
 }
 
+// AvailableTinyExtents returns available tiny extents, unsafe.
+func (s *ExtentStore) AvailableTinyExtents() []uint64 {
+	//s.availableTinyExtentMutex.RLock()
+	//defer s.availableTinyExtentMutex.RUnlock()
+	extents := make([]uint64, 0)
+	s.availableTinyExtentMap.Range(func(key, value any) bool {
+		extents = append(extents, key.(uint64))
+		return true
+	})
+	return extents
+}
+
+// BrokenTinyExtents returns broken tiny extents, unsafe.
+func (s *ExtentStore) BrokenTinyExtents() []uint64 {
+	//s.brokenTinyExtentMutex.RLock()
+	//defer s.brokenTinyExtentMutex.RUnlock()
+	extents := make([]uint64, 0)
+	s.brokenTinyExtentMap.Range(func(key, value any) bool {
+		extents = append(extents, key.(uint64))
+		return true
+	})
+	return extents
+}
+
 // MoveAllToBrokenTinyExtentC moves all the tiny extents to the channel stores the broken extents.
 func (s *ExtentStore) MoveAllToBrokenTinyExtentC(cnt int) {
 	for i := 0; i < cnt; i++ {

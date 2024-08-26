@@ -4293,3 +4293,11 @@ func (dp *DataPartition) advanceApplyID(applyID uint64) {
 		dp.isCatchUp = true
 	}
 }
+
+func (dp *DataPartition) GetAvailableTinyExtentCnt() int {
+	return dp.extentStore.AvailableTinyExtentCnt()
+}
+
+func (dp *DataPartition) GetBrokenTinyExtentCnt() int {
+	return dp.extentStore.BrokenTinyExtentCnt()
+}

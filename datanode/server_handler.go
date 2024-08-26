@@ -70,6 +70,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/risk/startFix", s.startRiskFix)
 	http.HandleFunc("/risk/stopFix", s.stopRiskFix)
 	http.HandleFunc("/getDataPartitionViewCache", s.getDataPartitionViewCache)
+	http.HandleFunc("/tinyExtents", s.getTinyExtents)
 }
 
 // handler
@@ -1532,6 +1533,79 @@ func (s *DataNode) getDataPartitionViewCache(w http.ResponseWriter, r *http.Requ
 	}
 	data := s.topoManager.GetPartitionFromCache(volumeName, dpID)
 	s.buildSuccessResp(w, data)
+	return
+}
+
+func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
+	var (
+		err         error
+		partitionID uint64
+	)
+	var result = make([]struct {
+		IsLeader             bool     `json:"isLeader"`
+		AvailableCh          int      `json:"availableCh"`
+		BrokenCh             int      `json:"brokenCh"`
+		TotalTinyExtent      int      `json:"totalTinyExtent"`
+		AvailableTinyExtents []uint64 `json:"availableTinyExtents"`
+		BrokenTinyExtents    []uint64 `json:"brokenTinyExtents"`
+	}, 0)
+
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionStr := r.FormValue("partitionID"); partitionStr != "" {
+		if partitionID, err = strconv.ParseUint(partitionStr, 10, 64); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		partition := s.space.Partition(partitionID)
+		if partition == nil {
+			s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+			return
+		}
+		avail := partition.extentStore.AvailableTinyExtentCnt()
+		broken := partition.extentStore.BrokenTinyExtentCnt()
+		result = append(result, struct {
+			IsLeader             bool     `json:"isLeader"`
+			AvailableCh          int      `json:"availableCh"`
+			BrokenCh             int      `json:"brokenCh"`
+			TotalTinyExtent      int      `json:"totalTinyExtent"`
+			AvailableTinyExtents []uint64 `json:"availableTinyExtents"`
+			BrokenTinyExtents    []uint64 `json:"brokenTinyExtents"`
+		}{
+			IsLeader:             partition.isReplLeader,
+			AvailableCh:          avail,
+			BrokenCh:             broken,
+			TotalTinyExtent:      avail + broken,
+			AvailableTinyExtents: partition.extentStore.AvailableTinyExtents(),
+			BrokenTinyExtents:    partition.extentStore.BrokenTinyExtents(),
+		})
+		s.buildSuccessResp(w, result)
+		return
+	}
+
+	s.space.WalkPartitions(func(dp *DataPartition) bool {
+		avail := dp.extentStore.AvailableTinyExtentCnt()
+		broken := dp.extentStore.BrokenTinyExtentCnt()
+		result = append(result, struct {
+			IsLeader             bool     `json:"isLeader"`
+			AvailableCh          int      `json:"availableCh"`
+			BrokenCh             int      `json:"brokenCh"`
+			TotalTinyExtent      int      `json:"totalTinyExtent"`
+			AvailableTinyExtents []uint64 `json:"availableTinyExtents"`
+			BrokenTinyExtents    []uint64 `json:"brokenTinyExtents"`
+		}{
+			IsLeader:             dp.isReplLeader,
+			AvailableCh:          avail,
+			BrokenCh:             broken,
+			TotalTinyExtent:      avail + broken,
+			AvailableTinyExtents: dp.extentStore.AvailableTinyExtents(),
+			BrokenTinyExtents:    dp.extentStore.BrokenTinyExtents(),
+		})
+		return true
+	})
+	s.buildSuccessResp(w, result)
 	return
 }
 
