@@ -492,15 +492,6 @@ func GetReplProtocolDetail() (allReplDetail []*ReplProtocalBufferDetail) {
 	return
 }
 
-func LoggingAllReplProtocolBufferPoolUse() {
-	return
-}
-
-func (rp *ReplProtocol) operatorFuncWithWaitGroup(wg *sync.WaitGroup, request *Packet) {
-	defer wg.Done()
-	_ = rp.operatorFunc(request, rp.sourceConn)
-}
-
 // Read a packet from the list, scan all the connections of the followers of this packet and read the responses.
 // If failed to read the response, then mark the packet as failure, and delete it from the list.
 // If all the reads succeed, then mark the packet as success.

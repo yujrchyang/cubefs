@@ -829,10 +829,14 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 		dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync)
 
 	defer func() {
-		log.LogInfof(ActionSyncTinyDeleteRecord+" end PartitionID(%v) originLocalTinyDeleteSize(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) "+
-			"err(%v), lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v) isRealSync(%v)\",",
-			dp.partitionID, originLocalTinyDeleteSize, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr, err,
+		msg := fmt.Sprintf(ActionSyncTinyDeleteRecord+" end PartitionID(%v) originLocalTinyDeleteSize(%v) localTinyDeleteFileSize(%v) leaderTinyDeleteFileSize(%v) leaderAddr(%v) "+
+			"lastSyncTinyDeleteTime(%v) currentTime(%v) fullSyncTinyDeleteTime(%v) isFullSync(%v) isRealSync(%v)",
+			dp.partitionID, originLocalTinyDeleteSize, localTinyDeleteFileSize, repairTask.LeaderTinyDeleteRecordFileSize, repairTask.LeaderAddr,
 			dp.lastSyncTinyDeleteTime, time.Now().Unix(), dp.FullSyncTinyDeleteTime, isFullSync, isRealSync)
+		log.LogInfof(msg)
+		if err != nil {
+			log.LogErrorf(fmt.Sprintf("%v, err:%v", msg, err))
+		}
 	}()
 	if dp.DataPartitionCreateType != proto.DecommissionedCreateDataPartition && !isFullSync && time.Now().Unix()-dp.lastSyncTinyDeleteTime < MinSyncTinyDeleteTime {
 		return
@@ -4030,7 +4034,8 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				tpObject = dp.monitorData[proto.ActionRepairWrite].BeforeTp()
 			}
 
-			if currFixOffset+currRecoverySize > remoteSize {
+			// avoid huge hole in periodic repair
+			if !forceRepair && currFixOffset+currRecoverySize > remoteSize {
 				msg := fmt.Sprintf("action[streamRepairExtent] fix(%v_%v), streamRepairTinyExtent,remoteAvaliSize(%v) currFixOffset(%v) currRecoverySize(%v), remoteExtentSize(%v), isEmptyResponse(%v), needRecoverySize is too big",
 					dp.partitionID, localExtentInfo[storage.FileID], remoteAvaliSize, currFixOffset, currRecoverySize, remoteExtentInfo[storage.Size], emptyResponse)
 				exporter.WarningCritical(msg)
