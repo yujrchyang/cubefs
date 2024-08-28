@@ -4283,6 +4283,10 @@ func parseBitMapSnapFrozenHourToUpdateVol(r *http.Request, vol *Vol) (bitMapSnap
 	if err != nil {
 		return
 	}
+	if interval < 0 {
+		err = fmt.Errorf("%s invalid value: %v", proto.BitMapSnapFrozenHour, interval)
+		return
+	}
 	bitMapSnapFrozenHour = interval
 	return
 }
