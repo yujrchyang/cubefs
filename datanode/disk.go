@@ -57,6 +57,8 @@ const (
 
 	LatestFlushTimeFile     = "LATEST_FLUSH"
 	TempLatestFlushTimeFile = ".LATEST_FLUSH"
+
+	SfxIssueDiskMarkFile = "SFX_ISSUE_DISK"
 )
 
 type GetReservedRatioFunc func() float64
@@ -140,8 +142,11 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 	d.initInterceptors()
 
 	d.IsSfx, d.devName = GetDevCheckSfx(d.Path)
-	if !d.IsSfx {
-		log.LogInfof("%s not on sfx csd\n", d.Path)
+	if d.IsSfx {
+		if err = d.checkSfxIssueDiskStatus(); err != nil {
+			return
+		}
+		log.LogInfof("Disk %v is on sfx csd\n", d.Path)
 	}
 
 	if err = d.computeUsage(); err != nil {
@@ -161,6 +166,10 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 	d.startScheduler(d.flushDeleteScheduler)
 	d.startScheduler(d.crcComputationScheduler)
 	d.startScheduler(d.flushFPScheduler)
+
+	if d.IsSfx {
+		d.startScheduler(d.checkSfxSramErrorScheduler)
+	}
 	return
 }
 
@@ -274,7 +283,6 @@ func (d *Disk) initInterceptors() {
 					return
 				},
 				func(ctx context.Context, n int64, err error) {
-					d.triggerDiskError(err)
 					ctx.Value(ctxKeyExporterTP).(exporter.TP).Set(nil)
 					ctx.Value(ctxKeyMonitorTP).(*statistics.TpObject).AfterTp(uint64(n))
 				}))
@@ -495,6 +503,48 @@ func (d *Disk) flushFPScheduler() {
 	}
 }
 
+func (d *Disk) markSfxIssueDiskStatus() {
+	d.Status = proto.Unavailable
+	mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
+	exporter.Warning(mesg)
+	log.LogErrorf(mesg)
+	go d.ForceExitRaftStore()
+	var sfxErrorStatusFilepath = path.Join(d.Path, SfxIssueDiskMarkFile)
+	_ = os.WriteFile(sfxErrorStatusFilepath, nil, 0644)
+}
+
+func (d *Disk) checkSfxIssueDiskStatus() error {
+	var sfxErrorStatusFilepath = path.Join(d.Path, SfxIssueDiskMarkFile)
+	if _, err := os.Stat(sfxErrorStatusFilepath); err == nil {
+		return errors.New("issue disk status detected")
+	}
+	return nil
+}
+
+func (d *Disk) checkSfxSramErrorScheduler() {
+	if !d.IsSfx {
+		return
+	}
+	var ticker = time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if d.Status == proto.Unavailable {
+				continue
+			}
+			var sramErr, err = CheckSfxSramErr(d.devName)
+			if err != nil {
+				log.LogErrorf("CheckSfxSramError failed: %v", err)
+				continue
+			}
+			if sramErr {
+				d.markSfxIssueDiskStatus()
+			}
+		}
+	}
+}
+
 func (d *Disk) maybeUpdateFlushFDInterval(oldVal uint32) bool {
 	if d.space.flushFDIntervalSec > 0 && oldVal != d.space.flushFDIntervalSec {
 		return true
@@ -676,11 +726,11 @@ func (d *Disk) triggerDiskError(err error) {
 		return
 	}
 	if IsDiskErr(err) {
+		d.Status = proto.Unavailable
 		mesg := fmt.Sprintf("disk path %v error on %v", d.Path, LocalIP)
 		exporter.Warning(mesg)
 		log.LogErrorf(mesg)
 		d.ForceExitRaftStore()
-		d.Status = proto.Unavailable
 	}
 	return
 }

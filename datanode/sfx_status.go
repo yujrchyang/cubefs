@@ -3,6 +3,9 @@ package datanode
 import (
 	"github.com/cubefs/cubefs/util/log"
 	"os"
+	"os/exec"
+	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"syscall"
@@ -121,5 +124,61 @@ func GetSfxStatus(devName string) (dStatus sfxStatus, err error) {
 	//The unit of PhysicalCapability is the number of sectors, and the sector size is 512 bytes, converted to bytes
 	dStatus.freePhysicalCapability = extendHealth.freePhysicalCapability * 512
 	dStatus.totalPhysicalCapability = extendHealth.totalPhysicalCapability * 512
+	return
+}
+
+/**
+ * @brief GetCSDStatus get sfx status by devName
+ *
+ * @param devName, the sfx csd block dev name
+ * @param dStatus.compRatio, full disk compression ratio (100%~800%)
+ * @param dStatus.physicalUsageRatio, physical space usage ratio
+ * @param dStatus.freePhysicalCapability, free physical space .Byte
+ * @param dStatus.totalPhysicalCapability, total physical space .Byte
+ *
+ * @return nil success; err fail
+ */
+func CheckSfxSramErr(devName string) (sramErr bool, err error) {
+	var (
+		indexStart int
+		nfe_err    uint64
+	)
+	sramErr = false
+	indexStart = strings.Index(devName, "nvme")
+	var file = path.Join(os.TempDir(), devName[indexStart:]+".raw")
+
+	_ = os.Remove(file)
+
+	cmd := exec.Command("sfx-nvme", "sfx", "evt-log-dump", devName, "--file", file, "--scanerr", "--length", "50")
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		log.LogErrorf("dev:%s sfx dump evtlog fail,err: %s\n", devName, err.Error())
+		return
+	}
+
+	lines := strings.Split(string(out), "\n")
+
+	var regexpNum = regexp.MustCompile("0x(\\d)+")
+
+	for _, line := range lines {
+		indexStart = strings.Index(line, "nfe_hw_err_0")
+		if indexStart >= 0 {
+			sTemp := line[indexStart+13:]
+			sTemp = strings.TrimSpace(sTemp)
+			numStr := regexpNum.FindString(sTemp)
+			if len(numStr) < 2 {
+				continue
+			}
+			nfe_err, _ = strconv.ParseUint(numStr[2:], 16, 64)
+			if (nfe_err & 0x200) != 0 {
+				sramErr = true
+				break
+			}
+			continue
+		}
+	}
+
+	_ = os.Remove(file)
 	return
 }
