@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"os"
 	"testing"
 	"time"
@@ -1136,8 +1135,3 @@ func mockDeletedDentryTree2() DeletedDentryTree {
 //	}
 //
 //}
-
-func TestMain(m *testing.M) {
-	m.Run()
-	log.LogFlush()
-}
