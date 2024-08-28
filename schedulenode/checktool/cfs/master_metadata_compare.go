@@ -127,9 +127,6 @@ func executeCompare(masterAddrs []string, ossDomain, cluster, domain string) {
 		}
 		os.Remove(gzFilename)
 		rocksDir := "export/App/chubaoio/master/rocksdbstore"
-		if isReleaseCluster(domain) {
-			rocksDir = "export/App/chubaoio/rocksdbstore"
-		}
 		from := filepath.Join(unZipPath, rocksDir)
 		to := filepath.Join(rocksDataPath, cluster, rocksdbPrefix+h)
 		log.LogInfof("rename from:" + from + " to:" + to)

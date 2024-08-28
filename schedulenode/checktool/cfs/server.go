@@ -111,7 +111,6 @@ const (
 	cfgKeyExpiredMetaRemainDays            = "expiredMetaRemainDays"
 	cfgKeyXbpUsername                      = "xbpUsername"
 	cfgKeyOssDomain                        = "jcloudOssDomain"
-	cfgMasterAddrs                         = "Master"
 )
 
 var configKeys = []string{

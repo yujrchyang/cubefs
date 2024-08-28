@@ -477,7 +477,7 @@ The "reset" command will be released in next version`,
 	cmd.Flags().Uint64Var(&optSpecifyDP, CliFlagId, 0, "check data partition by partitionID")
 	//cmd.Flags().IntVar(&optDiffSizeThreshold, CliFlagThreshold, 20, "if diff size ratio between replicas larger than threshold, report error")
 	cmd.Flags().IntVar(&optMinGB, CliFlagMinGB, 0, "if diff size between replicas larger than minGB, report error")
-	cmd.Flags().BoolVar(&optAutoFixUsedSize, "auto-fix-size", false, "true - auto fix used size not equal")
+	//cmd.Flags().BoolVar(&optAutoFixUsedSize, "auto-fix-size", false, "true - auto fix used size not equal")
 	//cmd.Flags().BoolVar(&optEnableAutoFullfill, CliFlagEnableAutoFill, false, "true - automatically full fill the missing replica")
 	cmd.Flags().BoolVar(&optCheckAll, "all", false, "true - check all partitions and auto fix used size; false - only check partitions which is lack of replica")
 	return cmd
