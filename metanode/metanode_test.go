@@ -290,3 +290,50 @@ func TestRegMetaNodeNew(t *testing.T) {
 	LocCheckFailed(mt, t)
 	ClusterCheckError(mt, t)
 }
+
+
+
+func initEnv() error {
+	files, err := os.ReadDir("./")
+	if err != nil {
+		return err
+	}
+	for _, file := range files {
+		if file.IsDir() {
+			if file.Name() == "metamock" {
+				continue
+			}
+			err = os.RemoveAll(file.Name())
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+
+func destoryEnv() {
+	files, _ := os.ReadDir("./")
+	for _, file := range files {
+		if file.IsDir() {
+			if file.Name() == "metamock" || file.Name() == "logs"{
+				continue
+			}
+			_ = os.RemoveAll(file.Name())
+		}
+	}
+}
+
+func TestMain(m *testing.M) {
+	var err error
+	fmt.Printf("metanode unit test begin\n")
+	if err = initEnv(); err != nil {
+		fmt.Printf("metanode init failed:%s\n", err.Error())
+		return
+	}
+	m.Run()
+	log.LogFlush()
+	destoryEnv()
+	fmt.Printf("metanode unit test finished\n")
+}
