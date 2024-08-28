@@ -117,7 +117,7 @@ func (cv *ClusterView) checkMetaNodeAlive(host *ClusterHost) {
 		if err != nil {
 			return
 		}
-		if time.Since(mn.ReportTime) > 60*time.Minute && len(host.offlineMetaNodesIn24Hour) < defaultMaxOfflineMetaNodes {
+		if time.Since(mn.ReportTime) > 15*time.Minute && len(host.offlineMetaNodesIn24Hour) < defaultMaxOfflineMetaNodes {
 			if isPhysicalMachineFailure(inactiveMn.Addr) {
 				log.LogErrorf("action[isPhysicalMachineFailure] %v meta node:%v", host.host, inactiveMn.Addr)
 				if host.host == "cn.chubaofs.jd.local" || host.host == "cn.chubaofs-seqwrite.jd.local" || host.host == "cn.elasticdb.jd.local" {
