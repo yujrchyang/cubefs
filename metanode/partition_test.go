@@ -28,8 +28,9 @@ func mockMetaPartition(partitionID uint64, metaNodeID uint64, storeMode proto.St
 	_ = os.RemoveAll(rootDir)
 	_ = os.MkdirAll(rootDir, 0777)
 	node := &MetaNode{nodeId: metaNodeID, metadataDir: rootDir, limitManager: &multirate.LimiterManager{}}
+	node.rocksDirs = append(node.rocksDirs, rootDir)
 	node.initFetchTopologyManager()
-	manager := &metadataManager{nodeId: metaNodeID, rocksDBDirs: []string{rootDir}, metaNode: node}
+	manager := &metadataManager{nodeId: metaNodeID, rocksDBDirs: []string{rootDir}, metaNode: node, rootDir: rootDir}
 	conf := &MetaPartitionConfig{
 		VolName:     "test",
 		RocksDBDir:  rootDir,
