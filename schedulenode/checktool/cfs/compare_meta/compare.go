@@ -9,8 +9,6 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"reflect"
-	"strings"
-	"sync"
 )
 
 type volValue struct {
@@ -186,14 +184,13 @@ func NewCompare(cluster, domain string) *CompareMeta {
 	}
 }
 
-func (c *CompareMeta) RangePrefix(iter func(string)) {
+func (c *CompareMeta) rangePrefix(iter func(string)) {
 	for _, pre := range metaPrefixs {
 		iter(pre)
 	}
 }
 
-func getRocksDataByPrefix(rs *raftstore.RocksDBStore, prefix []byte) (result map[string][]byte, err error) {
-	result = make(map[string][]byte, 0)
+func rangeRocksDB(rs *raftstore.RocksDBStore, prefix []byte, iter func(string, []byte) bool) (err error) {
 	snapshot := rs.RocksDBSnapshot()
 	it := rs.Iterator(snapshot)
 	defer func() {
@@ -206,163 +203,95 @@ func getRocksDataByPrefix(rs *raftstore.RocksDBStore, prefix []byte) (result map
 		value := it.Value().Data()
 		valueByte := make([]byte, len(value))
 		copy(valueByte, value)
-		result[string(key)] = valueByte
+		iter(string(key), valueByte)
 		it.Key().Free()
 		it.Value().Free()
 	}
 	if err = it.Err(); err != nil {
-		return nil, err
+		return err
 	}
-	return result, nil
+	return
 }
 
-func (c *CompareMeta) Compare(rocksPaths []string, prefix string, dbMap map[string]*raftstore.RocksDBStore, cluster string, umpKey string) (resultStr string) {
-	log.LogInfof("action[Compare] start load rocksdb data for cluster:%s prefix:%s\n", cluster, prefix)
-	dataMap := make(map[string]map[string][]byte, 0)
-	lock := sync.Mutex{}
-	wg := sync.WaitGroup{}
-	for _, rPath := range rocksPaths {
-		wg.Add(1)
-		go func(dataPath string, pfx string) {
-			defer wg.Done()
-			result, err1 := getRocksDataByPrefix(dbMap[dataPath], []byte(pfx))
-			if err1 != nil {
-				log.LogErrorf("load rocksdb from path:%s, prefix:%s, err:%v\n", dataPath, pfx, err1)
-				return
+func (c *CompareMeta) RangeCompareKeys(rocksPaths []string, dbMap map[string]*raftstore.RocksDBStore, cluster string, umpKey string, iter func(string)) {
+	c.rangePrefix(func(prefix string) {
+		badCount := 0
+		badKeys := make([]string, 0)
+		_ = rangeRocksDB(dbMap[rocksPaths[0]], []byte(prefix), func(key string, val []byte) bool {
+			diff := false
+			for _, dbPath := range rocksPaths[1:] {
+				result, err := dbMap[dbPath].Get(key)
+				if err != nil {
+					log.LogErrorf("get rocksdb key:%v err:%v", key, err)
+					return true
+				}
+				if !reflect.DeepEqual(val, result.([]byte)) {
+					diff = true
+				}
 			}
-			lock.Lock()
-			defer lock.Unlock()
-			dataMap[dataPath] = result
-		}(rPath, prefix)
-	}
-	wg.Wait()
-	log.LogInfof("action[Compare] finished load rocksdb data for cluster:%s prefix:%s\n", cluster, prefix)
-
-	dpMap := make(map[uint64]string, 0)
-	mpMap := make(map[uint64]string, 0)
-	volMap := make(map[string]string, 0)
-
-	buf := bytes.Buffer{}
-	// find common
-	common := make(map[string][]byte, 0)
-	for k, v := range dataMap[rocksPaths[0]] {
-		common[k] = v
-	}
-	for k, v := range common {
-		for path, m := range dataMap {
-			if path == rocksPaths[0] {
-				continue
+			if diff {
+				badCount++
+				badKeys = append(badKeys, key)
+				for _, dbPath := range rocksPaths {
+					result, err := dbMap[dbPath].Get(key)
+					if err != nil {
+						log.LogErrorf("get rocksdb key:%v err:%v", key, err)
+						return true
+					}
+					if badCount < 100 {
+						out := handleBadItem(dbPath, prefix, key, result.([]byte))
+						iter(out)
+					}
+				}
 			}
-			if _, ok := m[k]; !ok {
-				delete(common, k)
-				continue
+			return true
+		})
+		if badCount > 0 {
+			var msg string
+			if len(badKeys) > 100 {
+				msg = fmt.Sprintf("cluster:%v prefix:%v too many bad keys, badKeys num:%v", cluster, prefix, len(badKeys))
+			} else {
+				msg = fmt.Sprintf("cluster:%v prefix:%v badKeys:%v num:%v", cluster, prefix, badKeys, len(badKeys))
 			}
-			if !reflect.DeepEqual(v, m[k]) {
-				delete(common, k)
-			}
+			exporter.WarningBySpecialUMPKey(umpKey, msg)
+		} else {
+			log.LogInfof("cluster:%v prefix:%v passed", cluster, prefix)
 		}
-	}
-	same := true
-	for _, v := range dataMap {
-		if len(v) != len(common) {
-			same = false
-		}
-	}
-	if same {
-		log.LogInfof("action[Compare] cluster:%s prefix:%s check success\n", cluster, prefix)
-		return
-	}
-	buf.WriteString(fmt.Sprintf("prefix:%s found invalid data\n", prefix))
-	buf.WriteString(fmt.Sprintf("common len:%d\n", len(common)))
-	log.LogWarnf(fmt.Sprintf("cluster:%v, prefix:%s found invalid data, common:%v\n", cluster, prefix, len(common)))
-	for path, m := range dataMap {
-		log.LogInfof("cluster:%v, path:%v, prefix:%v, len:%v, common:%v\n", cluster, path, prefix, len(m), len(common))
-	}
-	for p := range dataMap {
-		buf.WriteString(fmt.Sprintf(" path(%s) len:%d\n", p, len(dataMap[p])))
-	}
+	})
+	return
+}
+
+func handleBadItem(dbPath, prefix string, k string, v []byte) string {
 	var out bytes.Buffer
-
-	//print diff
-	for path, m := range dataMap {
-		for k, v := range m {
-			if _, ok := common[k]; ok {
-				continue
-			}
-			switch prefix {
-			case dataPartitionPrefix:
-				dpv := &dataPartitionValue{}
-				if err := json.Unmarshal(v, dpv); err != nil {
-					err = fmt.Errorf("action[loadDataPartitions],value:%v,unmarshal err:%v", string(v), err)
-					log.LogErrorf("%v\n", err)
-					continue
-				}
-				if _, ok := dpMap[dpv.PartitionID]; !ok {
-					dpMap[dpv.PartitionID] = strings.Split(path, "/")[len(strings.Split(path, "/"))-1]
-				} else {
-					dpMap[dpv.PartitionID] = dpMap[dpv.PartitionID] + "," + strings.Split(path, "/")[len(strings.Split(path, "/"))-1]
-				}
-			case metaPartitionPrefix:
-				mpv := &metaPartitionValue{}
-				if err := json.Unmarshal(v, mpv); err != nil {
-					err = fmt.Errorf("action[loadMetaPartitions],value:%v,unmarshal err:%v", string(v), err)
-					log.LogErrorf("%v\n", err)
-					continue
-				}
-				if _, ok := mpMap[mpv.PartitionID]; !ok {
-					mpMap[mpv.PartitionID] = strings.Split(path, "/")[len(strings.Split(path, "/"))-1]
-				} else {
-					mpMap[mpv.PartitionID] = mpMap[mpv.PartitionID] + "," + strings.Split(path, "/")[len(strings.Split(path, "/"))-1]
-				}
-			case volPrefix:
-				var vv *volValue
-				if err := json.Unmarshal(v, vv); err != nil {
-					err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(v), err)
-					log.LogErrorf("%v\n", err)
-					continue
-				}
-				if _, ok := volMap[vv.Name]; !ok {
-					volMap[vv.Name] = strings.Split(path, "/")[len(strings.Split(path, "/"))-1]
-				} else {
-					volMap[vv.Name] = volMap[vv.Name] + "," + strings.Split(path, "/")[len(strings.Split(path, "/"))-1]
-				}
-			default:
-			}
-			json.Indent(&out, v, "", "\t")
-			buf.WriteString(fmt.Sprintf("prefix:%v, path:%v, key:%v, json value:\n%v\n", prefix, path, k, out.String()))
-			out.Reset()
-		}
-	}
 	switch prefix {
 	case dataPartitionPrefix:
-		if len(dpMap) > 0 {
-			msg := "cluster: " + cluster + ", found bad dp:{"
-			for dp, hosts := range dpMap {
-				msg += fmt.Sprintf("{dp:%v, hosts:%v}", dp, hosts)
-			}
-			msg += "}"
-			exporter.WarningBySpecialUMPKey(umpKey, msg)
+		dpv := &dataPartitionValue{}
+		if err := json.Unmarshal(v, dpv); err != nil {
+			err = fmt.Errorf("action[loadDataPartitions],value:%v,unmarshal err:%v", string(v), err)
+			log.LogErrorf("%v\n", err)
+			return "NULL"
 		}
+		return fmt.Sprintf("dbPath:%v prefix:%v key:%v val:vol(%v)pid(%v)stat(%v)num(%v)recover(%v)hosts(%v)create(%v)", dbPath, prefix, k, dpv.VolID, dpv.PartitionID, dpv.Status, dpv.ReplicaNum, dpv.IsRecover, dpv.Hosts, dpv.CreateTime)
 	case metaPartitionPrefix:
-		if len(mpMap) > 0 {
-			msg := "cluster: " + cluster + ", found bad mp:{"
-			for mp, hosts := range mpMap {
-				msg += fmt.Sprintf("{mp:%v, hosts:%v}", mp, hosts)
-			}
-			msg += "}"
-			exporter.WarningBySpecialUMPKey(umpKey, msg)
+		mpv := &metaPartitionValue{}
+		if err := json.Unmarshal(v, mpv); err != nil {
+			err = fmt.Errorf("action[loadMetaPartitions],value:%v,unmarshal err:%v", string(v), err)
+			log.LogErrorf("%v\n", err)
+			return "NULL"
 		}
+		return fmt.Sprintf("dbPath:%v prefix:%v key:%v val:vol(%v)pid(%v)stat(%v)num(%v)recover(%v)hosts(%v)start(%v)end(%v)", dbPath, prefix, k, mpv.VolID, mpv.PartitionID, mpv.Status, mpv.ReplicaNum, mpv.IsRecover, mpv.Hosts, mpv.Start, mpv.End)
 	case volPrefix:
-		if len(volMap) > 0 {
-			msg := "cluster: " + cluster + ", found bad vol:{"
-			for v, hosts := range volMap {
-				msg += fmt.Sprintf("{vol:%v, hosts:%v}", v, hosts)
-			}
-			msg += "}"
-			exporter.WarningBySpecialUMPKey(umpKey, msg)
+		vv := &volValue{}
+		if err := json.Unmarshal(v, vv); err != nil {
+			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(v), err)
+			log.LogErrorf("%v\n", err)
+			return "NULL"
 		}
+		return fmt.Sprintf("dbPath:%v prefix:%v key:%v val:ovol(%v)nvol(%v)zone(%v)stat(%v)owner(%v)", dbPath, prefix, k, vv.OldVolName, vv.NewVolName, vv.ZoneName, vv.Status, vv.Owner)
 	default:
-		exporter.WarningBySpecialUMPKey(umpKey, fmt.Sprintf("cluster: %v, found bad rocksdb data for prefix:%v", cluster, prefix))
+		json.Indent(&out, v, "", "\t")
+		result := fmt.Sprintf("dbPath:%v prefix:%v, key:%v, val:%v\n", dbPath, prefix, k, out.String())
+		out.Reset()
+		return result
 	}
-	return buf.String()
 }

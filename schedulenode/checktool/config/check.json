@@ -50,5 +50,9 @@
   "dataNodeUsedRatioMinThresholdSSD": 0.87,
   "jdosToken": "******",
   "jdosURL": "http://api.jcd-gateway.jd.com",
-  "jdosErp": "org.imgsupport"
+  "jdosErp": "org.imgsupport",
+  "xbpUsername": "zhuhongyin",
+  "checkRiskFix": false,
+  "clusterConfigCheckJsonPath": "/export/App/chubaoio/storage-bot/clusterConfigCheck.json",
+  "jcloudOssDomain": "xxxx.jd.com"
 }

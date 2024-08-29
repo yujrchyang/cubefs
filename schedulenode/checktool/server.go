@@ -10,6 +10,7 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	_ "net/http/pprof"
 	"sync"
 )
 

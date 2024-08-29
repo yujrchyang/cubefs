@@ -29,8 +29,7 @@ const (
 )
 
 type CompareRocksMeta interface {
-	RangePrefix(iter func(string))
-	Compare(rocksPaths []string, prefix string, dbMap map[string]*raftstore.RocksDBStore, cluster string, umpKey string) string
+	RangeCompareKeys(rocksPaths []string, dbMap map[string]*raftstore.RocksDBStore, cluster string, umpKey string, iter func(string))
 }
 
 func (s *ChubaoFSMonitor) checkMasterMetadata() {
@@ -145,13 +144,13 @@ func executeCompare(masterAddrs []string, ossDomain, cluster, domain string) {
 		dbMap[rPath] = rs
 	}
 	tmpdir := os.TempDir()
-	fName := filepath.Join(tmpdir, fmt.Sprintf("diff_%v_%v", cluster, time.Now().Format("2006-01-02")))
+	fName := filepath.Join(tmpdir, fmt.Sprintf("metadata_diff_%v_%v", cluster, time.Now().Format("2006-01-02-15")))
 	resultFD, _ := os.OpenFile(fName, os.O_CREATE|os.O_RDWR, 0777)
 	diff := 0
 	defer func() {
 		resultFD.Close()
 		if diff == 0 {
-			log.LogInfof("check passed with no differences")
+			log.LogInfof("cluster:%v check passed with no differences", cluster)
 			os.Remove(fName)
 		}
 	}()
@@ -162,11 +161,10 @@ func executeCompare(masterAddrs []string, ossDomain, cluster, domain string) {
 	} else {
 		compare = compare_meta.NewCompare(cluster, domain)
 	}
-	compare.RangePrefix(func(s string) {
-		resultStr := compare.Compare(rocksFilePaths, s, dbMap, cluster, UMPCFSMasterMetaCompareKey)
-		if resultStr != "" {
+	compare.RangeCompareKeys(rocksFilePaths, dbMap, cluster, UMPCFSMasterMetaCompareKey, func(s string) {
+		if s != "" {
 			diff++
-			resultFD.WriteString(resultStr)
+			resultFD.WriteString(fmt.Sprintf("cluster:%v bad:%v\n", cluster, s))
 		}
 	})
 	return
