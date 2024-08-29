@@ -13,29 +13,14 @@ import (
 
 var riskCheck bool
 
-func (s *ChubaoFSMonitor) scheduleToCheckDataNodeRiskData() {
+func (s *ChubaoFSMonitor) checkDataNodeRiskData() {
 	if !s.checkRiskFix {
 		return
 	}
-	ticker := time.NewTicker(time.Duration(s.scheduleInterval) * time.Second)
-	defer func() {
-		ticker.Stop()
-	}()
-	s.checkDataNodeRiskData()
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-ticker.C:
-			if riskCheck {
-				continue
-			}
-			s.checkDataNodeRiskData()
-		}
+	if riskCheck {
+		log.LogWarnf("checkDataNodeRiskData is in check already")
+		return
 	}
-}
-
-func (s *ChubaoFSMonitor) checkDataNodeRiskData() {
 	riskCheck = true
 	defer func() {
 		riskCheck = false

@@ -308,7 +308,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.scheduleToCheckCFSHighIncreaseMemNodes()
 	go s.scheduleToCheckClusterConfig()
 	go s.scheduleToReloadDP()
-	go s.scheduleToCheckDataNodeRiskData()
+	go s.NewSchedule(s.checkDataNodeRiskData, time.Hour)
 	go s.NewSchedule(s.checkMasterMetadata, time.Hour)
 }
 
