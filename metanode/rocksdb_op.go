@@ -10,6 +10,7 @@ import (
 	"github.com/tecbot/gorocksdb"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"sync"
@@ -270,7 +271,8 @@ func (dbInfo *RocksDbInfo) interOpenDb(dir string, walFileSize, walMemSize, logF
 		index++
 	}
 	if err != nil {
-		log.LogErrorf("interOpenDb open db err:%v", err)
+		absPath, _ := filepath.Abs(dir)
+		log.LogErrorf("interOpenDb open db(dir:%s) err:%v", absPath, err)
 		return rocksDBError
 	}
 	dbInfo.dir = dir
