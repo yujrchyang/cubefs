@@ -52,7 +52,7 @@ func (s *ChubaoFSMonitor) checkMasterMetadata() {
 
 func parseCloudOssUrl(host string, ossDomain, cluster string, lastBackupTime time.Time) string {
 	dayTime := lastBackupTime.Format("20060102")
-	tFlag := dayTime + "_" + fmt.Sprintf("%v-00", lastBackupTime.Hour())
+	tFlag := lastBackupTime.Format("20060102_15") + "-00"
 	return fmt.Sprintf(cloudOssUrlFormat, ossDomain, cluster, dayTime, host, tFlag)
 }
 

@@ -80,6 +80,9 @@ func checkDataNodeRiskData(host *ClusterHost) {
 			log.LogErrorf("action[checkDataNodeRiskData] host:%v, dn:%v, err:%v", host.host, node.Addr, err)
 			continue
 		}
+		if partitions.RiskCount == 0 {
+			continue
+		}
 		riskDataNodes = append(riskDataNodes, struct {
 			FixRunning bool
 			Addr       string
