@@ -96,18 +96,17 @@ func (s *ChubaoFSMonitor) doReload(umpKey, domainName string) {
 		// 同一个dp 10 分钟内只能reload一次
 		key := fmt.Sprintf("%d_%s", dpRecord.DpId, dpRecord.Replica)
 		if existedRecord, ok := ReloadedDPRecords[key]; ok {
+			if ReloadedDPRecords[key].ReloadCount > 8 {
+				log.LogWarnf("action[doReload] dp:%v, reload data partition failed for many times, decommission bad replica:%v", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica)
+				if err = decommissionDp(false, domainName, "", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica); err != nil {
+					log.LogErrorf("action[doReload] reload data partition failed, dpId(%v), replica(%v), err(%v)",
+						dpRecord.DpId, dpRecord.Replica, err.Error())
+				}
+				continue
+			}
 			if time.Now().UnixMilli()-existedRecord.LastReloadTime <= DpReloadReloadInterval*60*1000 {
 				log.LogDebugf("action[doReload] has reloaded in 10 minutes, dpId(%v), replica(%v), lastReloadTime(%v)",
 					dpRecord.DpId, dpRecord.Replica, existedRecord.LastReloadTime)
-				continue
-			}
-		}
-
-		if ReloadedDPRecords[key] != nil && ReloadedDPRecords[key].ReloadCount > 8 {
-			log.LogWarnf("action[doReload] dp:%v, reload data partition failed for many times, decommission bad replica:%v", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica)
-			if err = decommissionDp(false, domainName, "", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica); err != nil {
-				log.LogErrorf("action[doReload] reload data partition failed, dpId(%v), replica(%v), err(%v)",
-					dpRecord.DpId, dpRecord.Replica, err.Error())
 				continue
 			}
 		}
