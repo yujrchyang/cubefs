@@ -102,7 +102,8 @@ func (s *ChubaoFSMonitor) doReload(umpKey, domainName string) {
 				continue
 			}
 		}
-		if ReloadedDPRecords[key].ReloadCount > 8 {
+
+		if ReloadedDPRecords[key] != nil && ReloadedDPRecords[key].ReloadCount > 8 {
 			log.LogWarnf("action[doReload] dp:%v, reload data partition failed for many times, decommission bad replica:%v", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica)
 			if err = decommissionDp(false, domainName, "", ReloadedDPRecords[key].DpId, ReloadedDPRecords[key].Replica); err != nil {
 				log.LogErrorf("action[doReload] reload data partition failed, dpId(%v), replica(%v), err(%v)",
