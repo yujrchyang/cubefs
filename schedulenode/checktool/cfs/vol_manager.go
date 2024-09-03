@@ -117,10 +117,6 @@ func (s *ChubaoFSMonitor) CheckVolHealth(ch *ClusterHost) {
 			}
 			log.LogWarnf(msg)
 		}
-		if ch.host == "id.chubaofs-seqwrite.jd.local" {
-			continue
-		}
-
 		if canCreateNewDP && ch.isReleaseCluster && availableSpaceRatio < s.availSpaceRatio {
 			if vss.UsedGB < vol.AvailSpaceAllocated {
 				continue
@@ -226,11 +222,7 @@ func checkMetaPartition(ch *ClusterHost, volName string, id uint64) {
 	if volName == "mysql-backup" && id == 2007 {
 		return
 	}
-	if ch.host == strings.TrimSpace("id.chubaofs-seqwrite.jd.local") {
-		reqURL = fmt.Sprintf("http://%v/client/metaPartition?name=%v&id=%v", ch.host, volName, id)
-	} else {
-		reqURL = fmt.Sprintf("http://%v/metaPartition/get?name=%v&id=%v", ch.host, volName, id)
-	}
+	reqURL = fmt.Sprintf("http://%v/metaPartition/get?name=%v&id=%v", ch.host, volName, id)
 	data, err := doRequest(reqURL, ch.isReleaseCluster)
 	if err != nil {
 		return

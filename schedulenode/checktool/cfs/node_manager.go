@@ -751,7 +751,7 @@ func offlineDataNode(host *ClusterHost, addr string) {
 func (cv *ClusterView) checkMetaNodeDiskStat(host *ClusterHost, diskMinWarnSize int) {
 	var port string
 	// exclude hosts which have not update the meta node disk stat API
-	if host.host == "cn.chubaofs-seqwrite.jd.local" || host.host == "id.chubaofs-seqwrite.jd.local" || host.host == "th.chubaofs-seqwrite.jd.local" {
+	if host.host == "cn.chubaofs-seqwrite.jd.local" {
 		return
 	}
 	// set meta node port

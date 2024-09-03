@@ -3,6 +3,8 @@ package cfs
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/robfig/cron"
@@ -138,20 +140,21 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 		log.LogErrorf("unmarshal to dp data[%v],err[%v]", string(data), err)
 		return
 	}
-	replicaRaftStatusMap := make(map[string]*raft.Status, len(dp.Replicas)) // 不同副本的raft状态
+	replicaRaftStatusMap := make(map[string]*proto.Status, len(dp.Replicas)) // 不同副本的raft状态
 	for _, r := range dp.Replicas {
-		var dnPartition *DNDataPartitionInfo
-		addr := strings.Split(r.Addr, ":")[0]
+		var dnPartition *proto.DNDataPartitionInfo
+		addr := fmt.Sprintf("%v:%v", strings.Split(r.Addr, ":")[0], profPortMap[strings.Split(r.Addr, ":")[1]])
+		dataClient := http_client.NewDataClient(addr, false)
 		//check dataPartition by dataNode api
 		for i := 0; i < 3; i++ {
-			if dnPartition, err = dataNodeGetPartition(ch, addr, dp.PartitionID); err == nil {
+			if dnPartition, err = dataClient.GetPartitionSimple(dp.PartitionID); err == nil {
 				break
 			}
 			time.Sleep(1 * time.Second)
 		}
 		if !dp.IsRecover && err != nil {
 			time.Sleep(10 * time.Second)
-			if dnPartition, err = dataNodeGetPartition(ch, addr, dp.PartitionID); err == nil {
+			if dnPartition, err = dataClient.GetPartitionSimple(dp.PartitionID); err == nil {
 				break
 			}
 			if err != nil {
@@ -266,10 +269,8 @@ func dataNodeGetPartition(ch *ClusterHost, addr string, id uint64) (node *DNData
 		port   string
 		reqURL string
 	)
-	if ch.host == "id.chubaofs.jd.local" || ch.host == "th.chubaofs.jd.local" {
-		port = "17320"
-	} else if ch.host == "cn.chubaofs.jd.local" || ch.host == "idbbak.chubaofs.jd.local" || ch.host ==
-		"cn.chubaofs-seqwrite.jd.local" || ch.host == "nl.chubaofs.jd.local" || ch.host == "cn.elasticdb.jd.local" || ch.host == "nl.chubaofs.ochama.com" {
+	if ch.host == "cn.chubaofs.jd.local" || ch.host == "sparkchubaofs.jd.local" || ch.host == "idbbak.chubaofs.jd.local" || ch.host == "cn.chubaofs-seqwrite.jd.local" ||
+		ch.host == "nl.chubaofs.jd.local" || ch.host == "cn.elasticdb.jd.local" || ch.host == "nl.chubaofs.ochama.com" {
 		port = "6001"
 	} else {
 		log.LogInfof("action[checkDetaNodeDiskStat] host[%v] can not match its DN port", ch.host)

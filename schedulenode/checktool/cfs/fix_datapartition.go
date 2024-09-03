@@ -376,7 +376,7 @@ func sumTinyAvailableSize(addr string, partitionID uint64) (sum uint64, err erro
 func stopReloadReplica(addr string, partitionID uint64, partitionPath string) (err error) {
 	dHost := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPortMap[strings.Split(addr, ":")[1]])
 	dataClient := http_client.NewDataClient(dHost, false)
-	partition, err := dataClient.GetPartitionFromNode(partitionID)
+	partition, err := dataClient.GetPartitionSimple(partitionID)
 	if err != nil {
 		return
 	}
