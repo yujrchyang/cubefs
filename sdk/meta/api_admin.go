@@ -193,6 +193,9 @@ type GetMPInfoResp struct {
 	DelDentryCount     uint64          `json:"deleted_dentry_count"`
 	DelInodesTotalSize int64           `json:"del_inodes_total_size"`
 	InodesTotalSize    int64           `json:"inodes_total_size"`
+
+	RaftStatus                 *proto.Status `json:"raft_status"`
+	RaftStatusOfReleaseCluster *proto.Status `json:"raftStatus"`
 }
 
 func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (resp *GetMPInfoResp, err error) {

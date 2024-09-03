@@ -189,7 +189,7 @@ func reloadDataPartition(dpRecord *DPReloadRecord, domainName string) (err error
 	)
 	dHost := fmt.Sprintf("%v:%v", strings.Split(dpRecord.Replica, ":")[0], profPortMap[strings.Split(dpRecord.Replica, ":")[1]])
 	dataClient := http_client.NewDataClient(dHost, false)
-	if partitionD, err = dataClient.GetPartitionFromNode(dpRecord.DpId); err == nil && partitionD.ID == dpRecord.DpId {
+	if partitionD, err = dataClient.GetPartitionSimple(dpRecord.DpId); err == nil && partitionD.ID == dpRecord.DpId {
 		log.LogInfof("action[reloadDataPartition] need not to reload, get data partition success from data node dpId(%v), dHost(%v)", dpRecord.DpId, dHost)
 		return
 	}

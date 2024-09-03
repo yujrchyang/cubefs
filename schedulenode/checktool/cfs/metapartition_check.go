@@ -3,11 +3,12 @@ package cfs
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/http_client"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/robfig/cron"
-	"github.com/tiglabs/raft"
 	"math"
 	"reflect"
 	"sort"
@@ -42,26 +43,12 @@ type Learner struct {
 	PmConfig *PromoteConfig `json:"promote_config"`
 }
 
-type MNMetaPartitionInfo struct {
-	LeaderAddr                 string       `json:"leaderAddr"`
-	Peers                      []Peer       `json:"peers"`
-	Learners                   []Learner    `json:"learners"`
-	NodeId                     uint64       `json:"nodeId"`
-	Cursor                     uint64       `json:"cursor"`
-	RaftStatus                 *raft.Status `json:"raft_status"`
-	RaftStatusOfReleaseCluster *raft.Status `json:"raftStatus"`
-}
-
 type PeerReplica struct {
 	VolName       string
 	ReplicationID uint64
 	PeerErrorInfo string
 	nodeAddr      string
 	PeerAddr      string
-}
-
-type PeerReplicaService struct {
-	channel chan PeerReplica
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckMpPeerCorrupt() {
@@ -127,11 +114,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 		}
 	}()
 	badReplicas = make([]PeerReplica, 0)
-	if ch.host == strings.TrimSpace("id.chubaofs-seqwrite.jd.local") {
-		reqURL = fmt.Sprintf("http://%v/client/metaPartition?name=%v&id=%v", ch.host, volName, PartitionID)
-	} else {
-		reqURL = fmt.Sprintf("http://%v/metaPartition/get?name=%v&id=%v", ch.host, volName, PartitionID)
-	}
+	reqURL = fmt.Sprintf("http://%v/metaPartition/get?name=%v&id=%v", ch.host, volName, PartitionID)
 	data, err := doRequest(reqURL, ch.isReleaseCluster)
 	if err != nil {
 		return
@@ -141,14 +124,16 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 		log.LogErrorf("unmarshal to mp data[%v],err[%v]", string(data), err)
 		return
 	}
-	replicaRaftStatusMap := make(map[string]*raft.Status, len(mp.Replicas)) // 不同副本的raft状态
+	replicaRaftStatusMap := make(map[string]*proto.Status, len(mp.Replicas)) // 不同副本的raft状态
 	hostStrings := getAddrFromMetaReplicas(mp.Replicas)
 	// check peer for each mp.Replica
 	for _, r := range mp.Replicas {
-		var mnPartition *MNMetaPartitionInfo
+		var mnPartition *meta.GetMPInfoResp
 		addr := strings.Split(r.Addr, ":")[0]
+		metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%s", strings.Split(r.Addr, ":")[0], profPortMap[strings.Split(r.Addr, ":")[1]]), false)
+
 		for i := 0; i < 3; i++ {
-			if mnPartition, err = getPartition(ch, addr, mp.PartitionID); err == nil {
+			if mnPartition, err = metaHttpClient.GetMetaPartition(mp.PartitionID); err == nil {
 				break
 			}
 			time.Sleep(1 * time.Second)
@@ -285,32 +270,6 @@ func delMpReplica(releaseDB bool, master string, partition uint64, addr string) 
 	return
 }
 
-func getPartition(ch *ClusterHost, addr string, partitionID uint64) (mnPartition *MNMetaPartitionInfo, err error) {
-	// set meta node port
-	var port string
-	if ch.host == "id.chubaofs.jd.local" || ch.host == "th.chubaofs.jd.local" {
-		port = "17220"
-	} else if ch.host == "cn.chubaofs.jd.local" || ch.host == "idbbak.chubaofs.jd.local" || ch.host ==
-		"cn.chubaofs-seqwrite.jd.local" || ch.host == "cn.elasticdb.jd.local" || ch.host == "nl.chubaofs.jd.local" || ch.host == "nl.chubaofs.ochama.com" {
-		port = "9092"
-	} else {
-		log.LogInfof("action[checkMetaNodeDiskStat] host[%v] can not match its MN port", ch.host)
-		return
-	}
-	reqURL := fmt.Sprintf("http://%v:%v/getPartitionById?pid=%v", addr, port, partitionID)
-	data, err := doRequest(reqURL, ch.isReleaseCluster)
-	if err != nil {
-		log.LogErrorf("request mp from [%v] failed ", reqURL)
-		return
-	}
-	mp := &mnPartition
-	if err = json.Unmarshal(data, mp); err != nil {
-		log.LogErrorf("unmarshal to mp data[%v],err[%v]", string(data), err)
-		return
-	}
-	return
-}
-
 func getAddrFromMetaReplicas(metaReplicas []*MetaReplica) (addrs []string) {
 	addrs = make([]string, 0)
 	for _, metaReplica := range metaReplicas {
@@ -319,7 +278,7 @@ func getAddrFromMetaReplicas(metaReplicas []*MetaReplica) (addrs []string) {
 	return
 }
 
-func convertPeersToArray(peers []Peer) (addrs []string) {
+func convertPeersToArray(peers []proto.Peer) (addrs []string) {
 	addrs = make([]string, 0)
 	for _, peer := range peers {
 		addrs = append(addrs, peer.Addr)
@@ -397,7 +356,7 @@ func checkHostMetaPartition(host *ClusterHost, concurrency int) {
 	log.LogInfof("check [%v] metaPartition corrupt end, cost [%v]", host, time.Since(startTime))
 }
 
-func checkRaftReplicaStatus(host *ClusterHost, replicaRaftStatusMap map[string]*raft.Status, pID uint64, volName, partitionType string, hosts []string, isRecover bool, replicas []*DataReplica, mp *MetaPartition) {
+func checkRaftReplicaStatus(host *ClusterHost, replicaRaftStatusMap map[string]*proto.Status, pID uint64, volName, partitionType string, hosts []string, isRecover bool, replicas []*DataReplica, mp *MetaPartition) {
 	if len(replicaRaftStatusMap) == 0 {
 		return
 	}
@@ -414,7 +373,7 @@ func checkRaftReplicaStatus(host *ClusterHost, replicaRaftStatusMap map[string]*
 }
 
 // 不是reccover 状态， applied相同的情况下，inodeCount/dentryCout > 1000 电话告警
-func checkRaftInodeCountOrDentryCountDiff(host *ClusterHost, replicaRaftStatusMap map[string]*raft.Status, pID uint64, volName string, mp *MetaPartition) {
+func checkRaftInodeCountOrDentryCountDiff(host *ClusterHost, replicaRaftStatusMap map[string]*proto.Status, pID uint64, volName string, mp *MetaPartition) {
 	if len(replicaRaftStatusMap) == 0 {
 		return
 	}
@@ -473,7 +432,7 @@ func checkRaftInodeCountOrDentryCountDiff(host *ClusterHost, replicaRaftStatusMa
 	}
 }
 
-func checkRaftStoppedReplica(host *ClusterHost, replicaRaftStatusMap map[string]*raft.Status, pID uint64, volName, partitionType string, replicas []*DataReplica, mp *MetaPartition) {
+func checkRaftStoppedReplica(host *ClusterHost, replicaRaftStatusMap map[string]*proto.Status, pID uint64, volName, partitionType string, replicas []*DataReplica, mp *MetaPartition) {
 	// raft stop告警
 	var port string
 	switch partitionType {
@@ -530,7 +489,7 @@ func isReplicaStatusUnavailable(replicaAddr string, replicas []*DataReplica) (ok
 // 1.遍历 检查 是否有pending的
 // 2.获取最大、最小applied计算差值，如果距离上次大于24小时/不存在 存入，否则（存在且小于24H）告警
 // 如果差别的副本变更了，只更新记录，不告警
-func checkRaftReplicaStatusOfPendingReplica(host *ClusterHost, replicaRaftStatusMap map[string]*raft.Status, pID uint64, volName, partitionType string) {
+func checkRaftReplicaStatusOfPendingReplica(host *ClusterHost, replicaRaftStatusMap map[string]*proto.Status, pID uint64, volName, partitionType string) {
 	var (
 		maxPendQueueCount       int
 		pendQueueAlarmThreshold int
@@ -592,7 +551,7 @@ func checkRaftReplicaStatusOfPendingReplica(host *ClusterHost, replicaRaftStatus
 	host.badPartitionPendingMap[key] = pendingReplica
 }
 
-func checkRaftReplicaStatusOfRaftAppliedDiff(host *ClusterHost, replicaRaftStatusMap map[string]*raft.Status, pID uint64, volName, partitionType string, hosts []string) {
+func checkRaftReplicaStatusOfRaftAppliedDiff(host *ClusterHost, replicaRaftStatusMap map[string]*proto.Status, pID uint64, volName, partitionType string, hosts []string) {
 	if len(replicaRaftStatusMap) == 0 {
 		return
 	}
