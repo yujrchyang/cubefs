@@ -36,6 +36,7 @@ const (
 	stateKey                            = "state"
 	enableKey                           = "enable"
 	thresholdKey                        = "threshold"
+	delayMinutesKey                     = "delayMinutes"
 	dataPartitionSizeKey                = "size"
 	metaPartitionCountKey               = "mpCount"
 	volCapacityKey                      = "capacity"
@@ -162,6 +163,7 @@ const (
 	apiReqBwRateLimitKey                = "apiReqBwRate"
 	mpSplitStepKey                      = "mpSplitStep"
 	inodeCountThresholdKey              = "inodeCountThreshold"
+	disableStatKey                      = "disable"
 )
 
 const (

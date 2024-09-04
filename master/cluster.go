@@ -199,8 +199,8 @@ func (c *Cluster) checkDataPartitions() {
 			return
 		}
 		readWrites := vol.checkDataPartitions(c)
-		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
-		vol.dataPartitions.updateResponseJsonCache(vol.ecDataPartitions, true, 0)
+		vol.dataPartitions.setReadWriteDataPartitions(readWrites)
+		vol.updateResponseJsonCache(true, 0)
 		vol.dataPartitions.setDataPartitionResponseProtobufCache(nil)
 		msg := fmt.Sprintf("action[checkDataPartitions],vol[%v] can readWrite partitions:%v  ", vol.Name, vol.dataPartitions.readableAndWritableCnt)
 		log.LogInfo(msg)
@@ -2929,6 +2929,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.DPConvertMode = proto.IncreaseReplicaNum
 	}
 	vol.dpReplicaNum = replicaNum
+	vol.updateTimeOfReplicaNum = time.Now().Unix()
 	// only can increase mp replica num
 	if mpReplicaNum > vol.mpReplicaNum {
 		vol.mpReplicaNum = mpReplicaNum
@@ -6173,7 +6174,7 @@ func (c *Cluster) batchConvertRenamedOldVolDpMetadataToNewVol(oldVol, renamedVol
 		dp.VolID = renamedVol.ID
 		dp.VolName = renamedVol.Name
 		affectedDps = append(affectedDps, dp)
-		if updateRaftCmd, err = c.buildDataPartitionRaftCmd(opSyncUpdateMetaPartition, dp); err != nil {
+		if updateRaftCmd, err = c.buildDataPartitionRaftCmd(opSyncUpdateDataPartition, dp); err != nil {
 			goto errHandler
 		}
 		cmdMap[updateRaftCmd.K] = updateRaftCmd
@@ -6312,9 +6313,6 @@ func (c *Cluster) startHeartbeatPbInfoHandlerWorker() {
 }
 
 func (c *Cluster) adjustConnConfigInfo(vv *proto.SimpleVolView) {
-	if vv.ConnConfig == nil {
-		vv.ConnConfig = &proto.ConnConfig{}
-	}
 	zones := strings.Split(vv.ZoneName, commaSeparator)
 	oldConnConfig := *vv.ConnConfig
 	for _, zone := range zones {
@@ -6339,4 +6337,36 @@ func (c *Cluster) adjustConnConfigInfo(vv *proto.SimpleVolView) {
 			vv.ConnConfig.IdleTimeoutSec = tmpConnConfig.IdleTimeoutSec
 		}
 	}
+}
+
+func (c *Cluster) setVolDisableState(name, authKey string, disableState bool) (err error) {
+	var (
+		vol           *Vol
+		oldState      bool
+		serverAuthKey string
+	)
+	if vol, err = c.getVol(name); err != nil {
+		log.LogErrorf("action[setVolDisableState] get volume err[%v]", err)
+		err = proto.ErrVolNotExists
+		return err
+	}
+	vol.Lock()
+	defer vol.Unlock()
+	serverAuthKey = vol.Owner
+	if !matchKey(serverAuthKey, authKey) {
+		return proto.ErrVolAuthKeyNotMatch
+	}
+	oldState = vol.DisableState
+	if oldState == disableState {
+		return nil
+	}
+	vol.DisableState = disableState
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.DisableState = oldState
+		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
+		err = proto.ErrPersistenceByRaft
+		return err
+	}
+	log.LogInfof("[setVolDisableState] set volume %v disable state to %v success", name, disableState)
+	return
 }

@@ -484,6 +484,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		TopologyForceFetchIntervalSec:          topoForceFetchIntervalSec,
 		DataNodeDiskReservedRatio:              m.cluster.cfg.DataNodeDiskReservedRatio,
 		DisableClusterCheckDeleteEK:            m.cluster.cfg.DisableClusterCheckDeleteEK,
+		DelayMinutesReduceReplicaNum:           m.cluster.cfg.delayMinutesReduceReplicaNum,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -2143,6 +2144,12 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 	if volInodeCount > 0 {
 		fileAvgSize = float64(stat.FileTotalSize) / float64(volInodeCount)
 	}
+	vvConnConfig := &proto.ConnConfig{
+		IdleTimeoutSec:   vol.ConnConfig.IdleTimeoutSec,
+		ConnectTimeoutNs: vol.ConnConfig.ConnectTimeoutNs,
+		WriteTimeoutNs:   vol.ConnConfig.WriteTimeoutNs,
+		ReadTimeoutNs:    vol.ConnConfig.ReadTimeoutNs,
+	}
 	return &proto.SimpleVolView{
 		ID:                       vol.ID,
 		Name:                     vol.Name,
@@ -2232,7 +2239,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EnableRemoveDupReq:       vol.enableRemoveDupReq,
 		NotCacheNode:             vol.notCacheNode,
 		Flock:                    vol.flock,
-		ConnConfig:               &vol.ConnConfig,
+		ConnConfig:               vvConnConfig,
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 		MpSplitStep:              vol.MpSplitStep,
 		InodeCountThreshold:      vol.InodeCountThreshold,
@@ -2240,6 +2247,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		FileTotalSize:            stat.FileTotalSize,
 		TrashUsedSize:            stat.TrashUsedSize,
 		EnableCheckDeleteEK:      vol.EnableCheckDeleteEK,
+		UpdateTimeOfReplicaNum:   vol.updateTimeOfReplicaNum,
+		DisableState:             vol.DisableState,
 	}
 }
 
@@ -5032,6 +5041,21 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	return
 }
 
+func parseAndDelayMinutes(r *http.Request) (delay int64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(delayMinutesKey); value == "" {
+		err = keyNotFound(delayMinutesKey)
+		return
+	}
+	if delay, err = strconv.ParseInt(value, 10, 64); err != nil {
+		return
+	}
+	return
+}
+
 func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interface{}, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -5716,10 +5740,10 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request) {
 	var (
-		name   string
-		vol    *Vol
-		err    error
-		dprs   []*proto.DataPartitionResponse
+		name string
+		vol  *Vol
+		err  error
+		dprs []*proto.DataPartitionResponse
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewModuleTP(proto.AdminGetHddDataPartitionsUmpKey)
@@ -5733,7 +5757,6 @@ func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request
 		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
 		return
 	}
-
 
 	// the condition to create hdd data partition:
 	// there was no hdd data partition or there was no writable hdd data partition and current node start more than 5 minutes
@@ -5751,7 +5774,7 @@ func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request
 	}
 
 	// create data partition in hdd datanode if no writable hdd data partitions
-	if len(hddDPs) <= 0 || (len(writableHddDPs) <= 0 && time.Now().Unix() - m.cluster.metaLoadedTime > 5 * int64(m.config.IntervalToCheckDataPartition)) {
+	if len(hddDPs) <= 0 || (len(writableHddDPs) <= 0 && time.Now().Unix()-m.cluster.metaLoadedTime > 5*int64(m.config.IntervalToCheckDataPartition)) {
 		var dps []*DataPartition
 		if dps, err = m.createHddDataPartition(vol.Name, 10); err != nil {
 			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
@@ -7109,6 +7132,52 @@ func (m *Server) recoverMarkDeletedVolToNormal(w http.ResponseWriter, r *http.Re
 	msg = fmt.Sprintf("recover mark deleted vol to normal successfully,old vol name[%v] new vol name[%v],from[%v]", oldVolName, newVolName, r.RemoteAddr)
 	log.LogWarn(msg)
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) setVolDisableState(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName     string
+		authKey     string
+		stateStr    string
+		disableStat bool
+		err         error
+	)
+	metrics := exporter.NewModuleTP(proto.AdminSetVolDisableStateUmpKey)
+	defer func() { metrics.Set(err) }()
+	if volName, authKey, stateStr, err = parseRequestToSetVolDisableState(r); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if _, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+	if disableStat, err = strconv.ParseBool(stateStr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	if err = m.cluster.setVolDisableState(volName, authKey, disableStat); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume %v disable state to %v success", volName, stateStr)))
+}
+
+func parseRequestToSetVolDisableState(r *http.Request) (volName, authKey, disableState string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if volName, err = extractName(r); err != nil {
+		return
+	}
+	if authKey, err = extractAuthKey(r); err != nil {
+		return
+	}
+	if disableState = r.FormValue(disableStatKey); disableState == "" {
+		err = keyNotFound(disableStatKey)
+		return
+	}
+	return
 }
 
 func parseRequestToRecoverMarkDeletedVolToNormal(r *http.Request) (oldName, authKey, newName string, err error) {

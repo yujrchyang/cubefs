@@ -100,6 +100,29 @@ func (m *Server) getAPIReqLimitInfo(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func (m *Server) SetDelayMinutesOfReplicaNum(w http.ResponseWriter, r *http.Request) {
+	var (
+		delayMinutes int64
+		err          error
+	)
+	if delayMinutes, err = parseAndDelayMinutes(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if delayMinutes < defaultDelayMinutesReduceReplicaNum {
+		err = fmt.Errorf("delay minutes can't less than %v", defaultDelayMinutesReduceReplicaNum)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setDelayMinutes(delayMinutes); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set delay minutes  to %v successfully", delayMinutes)))
+	return
+}
+
 func (m *Server) setNodesLiveRatioThreshold(w http.ResponseWriter, r *http.Request) {
 	var (
 		threshold float64
@@ -129,6 +152,18 @@ func (c *Cluster) setNodesLiveRatio(val float32) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setNodesLiveRatio] from %v to %v failed,err[%v]", oldVal, val, err)
 		c.cfg.NodesLiveRatio = oldVal
+		err = errors.New("persistence by raft occurred error")
+		return
+	}
+	return
+}
+
+func (c *Cluster) setDelayMinutes(val int64) (err error) {
+	oldVal := c.cfg.delayMinutesReduceReplicaNum
+	c.cfg.delayMinutesReduceReplicaNum = val
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setDelayMinutes] from %v to %v failed,err[%v]", oldVal, val, err)
+		c.cfg.delayMinutesReduceReplicaNum = oldVal
 		err = errors.New("persistence by raft occurred error")
 		return
 	}

@@ -16,6 +16,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 		}
 	}()
 	unrecoverPartitionIDs := make(map[string]uint64, 0)
+	var passedTime int64
 	c.MigratedDataPartitionIds.Range(func(key, value interface{}) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -34,7 +35,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
 			return true
 		}
-		if partition.isDataCatchUpInStrictMode() && partition.allReplicaHasRecovered() {
+		if partition.isDataCatchUpInStrictMode() && partition.allReplicaHasRecovered() && passedTime > 2*defaultIntervalToCheckHeartbeat {
 			partition.RLock()
 			if partition.isRecover {
 				partition.isRecover = false
@@ -43,7 +44,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 			partition.RUnlock()
 			c.MigratedDataPartitionIds.Delete(key)
 		} else {
-			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+			if passedTime > defaultUnrecoverableDuration {
 				unrecoverPartitionIDs[key.(string)] = partitionID
 			}
 		}

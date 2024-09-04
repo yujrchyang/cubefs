@@ -1500,8 +1500,8 @@ func (c *Cluster) handleDataNodeHeartbeatResp(nodeAddr string, resp *proto.DataN
 		c.t.deleteDataNode(dataNode)
 		oldZoneName := dataNode.ZoneName
 		dataNode.ZoneName = resp.ZoneName
-		zone, err := c.t.getZone(dataNode.ZoneName)
-		if err == nil {
+		zone, zoneErr := c.t.getZone(dataNode.ZoneName)
+		if zoneErr == nil {
 			dataNode.MType = zone.MType.String()
 		}
 		c.adjustDataNode(dataNode)

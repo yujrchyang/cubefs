@@ -289,7 +289,7 @@ func (c *Cluster) doCheckBadDiskRecovery() {
 		c.checkDiskRecoveryProgress()
 		c.checkEcDiskRecoveryProgress()
 		c.checkMigratedDataPartitionsRecoveryProgress()
-		c.checkUnavailDataPartitionsRecoveryProgress()
+		c.checkUnavailDataPartitionsProcessProgress()
 	}
 }
 

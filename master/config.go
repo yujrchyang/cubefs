@@ -45,8 +45,8 @@ const (
 // default value
 const (
 	defaultTobeFreedDataPartitionCount         = 1000
-	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60                               // a data partition can only be freed after loading 5 mins
-	defaultIntervalToFreeDataPartition         = 10                                   // in terms of seconds
+	defaultSecondsToFreeDataPartitionAfterLoad = 5 * 60 // a data partition can only be freed after loading 5 mins
+	defaultIntervalToFreeDataPartition         = 10     // in terms of seconds
 	defaultIntervalToCheckHeartbeat            = 60
 	defaultIntervalToCheckDataPartition        = 60
 	defaultIntervalToCheckCrc                  = 20 * defaultIntervalToCheckHeartbeat // in terms of seconds
@@ -81,6 +81,7 @@ const (
 	defaultDeleteMarkDelVolInterval                          = 60 * 60 * 24 * 2
 	defaultNodesLiveRatio                            float32 = 0.7
 	defaultMaxConnsPerHost                           int64   = 10000
+	defaultDelayMinutesReduceReplicaNum              int64   = 15
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -185,6 +186,7 @@ type clusterConfig struct {
 	NodesLiveRatio                      float32
 	APIReqBwRateLimitMap                map[uint8]int64
 	DisableClusterCheckDeleteEK         bool //default false, enable check delete ek
+	delayMinutesReduceReplicaNum        int64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -231,6 +233,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.BandwidthRateLimit = maxBw
 	cfg.NodesLiveRatio = defaultNodesLiveRatio
 	cfg.MaxConnsPerHost = defaultMaxConnsPerHost
+	cfg.delayMinutesReduceReplicaNum = defaultDelayMinutesReduceReplicaNum
 	cfg.initAPIReqBandwidthRateLimitMap()
 	return
 }

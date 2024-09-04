@@ -581,7 +581,7 @@ func (mp *MetaPartition) shouldReportMissingReplica(addr string, interval int64)
 func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, seconds, interval int64) {
 	mp.Lock()
 	defer mp.Unlock()
-	if mp.isOffline == true {
+	if mp.isOffline == true || time.Now().Unix()-mp.CreateTime < defaultIntervalToCheckHeartbeat {
 		return
 	}
 	for _, replica := range mp.Replicas {
@@ -619,6 +619,9 @@ func (mp *MetaPartition) replicaCreationTasks(c *Cluster, volName string) {
 	var msg string
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
+	if time.Now().Unix()-mp.CreateTime < defaultIntervalToCheckHeartbeat {
+		return
+	}
 	if addr, err := mp.removeIllegalReplica(); err != nil {
 		msg = fmt.Sprintf("action[%v],clusterID[%v] metaPartition:%v  excess replication"+
 			" on :%v  err:%v  persistenceHosts:%v",

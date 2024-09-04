@@ -41,7 +41,7 @@ type DataPartitionMap struct {
 
 func newDataPartitionMap(volName string) (dpMap *DataPartitionMap) {
 	dpMap = new(DataPartitionMap)
-	dpMap.partitionMap = make(map[uint64]*DataPartition, 0)
+	dpMap.partitionMap = make(map[uint64]*DataPartition)
 	dpMap.partitions = make([]*DataPartition, 0)
 	dpMap.responseJsonCache = make([]byte, 0)
 	dpMap.responseProtobufCache = make([]byte, 0)
@@ -97,7 +97,7 @@ func (dpMap *DataPartitionMap) del(dp *DataPartition) {
 	}
 }
 
-func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int, clusterName string) {
+func (dpMap *DataPartitionMap) setReadWriteDataPartitions(readWrites int) {
 	dpMap.Lock()
 	defer dpMap.Unlock()
 	dpMap.readableAndWritableCnt = readWrites
@@ -129,10 +129,11 @@ func (dpMap *DataPartitionMap) setDataPartitionResponseProtobufCache(responsePro
 	dpMap.responseProtobufCache = responseProtobufCache
 }
 
-func (dpMap *DataPartitionMap) updateResponseJsonCache(eps *EcDataPartitionCache, needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+func (vol *Vol) updateResponseJsonCache(needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+	dpMap := vol.dataPartitions
 	responseJsonCache := dpMap.getDataPartitionResponseJsonCache()
 	if responseJsonCache == nil || needsUpdate || len(responseJsonCache) == 0 {
-		dpResps := dpMap.getDataPartitionsView(eps, minPartitionID)
+		dpResps := vol.getDataPartitionsResp(minPartitionID)
 		if len(dpResps) == 0 {
 			log.LogError(fmt.Sprintf("action[updateDpResponseJsonCache],volName[%v] minPartitionID:%v,err:%v",
 				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
@@ -155,10 +156,11 @@ func (dpMap *DataPartitionMap) updateResponseJsonCache(eps *EcDataPartitionCache
 	return
 }
 
-func (dpMap *DataPartitionMap) updateResponseProtobufCache(eps *EcDataPartitionCache, needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+func (vol *Vol) updateResponseProtobufCache(needsUpdate bool, minPartitionID uint64) (body []byte, err error) {
+	dpMap := vol.dataPartitions
 	responseProtobufCache := dpMap.getDataPartitionResponseProtobufCache()
 	if responseProtobufCache == nil || needsUpdate || len(responseProtobufCache) == 0 {
-		dpResps := dpMap.getDataPartitionsView(eps, minPartitionID)
+		dpResps := vol.getDataPartitionsResp(minPartitionID)
 		if len(dpResps) == 0 {
 			log.LogError(fmt.Sprintf("action[updateDpResponseProtobufCache],volName[%v] minPartitionID:%v,err:%v",
 				dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
@@ -190,7 +192,9 @@ func (dpMap *DataPartitionMap) updateResponseProtobufCache(eps *EcDataPartitionC
 	return
 }
 
-func (dpMap *DataPartitionMap) getDataPartitionsView(eps *EcDataPartitionCache, minPartitionID uint64) (dpResps []*proto.DataPartitionResponse) {
+func (vol *Vol) getDataPartitionsResp(minPartitionID uint64) (dpResps []*proto.DataPartitionResponse) {
+	dpMap := vol.dataPartitions
+	eps := vol.ecDataPartitions
 	dpResps = make([]*proto.DataPartitionResponse, 0)
 	dpMap.RLock()
 	log.LogDebugf("volName[%v] DataPartitionMapLen[%v],DataPartitionsLen[%v],minPartitionID[%v]",
@@ -205,6 +209,10 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(eps *EcDataPartitionCache, 
 				ecDp.appendEcInfoToDataPartitionResponse(dpResp)
 			}
 		}
+		dpReplicaNum := int(vol.dpReplicaNum)
+		if vol.NeedToLowerReplica && len(dpResp.Hosts) > dpReplicaNum && vol.FollowerRead == false {
+			dpResp.Hosts = dpResp.Hosts[0:dpReplicaNum]
+		}
 		dpResps = append(dpResps, dpResp)
 	}
 	dpMap.RUnlock()
@@ -217,6 +225,10 @@ func (dpMap *DataPartitionMap) getDataPartitionsView(eps *EcDataPartitionCache, 
 		}
 		dpResp := ep.DataPartition.convertToDataPartitionResponse()
 		ep.appendEcInfoToDataPartitionResponse(dpResp)
+		dpReplicaNum := int(vol.dpReplicaNum)
+		if vol.NeedToLowerReplica && len(dpResp.Hosts) > dpReplicaNum && vol.FollowerRead == false {
+			dpResp.Hosts = dpResp.Hosts[0:dpReplicaNum]
+		}
 		dpResps = append(dpResps, dpResp)
 	}
 
@@ -227,7 +239,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsViewByIdsResponseProtobuf(eps *E
 	minPartitionID uint64) (body []byte, err error) {
 	dataPartitionsView := dpMap.getDataPartitionsViewByIDs(eps, dpIDs, minPartitionID)
 	if len(dataPartitionsView) == 0 {
-		log.LogError(fmt.Sprintf("action[getDataPartitionsViewByIdsResponseJson],volName[%v]" +
+		log.LogError(fmt.Sprintf("action[getDataPartitionsViewByIdsResponseJson],volName[%v]"+
 			" minPartitionID:%v,err:%v", dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
 		return nil, proto.ErrNoAvailDataPartition
 	}
@@ -255,7 +267,7 @@ func (dpMap *DataPartitionMap) getDataPartitionsViewByIdsResponseJson(eps *EcDat
 	minPartitionID uint64) (body []byte, err error) {
 	dataPartitionsView := dpMap.getDataPartitionsViewByIDs(eps, dpIDs, minPartitionID)
 	if len(dataPartitionsView) == 0 {
-		log.LogError(fmt.Sprintf("action[getDataPartitionsViewByIdsResponseProtobuf],volName[%v]" +
+		log.LogError(fmt.Sprintf("action[getDataPartitionsViewByIdsResponseProtobuf],volName[%v]"+
 			" minPartitionID:%v,err:%v", dpMap.volName, minPartitionID, proto.ErrNoAvailDataPartition))
 		return nil, proto.ErrNoAvailDataPartition
 	}

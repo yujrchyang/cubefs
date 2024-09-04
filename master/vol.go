@@ -139,6 +139,8 @@ type Vol struct {
 	needSplitMpByInodeCount    bool
 	BitMapSnapFrozenHour       int64
 	EnableCheckDeleteEK        bool
+	DisableState               bool
+	updateTimeOfReplicaNum     int64
 	ConnConfig                 proto.ConnConfig
 	sync.RWMutex
 }
@@ -335,6 +337,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.TruncateEKCountEveryTime = vv.TruncateEKCountEveryTime
 	vol.BitMapSnapFrozenHour = vv.BitMapSnapFrozenHour
 	vol.EnableCheckDeleteEK = vv.EnableCheckDelEK
+	vol.DisableState = vv.DisableState
+	vol.updateTimeOfReplicaNum = vv.UpdateTimeOfReplicaNum
 	return vol
 }
 
@@ -466,9 +470,9 @@ func (vol *Vol) getDpCnt() (dpCnt int) {
 
 func (vol *Vol) getDataPartitionsView(encodeType string) (body []byte, err error) {
 	if encodeType == proto.ProtobufType {
-		return vol.dataPartitions.updateResponseProtobufCache(vol.ecDataPartitions, false, 0)
+		return vol.updateResponseProtobufCache(false, 0)
 	}
-	return vol.dataPartitions.updateResponseJsonCache(vol.ecDataPartitions, false, 0)
+	return vol.updateResponseJsonCache(false, 0)
 }
 
 func (vol *Vol) getDataPartitionsViewByIDs(encodeType string, dpIDs []uint64) (body []byte, err error) {
@@ -564,7 +568,10 @@ func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
 		}
 		badReplicas := dp.checkReplicaDiskError(c.Name, c.leaderInfo.addr)
 		if badReplicas != nil {
-			c.UnavailDataPartitions.Store(dp.PartitionID, badReplicas)
+			_, isExist := c.UnavailDataPartitions.LoadOrStore(dp.PartitionID, badReplicas)
+			if !isExist {
+				dp.modifyTime = time.Now().Unix()
+			}
 		}
 		dp.checkReplicationTask(c, vol.dataPartitionSize, int(vol.dpReplicaNum))
 	}
@@ -597,6 +604,12 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 	if !vol.NeedToLowerReplica {
 		return
 	}
+	if time.Now().Unix()-vol.updateTimeOfReplicaNum < c.cfg.delayMinutesReduceReplicaNum*60 {
+		log.LogWarnf("action[checkReplicaNum] vol[%v] reduce data partition replica num too frequently,updateTimeOfReplicaNum:%v,delay:%v",
+			vol.Name, vol.updateTimeOfReplicaNum, c.cfg.delayMinutesReduceReplicaNum*60)
+		return
+	}
+	log.LogInfof("action[checkReplicaNum] vol[%v] reduce data partition replica num begin", vol.Name)
 	var err error
 	dps := vol.cloneDataPartitionMap()
 	for _, dp := range dps {
@@ -616,6 +629,7 @@ func (vol *Vol) checkReplicaNum(c *Cluster) {
 	vol.checkEcReplicaNum(c)
 
 	vol.NeedToLowerReplica = false
+	log.LogInfof("action[checkReplicaNum] vol[%v] reduce data partition replica num end", vol.Name)
 }
 func (vol *Vol) checkRepairMetaPartitions(c *Cluster) {
 	var err error
@@ -858,7 +872,7 @@ func (vol *Vol) updateViewCache(c *Cluster, encodeType string) (mpsCache, viewCa
 		vol.setMpsCache(mpsCache, proto.ProtobufType)
 	}
 
-	dpResps := vol.dataPartitions.getDataPartitionsView(vol.ecDataPartitions, 0)
+	dpResps := vol.getDataPartitionsResp(0)
 	ecResps := vol.ecDataPartitions.getEcPartitionsView(0)
 	view.DataPartitions = dpResps
 	view.EcPartitions = ecResps
@@ -1419,6 +1433,7 @@ func (vol *Vol) backupConfig() *Vol {
 		InodeCountThreshold:        vol.InodeCountThreshold,
 		BitMapSnapFrozenHour:       vol.BitMapSnapFrozenHour,
 		EnableCheckDeleteEK:        vol.EnableCheckDeleteEK,
+		updateTimeOfReplicaNum:     vol.updateTimeOfReplicaNum,
 	}
 }
 
@@ -1619,7 +1634,7 @@ func (vol *Vol) checkAndUpdateDataPartitionReplicaNum(c *Cluster) {
 			return
 		}
 		dataPartition.RLock()
-		if len(dataPartition.Hosts) < int(vol.dpReplicaNum) {
+		if len(dataPartition.Hosts) != int(vol.dpReplicaNum) {
 			dataPartition.RUnlock()
 			log.LogInfo(fmt.Sprintf("action[checkAndUpdateDataPartitionReplicaNum] dp:%v replicaCount less than vol dpReplicaNum:%v can not update",
 				dataPartition.PartitionID, vol.dpReplicaNum))
@@ -1653,7 +1668,7 @@ func (vol *Vol) checkAndUpdateMetaPartitionReplicaNum(c *Cluster) {
 			return
 		}
 		metaPartition.RLock()
-		if len(metaPartition.Hosts) < int(vol.mpReplicaNum) {
+		if len(metaPartition.Hosts) != int(vol.mpReplicaNum) {
 			metaPartition.RUnlock()
 			log.LogInfo(fmt.Sprintf("action[checkAndUpdateMetaPartitionReplicaNum] mp:%v replicaCount less than vol mpReplicaNum:%v can not update",
 				metaPartition.PartitionID, vol.mpReplicaNum))

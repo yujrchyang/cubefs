@@ -133,27 +133,29 @@ const (
 	RemoveRaftNode = "/raftNode/remove"
 
 	// Node APIs
-	RegNode                        = "/node/reg"
-	AddDataNode                    = "/dataNode/add"
-	DecommissionDataNode           = "/dataNode/decommission"
-	DecommissionDisk               = "/disk/decommission"
-	GetDataNode                    = "/dataNode/get"
-	AddMetaNode                    = "/metaNode/add"
-	DecommissionMetaNode           = "/metaNode/decommission"
-	GetMetaNode                    = "/metaNode/get"
-	AdminUpdateMetaNode            = "/metaNode/update"
-	AdminLoadMetaPartition         = "/metaPartition/load"
-	AdminDiagnoseMetaPartition     = "/metaPartition/diagnose"
-	AdminResetMetaPartition        = "/metaPartition/reset"
-	AdminManualResetMetaPartition  = "/metaPartition/manualReset"
-	AdminResetCorruptMetaNode      = "/metaNode/reset"
-	AdminDecommissionMetaPartition = "/metaPartition/decommission"
-	AdminAddMetaReplica            = "/metaReplica/add"
-	AdminDeleteMetaReplica         = "/metaReplica/delete"
-	AdminSelectMetaReplicaNode     = "/metaReplica/selectNode"
-	AdminAddMetaReplicaLearner     = "/metaLearner/add"
-	AdminPromoteMetaReplicaLearner = "/metaLearner/promote"
-	AdminMetaPartitionSetIsRecover = "/metaPartition/setIsRecover"
+	RegNode                             = "/node/reg"
+	AddDataNode                         = "/dataNode/add"
+	DecommissionDataNode                = "/dataNode/decommission"
+	DecommissionDisk                    = "/disk/decommission"
+	GetDataNode                         = "/dataNode/get"
+	AddMetaNode                         = "/metaNode/add"
+	DecommissionMetaNode                = "/metaNode/decommission"
+	GetMetaNode                         = "/metaNode/get"
+	AdminUpdateMetaNode                 = "/metaNode/update"
+	AdminLoadMetaPartition              = "/metaPartition/load"
+	AdminDiagnoseMetaPartition          = "/metaPartition/diagnose"
+	AdminResetMetaPartition             = "/metaPartition/reset"
+	AdminManualResetMetaPartition       = "/metaPartition/manualReset"
+	AdminResetCorruptMetaNode           = "/metaNode/reset"
+	AdminDecommissionMetaPartition      = "/metaPartition/decommission"
+	AdminAddMetaReplica                 = "/metaReplica/add"
+	AdminDeleteMetaReplica              = "/metaReplica/delete"
+	AdminSelectMetaReplicaNode          = "/metaReplica/selectNode"
+	AdminAddMetaReplicaLearner          = "/metaLearner/add"
+	AdminPromoteMetaReplicaLearner      = "/metaLearner/promote"
+	AdminMetaPartitionSetIsRecover      = "/metaPartition/setIsRecover"
+	AdminSetVolDisableStat              = "/vol/setDisableState"
+	AdminAPISetDelayMinutesOfReplicaNum = "/delayMinutes/set"
 
 	// Operation response
 	GetMetaNodeTaskResponse   = "/metaNode/response"          // Method: 'POST', ContentType: 'application/json'
@@ -725,9 +727,10 @@ type LimitInfo struct {
 	TopologyFetchIntervalMin      int64
 	TopologyForceFetchIntervalSec int64
 
-	DataNodeDiskReservedRatio   float64
-	ApiReqBwRateLimitMap        map[uint8]int64
-	DisableClusterCheckDeleteEK bool
+	DataNodeDiskReservedRatio    float64
+	ApiReqBwRateLimitMap         map[uint8]int64
+	DisableClusterCheckDeleteEK  bool
+	DelayMinutesReduceReplicaNum int64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.
@@ -1318,8 +1321,11 @@ type SimpleVolView struct {
 	InodeCountThreshold      uint64
 	BitMapSnapFrozenHour     int64
 
-	FileTotalSize uint64
-	TrashUsedSize uint64
+	FileTotalSize                uint64
+	TrashUsedSize                uint64
+	DelayMinutesReduceReplicaNum int64
+	UpdateTimeOfReplicaNum       int64
+	DisableState                 bool
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

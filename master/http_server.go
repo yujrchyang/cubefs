@@ -173,6 +173,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminAPISetNodesLiveRatio).
 		HandlerFunc(m.setNodesLiveRatioThreshold)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAPISetDelayMinutesOfReplicaNum).
+		HandlerFunc(m.SetDelayMinutesOfReplicaNum)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetUnavailDataPartitions).
 		HandlerFunc(m.getUnavailableDataPartitions)
 
@@ -249,6 +252,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminForceDeleteVol).
 		HandlerFunc(m.markDeleteVolForce)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetVolDisableStat).
+		HandlerFunc(m.setVolDisableState)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

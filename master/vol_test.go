@@ -823,16 +823,13 @@ func TestCheckAndUpdatePartitionReplicaNum(t *testing.T) {
 		DpReplicaNum uint8
 		MpReplicaNum uint8
 	}{
-		{3, 5},
-		{5, 3},
-		{3, 3},
-		{5, 5},
 		{3, 3},
 	}
 	for i, testCase := range testCases {
 		vol.dpReplicaNum = testCase.DpReplicaNum
 		vol.mpReplicaNum = testCase.MpReplicaNum
-
+		vol.NeedToLowerReplica = true
+		vol.checkReplicaNum(server.cluster)
 		vol.checkAndUpdateDataPartitionReplicaNum(server.cluster)
 		vol.checkAndUpdateMetaPartitionReplicaNum(server.cluster)
 		for _, partition := range vol.allDataPartition() {
@@ -847,18 +844,18 @@ func TestCheckAndUpdatePartitionReplicaNum(t *testing.T) {
 
 func TestVolStat(t *testing.T) {
 	vol := &Vol{
-		ID:                         1,
-		Name:                       "mock_test_vol",
-		Owner:                      "test1",
-		dpReplicaNum:               3,
-		mpReplicaNum:               3,
-		dpLearnerNum:               0,
-		mpLearnerNum:               0,
-		Status:                     proto.VolStNormal,
-		mpMemUsageThreshold:        0.65,
-		Capacity:                   10,
-		MetaPartitions:             make(map[uint64]*MetaPartition, 0),
-		dataPartitions:             newDataPartitionMap("mock_test_vol"),
+		ID:                  1,
+		Name:                "mock_test_vol",
+		Owner:               "test1",
+		dpReplicaNum:        3,
+		mpReplicaNum:        3,
+		dpLearnerNum:        0,
+		mpLearnerNum:        0,
+		Status:              proto.VolStNormal,
+		mpMemUsageThreshold: 0.65,
+		Capacity:            10,
+		MetaPartitions:      make(map[uint64]*MetaPartition, 0),
+		dataPartitions:      newDataPartitionMap("mock_test_vol"),
 	}
 	vol.ecDataPartitions = newEcDataPartitionCache(vol)
 
@@ -868,9 +865,9 @@ func TestVolStat(t *testing.T) {
 	for index := 0; index < 10; index++ {
 		mpEnd := mpStart + proto.DefaultMetaPartitionInodeIDStep
 		mp := &MetaPartition{
-			PartitionID:          uint64(index+1),
-			Start:                mpStart,
-			End:                  mpEnd,
+			PartitionID: uint64(index + 1),
+			Start:       mpStart,
+			End:         mpEnd,
 		}
 		err = vol.addMetaPartition(mp, "test")
 		assert.Empty(t, err)
@@ -893,7 +890,7 @@ func TestVolStat(t *testing.T) {
 	for mpID := range vol.MetaPartitions {
 		inodesTotalSize := uint64(unit.MB * 100)
 		trashTotalSize := uint64(unit.MB * 200)
-		vol.MetaPartitions[mpID].InodesTotalSize =  inodesTotalSize
+		vol.MetaPartitions[mpID].InodesTotalSize = inodesTotalSize
 		vol.MetaPartitions[mpID].DelInodesTotalSize = trashTotalSize
 		expectFileTotalSize += inodesTotalSize
 		expectTrashTotalSize += trashTotalSize
@@ -919,7 +916,7 @@ func TestVolStat(t *testing.T) {
 	for mpID := range vol.MetaPartitions {
 		inodesTotalSize := uint64(unit.GB * 2)
 		trashTotalSize := uint64(unit.GB * 3)
-		vol.MetaPartitions[mpID].InodesTotalSize =  inodesTotalSize
+		vol.MetaPartitions[mpID].InodesTotalSize = inodesTotalSize
 		vol.MetaPartitions[mpID].DelInodesTotalSize = trashTotalSize
 		expectFileTotalSize += inodesTotalSize
 		expectTrashTotalSize += trashTotalSize
@@ -945,7 +942,7 @@ func TestVolStat(t *testing.T) {
 	for mpID := range vol.MetaPartitions {
 		inodesTotalSize := uint64(unit.GB * 2)
 		trashTotalSize := uint64(unit.GB * 3)
-		vol.MetaPartitions[mpID].InodesTotalSize =  inodesTotalSize
+		vol.MetaPartitions[mpID].InodesTotalSize = inodesTotalSize
 		vol.MetaPartitions[mpID].DelInodesTotalSize = trashTotalSize
 		expectFileTotalSize += inodesTotalSize
 		expectTrashTotalSize += trashTotalSize

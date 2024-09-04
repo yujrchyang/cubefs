@@ -2334,15 +2334,29 @@ func TestSetIDC(t *testing.T) {
 	if !assert.Equal(t, proto.MediumHDD, idc.getMediumType(testZone2)) {
 		t.FailNow()
 	}
-	//c.dataNodes.Range(func(key, value interface{}) bool {
-	//	node := value.(*DataNode)
-	//	if node.ZoneName == testZone2 {
-	//		if !assert.Equal(t, idc.getMediumType(testZone2), node.MType) {
-	//			t.FailNow()
-	//		}
-	//	}
-	//	return true
-	//})
+	zone, err := server.cluster.t.getZone(testZone2)
+	if err != nil {
+		t.Log(err)
+		t.FailNow()
+	}
+	zone.dataNodes.Range(func(key, value any) bool {
+		node, ok := value.(*DataNode)
+		if !ok {
+			return true
+		}
+		node.MType = zone.MType.String()
+		return true
+	})
+	c.dataNodes.Range(func(key, value interface{}) bool {
+		node := value.(*DataNode)
+		if node.ZoneName == testZone2 {
+			if !assert.Equal(t, idc.getMediumType(testZone2).String(), node.MType) {
+				t.Logf("node:%v, idc:%v", node.MType, idc.getMediumType(testZone2).String())
+				t.FailNow()
+			}
+		}
+		return true
+	})
 }
 
 func TestSmartVolRules(t *testing.T) {
@@ -4516,7 +4530,7 @@ func TestUnavailableDataPartitions(t *testing.T) {
 	reply := processReturnRawReply(reqURL, t)
 	t.Log(string(reply.Data))
 	badReplica.Status = proto.ReadOnly
-	server.cluster.checkUnavailDataPartitionsRecoveryProgress()
+	server.cluster.checkUnavailDataPartitionsProcessProgress()
 	_, ok := server.cluster.UnavailDataPartitions.Load(partition.PartitionID)
 
 	if !assert.False(t, ok) {
@@ -4551,10 +4565,10 @@ func TestVolNetConnConfig(t *testing.T) {
 	server.cluster.cfg.ZoneNetConnConfig.Store(testZone2, zoneConnConfig)
 	volView := newSimpleView(commonVol)
 	server.cluster.adjustConnConfigInfo(volView)
-	if !assert.Equal(t, zoneConnConfig.ConnectTimeoutNs, commonVol.ConnConfig.ConnectTimeoutNs) ||
-		!assert.Equal(t, zoneConnConfig.IdleTimeoutSec, commonVol.ConnConfig.IdleTimeoutSec) ||
-		!assert.Equal(t, zoneConnConfig.ReadTimeoutNs, commonVol.ConnConfig.ReadTimeoutNs) ||
-		!assert.Equal(t, zoneConnConfig.WriteTimeoutNs, commonVol.ConnConfig.WriteTimeoutNs) {
+	if !assert.Equal(t, zoneConnConfig.ConnectTimeoutNs, volView.ConnConfig.ConnectTimeoutNs) ||
+		!assert.Equal(t, zoneConnConfig.IdleTimeoutSec, volView.ConnConfig.IdleTimeoutSec) ||
+		!assert.Equal(t, zoneConnConfig.ReadTimeoutNs, volView.ConnConfig.ReadTimeoutNs) ||
+		!assert.Equal(t, zoneConnConfig.WriteTimeoutNs, volView.ConnConfig.WriteTimeoutNs) {
 		t.Fail()
 	}
 	connConfig1 := proto.ConnConfig{
@@ -4566,10 +4580,10 @@ func TestVolNetConnConfig(t *testing.T) {
 	commonVol.ConnConfig = connConfig1
 	volView = newSimpleView(commonVol)
 	server.cluster.adjustConnConfigInfo(volView)
-	if !assert.Equal(t, connConfig1.ConnectTimeoutNs, commonVol.ConnConfig.ConnectTimeoutNs) ||
-		!assert.Equal(t, connConfig1.IdleTimeoutSec, commonVol.ConnConfig.IdleTimeoutSec) ||
-		!assert.Equal(t, connConfig1.ReadTimeoutNs, commonVol.ConnConfig.ReadTimeoutNs) ||
-		!assert.Equal(t, connConfig1.WriteTimeoutNs, commonVol.ConnConfig.WriteTimeoutNs) {
+	if !assert.Equal(t, connConfig1.ConnectTimeoutNs, volView.ConnConfig.ConnectTimeoutNs) ||
+		!assert.Equal(t, connConfig1.IdleTimeoutSec, volView.ConnConfig.IdleTimeoutSec) ||
+		!assert.Equal(t, connConfig1.ReadTimeoutNs, volView.ConnConfig.ReadTimeoutNs) ||
+		!assert.Equal(t, connConfig1.WriteTimeoutNs, volView.ConnConfig.WriteTimeoutNs) {
 		t.Fail()
 	}
 	commonVol.zoneName = oldZoneName

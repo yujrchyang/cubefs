@@ -23,12 +23,12 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-func (c *Cluster) checkUnavailDataPartitionsRecoveryProgress() {
+func (c *Cluster) checkUnavailDataPartitionsProcessProgress() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogWarnf("checkUnavailDataPartitionsRecoveryProgress occurred panic,err[%v]", r)
+			log.LogWarnf("checkUnavailDataPartitionsProcessProgress occurred panic,err[%v]", r)
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
-				"checkUnavailDataPartitionsRecoveryProgress occurred panic")
+				"checkUnavailDataPartitionsProcessProgress occurred panic")
 		}
 	}()
 	unprocessedPartitionIDs := make(map[uint64]string, 0)
@@ -63,7 +63,7 @@ func (c *Cluster) checkUnavailDataPartitionsRecoveryProgress() {
 		return true
 	})
 	if len(unprocessedPartitionIDs) != 0 {
-		msg := fmt.Sprintf("action[checkUnavailDataPartitionsRecoveryProgress] clusterID[%v],has[%v] unavil dps  more than 24 hours,still not processed,ids[%v]", c.Name, len(unprocessedPartitionIDs), unprocessedPartitionIDs)
+		msg := fmt.Sprintf("action[checkUnavailDataPartitionsProcessProgress] clusterID[%v],has[%v] unavil dps  more than 24 hours,still not be processed,ids[%v]", c.Name, len(unprocessedPartitionIDs), unprocessedPartitionIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpHasNotRecover], msg)
 	}
 }
@@ -78,6 +78,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 	}()
 	c.checkFulfillDataReplica()
 	unrecoverPartitionIDs := make(map[string]uint64, 0)
+	var passedTime int64
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -100,13 +101,15 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 				replicaNum = defaultReplicaNum
 			}
 		}
+		passedTime = time.Now().Unix() - partition.modifyTime
 		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(replicaNum) {
-			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+			if passedTime > defaultUnrecoverableDuration {
 				unrecoverPartitionIDs[key.(string)] = partitionID
 			}
 			return true
 		}
-		if partition.isDataCatchUp() && len(partition.Replicas) >= int(replicaNum) && len(partition.Hosts) >= int(replicaNum) && partition.allReplicaHasRecovered() {
+		if partition.isDataCatchUp() && len(partition.Replicas) >= int(replicaNum) && len(partition.Hosts) >= int(replicaNum) &&
+			partition.allReplicaHasRecovered() && passedTime > 2*defaultIntervalToCheckHeartbeat {
 			partition.RLock()
 			if partition.isRecover {
 				partition.isRecover = false
@@ -115,7 +118,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			partition.RUnlock()
 			c.BadDataPartitionIds.Delete(key)
 		} else {
-			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+			if passedTime > defaultUnrecoverableDuration {
 				unrecoverPartitionIDs[key.(string)] = partitionID
 			}
 		}

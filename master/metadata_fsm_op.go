@@ -123,6 +123,7 @@ type clusterValue struct {
 	NodesLiveRatio                      float32
 	APIReqBwRateLimitMap                map[uint8]int64
 	DisableClusterCheckDelEK            bool
+	DelayMinutesReduceReplicaNum        int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -213,6 +214,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		NodesLiveRatio:                      c.cfg.NodesLiveRatio,
 		APIReqBwRateLimitMap:                c.cfg.APIReqBwRateLimitMap,
 		DisableClusterCheckDelEK:            c.cfg.DisableClusterCheckDeleteEK,
+		DelayMinutesReduceReplicaNum:        c.cfg.delayMinutesReduceReplicaNum,
 	}
 	return cv
 }
@@ -395,6 +397,8 @@ type volValue struct {
 	InodeCountThreshold      uint64
 	BitMapSnapFrozenHour     int64
 	EnableCheckDelEK         bool
+	DisableState             bool
+	UpdateTimeOfReplicaNum   int64
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -489,6 +493,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		InodeCountThreshold:      vol.InodeCountThreshold,
 		BitMapSnapFrozenHour:     vol.BitMapSnapFrozenHour,
 		EnableCheckDelEK:         vol.EnableCheckDeleteEK,
+		DisableState:             vol.DisableState,
+		UpdateTimeOfReplicaNum:   vol.updateTimeOfReplicaNum,
 	}
 	return
 }
@@ -1263,6 +1269,10 @@ func (c *Cluster) loadClusterValue() (err error) {
 			c.cfg.NodesLiveRatio = defaultNodesLiveRatio
 		}
 		c.cfg.DisableClusterCheckDeleteEK = cv.DisableClusterCheckDelEK
+		c.cfg.delayMinutesReduceReplicaNum = cv.DelayMinutesReduceReplicaNum
+		if cv.DelayMinutesReduceReplicaNum < defaultDelayMinutesReduceReplicaNum {
+			c.cfg.delayMinutesReduceReplicaNum = defaultDelayMinutesReduceReplicaNum
+		}
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

@@ -1422,6 +1422,7 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 		}
 	}()
 	unrecoverPartitionIDs := make(map[uint64]int64, 0)
+	var passedTime int64
 	c.BadEcPartitionIds.Range(func(key, value interface{}) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -1435,7 +1436,7 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 			return true
 		}
 
-		if ep.isEcFilesCatchUp() && ep.isEcDataCatchUp() && len(ep.ecReplicas) >= int(ep.DataUnitsNum+ep.ParityUnitsNum) {
+		if ep.isEcFilesCatchUp() && ep.isEcDataCatchUp() && len(ep.ecReplicas) >= int(ep.DataUnitsNum+ep.ParityUnitsNum) && passedTime > 2*defaultIntervalToCheckHeartbeat {
 			ep.RLock()
 			ep.isRecover = false
 			ep.PanicHosts = make([]string, 0)
@@ -1443,7 +1444,7 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 			ep.RUnlock()
 			c.BadEcPartitionIds.Delete(key)
 		} else {
-			if time.Now().Unix()-ep.modifyTime > defaultUnrecoverableDuration {
+			if passedTime > defaultUnrecoverableDuration {
 				unrecoverPartitionIDs[partitionID] = ep.modifyTime
 			}
 		}
