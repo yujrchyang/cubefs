@@ -313,6 +313,10 @@ func (s *Streamer) updateExtentCacheByReadOffset(ctx context.Context, readMaxOff
 	return false
 }
 
+func (s *Streamer) RefCount() int {
+	return s.refcnt
+}
+
 func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *common.Packet) (targetHosts []string, isErr bool) {
 	isErr = false
 	appliedIDslice := make(map[string]uint64, len(hosts))

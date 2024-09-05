@@ -347,10 +347,17 @@ func (d *Node) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fs.No
 	if !d.havePermission(proto.XATTR_FLOCK_FLAG_WRITE) {
 		return fuse.EPERM
 	}
-	err = Sup.mw.Rename_ll(ctx, d.inode, req.OldName, destDirIno, req.NewName, false)
+	var deleteIno uint64
+	deleteIno, err = Sup.mw.Rename_ll(ctx, d.inode, req.OldName, destDirIno, req.NewName)
 	if err != nil {
 		log.LogErrorf("Rename: parent(%v) req(%v) err(%v)", d.inode, req, err)
 		return ParseError(err)
+	}
+	if deleteIno > 0 {
+		streamer := Sup.ec.GetStreamer(deleteIno)
+		if streamer == nil || streamer.RefCount() == 0 {
+			Sup.mw.Evict(ctx, deleteIno, true)
+		}
 	}
 
 	Sup.ic.Delete(ctx, d.inode)

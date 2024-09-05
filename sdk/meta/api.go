@@ -525,7 +525,7 @@ func (mw *MetaWrapper) Delete_ll(ctx context.Context, parentID uint64, name stri
 	return info, nil
 }
 
-func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcName string, dstParentID uint64, dstName string, notEvict bool) (err error) {
+func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcName string, dstParentID uint64, dstName string) (deleteIno uint64, err error) {
 	var (
 		oldInode uint64
 		inode    uint64
@@ -541,31 +541,31 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	srcParentMP := mw.getPartitionByInode(ctx, srcParentID)
 	if srcParentMP == nil {
 		errmsg = "no srcParentID"
-		return syscall.ENOENT
+		return 0, syscall.ENOENT
 	}
 	dstParentMP := mw.getPartitionByInode(ctx, dstParentID)
 	if dstParentMP == nil {
 		errmsg = "no dstParentID"
-		return syscall.ENOENT
+		return 0, syscall.ENOENT
 	}
 
 	// look up for the src ino
 	status, inode, mode, err = mw.lookup(ctx, srcParentMP, srcParentID, srcName)
 	if err != nil || status != statusOK {
 		errmsg = "no srcName"
-		return statusToErrno(status)
+		return 0, statusToErrno(status)
 	}
 	srcMP := mw.getPartitionByInode(ctx, inode)
 	if srcMP == nil {
 		errmsg = "no srcIno"
-		return syscall.ENOENT
+		return 0, syscall.ENOENT
 	}
 
 	if !proto.IsDbBack {
 		status, _, err = mw.ilink(ctx, srcMP, inode)
 		if err != nil || status != statusOK {
 			errmsg = "ilink srcIno falied"
-			return statusToErrno(status)
+			return 0, statusToErrno(status)
 		}
 	}
 
@@ -573,7 +573,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	status, err = mw.dcreate(ctx, dstParentMP, dstParentID, dstName, inode, mode)
 	if err != nil {
 		errmsg = "dcreate failed"
-		return syscall.EAGAIN
+		return 0, syscall.EAGAIN
 	}
 
 	// Note that only regular files and symbolic links are allowed to be overwritten.
@@ -581,7 +581,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 		status, oldInode, err = mw.dupdate(ctx, dstParentMP, dstParentID, dstName, inode)
 		if err != nil {
 			errmsg = "dupdate failed"
-			return syscall.EAGAIN
+			return 0, syscall.EAGAIN
 		}
 	}
 
@@ -589,7 +589,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 		if status != statusOK {
 			mw.iunlink(ctx, srcMP, inode, true)
 			errmsg = "iunlink failed"
-			return statusToErrno(status)
+			return 0, statusToErrno(status)
 		}
 	}
 
@@ -599,7 +599,7 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 	// So we return error, user should check opration result manually or retry.
 	if err != nil || (status != statusOK && status != statusNoent) {
 		errmsg = "ddelete failed"
-		return statusToErrno(status)
+		return 0, statusToErrno(status)
 	}
 
 	if !proto.IsDbBack {
@@ -611,14 +611,11 @@ func (mw *MetaWrapper) Rename_ll(ctx context.Context, srcParentID uint64, srcNam
 		inodeMP := mw.getPartitionByInode(ctx, oldInode)
 		if inodeMP != nil {
 			mw.iunlink(ctx, inodeMP, oldInode, true)
-			// evict oldInode to avoid oldInode becomes orphan inode, but if has opened fd refer to this inode, donot evict
-			if !notEvict {
-				mw.ievict(ctx, inodeMP, oldInode, true)
-			}
+			deleteIno = oldInode
 		}
 	}
-	log.LogDebugf("Rename_ll: srcParentID:%v srcName:%v dstParentID:%v dstName:%v notEvict:%v", srcParentID, srcName, dstParentID, dstName, notEvict)
-	return nil
+	log.LogDebugf("Rename_ll: srcParentID:%v srcName:%v dstParentID:%v dstName:%v", srcParentID, srcName, dstParentID, dstName)
+	return
 }
 
 func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) (children []proto.Dentry, err error) {

@@ -784,9 +784,8 @@ func cfs_openat_fd(id C.int64_t, dirfd C.int, path *C.char, flags C.int, mode C.
 //export cfs_rename
 func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	var (
-		c        *client
-		notEvict bool
-		err      error
+		c   *client
+		err error
 	)
 	defer func() {
 		r := recover()
@@ -838,7 +837,7 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	c.inodeCache.Delete(nil, srcDirInode)
 	dstInfo, err := c.getInodeByPath(nil, absTo)
 	if err == nil && proto.IsDir(dstInfo.Mode) {
-		err = c.mw.Rename_ll(nil, srcDirInode, srcName, dstInfo.Inode, srcName, notEvict)
+		_, err = c.mw.Rename_ll(nil, srcDirInode, srcName, dstInfo.Inode, srcName)
 		if err != nil {
 			return errorToStatus(err)
 		}
@@ -854,12 +853,13 @@ func cfs_rename(id C.int64_t, from *C.char, to *C.char) (re C.int) {
 	// So, the dstName shuold be invalidated, too,
 	c.invalidateDentry(dstDirInode, dstName)
 	c.inodeCache.Delete(nil, dstDirInode)
-	if dstInfo != nil && c.inodeHasOpenFD(dstInfo.Inode) {
-		notEvict = true
-	}
-	err = c.mw.Rename_ll(nil, srcDirInode, srcName, dstDirInode, dstName, notEvict)
+	var deleteIno uint64
+	deleteIno, err = c.mw.Rename_ll(nil, srcDirInode, srcName, dstDirInode, dstName)
 	if err != nil {
 		return errorToStatus(err)
+	}
+	if deleteIno > 0 && !c.inodeHasOpenFD(deleteIno) {
+		c.mw.Evict(nil, deleteIno, true)
 	}
 	return statusOK
 }
@@ -1260,7 +1260,7 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 	fuseMode := uint32(mode)&0777 | uint32(os.ModeDir)
 	uid := uint32(os.Getuid())
 	gid := uint32(os.Getgid())
-	for i:=0; i<len(dirs); {
+	for i := 0; i < len(dirs); {
 		dir := dirs[i]
 		if dir == "" {
 			// skip
@@ -1268,7 +1268,7 @@ func cfs_mkdirs(id C.int64_t, path *C.char, mode C.mode_t) (re C.int) {
 			continue
 		}
 		var child uint64
-		var typ   uint32
+		var typ uint32
 		child, typ, err = c.getDentry(nil, pino, dir, true)
 		if err == nil {
 			if !os.FileMode(typ).IsDir() {

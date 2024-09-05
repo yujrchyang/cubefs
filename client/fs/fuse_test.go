@@ -56,3 +56,24 @@ func getMpByInode(mps []*proto.MetaPartitionView, inode uint64) *proto.MetaParti
 	}
 	return nil
 }
+
+func TestRenameOpenedFile(t *testing.T) {
+	testFile1 := "/cfs/mnt/TestStreamer_RenameOpenedFile1"
+	testFile2 := "/cfs/mnt/TestStreamer_RenameOpenedFile2"
+	os.Create(testFile1)
+	info1, _ := os.Stat(testFile1)
+	ino1 := info1.Sys().(*syscall.Stat_t).Ino
+	os.Create(testFile2)
+	err := os.Rename(testFile2, testFile1)
+	assert.Nil(t, err)
+	_, err = mw.InodeGet_ll(nil, ino1)
+	assert.Nil(t, err)
+
+	testName3 := "TestStreamer_RenameOpenedFile3"
+	testFile3 := "/cfs/mnt/" + testName3
+	info3, _ := mw.Create_ll(nil, proto.RootIno, testName3, 0777, 0, 0, nil)
+	err = os.Rename(testFile1, testFile3)
+	assert.Nil(t, err)
+	_, err = mw.InodeGet_ll(nil, info3.Inode)
+	assert.Equal(t, syscall.ENOENT, err)
+}
