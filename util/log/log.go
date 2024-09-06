@@ -55,6 +55,7 @@ const (
 	DefaultRollingInterval = 1 * time.Second
 	RolledExtension        = ".old"
 	MaxReservedDays        = 7 * 24 * time.Hour
+	WriterBufferMaxSize    = 128 * 1024 * 1024
 
 	unknown = "???"
 )
@@ -198,7 +199,11 @@ func (writer *asyncWriter) flushToFile() {
 	writer.logSize += int64(flushLength)
 	// TODO Unhandled errors
 	writer.file.Write(writer.flushTmp.Bytes())
-	writer.flushTmp.Reset()
+	if writer.flushTmp.Cap() > WriterBufferMaxSize {
+		writer.flushTmp = bytes.NewBuffer(make([]byte, 0, WriterBufferInitSize))
+	} else {
+		writer.flushTmp.Reset()
+	}
 }
 
 func (writer *asyncWriter) rename(newName string) error {
