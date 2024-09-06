@@ -17,6 +17,8 @@ package log
 // These tests are too simple.
 
 import (
+	"bytes"
+	"github.com/stretchr/testify/assert"
 	"os"
 	"path"
 	"testing"
@@ -90,4 +92,20 @@ func createFile(logFilePath string, modTime bool) (err error) {
 		}
 	}
 	return
+}
+
+func TestAsyncWriter_flushToFile(t *testing.T) {
+	var dir = "./test_log_write"
+	var module = "log_test"
+	InitLog(dir, module, DebugLevel, nil)
+	defer func() {
+		LogClose()
+		os.RemoveAll(dir)
+	}()
+	gLog.debugLogger.object.buffer = bytes.NewBuffer(make([]byte, 0, WriterBufferMaxSize*2))
+	gLog.debugLogger.object.flushTmp = bytes.NewBuffer(make([]byte, 0, WriterBufferMaxSize*2))
+	gLog.debugLogger.object.flushToFile()
+	gLog.debugLogger.object.flushToFile()
+	assert.Equal(t, WriterBufferInitSize, gLog.debugLogger.object.buffer.Cap())
+	assert.Equal(t, WriterBufferInitSize, gLog.debugLogger.object.flushTmp.Cap())
 }
