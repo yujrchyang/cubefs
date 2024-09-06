@@ -483,7 +483,7 @@ func TestFetchTopologyManager_FetchDPView(t *testing.T) {
 		topoManager.FetchDataPartitionView("test_vol1", newDataPartition.PartitionID)
 	}
 
-	time.Sleep(time.Duration(topoManager.forceFetchTimerIntervalSec*2) * time.Second)
+	time.Sleep(time.Duration(topoManager.forceFetchTimerIntervalSec*5) * time.Second)
 
 	//get
 	if partition := topoManager.GetPartitionFromCache("test_vol1", maxPartitionID+1); partition == nil {
@@ -565,7 +565,7 @@ func TestFetchTopologyManager_FetchDPView(t *testing.T) {
 		topoManager.FetchDataPartitionView("test_vol1", dpID)
 	}
 
-	time.Sleep(time.Duration(topoManager.forceFetchTimerIntervalSec*2) * time.Second)
+	time.Sleep(time.Duration(topoManager.forceFetchTimerIntervalSec*5) * time.Second)
 
 	for _, dpID := range needForceFetchDPIDs {
 		dpInfo := topoManager.GetPartitionFromCache("test_vol1", dpID)
