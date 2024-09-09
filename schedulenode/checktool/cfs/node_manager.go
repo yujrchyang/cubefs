@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 )
@@ -640,6 +641,77 @@ func getNodeToZoneMap(host *ClusterHost) (nodeZoneMap map[string]string, err err
 			}
 			for _, mn := range setView.MetaNodes {
 				nodeZoneMap[mn.Addr] = zoneView.Name
+			}
+		}
+	}
+	return
+}
+
+func (s *ChubaoFSMonitor) checkNodeSet() {
+	var err error
+	for _, host := range s.hosts {
+		if host.isReleaseCluster {
+			continue
+		}
+		var tv *TopologyView
+		log.LogInfof("action[checkNodeSet] start check host:%v", host.host)
+		tv, err = getTopology(host)
+		if err != nil {
+			log.LogErrorf("action[checkNodeSet] get topology failed, err:%v", err)
+			continue
+		}
+		checkNodeSetLen(tv, host.host)
+		log.LogInfof("action[checkNodeSet] finish check host:%v", host.host)
+	}
+	return
+}
+
+func checkNodeSetLen(tv *TopologyView, domain string) (badNodeSets, badMetaNodeSets []uint64) {
+	badNodeSets = make([]uint64, 0)
+	badMetaNodeSets = make([]uint64, 0)
+	minDataNodeSetDiff := 32
+	minMetaNodeSetDiff := 32
+	for _, zoneView := range tv.Zones {
+		var dataNodeSets = make([]struct {
+			SetID uint64
+			Num   int
+		}, 0)
+		var metaNodeSets = make([]struct {
+			SetID uint64
+			Num   int
+		}, 0)
+		for id, setView := range zoneView.NodeSet {
+			if setView.DataNodeLen > 0 {
+				dataNodeSets = append(dataNodeSets, struct {
+					SetID uint64
+					Num   int
+				}{SetID: id, Num: setView.DataNodeLen})
+			}
+			if setView.MetaNodeLen > 0 {
+				metaNodeSets = append(metaNodeSets, struct {
+					SetID uint64
+					Num   int
+				}{SetID: id, Num: setView.MetaNodeLen})
+			}
+		}
+		if len(dataNodeSets) >= 2 {
+			sort.Slice(dataNodeSets, func(i, j int) bool {
+				return dataNodeSets[i].Num < dataNodeSets[j].Num
+			})
+			if dataNodeSets[0].Num < dataNodeSets[1].Num*50/100 || dataNodeSets[1].Num-dataNodeSets[0].Num > minDataNodeSetDiff {
+				msg := fmt.Sprintf("Domain[%v] zone[%v] data nodeset[%v] too small[%v]", domain, zoneView.Name, dataNodeSets[0].SetID, dataNodeSets[0].Num)
+				exporter.WarningBySpecialUMPKey(UMPCFSNodeSetNumKey, msg)
+				badNodeSets = append(badNodeSets, dataNodeSets[0].SetID)
+			}
+		}
+		if len(metaNodeSets) >= 2 {
+			sort.Slice(metaNodeSets, func(i, j int) bool {
+				return metaNodeSets[i].Num < metaNodeSets[j].Num
+			})
+			if metaNodeSets[0].Num < metaNodeSets[1].Num*50/100 || metaNodeSets[1].Num-metaNodeSets[0].Num > minMetaNodeSetDiff {
+				msg := fmt.Sprintf("Domain[%v] zone[%v] meta nodeset[%v] too small[%v]", domain, zoneView.Name, metaNodeSets[0].SetID, metaNodeSets[0].Num)
+				exporter.WarningBySpecialUMPKey(UMPCFSNodeSetNumKey, msg)
+				badMetaNodeSets = append(badMetaNodeSets, metaNodeSets[0].SetID)
 			}
 		}
 	}
