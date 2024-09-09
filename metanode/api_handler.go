@@ -144,6 +144,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/createInodeForTest", m.createInodeForTest)
 
 	http.HandleFunc("/getRecorderById", m.getRecorderByIDHandler)
+	http.HandleFunc("/checkDirInodeNlink", m.checkDirInodeNLink)
 	return
 }
 
@@ -3388,7 +3389,6 @@ func (m *MetaNode) createInodeForTest(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
-
 func (m *MetaNode) getRecorderByIDHandler(w http.ResponseWriter, r *http.Request) {
 	r.ParseForm()
 	resp := NewAPIResponse(http.StatusBadRequest, "")
@@ -3429,4 +3429,57 @@ func (m *MetaNode) getRecorderByIDHandler(w http.ResponseWriter, r *http.Request
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
+}
+
+func (m *MetaNode) checkDirInodeNLink(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[checkDirInodeNLink] response %s", err)
+		}
+	}()
+
+	if err := r.ParseForm(); err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	var (
+		partition               MetaPartition
+		nlinkWithUnexpectInodes []uint64
+	)
+	partition, err = m.metadataManager.GetPartition(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	mp, ok := partition.(*metaPartition)
+	if !ok {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = "error type assert"
+		return
+	}
+
+	nlinkWithUnexpectInodes, err = mp.checkDirInodeNlink()
+	if err != nil {
+		resp.Code = http.StatusInternalServerError
+		resp.Msg = err.Error()
+		return
+	}
+
+	resp.Code = http.StatusOK
+	resp.Msg = "OK"
+	resp.Data = nlinkWithUnexpectInodes
+	return
 }

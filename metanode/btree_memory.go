@@ -222,6 +222,18 @@ func (b *MemSnapShot) ApplyID() uint64 {
 	return b.applyID
 }
 
+func (b *MemSnapShot) GetInode(inoID uint64) (ino *Inode, err error) {
+	return b.inode.Get(inoID)
+}
+
+func (b *MemSnapShot) FirstDentry() (den *Dentry, err error) {
+	err = b.dentry.Range(nil, nil, func(d *Dentry) (bool, error) {
+		den = d
+		return false, nil
+	})
+	return
+}
+
 var _ InodeTree = &InodeBTree{}
 var _ DentryTree = &DentryBTree{}
 var _ ExtendTree = &ExtendBTree{}
