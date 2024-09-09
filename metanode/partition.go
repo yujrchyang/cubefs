@@ -1985,3 +1985,50 @@ func (mp *metaPartition) updateInodesTotalSize(addSize uint64, subSize uint64) {
 	log.LogDebugf("updateInodesTotalSize, partitionID: %v, oldSize: %v, addSize: %v, subSize: %v, newSize:%v",
 		mp.config.PartitionId, oldSize, addSize, subSize, newSize)
 }
+
+func (mp *metaPartition) checkDirInodeNlink() (nlinkWithUnexpectInodes []uint64, err error) {
+	snap := NewSnapshot(mp)
+	if snap == nil {
+		err = fmt.Errorf("can not get mp[%d] snapshot", mp.config.PartitionId)
+		return
+	}
+	defer snap.Close()
+
+	nlinkWithUnexpectInodes = make([]uint64, 0)
+	var checkingIno = uint64(0)
+	var actualNlink = uint32(2)
+	var den *Dentry
+	var ino *Inode
+
+	if den, err = snap.FirstDentry(); err != nil {
+		err = fmt.Errorf("get mp[%v] first check ino id failed: %v", mp.config.PartitionId, err)
+		return
+	}
+
+	if den != nil {
+		checkingIno = den.ParentId
+	}
+
+	err = snap.Range(DentryType, func(item interface{}) (bool, error) {
+		den = item.(*Dentry)
+		if den.ParentId != checkingIno {
+			ino, err = snap.GetInode(checkingIno)
+			if err != nil {
+				return false, err
+			}
+
+			if ino != nil && ino.NLink != actualNlink {
+				nlinkWithUnexpectInodes = append(nlinkWithUnexpectInodes, checkingIno)
+				log.LogErrorf("inode with unexpect nlink, partitionID: %v, ino: %v, expect: %v, actual: %v",
+					mp.config.PartitionId, checkingIno, actualNlink, ino.NLink)
+			}
+
+			checkingIno = den.ParentId
+			actualNlink = 2
+		}
+
+		actualNlink++
+		return true, nil
+	})
+	return
+}

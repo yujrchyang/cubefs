@@ -1702,3 +1702,38 @@ func (r *RocksSnapShot) CrcSum(tp TreeType) (crcSum uint32, err error) {
 func (r *RocksSnapShot) ApplyID() uint64 {
 	return r.baseInfo.applyId
 }
+
+func (r *RocksSnapShot) GetInode(inoID uint64) (ino *Inode, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("[GetInodeByRocksSnap] Get failed, inode:%v err:%v", inoID, err)
+		}
+	}()
+
+	var bs []byte
+	bs, err = r.tree.db.GetBytes(inodeEncodingKey(inoID))
+	if err != nil {
+		return
+	}
+	if len(bs) == 0 {
+		return
+	}
+	ino = NewInode(inoID, 0)
+	if err = ino.Unmarshal(context.Background(), bs); err != nil {
+		log.LogErrorf("[GetInodeByRocksSnap] unmarshal value error : %v", err)
+	}
+	return
+}
+
+func (r *RocksSnapShot) FirstDentry() (den *Dentry, err error) {
+	tableType := getTableTypeKey(DentryType)
+	callbackFunc := func(k, v []byte) (bool, error) {
+		den = new(Dentry)
+		if err = den.Unmarshal(v); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	err = r.tree.db.RangeWithSnap([]byte{byte(tableType)}, []byte{byte(tableType) + 1}, r.snap, callbackFunc)
+	return
+}
