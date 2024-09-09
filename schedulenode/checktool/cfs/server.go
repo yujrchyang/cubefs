@@ -42,6 +42,7 @@ const (
 	UMPCFSSparkFixPartitionKey              = checktool.UmpKeyStorageBotPrefix + "cfs.fix_bad_replica"
 	UMPCFSSparkFlashNodeVersionKey          = checktool.UmpKeyStorageBotPrefix + "cfs.flashnode.version"
 	UMPCFSMasterMetaCompareKey              = checktool.UmpKeyStorageBotPrefix + "cfs.master.rocksdb.compare"
+	UMPCFSNodeSetNumKey                     = checktool.UmpKeyStorageBotPrefix + "cfs.nodeset.num"
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024
 	defaultMpNoLeaderWarnInternal           = 10 * 60
@@ -310,6 +311,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.scheduleToReloadDP()
 	go s.NewSchedule(s.checkDataNodeRiskData, time.Hour)
 	go s.NewSchedule(s.checkMasterMetadata, time.Hour)
+	go s.NewSchedule(s.checkNodeSet, time.Hour)
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
