@@ -90,6 +90,8 @@ type Snapshot interface {
 	ApplyID() uint64
 	RangeDentryTreeWithPrefix(prefix, start, end *Dentry, cb func(item *Dentry) (bool, error)) error
 	RangeDelDentryTreeWithPrefix(prefix, start, end *DeletedDentry, cb func(item *DeletedDentry) (bool, error)) error
+	GetInode(inoID uint64) (*Inode, error)
+	FirstDentry() (*Dentry, error)
 }
 
 type Tree interface {

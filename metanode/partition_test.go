@@ -467,3 +467,97 @@ func TestMetaPartition_updateStatus(t *testing.T) {
 	mp.updateStatus()
 	assert.Equal(t, int8(proto.ReadWrite), mp.status, "mp status expect readWrite")
 }
+
+func TestMetaPartition_checkDirInodeNlink(t *testing.T) {
+	tests := []struct {
+		name      string
+		storeMode proto.StoreMode
+		mockCheckFailed bool
+	}{
+		{
+			name:            "test1",
+			storeMode:       proto.StoreModeMem,
+			mockCheckFailed: false,
+		},
+		{
+			name:            "test2",
+			storeMode:       proto.StoreModeRocksDb,
+			mockCheckFailed: false,
+		},
+		{
+			name:            "test3",
+			storeMode:       proto.StoreModeMem,
+			mockCheckFailed: true,
+		},
+		{
+			name:            "test4",
+			storeMode:       proto.StoreModeRocksDb,
+			mockCheckFailed: true,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			rootDir := "./test_check_nlink"
+			mp, err := mockMetaPartition(1, 1, test.storeMode, rootDir, ApplyMock)
+			if err != nil {
+				t.Errorf("mock meta partition failed:%v", err)
+				return
+			}
+			defer releaseMetaPartition(mp)
+
+			mp.config.Cursor = mp.config.Start
+
+			parentInos := make([]uint64, 0, 1000)
+			for index := 0; index < 1000; index++ {
+				ino, _ := createInode(uint32(os.ModeDir), 0, 0, mp)
+				parentInos = append(parentInos, ino)
+			}
+
+			var fileNameGen = func(i int) string{
+				return fmt.Sprintf("test_0%v", i)
+			}
+
+			rand.Seed(time.Now().UnixMilli())
+			for _, ino := range parentInos {
+				err = createDentries(mp, ino, rand.Intn(1000) + 1, uint32(460), 100000, fileNameGen)
+				if err != nil {
+					t.Errorf("create dentry failed: %v", err)
+					return
+				}
+			}
+
+			var nlinkWithUnexpectInodes []uint64
+			nlinkWithUnexpectInodes, err = mp.checkDirInodeNlink()
+			if err != nil {
+				t.Errorf("check dir inode nlink failed: %v", err)
+				return
+			}
+			assert.Equal(t, int(0), len(nlinkWithUnexpectInodes))
+
+			if test.mockCheckFailed {
+				expectFailedInodes := make([]uint64, 0)
+				for index := 0; index < len(parentInos); index++ {
+					if index%3 != 1 {
+						continue
+					}
+					parentInode, _ := mp.inodeTree.Get(parentInos[index])
+					assert.NotNil(t, parentInode)
+					err = unlinkInode(parentInode.Inode, mp, false)
+					if err != nil {
+						t.Errorf("unlink inode failed: %v", err)
+					}
+					expectFailedInodes = append(expectFailedInodes, parentInode.Inode)
+				}
+
+				nlinkWithUnexpectInodes, err = mp.checkDirInodeNlink()
+				if err != nil {
+					t.Errorf("check dir inode nlink failed: %v", err)
+					return
+				}
+				assert.Equal(t, expectFailedInodes, nlinkWithUnexpectInodes)
+
+			}
+		})
+	}
+
+}
