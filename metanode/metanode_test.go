@@ -301,7 +301,7 @@ func initEnv() error {
 	}
 	for _, file := range files {
 		if file.IsDir() {
-			if file.Name() == "metamock" || file.Name() == "logs"{
+			if file.Name() == "metamock" {
 				continue
 			}
 			err = os.RemoveAll(file.Name())
