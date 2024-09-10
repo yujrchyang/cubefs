@@ -287,7 +287,7 @@ func handleBadItem(dbPath, prefix string, k string, v []byte) string {
 			log.LogErrorf("%v\n", err)
 			return "NULL"
 		}
-		return fmt.Sprintf("dbPath:%v prefix:%v key:%v val:ovol(%v)nvol(%v)zone(%v)stat(%v)owner(%v)", dbPath, prefix, k, vv.OldVolName, vv.NewVolName, vv.ZoneName, vv.Status, vv.Owner)
+		return fmt.Sprintf("dbPath:%v prefix:%v key:%v val:name(%v)oname(%v)nname(%v)zone(%v)stat(%v)owner(%v)cap(%v)deltime(%v)", dbPath, prefix, k, vv.Name, vv.OldVolName, vv.NewVolName, vv.ZoneName, vv.Status, vv.Owner, vv.Capacity, vv.MarkDeleteTime)
 	default:
 		json.Indent(&out, v, "", "\t")
 		result := fmt.Sprintf("dbPath:%v prefix:%v, key:%v, val:%v\n", dbPath, prefix, k, out.String())
