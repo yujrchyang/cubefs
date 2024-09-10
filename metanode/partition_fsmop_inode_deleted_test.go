@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/jacobsa/daemonize"
 	"hash/crc32"
 	"math"
 	"math/rand"
@@ -14,15 +12,6 @@ import (
 	"testing"
 	"time"
 )
-
-func init() {
-	level := log.DebugLevel
-	_, err := log.InitLog("./logs", "test", level, nil)
-	if err != nil {
-		daemonize.SignalOutcome(err)
-		os.Exit(1)
-	}
-}
 
 func mockInodeTree() InodeTree {
 	tree := NewBtree()

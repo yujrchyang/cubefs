@@ -33,10 +33,6 @@ type MockDataNode struct {
 	tcpListener net.Listener
 }
 
-func init() {
-	mockMaster()
-}
-
 func (s *MockDataNode) handleRequest(packet *proto.Packet, conn net.Conn) {
 	switch packet.Opcode {
 	case proto.OpBatchDeleteExtent:

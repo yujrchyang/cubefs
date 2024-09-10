@@ -8,6 +8,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/jacobsa/daemonize"
 	"net"
 	"net/http"
 	"os"
@@ -300,7 +301,7 @@ func initEnv() error {
 	}
 	for _, file := range files {
 		if file.IsDir() {
-			if file.Name() == "metamock" || file.Name() == "logs"{
+			if file.Name() == "metamock" {
 				continue
 			}
 			err = os.RemoveAll(file.Name())
@@ -332,6 +333,16 @@ func TestMain(m *testing.M) {
 		fmt.Printf("metanode init failed:%s\n", err.Error())
 		return
 	}
+
+	level := log.DebugLevel
+	_, err = log.InitLog("./logs", "test", level, nil)
+	if err != nil {
+		daemonize.SignalOutcome(err)
+		os.Exit(1)
+	}
+
+	mockMaster()
+
 	m.Run()
 	log.LogFlush()
 	destoryEnv()
