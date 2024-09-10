@@ -130,8 +130,12 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 	for _, r := range mp.Replicas {
 		var mnPartition *meta.GetMPInfoResp
 		addr := strings.Split(r.Addr, ":")[0]
-		metaHttpClient := meta.NewMetaHttpClient(fmt.Sprintf("%s:%s", strings.Split(r.Addr, ":")[0], profPortMap[strings.Split(r.Addr, ":")[1]]), false)
-
+		var metaHttpClient *meta.MetaHttpClient
+		if ch.isReleaseCluster {
+			metaHttpClient = meta.NewDBBackMetaHttpClient(fmt.Sprintf("%s:%s", strings.Split(r.Addr, ":")[0], profPortMap[strings.Split(r.Addr, ":")[1]]), false)
+		} else {
+			metaHttpClient = meta.NewMetaHttpClient(fmt.Sprintf("%s:%s", strings.Split(r.Addr, ":")[0], profPortMap[strings.Split(r.Addr, ":")[1]]), false)
+		}
 		for i := 0; i < 3; i++ {
 			if mnPartition, err = metaHttpClient.GetMetaPartition(mp.PartitionID); err == nil {
 				break

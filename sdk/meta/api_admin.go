@@ -143,7 +143,7 @@ func (c *MetaHttpClient) httpRequest(method, url string, param, header map[strin
 	client.Timeout = c.requestTimeOut
 	var req *http.Request
 	fullUrl := c.mergeRequestUrl(url, param)
-	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
+	//log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
 	}
@@ -207,7 +207,7 @@ func (mc *MetaHttpClient) GetMetaPartition(pid uint64) (resp *GetMPInfoResp, err
 	req := newAPIRequest(http.MethodGet, "/getPartitionById")
 	req.addParam("pid", fmt.Sprintf("%v", pid))
 	respData, err := mc.serveRequest(req)
-	log.LogInfof("err:%v,respData:%v\n", err, string(respData))
+	//log.LogInfof("err:%v,respData:%v\n", err, string(respData))
 	if err != nil {
 		return
 	}
