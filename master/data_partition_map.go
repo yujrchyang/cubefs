@@ -210,7 +210,7 @@ func (vol *Vol) getDataPartitionsResp(minPartitionID uint64) (dpResps []*proto.D
 			}
 		}
 		dpReplicaNum := int(vol.dpReplicaNum)
-		if vol.NeedToLowerReplica && len(dpResp.Hosts) > dpReplicaNum && vol.FollowerRead == false {
+		if vol.NeedToLowerReplica && len(dpResp.Hosts) > dpReplicaNum && vol.FollowerRead == true {
 			dpResp.Hosts = dpResp.Hosts[0:dpReplicaNum]
 		}
 		dpResps = append(dpResps, dpResp)
@@ -226,7 +226,7 @@ func (vol *Vol) getDataPartitionsResp(minPartitionID uint64) (dpResps []*proto.D
 		dpResp := ep.DataPartition.convertToDataPartitionResponse()
 		ep.appendEcInfoToDataPartitionResponse(dpResp)
 		dpReplicaNum := int(vol.dpReplicaNum)
-		if vol.NeedToLowerReplica && len(dpResp.Hosts) > dpReplicaNum && vol.FollowerRead == false {
+		if vol.NeedToLowerReplica && len(dpResp.Hosts) > dpReplicaNum && vol.FollowerRead == true {
 			dpResp.Hosts = dpResp.Hosts[0:dpReplicaNum]
 		}
 		dpResps = append(dpResps, dpResp)
