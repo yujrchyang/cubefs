@@ -154,7 +154,7 @@ func (mp *metaPartition) deleteWorker() {
 
 		batchCount := mp.GetBatchDelInodeCnt()
 		buffSlice := mp.freeList.Get(int(batchCount))
-		mp.persistDeletedInodes(buffSlice)
+		//mp.persistDeletedInodes(buffSlice)
 		leaderTerm, isLeader = mp.LeaderTerm()
 		if !isLeader {
 			time.Sleep(AsyncDeleteInterval)
@@ -322,6 +322,7 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 	for _, ino := range inoSlice {
 		if _, ok := mp.freeLaterInodes[ino]; ok {
 			log.LogDebugf("[deleteMarkedInodes], inode(%v) need free later", ino)
+			time.Sleep(5*time.Microsecond)
 			continue
 		}
 		var inodeVal *Inode
