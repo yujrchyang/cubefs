@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/common/cfs"
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -73,22 +74,39 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 	checkNodeWg.Wait()
 }
 
-func (cv *ClusterView) checkMetaNodeAlive(host *ClusterHost) {
+func (cv *ClusterView) confirmCheckMetaNodeAlive(host *ClusterHost, enableWarn bool) (inactiveMetaNodes map[string]*DeadNode) {
+	confirmThreshold := 5
 	deadNodes := make([]MetaNodeView, 0)
 	for _, mn := range cv.MetaNodes {
 		if mn.Status == false {
 			deadNodes = append(deadNodes, mn)
 		}
 	}
-	inactiveLen := len(deadNodes)
-	if inactiveLen == 0 {
+	if len(deadNodes) == 0 {
 		if len(host.deadMetaNodes) != 0 {
 			host.deadMetaNodes = make(map[string]*DeadNode, 0)
 		}
 		return
 	}
-
-	inactiveMetaNodes := make(map[string]*DeadNode, 0)
+	retry := host.metaNodeAliveRetryToken
+	if retry > 0 && len(deadNodes) >= confirmThreshold {
+		var confirmDeadCount int
+		for _, mn := range deadNodes[:confirmThreshold] {
+			if confirmMetaNodeActive(mn.Addr, host.isReleaseCluster) {
+				log.LogWarnf("action[confirmCheckMetaNodeAlive] domain[%v] metanode[%v] maybe active", host.host, mn.Addr)
+				continue
+			}
+			confirmDeadCount++
+		}
+		if confirmDeadCount < 2 {
+			retry--
+			host.metaNodeAliveRetryToken = retry
+			log.LogWarnf("action[checkMetaNodeAlive] confirm check metanode alive conflict with cluster view, please retry")
+			return
+		}
+	}
+	inactiveLen := len(deadNodes)
+	inactiveMetaNodes = make(map[string]*DeadNode, 0)
 	var (
 		metaNode *DeadNode
 		ok       bool
@@ -102,8 +120,18 @@ func (cv *ClusterView) checkMetaNodeAlive(host *ClusterHost) {
 	}
 	host.deadMetaNodes = inactiveMetaNodes
 	log.LogWarnf("action[checkMetaNodeAlive] %v has %v inactive meta nodes %v", host.host, len(inactiveMetaNodes), deadNodes)
-	msg := fmt.Sprintf("%v has %v inactive meta nodes,some of which have been inactive for five minutes,", host, inactiveLen)
-	host.doProcessAlarm(host.deadMetaNodes, msg, metaNodeType)
+	if enableWarn {
+		msg := fmt.Sprintf("%v has %v inactive meta nodes,some of which have been inactive for five minutes,", host, inactiveLen)
+		host.doProcessAlarm(host.deadMetaNodes, msg, metaNodeType)
+	}
+	return
+}
+
+func (cv *ClusterView) checkMetaNodeAlive(host *ClusterHost) {
+	inactiveMetaNodes := cv.confirmCheckMetaNodeAlive(host, true)
+	if len(inactiveMetaNodes) == 0 {
+		return
+	}
 	for addr, t := range host.offlineMetaNodesIn24Hour {
 		if time.Since(t) > 24*time.Hour {
 			delete(host.offlineMetaNodesIn24Hour, addr)
@@ -281,9 +309,11 @@ func (cv *ClusterView) checkFlashNodeAlive(host *ClusterHost) {
 	}
 	host.deadFlashNodes = inactiveFlashNodes
 	log.LogWarnf("action[checkFlashNodeAlive] %v has %v inactive flash nodes", host.host, len(inactiveFlashNodes))
-	msg := fmt.Sprintf("%v has %v inactive flash nodes,some of which have been inactive for five minutes,", host, inactiveLen)
+	msg := fmt.Sprintf("%v has %v inactive flash nodes,some of which have been inactive for 5 minutes,", host, inactiveLen)
 	host.doProcessAlarm(host.deadFlashNodes, msg, flashNodeType)
-	if len(inactiveFlashNodes) <= defaultMaxOfflineFlashNodesIn24Hour {
+	return
+	// do not auto offline flashnodes
+	/*	if len(inactiveFlashNodes) <= defaultMaxOfflineFlashNodesIn24Hour {
 		for _, fn := range inactiveFlashNodes {
 			flashNodeView, err := getFlashNode(host, fn.Addr)
 			if err != nil {
@@ -307,24 +337,80 @@ func (cv *ClusterView) checkFlashNodeAlive(host *ClusterHost) {
 				offlineFlashNode(host, flashNodeView.Addr)
 			}
 		}
-	}
+	}*/
 }
 
-func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor) {
+func confirmDataNodeActive(addr string, isDbback bool) (active bool) {
+	var err error
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[confirmDataNodeActive] addr[%v] err:%v", addr, err)
+		}
+	}()
+	dataClient := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPortMap[strings.Split(addr, ":")[1]]), false)
+	if isDbback {
+		_, err = dataClient.GetDbbackDataNodeStats()
+		if err != nil {
+			return false
+		}
+	} else {
+		_, err = dataClient.GetDatanodeStats()
+		if err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func confirmMetaNodeActive(addr string, isDbback bool) (active bool) {
+
+	var metaClient *meta.MetaHttpClient
+	if isDbback {
+		metaClient = meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPortMap[strings.Split(addr, ":")[1]]), false)
+	} else {
+		metaClient = meta.NewDBBackMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPortMap[strings.Split(addr, ":")[1]]), false)
+	}
+	_, err := metaClient.GetStatInfo()
+	if err != nil {
+		return false
+	}
+	return true
+}
+
+func (cv *ClusterView) confirmCheckDataNodeAlive(host *ClusterHost, enableWarn bool) (inactiveDataNodes map[string]*DeadNode) {
+	confirmThreshold := 5
+	inactiveDataNodes = make(map[string]*DeadNode, 0)
 	deadNodes := make([]DataNodeView, 0)
 	for _, dn := range cv.DataNodes {
 		if dn.Status == false {
 			deadNodes = append(deadNodes, dn)
 		}
 	}
-	inactiveLen := len(deadNodes)
-	if inactiveLen == 0 {
+	if len(deadNodes) == 0 {
 		if len(host.deadDataNodes) != 0 {
 			host.deadDataNodes = make(map[string]*DeadNode, 0)
 		}
 		return
 	}
-	inactiveDataNodes := make(map[string]*DeadNode, 0)
+	retry := host.dataNodeAliveRetryToken
+	if retry > 0 && len(deadNodes) >= confirmThreshold {
+		var confirmDeadCount int
+		for _, dn := range deadNodes[:confirmThreshold] {
+			if confirmDataNodeActive(dn.Addr, host.isReleaseCluster) {
+				log.LogWarnf("action[confirmCheckDataNodeAlive] domain[%v] datanode[%v] maybe active", host.host, dn.Addr)
+				continue
+			}
+			confirmDeadCount++
+		}
+		if confirmDeadCount < 2 {
+			retry--
+			host.dataNodeAliveRetryToken = retry
+			log.LogWarnf("action[checkDataNodeAlive] confirm check datanode alive conflict with cluster view, please retry")
+			return
+		}
+	}
+
+	inactiveLen := len(deadNodes)
 	var (
 		dataNode *DeadNode
 		ok       bool
@@ -338,8 +424,18 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 	}
 	host.deadDataNodes = inactiveDataNodes
 	log.LogWarnf("action[checkDataNodeAlive] %v has %v inactive data nodes %v", host.host, len(inactiveDataNodes), deadNodes)
-	msg := fmt.Sprintf("%v has %v inactive data nodes,some of which have been inactive for five minutes,", host, inactiveLen)
-	host.doProcessAlarm(host.deadDataNodes, msg, dataNodeType)
+	if enableWarn {
+		msg := fmt.Sprintf("%v has %v inactive data nodes,some of which have been inactive for five minutes,", host, inactiveLen)
+		host.doProcessAlarm(host.deadDataNodes, msg, dataNodeType)
+	}
+	return
+}
+
+func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor) {
+	inactiveDataNodes := cv.confirmCheckDataNodeAlive(host, true)
+	if len(inactiveDataNodes) == 0 {
+		return
+	}
 	nodeZoneMap, err := getNodeToZoneMap(host)
 	if err != nil {
 		log.LogErrorf("action[getNodeToZoneMap] host[%v] err[%v]", host.host, err)
@@ -383,7 +479,7 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 					if len(host.offlineDataNodesIn24Hour) < s.offlineDataNodeMaxCountIn24Hour {
 						host.offlineDataNodesIn24Hour[dataNodeView.Addr] = time.Now()
 						log.LogDebugf("action[checkDataNodeAlive] offlineDataNodesIn24Hour:%v", host.offlineDataNodesIn24Hour)
-						if _, ok = host.inOfflineDiskDataNodes[dataNodeView.Addr]; !ok {
+						if _, ok := host.inOfflineDiskDataNodes[dataNodeView.Addr]; !ok {
 							host.inOfflineDiskDataNodes[dataNodeView.Addr] = dataNodeView.ReportTime
 							log.LogDebugf("action[checkDataNodeAlive] inOfflineDiskDataNodes:%v", host.inOfflineDiskDataNodes)
 						}
@@ -399,7 +495,7 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 							delete(s.lastCheckStartTime, dataNodeView.Addr)
 							continue
 						}
-						if _, ok = host.inOfflineDiskDataNodes[dataNodeView.Addr]; ok {
+						if _, ok := host.inOfflineDiskDataNodes[dataNodeView.Addr]; ok {
 							// 如果超过8小时 直接执行节点下线
 							// 需要控制节点剩余DP数量，避免正在下线的DP数量过多
 							badDPsCount, err1 := getBadPartitionIDsCount(host)
@@ -425,6 +521,7 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 			}
 		}
 	}
+	return
 }
 
 func offlineBadDataNodeOneDisk(host *ClusterHost) {
@@ -645,6 +742,15 @@ func getNodeToZoneMap(host *ClusterHost) (nodeZoneMap map[string]string, err err
 		}
 	}
 	return
+}
+
+// 每间隔半小时，给meta/data分发重试token，当meta/data在检查节点存活时，如果有多节点出错，在获得token的情况下，允许进行二次确认；没有token则不进行确认。
+// 主要为了避免master升级过程中的误报，增加一定的容错机制。同时也为了避免因为容错机制和master心跳的判断之间存在分歧而导致master的有效报警被意外屏蔽。
+func (s *ChubaoFSMonitor) resetNodeAliveRetryToken() {
+	for _, host := range s.hosts {
+		host.dataNodeAliveRetryToken = 3
+		host.metaNodeAliveRetryToken = 3
+	}
 }
 
 func (s *ChubaoFSMonitor) checkNodeSet() {

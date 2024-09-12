@@ -229,3 +229,30 @@ type DataPartitionViewDbBack struct {
 	Files     []*FileInfo `json:"files"`
 	FileCount int         `json:"fileCount"`
 }
+
+type DbbackPartitionReport struct {
+	PartitionID          uint64
+	PartitionStatus      int
+	Total                uint64
+	Used                 uint64
+	DiskPath             string
+	ExtentCount          int
+	NeedCompare          bool
+	AvaliTinyExtentCnt   int
+	UnavaliTinyExtentCnt int
+	VolName              string
+}
+
+type DbbackDataNodeHeartBeatResponse struct {
+	Total                           uint64
+	Used                            uint64
+	Available                       uint64
+	CreatedPartitionWeights         uint64 //volCnt*volsize
+	RemainWeightsForCreatePartition uint64 //all-usedvolsWieghts
+	CreatedPartitionCnt             uint32
+	MaxWeightsForCreatePartition    uint64
+	RackName                        string
+	PartitionInfo                   []*DbbackPartitionReport
+	Status                          uint8
+	Result                          string
+}

@@ -312,6 +312,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.NewSchedule(s.checkDataNodeRiskData, time.Hour)
 	go s.NewSchedule(s.checkMasterMetadata, time.Hour)
 	go s.NewSchedule(s.checkNodeSet, time.Hour)
+	go s.NewSchedule(s.resetNodeAliveRetryToken, time.Minute*30)
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
