@@ -130,6 +130,9 @@ func (fsckWorker *FSCheckWorker) ConsumeTask(task *proto.Task) (restore bool, er
 	if fsckWorker.NodeException {
 		return
 	}
+	if task.Status == proto.TaskStatusSucceed {
+		return
+	}
 	masterClient, ok := fsckWorker.mcw[task.Cluster]
 	if !ok {
 		log.LogErrorf("ConsumeTask get cluster %s masterClient failed", task.Cluster)

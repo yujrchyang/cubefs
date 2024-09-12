@@ -286,10 +286,18 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	wt := make([]proto.WorkerType, 0)
 	wt = append(wt, proto.WorkerTypeSmartVolume)
 	wt = append(wt, proto.WorkerTypeCompact)
-	wt = append(wt, proto.WorkerTypeFSCheck)
-	wt = append(wt, proto.WorkerTypeBlockCheck)
-	wt = append(wt, proto.WorkerTypeMetaDataCrcCheck)
-	wt = append(wt, proto.WorkerTypeNormalExtentMistakeDelCheck)
+	if cfg.GetBool(config.ConfigKeyEnableFsCheck) {
+		wt = append(wt, proto.WorkerTypeFSCheck)
+	}
+	if cfg.GetBool(config.ConfigKeyEnableBlockCheck) {
+		wt = append(wt, proto.WorkerTypeBlockCheck)
+	}
+	if cfg.GetBool(config.ConfigKeyEnableMetaDataCheck) {
+		wt = append(wt, proto.WorkerTypeMetaDataCrcCheck)
+	}
+	if cfg.GetBool(config.ConfigKeyEnableNormalEKCheck) {
+		wt = append(wt, proto.WorkerTypeNormalExtentMistakeDelCheck)
+	}
 	if cfg.GetBool(config.ConfigKeyEnableCrcWorker) {
 		wt = append(wt, proto.WorkerTypeCheckCrc)
 	}

@@ -55,13 +55,17 @@ const (
 	ConfigKeyEncryptPass = "database.password"
 
 	// leader elect config
-	ConfigKeyHeartbeat        = "heartbeat"        // int
-	ConfigKeyLeaderPeriod     = "leaderPeriod"     // int
-	ConfigKeyFollowerPeriod   = "followerPeriod"   // int
-	ConfigKeyWorkerHeartbeat  = "workerHeartbeat"  // int
-	ConfigKeyWorkerPeriod     = "workerPeriod"     // int
-	ConfigKeyWorkerTaskPeriod = "workerTaskPeriod" // int
-	ConfigKeyEnableCrcWorker  = "enableCrcWorker"
+	ConfigKeyHeartbeat           = "heartbeat"        // int
+	ConfigKeyLeaderPeriod        = "leaderPeriod"     // int
+	ConfigKeyFollowerPeriod      = "followerPeriod"   // int
+	ConfigKeyWorkerHeartbeat     = "workerHeartbeat"  // int
+	ConfigKeyWorkerPeriod        = "workerPeriod"     // int
+	ConfigKeyWorkerTaskPeriod    = "workerTaskPeriod" // int
+	ConfigKeyEnableCrcWorker     = "enableCrcWorker"
+	ConfigKeyEnableFsCheck       = "enableFsCheck"
+	ConfigKeyEnableBlockCheck    = "enableBlockCheck"
+	ConfigKeyEnableNormalEKCheck = "enableNormalEKCheck"
+	ConfigKeyEnableMetaDataCheck = "enableMetaDataCheck"
 	// HBase config
 	ConfigKeyHBaseUrl = "hBaseUrl" // int
 

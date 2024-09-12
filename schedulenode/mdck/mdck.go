@@ -128,6 +128,9 @@ func (mdckWorker *MetaDataCheckWorker) ConsumeTask(task *proto.Task) (restore bo
 	if mdckWorker.NodeException {
 		return
 	}
+	if task.Status == proto.TaskStatusSucceed {
+		return
+	}
 	masterClient, ok := mdckWorker.mcw[task.Cluster]
 	if !ok {
 		log.LogErrorf("ConsumeTask get cluster %s masterClient failed", task.Cluster)

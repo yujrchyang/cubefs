@@ -141,6 +141,9 @@ func (w *NormalExtentCheckWorker) ConsumeTask(task *proto.Task) (restore bool, e
 	if w.NodeException {
 		return
 	}
+	if task.Status == proto.TaskStatusSucceed {
+		return
+	}
 	masterClient, ok := w.mcw[task.Cluster]
 	if !ok {
 		log.LogErrorf("ConsumeTask get cluster %s masterClient failed:%v", task.Cluster, err)
