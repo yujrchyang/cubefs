@@ -222,14 +222,14 @@ func (m *MetaNode) updateTrashCleanConfig(limitInfo *proto.LimitInfo) {
 	}
 
 	//trash clean duration
-	if limitInfo.TrashCleanDurationEachTime != nodeInfo.CleanTrashItemMaxDurationEachTime {
+	if limitInfo.TrashCleanDurationEachTime > 0 && limitInfo.TrashCleanDurationEachTime != nodeInfo.CleanTrashItemMaxDurationEachTime {
 		log.LogDebugf("[updateTrashCleanConfig] trash clean duration, old value:%v, new value:%v",
 			nodeInfo.CleanTrashItemMaxDurationEachTime, limitInfo.TrashCleanDurationEachTime)
 		nodeInfo.CleanTrashItemMaxDurationEachTime = limitInfo.TrashCleanDurationEachTime
 	}
 
 	//trash clean max count
-	if limitInfo.TrashItemCleanMaxCountEachTime != nodeInfo.CleanTrashItemMaxCountEachTime {
+	if limitInfo.TrashItemCleanMaxCountEachTime > 0 && limitInfo.TrashItemCleanMaxCountEachTime != nodeInfo.CleanTrashItemMaxCountEachTime {
 		log.LogDebugf("[updateTrashCleanConfig] trash clean max count, old value:%v, new value:%v",
 			nodeInfo.CleanTrashItemMaxCountEachTime, limitInfo.TrashItemCleanMaxCountEachTime)
 		nodeInfo.CleanTrashItemMaxCountEachTime = limitInfo.TrashItemCleanMaxCountEachTime
@@ -282,7 +282,7 @@ func (m *MetaNode) updateBitMapAllocatorConf(info *proto.LimitInfo) {
 func (m *MetaNode) getBitMapAllocatorMaxUsedFactor() float64 {
 	factor := defBitMapAllocatorMaxUsedFactorForAvailable
 	nodeConf := getGlobalConfNodeInfo()
-	if nodeConf.bitMapAllocatorMaxUsedFactorForAvailable != 0 {
+	if nodeConf.bitMapAllocatorMaxUsedFactorForAvailable > 0 && nodeConf.bitMapAllocatorMaxUsedFactorForAvailable < 1{
 		factor = nodeConf.bitMapAllocatorMaxUsedFactorForAvailable
 	}
 	return factor
@@ -291,7 +291,7 @@ func (m *MetaNode) getBitMapAllocatorMaxUsedFactor() float64 {
 func (m *MetaNode) getBitMapAllocatorMinFreeFactor() float64 {
 	factor := defBitMapAllocatorMinFreeFactorForAvailable
 	nodeConf := getGlobalConfNodeInfo()
-	if nodeConf.bitMapAllocatorMinFreeFactorForAvailable != 0 {
+	if nodeConf.bitMapAllocatorMinFreeFactorForAvailable > 0 && nodeConf.bitMapAllocatorMinFreeFactorForAvailable < 1 {
 		factor = nodeConf.bitMapAllocatorMinFreeFactorForAvailable
 	}
 	return factor
