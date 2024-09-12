@@ -324,30 +324,38 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		}
 		s.workers.Store(proto.WorkerTypeCheckCrc, crcWorker)
 	}
-	var fsckTaskSchedule *fsck.FSCheckTaskSchedule
-	if fsckTaskSchedule, err = fsck.NewFSCheckTaskSchedule(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create fsck task schedule failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableFsCheck) {
+		var fsckTaskSchedule *fsck.FSCheckTaskSchedule
+		if fsckTaskSchedule, err = fsck.NewFSCheckTaskSchedule(cfg); err != nil {
+			log.LogErrorf("[registerWorker] create fsck task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeFSCheck, fsckTaskSchedule)
 	}
-	s.workers.Store(proto.WorkerTypeFSCheck, fsckTaskSchedule)
-	var blckTaskSchedule *blck.BlockCheckTaskSchedule
-	if blckTaskSchedule, err = blck.NewBlockCheckTaskSchedule(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create blck task schedule failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableBlockCheck) {
+		var blckTaskSchedule *blck.BlockCheckTaskSchedule
+		if blckTaskSchedule, err = blck.NewBlockCheckTaskSchedule(cfg); err != nil {
+			log.LogErrorf("[registerWorker] create blck task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeBlockCheck, blckTaskSchedule)
 	}
-	s.workers.Store(proto.WorkerTypeBlockCheck, blckTaskSchedule)
-	var mdckTaskSchedule *mdck.MetaDataCheckTaskSchedule
-	if mdckTaskSchedule, err = mdck.NewMetaDataCheckTaskSchedule(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create mdck task schedule failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableMetaDataCheck) {
+		var mdckTaskSchedule *mdck.MetaDataCheckTaskSchedule
+		if mdckTaskSchedule, err = mdck.NewMetaDataCheckTaskSchedule(cfg); err != nil {
+			log.LogErrorf("[registerWorker] create mdck task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeMetaDataCrcCheck, mdckTaskSchedule)
 	}
-	s.workers.Store(proto.WorkerTypeMetaDataCrcCheck, mdckTaskSchedule)
-	var normalExtentCheckTaskSchedule *normalextentcheck.NormalExtentCheckTaskSchedule
-	if normalExtentCheckTaskSchedule, err = normalextentcheck.NewNormalExtentCheckTaskSchedule(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create normal extent check task schedule failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableNormalEKCheck) {
+		var normalExtentCheckTaskSchedule *normalextentcheck.NormalExtentCheckTaskSchedule
+		if normalExtentCheckTaskSchedule, err = normalextentcheck.NewNormalExtentCheckTaskSchedule(cfg); err != nil {
+			log.LogErrorf("[registerWorker] create normal extent check task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeNormalExtentMistakeDelCheck, normalExtentCheckTaskSchedule)
 	}
-	s.workers.Store(proto.WorkerTypeNormalExtentMistakeDelCheck, normalExtentCheckTaskSchedule)
 	var fileMigrationWorker *migration.Worker
 	if fileMigrationWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeInodeMigration); err != nil {
 		log.LogErrorf("[registerWorker] create file migration worker failed, err(%v)", err)
