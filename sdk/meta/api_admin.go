@@ -83,16 +83,16 @@ func isDbBackOldApi(path string) bool {
 	return false
 }
 
-func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
+func (mc *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	var resp *http.Response
 	var schema string
-	if c.useSSL {
+	if mc.useSSL {
 		schema = "https"
 	} else {
 		schema = "http"
 	}
-	var url = fmt.Sprintf("%s://%s%s", schema, c.host, r.path)
-	resp, err = c.httpRequest(r.method, url, r.params, r.header, r.body)
+	var url = fmt.Sprintf("%s://%s%s", schema, mc.host, r.path)
+	resp, err = mc.httpRequest(r.method, url, r.params, r.header, r.body)
 
 	if err != nil {
 		log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
@@ -107,7 +107,7 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 	}
 	switch stateCode {
 	case http.StatusOK:
-		if c.isDBBack && isDbBackOldApi(r.path) {
+		if mc.isDBBack && isDbBackOldApi(r.path) {
 			return respData, nil
 		}
 		var body = &struct {
@@ -126,23 +126,23 @@ func (c *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) {
 		}
 		return []byte(body.Data), nil
 	default:
-		if c.isDBBack && strings.Contains(r.path, "getExtents") && stateCode == http.StatusNotFound {
+		if mc.isDBBack && strings.Contains(r.path, "getExtents") && stateCode == http.StatusNotFound {
 			return nil, nil
 		}
 		log.LogErrorf("serveRequest: unknown status: host(%v) uri(%v) status(%v) body(%s).",
-			resp.Request.URL.String(), c.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
+			resp.Request.URL.String(), mc.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
 		err = fmt.Errorf("unknown status: host(%v) url(%v) status(%v) body(%s)",
-			resp.Request.URL.String(), c.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
+			resp.Request.URL.String(), mc.host, stateCode, strings.Replace(string(respData), "\n", "", -1))
 	}
 	return
 }
 
-func (c *MetaHttpClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
+func (mc *MetaHttpClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
 	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
 	client.Timeout = c.requestTimeOut
 	var req *http.Request
-	fullUrl := c.mergeRequestUrl(url, param)
+	fullUrl := mc.mergeRequestUrl(url, param)
 	//log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
@@ -156,7 +156,7 @@ func (c *MetaHttpClient) httpRequest(method, url string, param, header map[strin
 	return
 }
 
-func (c *MetaHttpClient) mergeRequestUrl(url string, params map[string]string) string {
+func (mc *MetaHttpClient) mergeRequestUrl(url string, params map[string]string) string {
 	if params != nil && len(params) > 0 {
 		buff := bytes.NewBuffer([]byte(url))
 		isFirstParam := true
@@ -681,6 +681,20 @@ func (mc *MetaHttpClient) GetDentry(pid uint64, name string) (den *proto.MetaDen
 
 	den = new(proto.MetaDentry)
 	if err = json.Unmarshal(respData, den); err != nil {
+		return
+	}
+	return
+}
+
+func (mc *MetaHttpClient) GetStatInfo() (respData []byte, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[GetStatInfo] err:%v", err)
+		}
+	}()
+	req := newAPIRequest(http.MethodGet, "/stat/info")
+	respData, err = mc.serveRequest(req)
+	if err != nil {
 		return
 	}
 	return

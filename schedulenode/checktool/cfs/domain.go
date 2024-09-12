@@ -56,6 +56,8 @@ type ClusterHost struct {
 	lastDisableFlashNodeTime      time.Time
 	lastCleanExpiredMetaTime      time.Time
 	nodeMemInfo                   map[string]float64
+	dataNodeAliveRetryToken       int
+	metaNodeAliveRetryToken       int
 }
 
 func newClusterHost(host string) *ClusterHost {
@@ -75,6 +77,8 @@ func newClusterHost(host string) *ClusterHost {
 		inactiveNodesForCheckVol:  make(map[string]bool),
 		nodeMemInfo:               make(map[string]float64),
 		lastCleanExpiredMetaTime:  time.Now(),
+		metaNodeAliveRetryToken:   3,
+		dataNodeAliveRetryToken:   3,
 	}
 	ch.isReleaseCluster = isReleaseCluster(host)
 	return ch

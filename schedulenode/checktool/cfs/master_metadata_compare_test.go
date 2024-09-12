@@ -7,17 +7,12 @@ import (
 	"net"
 	"net/http"
 	_ "net/http/pprof"
-	"os"
-	"path"
 	"testing"
 )
 
 func TestCompareMeta(t *testing.T) {
 	t.Skipf("skip online ip")
-	logdir := path.Join(os.TempDir(), "compare_test_log")
-	os.RemoveAll(logdir)
-	os.MkdirAll(logdir, 0666)
-	log.InitLog(logdir, "master_compare", log.DebugLevel, nil)
+	initTestLog("master_compare")
 	defer func() {
 		log.LogFlush()
 	}()

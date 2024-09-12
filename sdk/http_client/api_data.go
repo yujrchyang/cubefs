@@ -392,6 +392,25 @@ func (dc *DataClient) GetDatanodeStats() (stats *proto.DataNodeStats, err error)
 	return
 }
 
+func (dc *DataClient) GetDbbackDataNodeStats() (stats *proto.DbbackDataNodeHeartBeatResponse, err error) {
+	var d []byte
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/stats", nil)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	stats = new(proto.DbbackDataNodeHeartBeatResponse)
+	if err = json.Unmarshal(d, stats); err != nil {
+		return
+	}
+	return
+}
+
 func (dc *DataClient) GetRaftStatus(raftID uint64) (raftStatus *proto.Status, err error) {
 	var d []byte
 	params := make(map[string]string, 0)
