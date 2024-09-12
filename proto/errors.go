@@ -109,6 +109,7 @@ var (
 	ErrHasCommonPreMetaPartition = errors.New("has common precursor meta partition")
 	ErrUnknownMetaPartition      = errors.New("unknown meta partition")
 	ErrVolNameIsEmpty            = errors.New("vol name is empty")
+	ErrFlashGroupIsEmpty         = errors.New("flash group is empty")
 )
 
 // http response error code and error message definitions
@@ -186,6 +187,7 @@ const (
 	ErrCodeTmpfsNoSpace
 	ErrCodeRaftLeaderHasChanged
 	ErrCodeVolNameIsEmpty
+	ErrCodeFlashGroupIsEmpty
 )
 
 // Err2CodeMap error map to code
@@ -259,6 +261,7 @@ var Err2CodeMap = map[error]int32{
 	ErrTmpfsNoSpace:                    ErrCodeTmpfsNoSpace,
 	ErrRaftLeaderHasChanged:            ErrCodeRaftLeaderHasChanged,
 	ErrVolNameIsEmpty:                  ErrCodeVolNameIsEmpty,
+	ErrFlashGroupIsEmpty:               ErrCodeFlashGroupIsEmpty,
 }
 
 func ParseErrorCode(code int32) error {
@@ -339,6 +342,7 @@ var code2ErrMap = map[int32]error{
 	ErrCodeTmpfsNoSpace:                    ErrTmpfsNoSpace,
 	ErrCodeRaftLeaderHasChanged:            ErrRaftLeaderHasChanged,
 	ErrCodeVolNameIsEmpty:                  ErrVolNameIsEmpty,
+	ErrCodeFlashGroupIsEmpty:               ErrFlashGroupIsEmpty,
 }
 
 type GeneralResp struct {

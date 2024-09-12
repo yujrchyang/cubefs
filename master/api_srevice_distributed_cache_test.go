@@ -7,7 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net/http"
+	"sync"
 	"testing"
+	"time"
 )
 
 var flashGroupIDs []uint64
@@ -61,7 +63,7 @@ func checkFlashGroupsStatus(fgIDs []uint64, expectStatus proto.FlashGroupStatus,
 	if !checkFGViews {
 		return
 	}
-	server.cluster.updateFlashGroupResponseCache()
+	_ = server.cluster.updateFlashGroupResponseCache()
 	clientFlashGroups, err := mc.AdminAPI().ClientFlashGroups()
 	if err != nil {
 		return
@@ -194,7 +196,8 @@ func checkFlashGroupAddGivenFlashNode(expectCount int, flashGroupID uint64, addr
 	if count != 1 {
 		return fmt.Errorf("addr:%v not in flash group view or too many(count:%v)", addr, count)
 	}
-	server.cluster.updateFlashGroupResponseCache()
+	_ = server.cluster.updateFlashGroupResponseCache()
+	server.cluster.metaLoadedTime = time.Now().Unix() - 6*60
 	clientFlashGroups, err := mc.AdminAPI().ClientFlashGroups()
 	if err != nil {
 		return
@@ -213,9 +216,29 @@ func checkFlashGroupAddGivenFlashNode(expectCount int, flashGroupID uint64, addr
 }
 
 func TestClientFlashGroups(t *testing.T) {
+	server.cluster.metaLoadedTime = time.Now().Unix() - 6*60
 	server.cluster.flashGroupRespCache = nil
 	_, err := mc.AdminAPI().ClientFlashGroups()
 	assert.NoError(t, err)
+}
+
+func TestClientFlashGroupsInCaseFlashGroupIsEmpty(t *testing.T) {
+
+	//1. loading meta has not passed 5 minutes
+	metaLoadTime := server.cluster.metaLoadedTime
+	server.cluster.metaLoadedTime = time.Now().Unix()
+	_, err := mc.AdminAPI().ClientFlashGroups()
+	assert.Contains(t, err.Error(), proto.ErrRaftLeaderHasChanged.Error())
+	//2. flashGroup is empty
+	server.cluster.metaLoadedTime = time.Now().Unix() - 6*60
+	oldFlashGroupMap := server.cluster.flashNodeTopo.flashGroupMap
+	server.cluster.flashNodeTopo.flashGroupMap = new(sync.Map)
+	server.cluster.flashGroupRespCache = nil
+	_, err = mc.AdminAPI().ClientFlashGroups()
+	assert.Contains(t, err.Error(), proto.ErrFlashGroupIsEmpty.Error())
+	server.cluster.flashNodeTopo.flashGroupMap = oldFlashGroupMap
+	server.cluster.metaLoadedTime = metaLoadTime
+
 }
 
 func TestAdminListFlashGroups(t *testing.T) {

@@ -42,10 +42,10 @@ const (
 )
 
 var (
-	ErrNoValidMaster = errors.New("no valid master")
-	UmpKeyErrNoSuchHost = "ErrNoSuchHost"
+	ErrNoValidMaster         = errors.New("no valid master")
+	UmpKeyErrNoSuchHost      = "ErrNoSuchHost"
 	UmpErrNoSuchHostAlarmMsg = "request to master with 'no such host'"
-	UmpKeyErrBadRequest = "ErrBadRequest"
+	UmpKeyErrBadRequest      = "ErrBadRequest"
 )
 
 type ClientType int
@@ -263,12 +263,12 @@ func (c *MasterClient) Nodes() (nodes []string) {
 }
 
 func (c *MasterClient) IsOnline() bool {
-    for _, master := range c.masters {
-        if strings.Contains(master, ".jd.") {
-            return true
-        }
-    }
-    return false
+	for _, master := range c.masters {
+		if strings.Contains(master, ".jd.") {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *MasterClient) SetMasterDomain(domain string) {
@@ -458,12 +458,12 @@ func NewMasterClientForDbBackCluster(masters []string, useSSL bool) *MasterClien
 }
 
 func (mc *MasterClient) innerRegNodeWithNewInterface(authKeyPath, ip string, regInfo *RegNodeInfoReq) (rsp *proto.RegNodeRsp, err error) {
-	var req          *request
-	var data         []byte
+	var req *request
+	var data []byte
 	var localAuthKey string
 
 	rsp = &proto.RegNodeRsp{}
-	authFilePath := path.Join(authKeyPath, AuthFileName + regInfo.Role)
+	authFilePath := path.Join(authKeyPath, AuthFileName+regInfo.Role)
 	if _, stErr := os.Stat(authFilePath); stErr != nil {
 		//first start
 		os.MkdirAll(authKeyPath, 0666)
@@ -482,7 +482,6 @@ func (mc *MasterClient) innerRegNodeWithNewInterface(authKeyPath, ip string, reg
 		return
 	}
 
-
 	err = json.Unmarshal(data, rsp)
 
 	if rsp.AuthKey != "" && localAuthKey != "" && rsp.AuthKey != localAuthKey {
@@ -497,8 +496,8 @@ func (mc *MasterClient) innerRegNodeWithNewInterface(authKeyPath, ip string, reg
 }
 
 func (mc *MasterClient) innerRegNodeWithOldInterface(authKeyPath, ip string, regInfo *RegNodeInfoReq) (rsp *proto.RegNodeRsp, err error) {
-	var req          *request
-	var data         []byte
+	var req *request
+	var data []byte
 	var localAuthKey string
 
 	rsp = &proto.RegNodeRsp{}
@@ -516,8 +515,8 @@ func (mc *MasterClient) innerRegNodeWithOldInterface(authKeyPath, ip string, reg
 	return
 }
 
-func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *RegNodeInfoReq)(rsp *proto.RegNodeRsp, err error) {
-	var clusterInfo  *proto.ClusterInfo
+func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *RegNodeInfoReq) (rsp *proto.RegNodeRsp, err error) {
+	var clusterInfo *proto.ClusterInfo
 	rsp = &proto.RegNodeRsp{}
 
 	defer func() {
@@ -526,7 +525,7 @@ func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *R
 		}
 	}()
 
-	if regInfo == nil || regInfo.Role == "" || authKeyPath == ""{
+	if regInfo == nil || regInfo.Role == "" || authKeyPath == "" {
 		err = fmt.Errorf("invalid para, role or auth key path is nil")
 		return
 	}
@@ -550,8 +549,8 @@ func (mc *MasterClient) RegNodeInfoWithAddr(authKeyPath, addr string, regInfo *R
 	return
 }
 
-func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)(rsp *proto.RegNodeRsp, err error) {
-	var clusterInfo  *proto.ClusterInfo
+func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq) (rsp *proto.RegNodeRsp, err error) {
+	var clusterInfo *proto.ClusterInfo
 	rsp = &proto.RegNodeRsp{}
 
 	defer func() {
@@ -560,7 +559,7 @@ func (mc *MasterClient) RegNodeInfo(authKeyPath string, regInfo *RegNodeInfoReq)
 		}
 	}()
 
-	if regInfo == nil || regInfo.Role == "" || authKeyPath == ""{
+	if regInfo == nil || regInfo.Role == "" || authKeyPath == "" {
 		err = fmt.Errorf("invalid para, role or auth key path is nil")
 		return
 	}

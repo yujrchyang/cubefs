@@ -446,7 +446,9 @@ func (c *Cluster) doUpdateFlashGroupResponseCache() {
 	}()
 	metrics := exporter.NewModuleTP(proto.UpdateFlashGroupResponseCache)
 	defer func() { metrics.Set(nil) }()
-	c.updateFlashGroupResponseCache()
+	if err := c.updateFlashGroupResponseCache(); err != nil {
+		log.LogErrorf("action[doUpdateFlashGroupResponseCache] occurred error,err:%v", err)
+	}
 }
 
 func (c *Cluster) doCheckDataNodeHeartbeat() {

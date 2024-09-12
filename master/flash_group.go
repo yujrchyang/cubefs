@@ -198,7 +198,9 @@ func (m *Server) removeFlashGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if needUpdateFGCache {
-		m.cluster.updateFlashGroupResponseCache()
+		if err = m.cluster.updateFlashGroupResponseCache(); err != nil {
+			log.LogErrorf("action[removeFlashGroup] updateFlashGroupResponseCache err:%v", err)
+		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("remove flashGroup:%v successfully,Slots:%v nodeCount:%v", flashGroup.ID, flashGroup.Slots, len(flashGroup.flashNodes))))
 }
@@ -265,7 +267,9 @@ func (m *Server) setFlashGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if needUpdateFGCache {
-		m.cluster.updateFlashGroupResponseCache()
+		if err = m.cluster.updateFlashGroupResponseCache(); err != nil {
+			log.LogErrorf("action[setFlashGroup] updateFlashGroupResponseCache err:%v", err)
+		}
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(flashGroup.GetAdminView()))
 }
@@ -483,6 +487,11 @@ func (m *Server) clientFlashGroups(w http.ResponseWriter, r *http.Request) {
 	)
 	metrics := exporter.NewModuleTP(proto.ClientFlashGroupsUmpKey)
 	defer func() { metrics.Set(err) }()
+	if time.Now().Unix()-m.cluster.metaLoadedTime < 5*defaultIntervalToCheckHeartbeat {
+		err = proto.ErrRaftLeaderHasChanged
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	flashGroupRespCache, err = m.cluster.getFlashGroupResponseCache()
 	if len(flashGroupRespCache) != 0 {
 		send(w, r, flashGroupRespCache, proto.JsonType)
@@ -492,7 +501,9 @@ func (m *Server) clientFlashGroups(w http.ResponseWriter, r *http.Request) {
 }
 func (c *Cluster) getFlashGroupResponseCache() (flashGroupRespCache []byte, err error) {
 	if len(c.flashGroupRespCache) == 0 {
-		c.updateFlashGroupResponseCache()
+		if err = c.updateFlashGroupResponseCache(); err != nil {
+			return
+		}
 	}
 	flashGroupRespCache = c.flashGroupRespCache
 	if len(flashGroupRespCache) == 0 {
@@ -501,8 +512,11 @@ func (c *Cluster) getFlashGroupResponseCache() (flashGroupRespCache []byte, err 
 	return
 }
 
-func (c *Cluster) updateFlashGroupResponseCache() {
+func (c *Cluster) updateFlashGroupResponseCache() (err error) {
 	fgv := c.flashNodeTopo.getFlashGroupView()
+	if len(fgv.FlashGroups) == 0 {
+		return proto.ErrFlashGroupIsEmpty
+	}
 	reply := newSuccessHTTPReply(fgv)
 	flashGroupRespCache, err := json.Marshal(reply)
 	if err != nil {
