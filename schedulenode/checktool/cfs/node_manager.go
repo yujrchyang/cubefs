@@ -88,8 +88,9 @@ func (cv *ClusterView) confirmCheckMetaNodeAlive(host *ClusterHost, enableWarn b
 		}
 		return
 	}
-	retry := host.metaNodeAliveRetryToken
-	if retry > 0 && len(deadNodes) >= confirmThreshold {
+
+	host.tokenLock.Lock()
+	if host.tokenMap[metaNodeAliveRetryToken] > 0 && len(deadNodes) >= confirmThreshold {
 		var confirmDeadCount int
 		for _, mn := range deadNodes[:confirmThreshold] {
 			if confirmMetaNodeActive(mn.Addr, host.isReleaseCluster) {
@@ -99,12 +100,14 @@ func (cv *ClusterView) confirmCheckMetaNodeAlive(host *ClusterHost, enableWarn b
 			confirmDeadCount++
 		}
 		if confirmDeadCount < 2 {
-			retry--
-			host.metaNodeAliveRetryToken = retry
+			host.tokenMap[metaNodeAliveRetryToken] = host.tokenMap[metaNodeAliveRetryToken] - 1
 			log.LogWarnf("action[checkMetaNodeAlive] confirm check metanode alive conflict with cluster view, please retry")
+			host.tokenLock.Unlock()
 			return
 		}
 	}
+	host.tokenLock.Unlock()
+
 	inactiveLen := len(deadNodes)
 	inactiveMetaNodes = make(map[string]*DeadNode, 0)
 	var (
@@ -392,8 +395,9 @@ func (cv *ClusterView) confirmCheckDataNodeAlive(host *ClusterHost, enableWarn b
 		}
 		return
 	}
-	retry := host.dataNodeAliveRetryToken
-	if retry > 0 && len(deadNodes) >= confirmThreshold {
+
+	host.tokenLock.Lock()
+	if host.tokenMap[dataNodeAliveRetryToken] > 0 && len(deadNodes) >= confirmThreshold {
 		var confirmDeadCount int
 		for _, dn := range deadNodes[:confirmThreshold] {
 			if confirmDataNodeActive(dn.Addr, host.isReleaseCluster) {
@@ -403,12 +407,13 @@ func (cv *ClusterView) confirmCheckDataNodeAlive(host *ClusterHost, enableWarn b
 			confirmDeadCount++
 		}
 		if confirmDeadCount < 2 {
-			retry--
-			host.dataNodeAliveRetryToken = retry
+			host.tokenMap[dataNodeAliveRetryToken] = host.tokenMap[dataNodeAliveRetryToken] - 1
 			log.LogWarnf("action[checkDataNodeAlive] confirm check datanode alive conflict with cluster view, please retry")
+			host.tokenLock.Unlock()
 			return
 		}
 	}
+	host.tokenLock.Unlock()
 
 	inactiveLen := len(deadNodes)
 	var (
@@ -744,12 +749,13 @@ func getNodeToZoneMap(host *ClusterHost) (nodeZoneMap map[string]string, err err
 	return
 }
 
-// 每间隔半小时，给meta/data分发重试token，当meta/data在检查节点存活时，如果有多节点出错，在获得token的情况下，允许进行二次确认；没有token则不进行确认。
-// 主要为了避免master升级过程中的误报，增加一定的容错机制。同时也为了避免因为容错机制和master心跳的判断之间存在分歧而导致master的有效报警被意外屏蔽。
-func (s *ChubaoFSMonitor) resetNodeAliveRetryToken() {
+// dataNodeAliveRetryToken / metaNodeAliveRetryToken : 每间隔半小时，给meta/data分发重试token，当meta/data在检查节点存活时，如果有多节点出错，
+// 在获得token的情况下，允许进行二次确认；没有token则不进行确认。主要为了避免master升级过程中的误报，增加一定的容错机制。
+// 同时也为了避免因为容错机制和master心跳的判断之间存在分歧而导致master的有效报警被意外屏蔽。
+// resetDbBackRecoverToken: 防止reset recover 过多过快，提高容错率
+func (s *ChubaoFSMonitor) resetTokenMap() {
 	for _, host := range s.hosts {
-		host.dataNodeAliveRetryToken = 3
-		host.metaNodeAliveRetryToken = 3
+		host.initTokenMap()
 	}
 }
 

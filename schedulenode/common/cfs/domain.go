@@ -28,6 +28,7 @@ type DataPartition struct {
 	Used        int
 	Hosts       []string
 	Replicas    []*DataReplica
+	IsRecover   bool
 }
 
 type DataReplica struct {

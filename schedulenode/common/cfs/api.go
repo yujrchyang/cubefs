@@ -118,6 +118,15 @@ func GetDataPartition(host string, id uint64, isReleaseCluster bool) (partition 
 	return
 }
 
+func ResetDataPartitionRecover(host string, id uint64, isReleaseCluster bool) (err error) {
+	reqURL := fmt.Sprintf("http://%v/dataPartition/setIsRecover?id=%v&isRecover=false", host, id)
+	_, err = DoRequest(reqURL, isReleaseCluster)
+	if err != nil {
+		return
+	}
+	return
+}
+
 func GetMetaPartition(host string, id uint64, isReleaseCluster bool) (partition *MetaPartition, err error) {
 	reqURL := fmt.Sprintf("http://%v/metaPartition/get?id=%v", host, id)
 	data, err := DoRequest(reqURL, isReleaseCluster)
