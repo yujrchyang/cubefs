@@ -71,6 +71,10 @@ func quickCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataR
 	}
 	var same bool
 	var wrongCrcBlocks []int
+	var firstAddrCrc string
+	var firstAddrCrcMap map[string]bool
+	firstAddrCrcMap = make(map[string]bool, 0)
+
 	blocksLengh := ek.Size / uint32(DefaultCheckBlockKB*unit.KB)
 	if ek.Size-blocksLengh*uint32(DefaultCheckBlockKB*unit.KB) > 0 {
 		blocksLengh += 1
@@ -87,13 +91,20 @@ func quickCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataR
 	}
 	//如果错误CRC块过多，直接查询整个extent,如果整个extent md5相同，直接返回即可
 	if len(wrongCrcBlocks) > 100 {
-		for i := 0; i < 5; i++ {
-			if _, _, same, err = checkExtentMd5(dnProf, dataReplicas, ek); err != nil {
+		for i := 0; i < 8; i++ {
+			if _, _, same, firstAddrCrc, err = checkExtentMd5(dnProf, dataReplicas, ek); err != nil {
 				log.LogErrorf("quickCheckExtent failed, cluster:%s, partition:%v, extent:%v, err:%v", cluster, ek.PartitionId, ek.ExtentId, err)
 				return
 			}
 			if same {
 				log.LogInfof("action[quickCheckExtent] cluster:%s partition:%v, extent:%v, inode:%v, check same at md5 check", cluster, ek.PartitionId, ek.ExtentId, ino)
+				return
+			}
+			firstAddrCrcMap[firstAddrCrc] = true
+			if len(firstAddrCrcMap) > 5 {
+				log.LogWarnf("cluster:%s found bad extent, but crc is always changing, maybe write too fast , please double check: "+
+					"pid(%v) eid(%v) eOff(%v) fOff(%v) size(%v) ino(%v) vol(%v)",
+					cluster, ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.FileOffset, ek.Size, ino, volume)
 				return
 			}
 			time.Sleep(time.Second)
@@ -107,7 +118,6 @@ func quickCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataR
 	if len(wrongMd5Blocks) == 0 {
 		return
 	}
-
 	badExtent = true
 	repairHost := make([]string, 0)
 	repairHostMap := make(map[string]bool, 0)
@@ -138,13 +148,21 @@ func slowCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataRe
 	var badAddrs []string
 	var output string
 	var same bool
-	for i := 0; i < 10; i++ {
-		if badAddrs, output, same, err = checkExtentMd5(dnProf, dataReplicas, ek); err != nil {
+	var firstAddrCrc string
+	var firstAddrCrcMap map[string]bool
+	firstAddrCrcMap = make(map[string]bool, 0)
+	for i := 0; i < 15; i++ {
+		if badAddrs, output, same, firstAddrCrc, err = checkExtentMd5(dnProf, dataReplicas, ek); err != nil {
 			log.LogErrorf("slowCheckExtent failed, cluster:%v, partition:%v, extent:%v, err:%v\n", cluster, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
 		if same {
 			log.LogInfof("action[slowCheckExtent], cluster:%v, partition:%v, extent:%v, inode:%v, check same at md5 check", cluster, ek.PartitionId, ek.ExtentId, ino)
+			return
+		}
+		firstAddrCrcMap[firstAddrCrc] = true
+		if len(firstAddrCrcMap) > 7 {
+			log.LogWarnf("action[slowCheckExtent] found bad extent, but crc is always changing, maybe write too fast , please double check, output: \n%v", output)
 			return
 		}
 		time.Sleep(time.Second)
@@ -339,7 +357,7 @@ func CheckBlockCrc(dataReplicas []*proto.DataReplica, dnProf uint16, partitionId
 	return
 }
 
-func checkExtentMd5(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey) (badAddrs []string, output string, same bool, err error) {
+func checkExtentMd5(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey) (badAddrs []string, output string, same bool, firstAddrCrc string, err error) {
 	var (
 		ok       bool
 		replicas = make([]struct {
@@ -360,6 +378,9 @@ func checkExtentMd5(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.
 			log.LogErrorf("action[checkExtentMd5]: datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
+		if idx == 0 {
+			firstAddrCrc = extentMd5orCrc
+		}
 		replicas[idx].partitionId = ek.PartitionId
 		replicas[idx].extentId = ek.ExtentId
 		replicas[idx].datanode = datanode
@@ -372,7 +393,7 @@ func checkExtentMd5(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.
 	}
 
 	if len(md5Map) == 1 {
-		return badAddrs, "", true, nil
+		return badAddrs, "", true, "", nil
 	}
 	for _, r := range replicas {
 		addr := strings.Split(r.datanode, ":")[0] + ":6000"
