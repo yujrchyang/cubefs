@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/http_client"
+	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/robfig/cron"
@@ -185,6 +186,7 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 				PeerErrorInfo: "EXCESS_PEER",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffPeerToHost[0],
+				ReplicaNum:    dp.ReplicaNum,
 			}
 			badReplicas = append(badReplicas, peerReplica)
 		} else if ((dp.ReplicaNum == 3 && len(peerStrings) == 2) || (dp.ReplicaNum == 5 && len(peerStrings) == 4)) && len(diffHostToPeer) == 1 && len(diffPeerToHost) == 0 {
@@ -194,6 +196,7 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 				PeerErrorInfo: "LACK_PEER",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffHostToPeer[0],
+				ReplicaNum:    dp.ReplicaNum,
 			}
 			badReplicas = append(badReplicas, peerReplica)
 		} else if ((dp.ReplicaNum == 3 && len(peerStrings) == 3) || (dp.ReplicaNum == 5 && len(peerStrings) == 5)) && len(diffPeerToHost) == 1 && len(diffHostToPeer) == 0 {
@@ -203,6 +206,7 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 				PeerErrorInfo: "LACK_HOST",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffPeerToHost[0],
+				ReplicaNum:    dp.ReplicaNum,
 			}
 			badReplicas = append(badReplicas, peerReplica)
 		} else if len(peerStrings) != len(dp.Hosts) || len(diffPeerToHost)+len(diffHostToPeer) > 0 {
@@ -293,7 +297,17 @@ func dataNodeGetPartition(ch *ClusterHost, addr string, id uint64) (node *DNData
 func repairDp(release bool, host string, replica PeerReplica) {
 	switch replica.PeerErrorInfo {
 	case "LACK_PEER":
-		if err := decommissionDp(release, host, replica.VolName, replica.ReplicationID, replica.PeerAddr); err != nil {
+		masterClient := master.NewMasterClient([]string{host}, false)
+		vol, err := masterClient.AdminAPI().GetVolumeSimpleInfo(replica.VolName)
+		if err != nil {
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair failed, err:%v", host, replica.ReplicationID, replica.PeerErrorInfo, err)
+			return
+		}
+		if vol.DpReplicaNum != replica.ReplicaNum {
+			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair failed, volume[%v] replica num is different[%v-%v], maybe in replica num transfer", host, replica.ReplicationID, replica.PeerErrorInfo, replica.VolName, vol.DpReplicaNum, replica.ReplicaNum)
+			return
+		}
+		if err = decommissionDp(release, host, replica.VolName, replica.ReplicationID, replica.PeerAddr); err != nil {
 			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair failed, err:%v", host, replica.ReplicationID, replica.PeerErrorInfo, err)
 			return
 		}
