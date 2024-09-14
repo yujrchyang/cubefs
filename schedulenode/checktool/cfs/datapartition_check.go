@@ -71,7 +71,7 @@ type DataPartitionResponse struct {
 	Hosts       []string
 	LeaderAddr  string
 	Epoch       uint64
-	IsRecover   bool
+	IsRecover   bool // dbbak not support
 }
 
 // VolView defines the view of a volume

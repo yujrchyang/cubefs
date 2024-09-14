@@ -20,6 +20,12 @@ type AlarmMetric struct {
 	lastAlarmTime time.Time
 }
 
+const (
+	dataNodeAliveRetryToken = "dataNodeAliveRetryToken"
+	metaNodeAliveRetryToken = "metaNodeAliveRetryToken"
+	resetDbBackRecoverToken = "resetDbBackRecoverToken"
+)
+
 type ClusterHost struct {
 	host                          string
 	deadDataNodes                 map[string]*DeadNode
@@ -56,8 +62,8 @@ type ClusterHost struct {
 	lastDisableFlashNodeTime      time.Time
 	lastCleanExpiredMetaTime      time.Time
 	nodeMemInfo                   map[string]float64
-	dataNodeAliveRetryToken       int
-	metaNodeAliveRetryToken       int
+	tokenLock                     sync.RWMutex
+	tokenMap                      map[string]int
 }
 
 func newClusterHost(host string) *ClusterHost {
@@ -76,12 +82,20 @@ func newClusterHost(host string) *ClusterHost {
 		badPartitionPendingMap:    make(map[string]map[string]*PartitionPending, 0),
 		inactiveNodesForCheckVol:  make(map[string]bool),
 		nodeMemInfo:               make(map[string]float64),
+		tokenMap:                  make(map[string]int),
 		lastCleanExpiredMetaTime:  time.Now(),
-		metaNodeAliveRetryToken:   3,
-		dataNodeAliveRetryToken:   3,
 	}
 	ch.isReleaseCluster = isReleaseCluster(host)
+	ch.initTokenMap()
 	return ch
+}
+
+func (ch *ClusterHost) initTokenMap() {
+	ch.tokenLock.Lock()
+	defer ch.tokenLock.Unlock()
+	ch.tokenMap[dataNodeAliveRetryToken] = 3
+	ch.tokenMap[metaNodeAliveRetryToken] = 3
+	ch.tokenMap[resetDbBackRecoverToken] = 3
 }
 
 func (ch *ClusterHost) String() string {
