@@ -49,6 +49,7 @@ type PeerReplica struct {
 	PeerErrorInfo string
 	nodeAddr      string
 	PeerAddr      string
+	ReplicaNum    uint8
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckMpPeerCorrupt() {
@@ -164,6 +165,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 				PeerErrorInfo: "EXCESS_PEER",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffPeerToHost[0],
+				ReplicaNum:    mp.ReplicaNum,
 			}
 			badReplicas = append(badReplicas, peerReplica)
 		} else if len(peerStrings) == 2 && len(diffHostToPeer) == 1 && len(diffPeerToHost) == 0 {
@@ -173,6 +175,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 				PeerErrorInfo: "LACK_PEER",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffHostToPeer[0],
+				ReplicaNum:    mp.ReplicaNum,
 			}
 			badReplicas = append(badReplicas, peerReplica)
 		} else if len(peerStrings) == 3 && len(diffPeerToHost) == 1 && len(diffHostToPeer) == 0 {
@@ -182,6 +185,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 				PeerErrorInfo: "LACK_HOST",
 				nodeAddr:      r.Addr,
 				PeerAddr:      diffPeerToHost[0],
+				ReplicaNum:    mp.ReplicaNum,
 			}
 			badReplicas = append(badReplicas, peerReplica)
 		} else if len(peerStrings) != len(hostStrings) || len(diffPeerToHost)+len(diffHostToPeer) > 0 {
