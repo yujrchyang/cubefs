@@ -2,18 +2,13 @@ package data
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"os"
-	"strings"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/sdk/common"
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/exporter"
 )
 
@@ -56,16 +51,14 @@ func TestLeaderRead(t *testing.T) {
 }
 
 func TestNearRead(t *testing.T) {
-	masters := strings.Split(ltptestMaster, ",")
-	testMc := master.NewMasterClient(masters, false)
-	volumeSimpleInfo, _ := testMc.AdminAPI().GetVolumeSimpleInfo("ltptest")
-	if err := testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
-		true, false, true, false, false, false, false, false, false, calcAuthKey("ltptest"),
+	volumeSimpleInfo, _ := mc.AdminAPI().GetVolumeSimpleInfo(ltptestVolume)
+	if err := mc.AdminAPI().UpdateVolume(ltptestVolume, 30, 3, 3, 30, 1,
+		true, false, true, false, false, false, false, false, false, calcAuthKey(ltptestVolume),
 		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
 		"", false, false, 0, false, 0, readConnTimeout, readConnTimeout, 0, 0, false, false); err != nil {
 		t.Fatalf("update followerRead and nearRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, masters, Normal)
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal)
 	if err != nil {
 		t.Fatalf("NewDataPartitionWrapper: err(%v) vol(%v) master addr(%v)", err, ltptestVolume, ltptestMaster)
 	}
@@ -167,8 +160,8 @@ func TestNearRead(t *testing.T) {
 	}
 	dataWrapper.Stop()
 	LocalIP = originLocalIP
-	if err = testMc.AdminAPI().UpdateVolume("ltptest", 30, 3, 3, 30, 1,
-		false, false, false, false, false, false, false, false, false, calcAuthKey("ltptest"),
+	if err = mc.AdminAPI().UpdateVolume(ltptestVolume, 30, 3, 3, 30, 1,
+		false, false, false, false, false, false, false, false, false, calcAuthKey(ltptestVolume),
 		"default", "0,0", "", 0, 0, 60, volumeSimpleInfo.CompactTag, 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
 		"", false, false, 0, false, 0, readConnTimeout, readConnTimeout, 0, 0, false, false); err != nil {
 		t.Errorf("update followerRead and nearRead to 'false' failed: err(%v) vol(ltptest)", err)
@@ -177,31 +170,9 @@ func TestNearRead(t *testing.T) {
 
 func TestConsistenceRead(t *testing.T) {
 	var (
-		mw  *meta.MetaWrapper
-		ec  *ExtentClient
-		err error
+		err   error
+		fInfo os.FileInfo
 	)
-	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
-		Volume:        ltptestVolume,
-		Masters:       strings.Split(ltptestMaster, ","),
-		ValidateOwner: true,
-		Owner:         ltptestVolume,
-	}); err != nil {
-		t.Fatalf("NewMetaWrapper failed: err(%v) vol(%v)", err, ltptestVolume)
-	}
-	if ec, err = NewExtentClient(&ExtentConfig{
-		Volume:            ltptestVolume,
-		Masters:           strings.Split(ltptestMaster, ","),
-		FollowerRead:      false,
-		OnInsertExtentKey: mw.InsertExtentKey,
-		OnGetExtents:      mw.GetExtents,
-		OnTruncate:        mw.Truncate,
-		TinySize:          NoUseTinyExtent,
-	}, nil); err != nil {
-		t.Fatalf("NewExtentClient failed: err(%v) vol(%v)", err, ltptestVolume)
-	}
-
-	var fInfo os.FileInfo
 	if fInfo, err = os.Stat(readFilePath); err != nil {
 		t.Fatalf("stat file: err(%v) file(%v)", err, readFilePath)
 	}
@@ -246,17 +217,4 @@ func TestConsistenceRead(t *testing.T) {
 	}
 	// close
 	close(streamer.done)
-	if err = ec.Close(context.Background()); err != nil {
-		t.Errorf("Close ExtentClient failed: err(%v) vol(%v)", err, ltptestVolume)
-	}
-	if err = mw.Close(); err != nil {
-		t.Errorf("Close MetaWrapper failed: err(%v) vol(%v)", err, ltptestVolume)
-	}
-}
-
-func calcAuthKey(key string) (authKey string) {
-	h := md5.New()
-	_, _ = h.Write([]byte(key))
-	cipherStr := h.Sum(nil)
-	return strings.ToLower(hex.EncodeToString(cipherStr))
 }

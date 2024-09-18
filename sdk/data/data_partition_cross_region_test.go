@@ -1,12 +1,12 @@
 package data
 
 import (
-	"github.com/stretchr/testify/assert"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -18,7 +18,7 @@ var (
 )
 
 func TestCrossRegionHosts(t *testing.T) {
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","), Normal)
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal)
 	if err != nil {
 		t.Fatalf("TestCrossRegionHosts: NewDataPartitionWrapper failed, err %v", err)
 	}
@@ -28,10 +28,10 @@ func TestCrossRegionHosts(t *testing.T) {
 	dataWrapper.crossRegionHostLatency.Store(ip4, time.Duration(0))     // unknown
 	dataWrapper.crossRegionHostLatency.Store(ip5, 20*time.Millisecond)  // cross-region
 	dp := &DataPartition{
-		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5},LeaderAddr: proto.NewAtomicString(ip3)},
+		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5}, LeaderAddr: proto.NewAtomicString(ip3)},
 		CrossRegionMetrics:    NewCrossRegionMetrics(),
 		ClientWrapper:         dataWrapper,
-		ReadMetrics: 		   proto.NewDPReadMetrics(),
+		ReadMetrics:           proto.NewDPReadMetrics(),
 	}
 	dp.CrossRegionMetrics.CrossRegionHosts = dataWrapper.classifyCrossRegionHosts(dp.Hosts)
 	// check classify
@@ -84,21 +84,21 @@ func TestCrossRegionHosts(t *testing.T) {
 }
 
 func TestPingCrossRegionHosts(t *testing.T) {
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","), Normal)
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal)
 	if err != nil {
 		t.Fatalf("TestPingCrossRegionHosts: NewDataPartitionWrapper failed, err %v", err)
 	}
 	dataWrapper.crossRegionHAType = proto.CrossRegionHATypeQuorum
 
-	for i:=0;i< 6;i++ {
+	for i := 0; i < 6; i++ {
 		err = dataWrapper.updateDataPartition(false)
-		if err==nil {
+		if err == nil {
 			break
 		}
-		time.Sleep(time.Second*10)
+		time.Sleep(time.Second * 10)
 	}
 	if err != nil {
-		assert.FailNow(t,"TestPingCrossRegionHosts: updateDataPartition failed, err %v", err)
+		assert.FailNow(t, "TestPingCrossRegionHosts: updateDataPartition failed, err %v", err)
 	}
 
 	// test getUnknownCrossRegionHostStatus
@@ -132,7 +132,7 @@ func TestPingCrossRegionHosts(t *testing.T) {
 }
 
 func TestMiddleStatCrossRegionHosts(t *testing.T) {
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","), Normal)
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal)
 	if err != nil {
 		t.Fatalf("TestCrossRegionHosts: NewDataPartitionWrapper failed, err %v", err)
 	}
@@ -143,7 +143,7 @@ func TestMiddleStatCrossRegionHosts(t *testing.T) {
 	dataWrapper.crossRegionHostLatency.Store(ip5, 20*time.Millisecond)  // cross-region
 	// check before classify
 	dp := &DataPartition{
-		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5},LeaderAddr: proto.NewAtomicString(ip3)},
+		DataPartitionResponse: proto.DataPartitionResponse{Hosts: []string{ip1, ip2, ip3, ip4, ip5}, LeaderAddr: proto.NewAtomicString(ip3)},
 		CrossRegionMetrics:    NewCrossRegionMetrics(),
 		ClientWrapper:         dataWrapper,
 	}

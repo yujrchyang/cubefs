@@ -2,9 +2,7 @@ package data
 
 import (
 	"math"
-	"os"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -13,7 +11,6 @@ import (
 )
 
 func TestSetExtentSize(t *testing.T) {
-	_, testEClient, _ := creatHelper(t)
 	caseSetExSize := []struct {
 		name string
 		size int
@@ -57,60 +54,49 @@ func TestSetExtentSize(t *testing.T) {
 	}
 	for _, tt := range caseSetExSize {
 		t.Run(tt.name, func(t *testing.T) {
-			if testEClient.SetExtentSize(tt.size); testEClient.extentSize != tt.want {
+			if ec.SetExtentSize(tt.size); ec.extentSize != tt.want {
 				t.Fatalf("set[%v], want[%v], but got[%v]",
-					tt.size, tt.want, testEClient.extentSize)
+					tt.size, tt.want, ec.extentSize)
 			}
 		})
 	}
 }
 
 func TestGetRate(t *testing.T) {
-	_, testEClient, _ := creatHelper(t)
-	assert.NotEmpty(t, testEClient.GetRate())
+	assert.NotEmpty(t, ec.GetRate())
 }
 
 func TestSetReadRate(t *testing.T) {
-	_, testEClient, _ := creatHelper(t)
-	val := 10
-	assert.NotEmpty(t, testEClient.SetReadRate(val))
+	assert.NotEmpty(t, ec.SetReadRate(10))
+	assert.NotEmpty(t, ec.SetReadRate(0))
 }
 
 func TestSetWriteRate(t *testing.T) {
-	_, testEClient, _ := creatHelper(t)
-	val := 10
-	assert.NotEmpty(t, testEClient.SetWriteRate(val))
+	assert.NotEmpty(t, ec.SetWriteRate(10))
+	assert.NotEmpty(t, ec.SetWriteRate(0))
 }
 
 // with OverWriteBuffer enabled, ek of prepared request may have been modified by ROW, resulting data loss
 func TestOverWriteBuffer(t *testing.T) {
-	_, ec, _ := creatHelper(t)
-	testFile := "/cfs/mnt/TestOverWriteBuffer"
-	file, _ := os.Create(testFile)
-	defer func() {
-		file.Close()
-		os.Remove(testFile)
-	}()
-	info, err := os.Stat(testFile)
-	assert.Nil(t, err)
-	sysStat := info.Sys().(*syscall.Stat_t)
-	ec.OpenStream(sysStat.Ino, true)
-	streamer := ec.GetStreamer(sysStat.Ino)
+	info, err := create("TestOverWriteBuffer")
+	ino := info.Inode
+	ec.OpenStream(ino, true)
+	streamer := ec.GetStreamer(ino)
 	data0 := make([]byte, 6)
 	data1 := []byte{1, 2, 3}
 	ctx := context.Background()
-	_, _, err = ec.Write(ctx, sysStat.Ino, 0, data0, false)
+	_, _, err = ec.Write(ctx, ino, 0, data0, false)
 	assert.Nil(t, err)
-	err = ec.Flush(ctx, sysStat.Ino)
+	err = ec.Flush(ctx, ino)
 	assert.Nil(t, err)
 
-	_, _, err = ec.Write(ctx, sysStat.Ino, 0, data1, false)
+	_, _, err = ec.Write(ctx, ino, 0, data1, false)
 	assert.Nil(t, err)
 	ec.dataWrapper.forceROW = true
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
-		err = ec.Flush(ctx, sysStat.Ino)
+		err = ec.Flush(ctx, ino)
 		assert.Nil(t, err)
 		wg.Done()
 	}()
@@ -119,12 +105,12 @@ func TestOverWriteBuffer(t *testing.T) {
 	for len(streamer.overWriteReq) > 0 {
 		time.Sleep(time.Millisecond)
 	}
-	ec.Write(ctx, sysStat.Ino, 0, data2, false)
+	ec.Write(ctx, ino, 0, data2, false)
 	wg.Wait()
 	ec.dataWrapper.forceROW = false
-	err = ec.Flush(ctx, sysStat.Ino)
+	err = ec.Flush(ctx, ino)
 	assert.Nil(t, err)
-	_, _, err = ec.Read(ctx, sysStat.Ino, data1, 0, 3)
+	_, _, err = ec.Read(ctx, ino, data1, 0, 3)
 	assert.Nil(t, err)
 	assert.Equal(t, data2, data1)
 }

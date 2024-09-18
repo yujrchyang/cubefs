@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"strings"
 	"testing"
 	"time"
 
@@ -174,13 +173,13 @@ func TestExcludeDp(t *testing.T) {
 
 func TestDpLeaderAddressSerialization(t *testing.T) {
 	var dp *DataPartition
-	w, _ := NewDataPartitionWrapper(ltptestVolume, strings.Split(ltptestMaster, ","), Normal)
+	w, _ := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal)
 	w.partitions.Range(func(k, v interface{}) bool {
 		dp = v.(*DataPartition)
 		return false
 	})
 	host := dp.Hosts[0]
-	dp.LeaderAddr=proto.NewAtomicString(host)
+	dp.LeaderAddr = proto.NewAtomicString(host)
 	dpJson, err := json.Marshal(dp)
 	if err != nil {
 		t.Errorf("TestDpLeaderAddressSerialization Marshal dp fail: dp(%v)", dp)

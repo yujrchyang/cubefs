@@ -6,9 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"os"
 	"path"
@@ -18,20 +16,15 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
+	"github.com/stretchr/testify/assert"
 )
 
-func TestPrefetch_Load_Prefetch(t *testing.T)  {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-
+func TestPrefetch_Load_Prefetch(t *testing.T) {
 	datasetCnt := 5
 	indexPath := "/cfs/mnt/TestPrefetch/index"
 	dirIndexIno, err := createIndexFile(indexPath, datasetCnt)
 	assert.Equal(t, nil, err, "createIndexFile err")
 
-	var ec *ExtentClient
-	_, ec, err = creatHelper(t)
 	assert.Equal(t, nil, err, "init err")
 	pManager := NewPrefetchManager(ec, ltptestVolume, "/cfs/mnt", proto.RootIno, 5)
 	defer func() {
@@ -93,7 +86,7 @@ func TestPrefetch_Load_Prefetch(t *testing.T)  {
 	assert.Equal(t, 0, count, "dcache count")
 }
 
-func TestPrefetch_AppPid(t *testing.T)  {
+func TestPrefetch_AppPid(t *testing.T) {
 	pManager := &PrefetchManager{}
 	pManager.PutAppPid(1000)
 	pManager.PutAppPid(2000)
@@ -107,9 +100,9 @@ func TestPrefetch_AppPid(t *testing.T)  {
 
 func createIndexFile(indexPath string, datasetCnt int) (dirIno uint64, err error) {
 	var (
-		indexFh	*os.File
-		dirInfo	os.FileInfo
-		fh		*os.File
+		indexFh *os.File
+		dirInfo os.FileInfo
+		fh      *os.File
 	)
 	indexDir := path.Dir(indexPath)
 	if dirInfo, err = os.Stat(indexDir); os.IsExist(err) {
@@ -132,7 +125,7 @@ func createIndexFile(indexPath string, datasetCnt int) (dirIno uint64, err error
 	}()
 
 	for i := 0; i < datasetCnt; i++ {
-		filePath := path.Join(indexDir, "file" + strconv.FormatInt(int64(i), 10))
+		filePath := path.Join(indexDir, "file"+strconv.FormatInt(int64(i), 10))
 		if fh, err = os.Create(filePath); err != nil {
 			return
 		}
@@ -148,23 +141,12 @@ func createIndexFile(indexPath string, datasetCnt int) (dirIno uint64, err error
 	return
 }
 
-var letterRunes = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-
-func randTestData(size int) (data []byte) {
-	rand.Seed(time.Now().UnixNano())
-	b := make([]byte, size)
-	for i := range b {
-		b[i] = letterRunes[rand.Intn(len(letterRunes))]
-	}
-	return b
-}
-
-func TestPrefetchReadByPath(t *testing.T)  {
+func TestPrefetchReadByPath(t *testing.T) {
 	profPort, err := getProfPort()
 	assert.Equal(t, nil, err, "get pprof port failed")
 	assert.NotEqual(t, uint64(0), profPort, "pprof port")
 
-	batchArr := [][]string{{"/cfs/mnt/TestPrefetch/file1","/cfs/mnt/TestPrefetch/file2","cfs"},{"/cfs/mnt/TestPrefetch/file3","/cfs/mnt/TestPrefetch/file4","/cfs/mnt/TestPrefetch/file0"}}
+	batchArr := [][]string{{"/cfs/mnt/TestPrefetch/file1", "/cfs/mnt/TestPrefetch/file2", "cfs"}, {"/cfs/mnt/TestPrefetch/file3", "/cfs/mnt/TestPrefetch/file4", "/cfs/mnt/TestPrefetch/file0"}}
 	var reqBody []byte
 	reqBody, err = json.Marshal(batchArr)
 	assert.Equal(t, nil, err, "marshal err")
@@ -173,7 +155,7 @@ func TestPrefetchReadByPath(t *testing.T)  {
 	assert.Equal(t, nil, err, "post err")
 }
 
-func TestBatchDownload(t *testing.T)  {
+func TestBatchDownload(t *testing.T) {
 	profPort, err := getProfPort()
 	assert.Equal(t, nil, err, "get pprof port failed")
 	assert.NotEqual(t, uint64(0), profPort, "pprof port")
@@ -186,7 +168,7 @@ func TestBatchDownload(t *testing.T)  {
 	assert.Equal(t, nil, err, "add index path err")
 	time.Sleep(1 * time.Second)
 
-	batchArr := [][]uint64{{0,1,2},{3,4,5}}
+	batchArr := [][]uint64{{0, 1, 2}, {3, 4, 5}}
 	var reqBody, res []byte
 	reqBody, err = json.Marshal(batchArr)
 	assert.Equal(t, nil, err, "marshal err")
@@ -200,11 +182,11 @@ func TestBatchDownload(t *testing.T)  {
 		if start >= uint64(len(res)) {
 			break
 		}
-		pathSize := binary.BigEndian.Uint64(res[start:start+8])
+		pathSize := binary.BigEndian.Uint64(res[start : start+8])
 		start += 8
 		fmt.Println("path: ", string(res[start:start+pathSize]))
 		start += pathSize
-		contentSize := binary.BigEndian.Uint64(res[start:start+8])
+		contentSize := binary.BigEndian.Uint64(res[start : start+8])
 		assert.Equal(t, uint64(10240), contentSize, "content size")
 		start += 8
 		start += contentSize
@@ -227,12 +209,12 @@ func getProfPort() (profPort uint64, err error) {
 	return info.Prof, err
 }
 
-func TestBatchDownloadPath(t *testing.T)  {
+func TestBatchDownloadPath(t *testing.T) {
 	profPort, err := getProfPort()
 	assert.Equal(t, nil, err, "get pprof port failed")
 	assert.NotEqual(t, uint64(0), profPort, "pprof port")
 
-	batchArr := [][]string{{"/cfs/mnt/TestPrefetch/file1","/cfs/mnt/TestPrefetch/file2","cfs"},{"/cfs/mnt/TestPrefetch/file3","/cfs/mnt/TestPrefetch/file4","/cfs/mnt/TestPrefetch/file0"}}
+	batchArr := [][]string{{"/cfs/mnt/TestPrefetch/file1", "/cfs/mnt/TestPrefetch/file2", "cfs"}, {"/cfs/mnt/TestPrefetch/file3", "/cfs/mnt/TestPrefetch/file4", "/cfs/mnt/TestPrefetch/file0"}}
 	var reqBody, res []byte
 	reqBody, err = json.Marshal(batchArr)
 	assert.Equal(t, nil, err, "marshal err")
@@ -247,12 +229,12 @@ func TestBatchDownloadPath(t *testing.T)  {
 		if start >= uint64(len(res)) {
 			break
 		}
-		pathSize := binary.BigEndian.Uint64(res[start:start+8])
+		pathSize := binary.BigEndian.Uint64(res[start : start+8])
 		start += 8
-		filepath := string(res[start:start+pathSize])
+		filepath := string(res[start : start+pathSize])
 		fmt.Println("path: ", filepath)
 		start += pathSize
-		contentSize := binary.BigEndian.Uint64(res[start:start+8])
+		contentSize := binary.BigEndian.Uint64(res[start : start+8])
 		assert.Equal(t, uint64(10240), contentSize, "content size")
 		start += 8
 		start += contentSize

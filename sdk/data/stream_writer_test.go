@@ -3,30 +3,20 @@ package data
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
 
-	"github.com/cubefs/cubefs/client/cache"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
-	"github.com/cubefs/cubefs/sdk/meta"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
 )
-
-func init() {
-	log.InitLog("/cfs/log", "test", log.DebugLevel, nil)
-}
 
 type HTTPReply struct {
 	Code int32           `json:"code"`
@@ -123,21 +113,9 @@ func handleAdminGetCluster(w http.ResponseWriter, r *http.Request) {
 func TestStreamer_UsePreExtentHandler(t *testing.T) {
 	type fields struct {
 		client     *ExtentClient
-		inode      uint64
-		status     int32
-		refcnt     int
-		idle       int
-		traversed  int
 		extents    *ExtentCache
-		once       sync.Once
-		handler    *ExtentHandler
 		dirtylist  *DirtyExtentList
-		dirty      bool
-		request    chan interface{}
-		done       chan struct{}
-		tinySize   int
 		extentSize int
-		writeLock  sync.Mutex
 	}
 	type args struct {
 		offset uint64
@@ -264,21 +242,9 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			s := &Streamer{
 				client:     tt.fields.client,
-				inode:      tt.fields.inode,
-				status:     tt.fields.status,
-				refcnt:     tt.fields.refcnt,
-				idle:       tt.fields.idle,
-				traversed:  tt.fields.traversed,
 				extents:    tt.fields.extents,
-				once:       tt.fields.once,
-				handler:    tt.fields.handler,
 				dirtylist:  tt.fields.dirtylist,
-				dirty:      tt.fields.dirty,
-				request:    tt.fields.request,
-				done:       tt.fields.done,
-				tinySize:   tt.fields.tinySize,
 				extentSize: tt.fields.extentSize,
-				writeLock:  tt.fields.writeLock,
 			}
 			oldValue := MasterNoCacheAPIRetryTimeout
 			MasterNoCacheAPIRetryTimeout = 10 * time.Second
@@ -292,117 +258,30 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 	}
 }
 
-func creatHelper(t *testing.T) (mw *meta.MetaWrapper, ec *ExtentClient, err error) {
-	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
-		Volume:        ltptestVolume,
-		Masters:       strings.Split(ltptestMaster, ","),
-		ValidateOwner: true,
-		Owner:         ltptestVolume,
-	}); err != nil {
-		t.Fatalf("NewMetaWrapper failed: err(%v) vol(%v)", err, ltptestVolume)
-	}
-	ic := cache.NewInodeCache(1*time.Minute, 100, 1*time.Second, true, nil)
-	if ec, err = NewExtentClient(&ExtentConfig{
-		Volume:            ltptestVolume,
-		Masters:           strings.Split(ltptestMaster, ","),
-		FollowerRead:      false,
-		MetaWrapper:       mw,
-		OnInsertExtentKey: mw.InsertExtentKey,
-		OnGetExtents:      mw.GetExtents,
-		OnTruncate:        mw.Truncate,
-		OnPutIcache:       ic.Put,
-		TinySize:          NoUseTinyExtent,
-		UseLastExtent:     true,
-	}, nil); err != nil {
-		t.Fatalf("NewExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
-	}
-	return mw, ec, nil
-}
-
-func getStreamer(t *testing.T, file string, ec *ExtentClient, appendWriteBuffer bool, readAhead bool) *Streamer {
-	info, err := os.Stat(file)
-	if err != nil {
-		t.Fatalf("Stat failed: err(%v) file(%v)", err, file)
-	}
-	sysStat := info.Sys().(*syscall.Stat_t)
-	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
-	return NewStreamer(ec, sysStat.Ino, streamMap, false)
-}
-
 func TestROW(t *testing.T) {
-	var (
-		testROWFilePath = "/cfs/mnt/testROW.txt"
-		originData      = "Origin test ROW file"
-		writeData       = "ROW is Writing......"
-		mw              *meta.MetaWrapper
-		ec              *ExtentClient
-		err             error
-	)
-	ctx := context.Background()
-	mw, ec, err = creatHelper(t)
-	if err != nil {
-		t.Fatalf("create help metaWrapper and extentClient failed: err(%v), metaWrapper(%v), extentclient(%v)",
-			err, mw, ec)
-	}
-	ROWFile, err := os.Create(testROWFilePath)
-	if err != nil {
-		t.Fatalf("create ROW testFile failed: err(%v), file(%v)", err, testROWFilePath)
-	}
+	info, err := create("TestROW")
+	ino := info.Inode
+	ec.OpenStream(ino, false)
+	oldData := []byte("old")
+	_, _, err = ec.Write(ctx, ino, 0, oldData, false)
+	assert.Nil(t, err)
+	err = ec.Flush(ctx, ino)
+	assert.Nil(t, err)
+
+	_, ec1, _ := creatExtentClient()
 	defer func() {
-		os.Remove(testROWFilePath)
-		log.LogFlush()
+		ec1.Close(ctx)
 	}()
-	writeBytes := []byte(originData)
-	writeOffset := int64(0)
-	_, err = ROWFile.WriteAt(writeBytes, writeOffset)
-	if err != nil {
-		t.Fatalf("write ROW testFile failed: err(%v), file(%v)", err, testROWFilePath)
-	}
-	ROWFile.Sync()
-	beforeRow, _ := ioutil.ReadFile(testROWFilePath)
-	fmt.Printf("before ROW: %v\n", string(beforeRow))
-	var fInfo os.FileInfo
-	if fInfo, err = os.Stat(testROWFilePath); err != nil {
-		t.Fatalf("stat ROW testFile failed: err(%v), file(%v)", err, testROWFilePath)
-	}
-	inode := fInfo.Sys().(*syscall.Stat_t).Ino
-	streamMap := ec.streamerConcurrentMap.GetMapSegment(inode)
-	streamer := NewStreamer(ec, inode, streamMap, false)
-	_, _, eks, err := mw.GetExtents(ctx, inode)
-	if err != nil {
-		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, inode)
-	}
-	fmt.Printf("inode(%v) eks(%v)\n", inode, eks)
-	for _, ek := range eks {
-		req := &ExtentRequest{
-			FileOffset: ek.FileOffset,
-			Size:       int(ek.Size),
-			Data:       []byte(writeData),
-			ExtentKey:  &ek,
-		}
-		_, err = streamer.doROW(ctx, req, false)
-		if err != nil {
-			t.Fatalf("doROW failed: err(%v), req(%v)", err, req)
-		}
-	}
-	ROWFile.Close()
-	time.Sleep(5 * time.Second)
-	//ROWFile, _ = os.Open(testROWFilePath)
-	//readBytes := make([]byte, len(writeBytes))
-	//readOffset := int64(0)
-	//_, err = ROWFile.ReadAt(readBytes, readOffset)
-	readBytes, err := ioutil.ReadFile(testROWFilePath)
-	if err != nil {
-		t.Errorf("read ROW testFile failed: err(%v)", err)
-	}
-	if string(readBytes) != writeData {
-		t.Fatalf("ROW is failed: err(%v), read data(%v)", err, string(readBytes))
-	}
-	fmt.Printf("after ROW : %v\n", string(readBytes))
-	close(streamer.done)
-	if err = ec.Close(context.Background()); err != nil {
-		t.Errorf("close ExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
-	}
+	ec1.OpenStream(ino, false)
+	ec1.dataWrapper.forceROW = true
+	newData := []byte("new")
+	_, _, err = ec1.Write(ctx, ino, 0, newData, false)
+	assert.Nil(t, err)
+
+	data := make([]byte, 3)
+	ec.RefreshExtentsCache(ctx, ino)
+	ec.Read(ctx, ino, data, 0, 3)
+	assert.Equal(t, newData, data)
 }
 
 func TestWrite_DataConsistency(t *testing.T) {
@@ -419,8 +298,6 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	defer func() {
 		file.Close()
-		os.Remove(testFile)
-		log.LogFlush()
 	}()
 	// append write
 	var fileOffset uint64 = 0
@@ -451,8 +328,6 @@ func TestWrite_DataConsistency(t *testing.T) {
 		t.Fatalf("last append write failed: err(%v)", err)
 	}
 	file.Sync()
-
-	mw, ec, err := creatHelper(t)
 
 	if fInfo, err = os.Stat(testFile); err != nil {
 		t.Fatalf("stat file: err(%v) file(%v)", err, testFile)
@@ -499,24 +374,15 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 
 	close(streamer.done)
-	if err = ec.Close(context.Background()); err != nil {
-		t.Errorf("close ExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
-	}
 }
 
 // One client insert ek1 at some position, another client insert ek2 at the same position with ROW.
 // Then ek1 will be replaced by ek2, all following ek insertion of extent1 because of usePreExtentHandler should be rejected.
 func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
-	testFile := "/cfs/mnt/TestStreamer_UsePreExtentHandler_ROWByOtherClient"
-	file, _ := os.Create(testFile)
-	defer func() {
-		file.Close()
-		os.Remove(testFile)
-		log.LogFlush()
-	}()
-
-	_, ec, err := creatHelper(t)
-	streamer := getStreamer(t, testFile, ec, false, false)
+	info, err := create("TestStreamer_UsePreExtentHandler_ROWByOtherClient")
+	ec.OpenStream(info.Inode, false)
+	streamer := ec.GetStreamer(info.Inode)
+	streamer.tinySize = 0
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length)
@@ -529,8 +395,10 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 		t.Fatalf("flush failed: err(%v)", err)
 	}
 
-	_, ec1, err := creatHelper(t)
-	streamer1 := getStreamer(t, testFile, ec1, false, false)
+	_, ec1, err := creatExtentClient()
+	ec1.OpenStream(info.Inode, false)
+	streamer1 := ec1.GetStreamer(info.Inode)
+	streamer1.tinySize = 0
 	requests, _ := streamer1.extents.PrepareRequests(0, length, data)
 	_, err = streamer1.doROW(ctx, requests[0], false)
 	if err != nil {
@@ -548,17 +416,10 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 }
 
 func TestHandler_Recover(t *testing.T) {
-	testFile := "/cfs/mnt/TestHandler_Recover"
-	file, _ := os.Create(testFile)
-	defer func() {
-		file.Close()
-		os.Remove(testFile)
-		log.LogFlush()
-	}()
-
-	var err error
-	_, ec, _ := creatHelper(t)
-	streamer := getStreamer(t, testFile, ec, false, false)
+	info, err := create("TestHandler_Recover")
+	ec.OpenStream(info.Inode, false)
+	streamer := ec.GetStreamer(info.Inode)
+	streamer.tinySize = 0
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
@@ -595,17 +456,10 @@ func TestHandler_Recover(t *testing.T) {
 }
 
 func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
-	testFile := "/cfs/mnt/TestHandler_AppendWriteBuffer_Recover"
-	file, _ := os.Create(testFile)
-	defer func() {
-		file.Close()
-		os.Remove(testFile)
-		log.LogFlush()
-	}()
-
-	var err error
-	_, ec, _ := creatHelper(t)
-	streamer := getStreamer(t, testFile, ec, true, false)
+	info, err := create("TestHandler_AppendWriteBuffer_Recover")
+	ec.OpenStream(info.Inode, false)
+	streamer := ec.GetStreamer(info.Inode)
+	streamer.tinySize = 0
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length)
@@ -629,17 +483,10 @@ func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
 
 // Handler should be closed in truncate operation, otherwise dirty ek which has been formerly truncated, will be inserted again.
 func TestStreamer_Truncate_CloseHandler(t *testing.T) {
-	testFile := "/cfs/mnt/TestStreamer_Truncate_CloseHandler"
-	file, _ := os.Create(testFile)
-	defer func() {
-		file.Close()
-		os.Remove(testFile)
-		log.LogFlush()
-	}()
-
-	var err error
-	_, ec, _ := creatHelper(t)
-	streamer := getStreamer(t, testFile, ec, false, false)
+	info, err := create("TestStreamer_Truncate_CloseHandler")
+	ec.OpenStream(info.Inode, false)
+	streamer := ec.GetStreamer(info.Inode)
+	streamer.tinySize = 0
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
@@ -663,17 +510,10 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 
 // Handler should be closed in ROW operation, otherwise dirty ek which has been formerly removed, will be inserted again.
 func TestStreamer_ROW_CloseHandler(t *testing.T) {
-	testFile := "/cfs/mnt/TestStreamer_ROW_CloseHandler"
-	file, _ := os.Create(testFile)
-	defer func() {
-		file.Close()
-		os.Remove(testFile)
-		log.LogFlush()
-	}()
-
-	var err error
-	_, ec, _ := creatHelper(t)
-	streamer := getStreamer(t, testFile, ec, false, false)
+	info, err := create("TestStreamer_ROW_CloseHandler")
+	ec.OpenStream(info.Inode, false)
+	streamer := ec.GetStreamer(info.Inode)
+	streamer.tinySize = 0
 	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
@@ -697,15 +537,8 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 }
 
 func TestStreamer_InitServer(t *testing.T) {
-	testFile := "/cfs/mnt/TestStreamer_InitServer"
-	file, _ := os.Create(testFile)
-	file.Close()
-	fInfo, _ := os.Stat(testFile)
-	inodeID := fInfo.Sys().(*syscall.Stat_t).Ino
-	assert.NotEqual(t, 0, inodeID, "get inode ID of test file")
-
-	_, ec, err := creatHelper(t)
-	assert.Equal(t, nil, err, "init ExtentClient")
+	info, err := create("TestStreamer_InitServer")
+	inodeID := info.Inode
 	err = ec.OpenStream(inodeID, false)
 	assert.Equal(t, nil, err, "open streamer")
 	var (
@@ -736,18 +569,18 @@ func TestStreamer_InitServer(t *testing.T) {
 }
 
 func TestStreamer_NotInitServer(t *testing.T) {
-	testFile := "/cfs/mnt/TestStreamer_NotInitServer"
-	file, _ := os.Create(testFile)
-	file.WriteAt([]byte("11111"), 0)
-	file.Close()
-	fInfo, _ := os.Stat(testFile)
-	inodeID := fInfo.Sys().(*syscall.Stat_t).Ino
-	fileSize := fInfo.Size()
-	assert.NotEqual(t, 0, inodeID, "get inode ID of test file")
+	info, err := create("TestStreamer_NotInitServer")
+	inodeID := info.Inode
+	_, ec1, _ := creatExtentClient()
+	defer func() {
+		ec1.Close(ctx)
+	}()
+	ec1.OpenStream(inodeID, false)
+	ec1.Write(ctx, inodeID, 0, []byte("11111"), false)
+	ec1.CloseStream(ctx, info.Inode)
+	fileSize, _, _ := ec1.FileSize(inodeID)
 	assert.NotEqual(t, 0, fileSize, "get size of test file")
 
-	_, ec, err := creatHelper(t)
-	assert.Equal(t, nil, err, "init ExtentClient")
 	err = ec.OpenStream(inodeID, false)
 	assert.Equal(t, nil, err, "open streamer")
 	err = ec.OpenStream(inodeID, false)

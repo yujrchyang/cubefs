@@ -3,7 +3,6 @@ package data
 import (
 	"context"
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"hash/crc32"
 	"math/rand"
 	"os"
@@ -15,6 +14,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
+	"github.com/stretchr/testify/assert"
 )
 
 type Rule struct {
@@ -245,7 +245,7 @@ func TestStreamer_WritePendingPacket(t *testing.T) {
 			if len(tt.expectPendingPacketList) != len(s.pendingPacketList) {
 				t.Fatalf("TestStreamer_WritePendingPacket: name(%v) expect list len(%v) but(%v)", tt.name, len(tt.expectPendingPacketList), len(s.pendingPacketList))
 			}
-			fmt.Println("pending packet list: ", s.pendingPacketList)
+			//t.Log("pending packet list: ", s.pendingPacketList)
 			for i := 0; i < len(tt.expectPendingPacketList); i++ {
 				expectPacket := tt.expectPendingPacketList[i]
 				packet := s.pendingPacketList[i]
@@ -268,14 +268,6 @@ func newPacket(offset uint64, size uint32) (packet *common.Packet) {
 }
 
 func TestStreamer_WriteFile_Pending(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-
-	// create inode
-	mw, ec, err := creatHelper(t)
-	if err != nil {
-		t.Fatalf("TestExtentHandler_PendingPacket: create wrapper err(%v)", err)
-	}
 	ec.SetEnableWriteCache(true)
 	ec.tinySize = unit.DefaultTinySizeLimit
 	ec.dataWrapper.followerRead = false
@@ -290,7 +282,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 		log.LogFlush()
 	}()
 
-	fmt.Println("TestExtentHandler_PendingPacket: start test")
+	t.Log("TestExtentHandler_PendingPacket: start test")
 
 	tests := []struct {
 		name           string
@@ -540,7 +532,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 			streamer.refcnt++
 			isRecover := false
 			hasROW := false
-			fmt.Println("TestExtentHandler_PendingPacket: done create inode")
+			t.Log("TestExtentHandler_PendingPacket: done create inode")
 
 			defer func() {
 				close(streamer.done)
@@ -581,7 +573,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 						writeData[j] = byte(writeIndex)
 					}
 					offset := rule.offset + uint64(i*size)
-					fmt.Printf("test(%v) write offset(%v) size(%v)\n", tt.name, offset, size)
+					t.Logf("test(%v) write offset(%v) size(%v)\n", tt.name, offset, size)
 					total, isROW, err := streamer.write(context.Background(), writeData, offset, size, false)
 					hasROW = hasROW || isROW
 					if err != nil || total != size {
@@ -608,7 +600,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 				}
 			}
 			// flush
-			fmt.Println("TestStreamer_WriteFile_Pending: start flush file")
+			t.Log("TestStreamer_WriteFile_Pending: start flush file")
 			if err = streamer.flush(context.Background(), true); err != nil {
 				t.Fatalf("TestStreamer_WriteFile_Pending cfs flush err(%v) test(%v)", err, tt.name)
 			}
@@ -621,7 +613,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 			extents := streamer.extents.List()
 			if !isRecover && !hasROW {
 				// check extent
-				fmt.Println("TestStreamer_WriteFile_Pending: start check extent")
+				t.Log("TestStreamer_WriteFile_Pending: start check extent")
 				if len(extents) == 0 || len(extents) != len(tt.extentTypeList) {
 					t.Fatalf("TestStreamer_WriteFile_Pending failed: test(%v) expect extent length(%v) but(%v) extents(%v)",
 						tt.name, len(tt.extentTypeList), len(extents), extents)
@@ -638,12 +630,12 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 					t.Fatalf("TestStreamer_WriteFile_Pending failed: test(%v) expect extent list(%v) but(%v)",
 						tt.name, tt.extentTypeList, extents)
 				}
-				fmt.Println("TestStreamer_WriteFile_Pending: extent list: ", extents)
+				t.Log("TestStreamer_WriteFile_Pending: extent list: ", extents)
 			}
-			
+
 			// read data and check crc
 			for _, ext := range extents {
-				fmt.Println("TestStreamer_WriteFile_Pending: start read file extent: ", ext)
+				//t.Log("TestStreamer_WriteFile_Pending: start read file extent: ", ext)
 				offset := ext.FileOffset
 				size := int(ext.Size)
 				readCFSData := make([]byte, size)
@@ -668,14 +660,6 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 }
 
 func TestStreamer_WriteFile_discontinuous(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-
-	// create inode
-	mw, ec, err := creatHelper(t)
-	if err != nil {
-		t.Fatalf("TestExtentHandler_PendingPacket: create wrapper err(%v)", err)
-	}
 	ec.autoFlush = true
 	ec.SetEnableWriteCache(true)
 	ec.tinySize = unit.DefaultTinySizeLimit
@@ -727,14 +711,6 @@ func TestStreamer_WriteFile_discontinuous(t *testing.T) {
 }
 
 func TestStreamer_RandWritePending(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-
-	// create inode
-	mw, ec, err := creatHelper(t)
-	if err != nil {
-		t.Fatalf("TestStreamer_RandPending: create wrapper err(%v)", err)
-	}
 	ec.autoFlush = true
 	ec.SetEnableWriteCache(true)
 	ec.tinySize = unit.DefaultTinySizeLimit
@@ -765,15 +741,15 @@ func TestStreamer_RandWritePending(t *testing.T) {
 	}()
 	timestamp := time.Now().Unix()
 	rand.Seed(timestamp)
-	fmt.Println("time: ", timestamp)
+	t.Log("time: ", timestamp)
 	for i := 0; i < 1024; i++ {
 		wOffset, wSize := randOffset()
-		fmt.Printf("write offset: %v size: %v\n", wOffset, wSize)
+		//t.Logf("write offset: %v size: %v\n", wOffset, wSize)
 		if err = writeLocalAndCFS(localFile, ec, inodeInfo.Inode, wOffset, wSize); err != nil {
 			panic(err)
 		}
 		rOffset, rSize := randOffset()
-		fmt.Printf("read offset: %v size: %v\n", rOffset, rSize)
+		//t.Logf("read offset: %v size: %v\n", rOffset, rSize)
 		if err = verifyLocalAndCFS(localFile, ec, inodeInfo.Inode, rOffset, rSize); err != nil {
 			log.LogFlush()
 			panic(err)
@@ -782,7 +758,7 @@ func TestStreamer_RandWritePending(t *testing.T) {
 	cfsSize, _, _ := ec.FileSize(inodeInfo.Inode)
 	localInfo, _ := localFile.Stat()
 	assert.Equal(t, uint64(localInfo.Size()), cfsSize, "file size")
-	verifySize := 1024*1024
+	verifySize := 1024 * 1024
 	for off := int64(0); off < int64(cfsSize); off += int64(verifySize) {
 		if err = verifyLocalAndCFS(localFile, ec, inodeInfo.Inode, off, verifySize); err != nil {
 			log.LogFlush()
@@ -798,7 +774,7 @@ func TestStreamer_RandWritePending(t *testing.T) {
 
 func randOffset() (off int64, size int) {
 	off = rand.Int63n(128 * 1024 * 1024)
-	size = rand.Intn(256) * 1024 + 1
+	size = rand.Intn(256)*1024 + 1
 	return
 }
 
@@ -811,7 +787,6 @@ func writeLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, offset in
 	}
 	return nil
 }
-
 
 func verifyLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, offset int64, size int) error {
 	readLocalData := make([]byte, size)
