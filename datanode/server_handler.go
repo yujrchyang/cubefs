@@ -1544,6 +1544,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 	var result = make([]struct {
 		IsLeader             bool     `json:"isLeader"`
 		AvailableCh          int      `json:"availableCh"`
+		Volume               string   `json:"volume"`
 		BrokenCh             int      `json:"brokenCh"`
 		TotalTinyExtent      int      `json:"totalTinyExtent"`
 		AvailableTinyExtents []uint64 `json:"availableTinyExtents"`
@@ -1569,6 +1570,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 		result = append(result, struct {
 			IsLeader             bool     `json:"isLeader"`
 			AvailableCh          int      `json:"availableCh"`
+			Volume               string   `json:"volume"`
 			BrokenCh             int      `json:"brokenCh"`
 			TotalTinyExtent      int      `json:"totalTinyExtent"`
 			AvailableTinyExtents []uint64 `json:"availableTinyExtents"`
@@ -1576,6 +1578,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 		}{
 			IsLeader:             partition.isReplLeader,
 			AvailableCh:          avail,
+			Volume:               partition.volumeID,
 			BrokenCh:             broken,
 			TotalTinyExtent:      avail + broken,
 			AvailableTinyExtents: partition.extentStore.AvailableTinyExtents(),
@@ -1591,6 +1594,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 		result = append(result, struct {
 			IsLeader             bool     `json:"isLeader"`
 			AvailableCh          int      `json:"availableCh"`
+			Volume               string   `json:"volume"`
 			BrokenCh             int      `json:"brokenCh"`
 			TotalTinyExtent      int      `json:"totalTinyExtent"`
 			AvailableTinyExtents []uint64 `json:"availableTinyExtents"`
@@ -1598,6 +1602,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 		}{
 			IsLeader:             dp.isReplLeader,
 			AvailableCh:          avail,
+			Volume:               dp.volumeID,
 			BrokenCh:             broken,
 			TotalTinyExtent:      avail + broken,
 			AvailableTinyExtents: dp.extentStore.AvailableTinyExtents(),
