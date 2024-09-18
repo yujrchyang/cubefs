@@ -906,13 +906,12 @@ func (d *Disk) RestoreOnePartition(partitionPath string) (err error) {
 		return
 	}
 	if len(dInfo.PersistenceDataPartitions) == 0 {
-		log.LogWarnf("action[RestoreOnePartition]: length of PersistenceDataPartitions is 0, ExpiredPartition check " +
-			"without effect")
+		log.LogWarnf("action[RestoreOnePartition]: length of PersistenceDataPartitions is 0, ExpiredPartition check without effect")
 	}
 
 	if isExpiredPartition(partitionID, dInfo.PersistenceDataPartitions) {
-		log.LogErrorf("action[RestoreOnePartition]: find expired partition[%s], rename it and you can delete it "+
-			"manually", partitionPath)
+		err = fmt.Errorf("find expired partition[%s], rename it and you can delete it manually", partitionPath)
+		log.LogErrorf("action[RestoreOnePartition] err: %v", err)
 		newName := path.Join(d.Path, ExpiredPartitionPrefix+partitionPath)
 		_ = os.Rename(partitionFullPath, newName)
 		return
