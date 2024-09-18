@@ -1,0 +1,17 @@
+software.amazon.smithy.go.codegen.integration.ValidationGenerator
+software.amazon.smithy.go.codegen.integration.IdempotencyTokenMiddlewareGenerator
+software.amazon.smithy.go.codegen.integration.AddChecksumRequiredMiddleware
+software.amazon.smithy.go.codegen.integration.RequiresLengthTraitSupport
+software.amazon.smithy.go.codegen.integration.EndpointHostPrefixMiddleware
+software.amazon.smithy.go.codegen.integration.OperationInterfaceGenerator
+software.amazon.smithy.go.codegen.integration.ClientLogger
+software.amazon.smithy.go.codegen.endpoints.EndpointClientPluginsGenerator
+
+# modeled auth schemes
+software.amazon.smithy.go.codegen.integration.auth.SigV4AuthScheme
+software.amazon.smithy.go.codegen.integration.auth.AnonymousAuthScheme
+
+software.amazon.smithy.go.codegen.requestcompression.RequestCompression
+
+# server
+software.amazon.smithy.go.codegen.server.integration.DefaultProtocols
