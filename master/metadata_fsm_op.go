@@ -116,6 +116,7 @@ type clusterValue struct {
 	APIReqBwRateLimitMap                map[uint8]int64
 	DisableClusterCheckDelEK            bool
 	DelayMinutesReduceReplicaNum        int64
+	MqProducerState                     bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -1244,6 +1245,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.DelayMinutesReduceReplicaNum < defaultDelayMinutesReduceReplicaNum {
 			c.cfg.delayMinutesReduceReplicaNum = defaultDelayMinutesReduceReplicaNum
 		}
+		c.cfg.MqProducerState = cv.MqProducerState
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

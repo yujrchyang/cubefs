@@ -180,6 +180,7 @@ type clusterConfig struct {
 	APIReqBwRateLimitMap                map[uint8]int64
 	DisableClusterCheckDeleteEK         bool //default false, enable check delete ek
 	delayMinutesReduceReplicaNum        int64
+	MqProducerState                     bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

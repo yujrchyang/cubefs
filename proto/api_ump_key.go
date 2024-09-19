@@ -159,6 +159,7 @@ const (
 	AdminSetVolDisableStateUmpKey               = "vol_setDisableState"
 	AdminAddMetaRecorderUmpKey                  = "metaRecorder_add"
 	AdminDeleteMetaRecorderUmpKey               = "metaRecorder_delete"
+	AdminSetMqProducerStateUmpKey               = "admin_setMqProducerState"
 
 	// task running time ump key
 	CheckVolStatus                     = "task_check_vol_status"

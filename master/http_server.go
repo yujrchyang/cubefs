@@ -178,6 +178,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetUnavailDataPartitions).
 		HandlerFunc(m.getUnavailableDataPartitions)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetMqProducerState).
+		HandlerFunc(m.setMetadataMqProducerState)
 
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

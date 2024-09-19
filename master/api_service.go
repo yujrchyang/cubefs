@@ -5040,6 +5040,18 @@ func parseAndExtractStatus(r *http.Request) (status bool, err error) {
 	return extractStatus(r)
 }
 
+func extractState(r *http.Request) (state bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(stateKey); value == "" {
+		err = keyNotFound(stateKey)
+		return
+	}
+	return strconv.ParseBool(value)
+}
+
 func extractStatus(r *http.Request) (status bool, err error) {
 	var value string
 	if value = r.FormValue(enableKey); value == "" {
@@ -7330,6 +7342,24 @@ func (m *Server) setVolDisableState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set volume %v disable state to %v success", volName, stateStr)))
+}
+
+func (m *Server) setMetadataMqProducerState(w http.ResponseWriter, r *http.Request) {
+	var (
+		status bool
+		err    error
+	)
+	metrics := exporter.NewModuleTP(proto.AdminSetMqProducerStateUmpKey)
+	defer func() { metrics.Set(err) }()
+	if status, err = extractState(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setMqProducerState(status); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set EnableMysqlEngine to %v successfully", status)))
 }
 
 func parseRequestToSetVolDisableState(r *http.Request) (volName, authKey, disableState string, err error) {

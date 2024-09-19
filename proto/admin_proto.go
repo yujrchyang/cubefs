@@ -101,9 +101,9 @@ const (
 	AdminGetUnavailDataPartitions         = "/admin/getUnavailDps"
 	AdminSetMNRocksDBDiskThreshold        = "/rocksdbDiskThreshold/set"
 	AdminSetMNMemModeRocksDBDiskThreshold = "/memModeRocksdbDiskThreshold/set"
-
-	AdminCompactVolList = "/admin/compactVol/list"
-	AdminCompactVolSet  = "/admin/compactVol/set"
+	AdminSetMqProducerState               = "/admin/setMqProducerState"
+	AdminCompactVolList                   = "/admin/compactVol/list"
+	AdminCompactVolSet                    = "/admin/compactVol/set"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
