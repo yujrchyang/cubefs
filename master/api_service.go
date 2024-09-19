@@ -5461,6 +5461,10 @@ func volStat(vol *Vol) (stat *proto.VolStatInfo) {
 	stat.EnableToken = vol.enableToken
 	stat.EnableWriteCache = vol.enableWriteCache
 	stat.FileTotalSize, stat.TrashUsedSize = vol.getFileTotalSizeAndTrashUsedSize()
+	_, inodeCount := vol.getDentryCntAndInodeCnt()
+	if inodeCount > 1 && stat.FileTotalSize == 0 {
+		stat.FileTotalSize = stat.RealUsedSize
+	}
 	stat.UsedSize = stat.RealUsedSize
 	if stat.UsedSize > stat.FileTotalSize {
 		stat.UsedSize = stat.FileTotalSize // The used space is the sum of the total size of all valid files.

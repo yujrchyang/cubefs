@@ -961,4 +961,23 @@ func TestVolStat(t *testing.T) {
 	assert.Equal(t, expectTrashTotalSize, stat.TrashUsedSize)
 	assert.Equal(t, expectUsedSpace, stat.RealUsedSize)
 	assert.Equal(t, expectUsedSpace, stat.UsedSize)
+
+	for mpID := range vol.MetaPartitions {
+		vol.MetaPartitions[mpID].InodesTotalSize = 0
+		vol.MetaPartitions[mpID].DelInodesTotalSize = 0
+		vol.MetaPartitions[mpID].InodeCount = 100
+	}
+
+	expectUsedSpace = uint64(0)
+	for dpID := range vol.dataPartitions.partitionMap {
+		usedSpace := uint64(0)
+		vol.dataPartitions.partitionMap[dpID].used = usedSpace
+		expectUsedSpace += usedSpace
+	}
+
+	stat = volStat(vol)
+	assert.Equal(t, expectUsedSpace, stat.FileTotalSize)
+	assert.Equal(t, uint64(0), stat.TrashUsedSize)
+	assert.Equal(t, expectUsedSpace, stat.RealUsedSize)
+	assert.Equal(t, expectUsedSpace, stat.UsedSize)
 }
