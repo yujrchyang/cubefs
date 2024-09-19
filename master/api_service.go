@@ -369,7 +369,6 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	}
 	repairTaskCount := atomic.LoadUint64(&m.cluster.cfg.DataNodeRepairTaskCount)
 	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
-	metaNodeReqRateLimit := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReqRateLimit)
 	metaNodeReadDirLimitNum := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReadDirLimitNum)
 	dataNodeFlushFDInterval := atomic.LoadUint32(&m.cluster.cfg.DataNodeFlushFDInterval)
 	dataNodeFlushFDParallelismOnDisk := atomic.LoadUint64(&m.cluster.cfg.DataNodeFlushFDParallelismOnDisk)
@@ -415,10 +414,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		Cluster:                                m.cluster.Name,
 		MetaNodeDeleteBatchCount:               batchCount,
 		MetaNodeDeleteWorkerSleepMs:            deleteSleepMs,
-		MetaNodeReqRateLimit:                   metaNodeReqRateLimit,
 		MetaNodeReadDirLimitNum:                metaNodeReadDirLimitNum,
-		MetaNodeReqOpRateLimitMap:              m.cluster.cfg.MetaNodeReqOpRateLimitMap,
-		MetaNodeReqVolOpRateLimitMap:           m.cluster.cfg.MetaNodeReqVolOpRateLimitMap,
 		DataNodeDeleteLimitRate:                deleteLimitRate,
 		DataNodeRepairTaskLimitOnDisk:          repairTaskCount,
 		DataNodeRepairClusterTaskLimitOnDisk:   clusterRepairTaskCount,
@@ -428,11 +424,6 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		DataPartitionConsistencyMode:           dataPartitionConsistencyMode,
 		DataNodeNormalExtentDeleteExpire:       normalExtentDeleteExpireTime,
 		DataNodeRepairTaskCountZoneLimit:       m.cluster.cfg.DataNodeRepairTaskCountZoneLimit,
-		DataNodeReqZoneRateLimitMap:            m.cluster.cfg.DataNodeReqZoneRateLimitMap,
-		DataNodeReqZoneOpRateLimitMap:          m.cluster.cfg.DataNodeReqZoneOpRateLimitMap,
-		DataNodeReqZoneVolOpRateLimitMap:       m.cluster.cfg.DataNodeReqZoneVolOpRateLimitMap,
-		DataNodeReqVolPartRateLimitMap:         m.cluster.cfg.DataNodeReqVolPartRateLimitMap,
-		DataNodeReqVolOpPartRateLimitMap:       m.cluster.cfg.DataNodeReqVolOpPartRateLimitMap,
 		NetworkFlowRatio:                       m.cluster.cfg.NetworkFlowRatio,
 		RateLimit:                              m.cluster.cfg.RateLimit,
 		FlashNodeLimitMap:                      m.cluster.cfg.FlashNodeLimitMap,
@@ -2585,26 +2576,6 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if err = setLimitRateWithPara(params, dataNodeReqRateKey, minRateLimit, updateLimitPara{zone: zone}, m.cluster.setDataNodeReqRateLimit); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	if err = setLimitRateWithPara(params, dataNodeReqVolOpRateKey, minRateLimit, updateLimitPara{vol: vol, op: uint8(op), zone: zone}, m.cluster.setDataNodeReqVolOpRateLimit); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	if err = setLimitRateWithPara(params, dataNodeReqOpRateKey, minRateLimit, updateLimitPara{op: uint8(op), zone: zone}, m.cluster.setDataNodeReqOpRateLimit); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	if err = setLimitRateWithPara(params, dataNodeReqVolPartRateKey, minPartRateLimit, updateLimitPara{vol: vol}, m.cluster.setDataNodeReqVolPartRateLimit); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
-	if err = setLimitRateWithPara(params, dataNodeReqVolOpPartRateKey, minPartRateLimit, updateLimitPara{vol: vol, op: uint8(op)}, m.cluster.setDataNodeReqVolOpPartRateLimit); err != nil {
-		sendErrReply(w, r, newErrHTTPReply(err))
-		return
-	}
 	if err = setLimitRateWithPara(params, flashNodeRateKey, minRateLimit, updateLimitPara{zone: zone}, m.cluster.setFlashNodeRateLimit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
@@ -2612,26 +2583,6 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	if err = setLimitRateWithPara(params, flashNodeVolRateKey, minRateLimit, updateLimitPara{zone: zone, vol: vol}, m.cluster.setFlashNodeVolRateLimit); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
-	}
-
-	if val, ok := params[metaNodeReqOpRateKey]; ok {
-		v := val.(int64)
-		if v > 0 && v < minRateLimit {
-			err = errors.NewErrorf("parameter %s can't be less than %d", metaNodeReqOpRateKey, minRateLimit)
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
-
-		if vol != "" && len(vol) > 0 {
-			err = m.cluster.setMetaNodeReqVolOpRateLimit(vol, v, uint8(op))
-		} else {
-			err = m.cluster.setMetaNodeReqOpRateLimit(v, uint8(op))
-		}
-
-		if err != nil {
-			sendErrReply(w, r, newErrHTTPReply(err))
-			return
-		}
 	}
 
 	if val, ok := params[proto.MetaNodeDumpSnapCountKey]; ok {
@@ -2762,8 +2713,7 @@ type updateLimitPara struct {
 
 func setLimitRateWithPara(params map[string]interface{}, key string, min uint64, limitPara updateLimitPara, update updateLimitFunc) (err error) {
 	if val, ok := params[key]; ok {
-		if (key == dataNodeReqVolOpRateKey || key == dataNodeReqVolPartRateKey || key == dataNodeReqVolOpPartRateKey ||
-			key == flashNodeVolRateKey) && strings.TrimSpace(limitPara.vol) == "" {
+		if key == flashNodeVolRateKey && strings.TrimSpace(limitPara.vol) == "" {
 			return proto.ErrVolNameIsEmpty
 		}
 		v := val.(uint64)
@@ -5086,7 +5036,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 
 	uintKeys := []string{nodeDeleteBatchCountKey, proto.DataNodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs,
-		proto.NetworkFlowRatioKey, proto.RateLimitKey, proto.RateLimitIndexKey, dataNodeReqRateKey, dataNodeReqVolOpRateKey, dataNodeReqOpRateKey, dataNodeReqVolPartRateKey, dataNodeReqVolOpPartRateKey, opcodeKey, proto.ClientReadVolRateKey, proto.ClientWriteVolRateKey,
+		proto.NetworkFlowRatioKey, proto.RateLimitKey, proto.RateLimitIndexKey, opcodeKey, proto.ClientReadVolRateKey, proto.ClientWriteVolRateKey,
 		dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
@@ -5097,7 +5047,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
-	intKeys := []string{metaNodeReqRateKey, metaNodeReqOpRateKey, dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
+	intKeys := []string{dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
 		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.DpTimeoutCntThreshold,
 		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ConnTimeoutMsKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey,
 		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey, apiReqBwRateLimitKey}

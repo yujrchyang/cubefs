@@ -3,13 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/multirate"
 	"strconv"
 	"strings"
 
 	cproto "github.com/cubefs/cubefs/console/proto"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/multirate"
 )
 
 func (cli *CliService) GetRateLimitConfig(cluster string, operation int) (result []*cproto.CliValueMetric, err error) {
@@ -590,49 +590,6 @@ func moduleByOperation(operation int) (module string) {
 	return
 }
 
-func (cli *CliService) getMetaNodeReqRateLimit(cluster string) (uint64, error) {
-	if cproto.IsRelease(cluster) {
-		limitInfo, err := cli.api.GetLimitInfoCacheRelease(cluster, false)
-		if err != nil {
-			return 0, err
-		}
-		return limitInfo.MetaNodeReqRateLimit, nil
-	} else {
-		limitInfo, err := cli.api.GetLimitInfoCache(cluster, false)
-		if err != nil {
-			return 0, err
-		}
-		return limitInfo.MetaNodeReqRateLimit, nil
-	}
-}
-
-func (cli *CliService) getMetaNodeReqOpRateLimitMap(cluster string) (map[uint8]uint64, error) {
-	if cproto.IsRelease(cluster) {
-		limitInfo, err := cli.api.GetLimitInfoCacheRelease(cluster, false)
-		if err != nil {
-			return nil, err
-		}
-		return limitInfo.MetaNodeReqOpRateLimitMap, nil
-	} else {
-		limitInfo, err := cli.api.GetLimitInfoCache(cluster, false)
-		if err != nil {
-			return nil, err
-		}
-		return limitInfo.MetaNodeReqOpRateLimitMap, nil
-	}
-}
-
-func (cli *CliService) getMetaNodeReqVolOpRateLimitMap(cluster string) (map[string]map[uint8]uint64, error) {
-	if cproto.IsRelease(cluster) {
-		return nil, ErrUnSupportOperation
-	}
-	limitInfo, err := cli.api.GetLimitInfoCache(cluster, false)
-	if err != nil {
-		return nil, err
-	}
-	return limitInfo.MetaNodeReqVolOpRateLimitMap, nil
-}
-
 func (cli *CliService) getDataNodeDeleteRateLimit(cluster string) (uint64, error) {
 	if cproto.IsRelease(cluster) {
 		return 0, ErrUnSupportOperation
@@ -642,54 +599,6 @@ func (cli *CliService) getDataNodeDeleteRateLimit(cluster string) (uint64, error
 		return 0, err
 	}
 	return limitInfo.DataNodeDeleteLimitRate, nil
-}
-
-func (cli *CliService) getDataNodeReqZoneRateLimit(cluster string) (map[string]uint64, error) {
-	if cproto.IsRelease(cluster) {
-		limitInfo, err := cli.api.GetLimitInfoCacheRelease(cluster, false)
-		if err != nil {
-			return nil, err
-		}
-		return limitInfo.DataNodeReqZoneRateLimitMap, nil
-	} else {
-		limitInfo, err := cli.api.GetLimitInfoCache(cluster, false)
-		if err != nil {
-			return nil, err
-		}
-		return limitInfo.DataNodeReqZoneRateLimitMap, nil
-	}
-}
-
-func (cli *CliService) getDataNodeReqZoneOpRateLimit(cluster string) (map[string]map[uint8]uint64, error) {
-	if cproto.IsRelease(cluster) {
-		limitInfo, err := cli.api.GetLimitInfoCacheRelease(cluster, false)
-		if err != nil {
-			return nil, err
-		}
-		return limitInfo.DataNodeReqZoneOpRateLimitMap, nil
-	} else {
-		limitInfo, err := cli.api.GetLimitInfoCache(cluster, false)
-		if err != nil {
-			return nil, err
-		}
-		return limitInfo.DataNodeReqZoneOpRateLimitMap, nil
-	}
-}
-
-func (cli *CliService) getDataNodeReqZoneVolOpRateLimitMap(cluster string) (map[string]map[string]map[uint8]uint64, error) {
-	if cproto.IsRelease(cluster) {
-		limitInfo, err := cli.api.GetLimitInfoCacheRelease(cluster, false)
-		if err != nil {
-			return nil, err
-		}
-		return limitInfo.DataNodeReqZoneVolOpRateLimitMap, nil
-	} else {
-		limitInfo, err := cli.api.GetLimitInfoCache(cluster, false)
-		if err != nil {
-			return nil, err
-		}
-		return limitInfo.DataNodeReqZoneVolOpRateLimitMap, nil
-	}
 }
 
 func (cli *CliService) getClientReadVolRateLimitMap(cluster string) (map[string]uint64, error) {

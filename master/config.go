@@ -101,15 +101,7 @@ type clusterConfig struct {
 	nodeSetCapacity                     int
 	MetaNodeThreshold                   float32
 	MetaNodeDeleteBatchCount            uint64 //metanode delete batch count
-	MetaNodeReqRateLimit                uint64
 	MetaNodeReadDirLimitNum             uint64
-	MetaNodeReqOpRateLimitMap           map[uint8]uint64
-	MetaNodeReqVolOpRateLimitMap        map[string]map[uint8]uint64
-	DataNodeReqZoneRateLimitMap         map[string]uint64
-	DataNodeReqZoneOpRateLimitMap       map[string]map[uint8]uint64
-	DataNodeReqZoneVolOpRateLimitMap    map[string]map[string]map[uint8]uint64
-	DataNodeReqVolPartRateLimitMap      map[string]uint64
-	DataNodeReqVolOpPartRateLimitMap    map[string]map[uint8]uint64
 	NetworkFlowRatio                    map[string]uint64
 	RateLimit                           map[string]map[string]map[int]bsProto.AllLimitGroup
 	FlashNodeLimitMap                   map[string]uint64
@@ -207,13 +199,6 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MetaPartitionsRecoverPoolSize = defaultRecoverPoolSize
 	cfg.MetaNodeRocksdbDiskThreshold = defaultRocksdbDiskUsageThreshold
 	cfg.MetaNodeMemModeRocksdbDiskThreshold = defaultMemModeRocksdbDiskUsageThreshold
-	cfg.MetaNodeReqOpRateLimitMap = make(map[uint8]uint64)
-	cfg.MetaNodeReqVolOpRateLimitMap = make(map[string]map[uint8]uint64)
-	cfg.DataNodeReqZoneRateLimitMap = make(map[string]uint64)
-	cfg.DataNodeReqZoneOpRateLimitMap = make(map[string]map[uint8]uint64)
-	cfg.DataNodeReqZoneVolOpRateLimitMap = make(map[string]map[string]map[uint8]uint64)
-	cfg.DataNodeReqVolPartRateLimitMap = make(map[string]uint64)
-	cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
 	cfg.NetworkFlowRatio = make(map[string]uint64)
 	cfg.RateLimit = make(map[string]map[string]map[int]bsProto.AllLimitGroup)
 	cfg.FlashNodeLimitMap = make(map[string]uint64)

@@ -825,12 +825,6 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.ObjectVolActionRate >= -1 {
 		request.addParam("objectVolActionRate", strconv.FormatInt(info.ObjectVolActionRate, 10))
 	}
-	if info.MetaNodeReqRate >= 0 {
-		request.addParam("metaNodeReqRate", strconv.FormatInt(info.MetaNodeReqRate, 10))
-	}
-	if info.MetaNodeReqOpRate != 0 {
-		request.addParam("metaNodeReqOpRate", strconv.FormatInt(info.MetaNodeReqOpRate, 10))
-	}
 	if info.DataNodeRepairTaskCount > 0 {
 		request.addParam("dataNodeRepairTaskCount", strconv.FormatInt(info.DataNodeRepairTaskCount, 10))
 	}
@@ -846,21 +840,6 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.NetworkFlowRatio >= 0 {
 		request.addParam(proto.NetworkFlowRatioKey, strconv.FormatInt(info.NetworkFlowRatio, 10))
-	}
-	if info.DataNodeReqRate >= 0 {
-		request.addParam("dataNodeReqRate", strconv.FormatInt(info.DataNodeReqRate, 10))
-	}
-	if info.DataNodeReqOpRate >= 0 {
-		request.addParam("dataNodeReqOpRate", strconv.FormatInt(info.DataNodeReqOpRate, 10))
-	}
-	if info.DataNodeReqVolOpRate >= 0 {
-		request.addParam("dataNodeReqVolOpRate", strconv.FormatInt(info.DataNodeReqVolOpRate, 10))
-	}
-	if info.DataNodeReqVolPartRate >= 0 {
-		request.addParam(proto.DataNodeReqVolPartRateKey, strconv.FormatInt(info.DataNodeReqVolPartRate, 10))
-	}
-	if info.DataNodeReqVolOpPartRate >= 0 {
-		request.addParam(proto.DataNodeReqVolOpPartRateKey, strconv.FormatInt(info.DataNodeReqVolOpPartRate, 10))
 	}
 	if info.RateLimitIndex >= 0 {
 		request.addParam(proto.RateLimitIndexKey, strconv.FormatInt(info.RateLimitIndex, 10))

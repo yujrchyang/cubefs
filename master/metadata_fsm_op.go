@@ -44,19 +44,11 @@ type clusterValue struct {
 	DataNodeRepairTaskCount             uint64
 	DataNodeRepairTaskSSDZoneLimit      uint64
 	DataNodeRepairTaskCountZoneLimit    map[string]uint64
-	DataNodeReqZoneRateLimitMap         map[string]uint64
-	DataNodeReqZoneOpRateLimitMap       map[string]map[uint8]uint64
-	DataNodeReqZoneVolOpRateLimitMap    map[string]map[string]map[uint8]uint64
-	DataNodeReqVolPartRateLimitMap      map[string]uint64
-	DataNodeReqVolOpPartRateLimitMap    map[string]map[uint8]uint64
 	NetworkFlowRatio                    map[string]uint64
 	RateLimit                           map[string]map[string]map[int]bsProto.AllLimitGroup
 	FlashNodeLimitMap                   map[string]uint64
 	FlashNodeVolLimitMap                map[string]map[string]uint64
-	MetaNodeReqRateLimit                uint64
 	MetaNodeReadDirLimitNum             uint64
-	MetaNodeReqOpRateLimitMap           map[uint8]uint64
-	MetaNodeReqVolOpRateLimitMap        map[string]map[uint8]uint64
 	MetaNodeDeleteBatchCount            uint64
 	MetaNodeDeleteWorkerSleepMs         uint64
 	DataNodeFlushFDInterval             uint32
@@ -135,17 +127,9 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeRepairTaskSSDZoneLimit:      c.cfg.DataNodeRepairSSDZoneTaskCount,
 		DataNodeRepairTaskCountZoneLimit:    c.cfg.DataNodeRepairTaskCountZoneLimit,
 		NetworkFlowRatio:                    c.cfg.NetworkFlowRatio,
-		DataNodeReqZoneRateLimitMap:         c.cfg.DataNodeReqZoneRateLimitMap,
-		DataNodeReqZoneOpRateLimitMap:       c.cfg.DataNodeReqZoneOpRateLimitMap,
-		DataNodeReqZoneVolOpRateLimitMap:    c.cfg.DataNodeReqZoneVolOpRateLimitMap,
-		DataNodeReqVolPartRateLimitMap:      c.cfg.DataNodeReqVolPartRateLimitMap,
-		DataNodeReqVolOpPartRateLimitMap:    c.cfg.DataNodeReqVolOpPartRateLimitMap,
 		RateLimit:                           c.cfg.RateLimit,
 		FlashNodeLimitMap:                   c.cfg.FlashNodeLimitMap,
 		FlashNodeVolLimitMap:                c.cfg.FlashNodeVolLimitMap,
-		MetaNodeReqRateLimit:                c.cfg.MetaNodeReqRateLimit,
-		MetaNodeReqOpRateLimitMap:           c.cfg.MetaNodeReqOpRateLimitMap,
-		MetaNodeReqVolOpRateLimitMap:        c.cfg.MetaNodeReqVolOpRateLimitMap,
 		MetaNodeDeleteBatchCount:            c.cfg.MetaNodeDeleteBatchCount,
 		MetaNodeDeleteWorkerSleepMs:         c.cfg.MetaNodeDeleteWorkerSleepMs,
 		DataNodeFlushFDInterval:             c.cfg.DataNodeFlushFDInterval,
@@ -1103,16 +1087,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDataNodeFlushFDParallelismOnDisk(cv.DataNodeFlushFDParallelismOnDisk)
 		c.updateNormalExtentDeleteExpire(cv.DataNodeNormalExtentDeleteExpire)
 		c.updateDataPartitionConsistencyMode(cv.DataPartitionConsistencyMode)
-		atomic.StoreUint64(&c.cfg.MetaNodeReqRateLimit, cv.MetaNodeReqRateLimit)
 		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, cv.MetaNodeReadDirLimitNum)
-		c.cfg.MetaNodeReqOpRateLimitMap = cv.MetaNodeReqOpRateLimitMap
-		if c.cfg.MetaNodeReqOpRateLimitMap == nil {
-			c.cfg.MetaNodeReqOpRateLimitMap = make(map[uint8]uint64)
-		}
-		c.cfg.MetaNodeReqVolOpRateLimitMap = cv.MetaNodeReqVolOpRateLimitMap
-		if c.cfg.MetaNodeReqVolOpRateLimitMap == nil {
-			c.cfg.MetaNodeReqVolOpRateLimitMap = make(map[string]map[uint8]uint64)
-		}
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, cv.DataNodeRepairTaskCount)
 		if cv.DataNodeRepairTaskSSDZoneLimit == 0 {
@@ -1126,26 +1101,6 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.cfg.NetworkFlowRatio = cv.NetworkFlowRatio
 		if c.cfg.NetworkFlowRatio == nil {
 			c.cfg.NetworkFlowRatio = make(map[string]uint64)
-		}
-		c.cfg.DataNodeReqZoneRateLimitMap = cv.DataNodeReqZoneRateLimitMap
-		if c.cfg.DataNodeReqZoneRateLimitMap == nil {
-			c.cfg.DataNodeReqZoneRateLimitMap = make(map[string]uint64)
-		}
-		c.cfg.DataNodeReqZoneOpRateLimitMap = cv.DataNodeReqZoneOpRateLimitMap
-		if c.cfg.DataNodeReqZoneOpRateLimitMap == nil {
-			c.cfg.DataNodeReqZoneOpRateLimitMap = make(map[string]map[uint8]uint64)
-		}
-		c.cfg.DataNodeReqZoneVolOpRateLimitMap = cv.DataNodeReqZoneVolOpRateLimitMap
-		if c.cfg.DataNodeReqZoneVolOpRateLimitMap == nil {
-			c.cfg.DataNodeReqZoneVolOpRateLimitMap = make(map[string]map[string]map[uint8]uint64)
-		}
-		c.cfg.DataNodeReqVolPartRateLimitMap = cv.DataNodeReqVolPartRateLimitMap
-		if c.cfg.DataNodeReqVolPartRateLimitMap == nil {
-			c.cfg.DataNodeReqVolPartRateLimitMap = make(map[string]uint64)
-		}
-		c.cfg.DataNodeReqVolOpPartRateLimitMap = cv.DataNodeReqVolOpPartRateLimitMap
-		if c.cfg.DataNodeReqVolOpPartRateLimitMap == nil {
-			c.cfg.DataNodeReqVolOpPartRateLimitMap = make(map[string]map[uint8]uint64)
 		}
 		c.cfg.RateLimit = cv.RateLimit
 		if c.cfg.RateLimit == nil {

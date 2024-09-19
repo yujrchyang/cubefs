@@ -291,8 +291,6 @@ const (
 	WriteConnTimeoutMsKey            = "writeConnTimeoutMs"
 	FlashNodeRateKey                 = "flashNodeRate"
 	FlashNodeVolRateKey              = "flashNodeVolRate"
-	DataNodeReqVolPartRateKey        = "dataNodeReqVolPartRate"
-	DataNodeReqVolOpPartRateKey      = "dataNodeReqVolOpPartRate"
 	RateLimitKey                     = "rateLimit"
 	RateLimitIndexKey                = "rateLimitIndex"
 	DataNodeMarkDeleteRateKey        = "markDeleteRate"
@@ -646,22 +644,12 @@ type LimitInfo struct {
 	DataNodeNormalExtentDeleteExpire uint64
 	DataNodeReqVolOpRateLimitMap     map[string]map[uint8]uint64
 	MetaNodeReadDirLimitNum          uint64
-	MetaNodeReqRateLimit             uint64
-	MetaNodeReqOpRateLimitMap        map[uint8]uint64
-	MetaNodeReqVolOpRateLimitMap     map[string]map[uint8]uint64
-	DataNodeReqZoneRateLimitMap      map[string]uint64
-	DataNodeReqZoneOpRateLimitMap    map[string]map[uint8]uint64
-	DataNodeReqZoneVolOpRateLimitMap map[string]map[string]map[uint8]uint64
-	DataNodeReqVolPartRateLimitMap   map[string]uint64
-	DataNodeReqVolOpPartRateLimitMap map[string]map[uint8]uint64
 	NetworkFlowRatio                 map[string]uint64
 	// map[module]map[zone:|vol:]map[op]AllLimitGroup
 	RateLimit                  map[string]map[string]map[int]AllLimitGroup
 	DataNodeDeleteLimitRate    uint64
 	ClientReadVolRateLimitMap  map[string]uint64
 	ClientWriteVolRateLimitMap map[string]uint64
-	ClientReadRateLimit        uint64
-	ClientWriteRateLimit       uint64
 	ClientVolOpRateLimit       map[uint8]int64 // less than 0: no limit; equal 0: disable op
 	ObjectNodeActionRateLimit  map[string]int64
 
@@ -1411,17 +1399,10 @@ type RateLimitInfo struct {
 	Volume                           string
 	Action                           string
 	Opcode                           int64
-	MetaNodeReqRate                  int64
-	MetaNodeReqOpRate                int64
 	DataNodeRepairTaskCount          int64
 	DataNodeRepairTaskSSDZone        int64
 	DataNodeMarkDeleteRate           int64
 	NetworkFlowRatio                 int64
-	DataNodeReqRate                  int64
-	DataNodeReqOpRate                int64
-	DataNodeReqVolOpRate             int64
-	DataNodeReqVolPartRate           int64
-	DataNodeReqVolOpPartRate         int64
 	RateLimit                        int64
 	RateLimitIndex                   int64
 	FlashNodeRate                    int64
@@ -1432,8 +1413,6 @@ type RateLimitInfo struct {
 	DNNormalExtentDeleteExpire       int64
 	ClientReadVolRate                int64
 	ClientWriteVolRate               int64
-	ClientReadRate                   int64
-	ClientWriteRate                  int64
 	ClientVolOpRate                  int64
 	ObjectVolActionRate              int64
 	DnFixTinyDeleteRecordLimit       int64
