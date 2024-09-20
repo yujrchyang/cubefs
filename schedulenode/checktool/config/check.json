@@ -54,5 +54,19 @@
   "xbpUsername": "zhuhongyin",
   "checkRiskFix": false,
   "clusterConfigCheckJsonPath": "/export/App/chubaoio/storage-bot/clusterConfigCheck.json",
-  "jcloudOssDomain": "xxxx.jd.com"
+  "jcloudOssDomain": "xxxx.jd.com",
+  "checkAvailTinyVols": [],
+  "email": {
+    "enable": false,
+    "property": {
+      "smtpHost": "mx.jd.local",
+      "smtpPort": 25,
+      "mailFrom": "emailtest@jd.com",
+      "mailTo": [
+        "xxtest@jd.com"
+      ],
+      "mailUser": "test",
+      "mailPwd": "******"
+    }
+  }
 }

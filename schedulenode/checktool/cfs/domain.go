@@ -20,12 +20,6 @@ type AlarmMetric struct {
 	lastAlarmTime time.Time
 }
 
-const (
-	dataNodeAliveRetryToken = "dataNodeAliveRetryToken"
-	metaNodeAliveRetryToken = "metaNodeAliveRetryToken"
-	resetDbBackRecoverToken = "resetDbBackRecoverToken"
-)
-
 type ClusterHost struct {
 	host                          string
 	deadDataNodes                 map[string]*DeadNode
@@ -64,6 +58,7 @@ type ClusterHost struct {
 	nodeMemInfo                   map[string]float64
 	tokenLock                     sync.RWMutex
 	tokenMap                      map[string]int
+	warningTick                   map[string]int64
 }
 
 func newClusterHost(host string) *ClusterHost {

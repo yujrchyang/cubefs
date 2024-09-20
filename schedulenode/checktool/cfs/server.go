@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/multi_email"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/checktool/ump"
 	"github.com/cubefs/cubefs/util/config"
@@ -79,6 +80,7 @@ const (
 	cfgKeyCheckFlashNode                   = "checkFlashNode"
 	cfgKeyCheckRiskFix                     = "checkRiskFix"
 	cfgKeyFlashNodeValidVersions           = "flashNodeVersions"
+	cfgKeyCheckAvailTinyVols               = "checkAvailTinyVols"
 	cfgKeyNlClusterUsedRatio               = "nlClusterUsedRatio"
 	cfgKeyMinRWCnt                         = "minRWCnt"
 	cfgKeyDomains                          = "cfsDomains"
@@ -112,7 +114,21 @@ const (
 	cfgKeyExpiredMetaRemainDays            = "expiredMetaRemainDays"
 	cfgKeyXbpUsername                      = "xbpUsername"
 	cfgKeyOssDomain                        = "jcloudOssDomain"
+	cfgKeyEmail                            = "email"
+	cfgKeyEnable                           = "enable"
 )
+
+type emailConfig struct {
+	Enable   bool `json:"enable"`
+	Property struct {
+		SmtpHost string   `json:"smtpHost"`
+		SmtpPort int      `json:"smtpPort"`
+		MailFrom string   `json:"mailFrom"`
+		MailTo   []string `json:"mailTo"`
+		MailUser string   `json:"mailUser"`
+		MailPwd  string   `json:"mailPwd"`
+	} `json:"property"`
+}
 
 var configKeys = []string{
 	cfgKeyOssDomain,
@@ -189,6 +205,7 @@ type ChubaoFSMonitor struct {
 	umpClient                               *ump.UMPClient
 	clusterConfigCheck                      *ClusterConfigCheck
 	ExpiredMetaRemainDaysCfg                int
+	checkAvailTinyVols                      []string
 	ctx                                     context.Context
 	dpReleaser                              *ChubaoFSDPReleaser
 	xbpUsername                             string
@@ -314,6 +331,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.NewSchedule(s.checkNodeSet, time.Hour)
 	go s.NewSchedule(s.resetTokenMap, time.Minute*30)
 	go s.NewSchedule(s.checkDbbakDataPartition, time.Hour*6)
+	go s.NewSchedule(s.checkAvailableTinyExtents, time.Minute*2)
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
@@ -480,10 +498,21 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	if s.ExpiredMetaRemainDaysCfg <= 0 {
 		s.ExpiredMetaRemainDaysCfg = defaultExpiredMetaRemainDays
 	}
+	s.checkAvailTinyVols = cfg.GetStringSlice(cfgKeyCheckAvailTinyVols)
+
 	if err = loadDockerIPList(); err != nil {
 		return
 	}
 	s.parseJdosToken(cfg)
+	var email *emailConfig
+	email, err = s.parseEmailConfig(cfg)
+	if err != nil {
+		return
+	}
+	if email.Enable {
+		multi_email.InitMultiMail(email.Property.SmtpPort, email.Property.SmtpHost, email.Property.MailFrom, email.Property.MailUser, email.Property.MailPwd, email.Property.MailTo)
+	}
+
 	for _, k := range configKeys {
 		val := cfg.GetString(k)
 		if val == "" {
@@ -542,6 +571,15 @@ func (s *ChubaoFSMonitor) parseJdosToken(cfg *config.Config) {
 	s.jdosToken = cfg.GetString(cfgKeyJdosToken)
 	s.jdosUrl = cfg.GetString(cfgKeyJdosURl)
 	s.jdosErp = cfg.GetString(cfgKeyJdosErp)
+}
+
+func (s *ChubaoFSMonitor) parseEmailConfig(cfg *config.Config) (email *emailConfig, err error) {
+	email = new(emailConfig)
+	bytes := cfg.GetJsonObjectBytes(cfgKeyEmail)
+	if err = json.Unmarshal(bytes, email); err != nil {
+		return
+	}
+	return
 }
 
 func (s *ChubaoFSMonitor) parseSreDBConfig(cfg *config.Config) {
