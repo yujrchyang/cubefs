@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/multi_email"
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
@@ -13,6 +14,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -115,6 +117,181 @@ func (s *ChubaoFSMonitor) checkDpPeerCorrupt() {
 	// print mp/dp raft pending applied check result
 	for _, host := range s.hosts {
 		printRaftPendingAndAppliedResult(host, partitionTypeDP)
+	}
+}
+
+func (s *ChubaoFSMonitor) checkAvailableTinyExtents() {
+	dpCheckStartTime := time.Now()
+	log.LogInfof("checkAvailableTinyExtents start")
+	for _, host := range s.hosts {
+		if host.isReleaseCluster {
+			continue
+		}
+		checkTinyExtentsByVol(host, s.checkAvailTinyVols)
+	}
+	log.LogInfof("checkAvailableTinyExtents end, cost [%v]", time.Since(dpCheckStartTime))
+}
+
+func checkTinyExtentsByVol(host *ClusterHost, vols []string) {
+	mc := master.NewMasterClient([]string{host.host}, false)
+	var err error
+	for _, vol := range vols {
+		var volInfo *SimpleVolView
+		volInfo, err = getVolSimpleView(vol, host)
+		if err != nil || volInfo == nil {
+			log.LogErrorf("get volume simple view failed: %v err:%v", vol, err)
+			continue
+		}
+		authKey := checktool.Md5(volInfo.Owner)
+		var volView *VolView
+		if volView, err = getDataPartitionsFromVolume(host, vol, authKey); err != nil {
+			log.LogErrorf("Found an invalid vol: %v err:%v", vol, err)
+			continue
+		}
+		elements := make([][]string, 0)
+		elements = append(elements, []string{
+			"partition",
+			"warnType",
+			"ReplicaNum",
+			"hosts",
+			"leader",
+			"status",
+			"recover",
+			"availableCh",
+			"brokenCh",
+			"totalExtents",
+			"availableMap",
+			"brokenMap",
+		})
+		var lock sync.Mutex
+		wg := sync.WaitGroup{}
+		wg.Add(32)
+		dpCh := make(chan *DataPartitionResponse, 1)
+		var brokenRw = new(atomic.Int32)
+		var recoverNum = new(atomic.Int32)
+		var checkFailedNum = new(atomic.Int32)
+		for i := 0; i < 32; i++ {
+			go func() {
+				defer wg.Done()
+				for {
+					select {
+					case dp := <-dpCh:
+						if dp == nil {
+							return
+						}
+						result := checkDataPartitionAvailTiny(vol, dp, brokenRw, recoverNum, checkFailedNum, mc)
+						if len(result) == 0 {
+							continue
+						}
+						lock.Lock()
+						elements = append(elements, result)
+						lock.Unlock()
+					}
+				}
+			}()
+		}
+
+		for _, dp := range volView.DataPartitions {
+			dpCh <- dp
+		}
+		close(dpCh)
+		wg.Wait()
+
+		if len(elements) == 1 {
+			continue
+		}
+
+		partitionStr := fmt.Sprintf("total[%v]rw[%v]ro[%v]broken[%v]broken_rw[%v]check_fail[%v]recover[%v]", len(volView.DataPartitions), volInfo.RwDpCnt,
+			len(volView.DataPartitions)-volInfo.RwDpCnt, len(elements)-1, brokenRw.Load(), checkFailedNum.Load(), recoverNum.Load())
+		summary := `Domain    : ` + host.host + `<br>` +
+			`Volume    : ` + vol + `<br>` +
+			`Partition : ` + partitionStr + `<br>`
+
+		err = multi_email.Email(fmt.Sprintf("AvailableTinyExtentCheck [Domain: %v, Volume: %v]", host.host, vol), summary, elements)
+		if err != nil {
+			log.LogErrorf("send email failed, err:%v", err)
+		}
+	}
+}
+
+func checkDataPartitionAvailTiny(vol string, dp *DataPartitionResponse, brokenRw, recoverNum, checkFailedNum *atomic.Int32, mc *master.MasterClient) []string {
+	var (
+		err            error
+		recoverReplica bool
+		primaryLeader  string
+		tinyExtents    []*http_client.TinyExtentsInfo
+	)
+	if len(dp.Hosts) < 1 {
+		return []string{}
+	}
+	primaryLeader = dp.Hosts[0]
+	result := []string{
+		fmt.Sprintf("%v", dp.PartitionID),
+		"",
+		fmt.Sprintf("%v", dp.ReplicaNum),
+		strings.Join(dp.Hosts, ","),
+		dp.LeaderAddr,
+		fmt.Sprintf("%v", dp.Status),
+		"N/A",
+		"N/A",
+		"N/A",
+		"N/A",
+		"N/A",
+		"N/A",
+	}
+	if dp.IsRecover {
+		recoverNum.Add(1)
+		result[1] = "InRecover"
+		return result
+	}
+	dHost := fmt.Sprintf("%v:%v", strings.Split(primaryLeader, ":")[0], profPortMap[strings.Split(primaryLeader, ":")[1]])
+	dataClient := http_client.NewDataClient(dHost, false)
+	tinyExtents, err = dataClient.GetTinyExtents(dp.PartitionID)
+	if err != nil {
+		checkFailedNum.Add(1)
+		log.LogErrorf("dp[%v] get tiny extents err:%v", dp.PartitionID, err)
+		result[1] = "GetTinyFailed"
+		return result
+	}
+	if len(tinyExtents) != 1 {
+		checkFailedNum.Add(1)
+		log.LogErrorf("dp[%v] get invalid tiny extents, len(%v)", dp.PartitionID, len(tinyExtents))
+		result[1] = "GetTinyFailed"
+		return result
+	}
+	if !(tinyExtents[0].TotalTinyExtent < 64 || tinyExtents[0].AvailableCh < 10) {
+		return []string{}
+	}
+	var partition *proto.DataPartitionInfo
+	partition, err = mc.AdminAPI().GetDataPartition(vol, dp.PartitionID)
+	if err != nil {
+		checkFailedNum.Add(1)
+		log.LogErrorf("dp[%v] get data partition from master failed, err:%v", dp.PartitionID, err)
+		result[1] = "GetPartitionFailed"
+		return result
+	}
+	for _, replica := range partition.Replicas {
+		if replica.IsRecover {
+			recoverReplica = true
+			break
+		}
+	}
+	if dp.Status == ReadWrite {
+		brokenRw.Add(1)
+	}
+	return []string{
+		fmt.Sprintf("%v", dp.PartitionID),
+		"BrokenTinyExtent",
+		fmt.Sprintf("%v", dp.ReplicaNum),
+		strings.Join(dp.Hosts, ","),
+		dp.LeaderAddr,
+		fmt.Sprintf("%v", dp.Status),
+		fmt.Sprintf("%v", recoverReplica),
+		fmt.Sprintf("%v", tinyExtents[0].AvailableCh),
+		fmt.Sprintf("%v", tinyExtents[0].BrokenCh),
+		fmt.Sprintf("%v", tinyExtents[0].TotalTinyExtent),
+		fmt.Sprintf("%v", tinyExtents[0].AvailableTinyExtents),
+		fmt.Sprintf("%v", tinyExtents[0].BrokenTinyExtents),
 	}
 }
 

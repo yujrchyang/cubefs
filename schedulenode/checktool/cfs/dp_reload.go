@@ -9,6 +9,7 @@ import (
 	"github.com/cubefs/cubefs/util/checktool/ump"
 	"github.com/cubefs/cubefs/util/log"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -79,7 +80,7 @@ func (s *ChubaoFSMonitor) reloadFailedDp() {
 func (s *ChubaoFSMonitor) doReload(umpKey, domainName string) {
 	defer func() {
 		if e := recover(); e != nil {
-			log.LogErrorf("action[doReload] reload failed dp failed, umpKey(%v), domainName(%v), err(%v)", umpKey, domainName, e)
+			log.LogErrorf("action[doReload] reload failed dp failed, umpKey(%v), domainName(%v), err(%v), trace(%v)", umpKey, domainName, e, string(debug.Stack()))
 		}
 	}()
 

@@ -665,3 +665,36 @@ func (dc *DataClient) GetExtentLockInfo(partition, extentId uint64) (lockInfo ma
 	}
 	return
 }
+
+type TinyExtentsInfo struct {
+	PartitionID          uint64   `json:"partitionID"`
+	IsLeader             bool     `json:"isLeader"`
+	AvailableCh          int      `json:"availableCh"`
+	BrokenCh             int      `json:"brokenCh"`
+	TotalTinyExtent      int      `json:"totalTinyExtent"`
+	AvailableTinyExtents []uint64 `json:"availableTinyExtents"`
+	BrokenTinyExtents    []uint64 `json:"brokenTinyExtents"`
+}
+
+func (dc *DataClient) GetTinyExtents(partition uint64) (tinyExtents []*TinyExtentsInfo, err error) {
+	params := make(map[string]string, 0)
+	if partition > 0 {
+		params["partitionID"] = strconv.FormatUint(partition, 10)
+	}
+	d := make([]byte, 0)
+	for i := 0; i < 3; i++ {
+		d, err = dc.RequestHttp(http.MethodGet, "/tinyExtents", params)
+		if err == nil {
+			break
+		}
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		return
+	}
+	tinyExtents = make([]*TinyExtentsInfo, 0)
+	if err = json.Unmarshal(d, &tinyExtents); err != nil {
+		return
+	}
+	return
+}
