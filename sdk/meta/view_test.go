@@ -1,18 +1,9 @@
 package meta
 
 import (
-	"github.com/stretchr/testify/require"
-	"strings"
 	"testing"
-)
 
-var (
-	mw, _ = NewMetaWrapper(&MetaConfig{
-		Volume:        ltptestVolume,
-		Masters:       strings.Split(ltptestMaster, ","),
-		ValidateOwner: true,
-		Owner:         ltptestVolume,
-	})
+	"github.com/stretchr/testify/require"
 )
 
 func Test_updateMetaPartitionsWithNoCache(t *testing.T) {

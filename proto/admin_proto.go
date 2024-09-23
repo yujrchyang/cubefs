@@ -255,8 +255,10 @@ const (
 
 const (
 	VolumeKey             = "volume"
+	OpcodeKey             = "opcode"
 	ClientReadVolRateKey  = "clientReadVolRate"
 	ClientWriteVolRateKey = "clientWriteVolRate"
+	ClientVolOpRateKey    = "clientVolOpRate"
 
 	RocksDBDiskReservedSpaceKey      = "rocksDBDiskReservedSpace"
 	LogMaxMB                         = "logMaxMB"

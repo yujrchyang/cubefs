@@ -12,15 +12,13 @@ import (
 )
 
 const (
-	ltptestVolume = "ltptest"
-	ltptestMaster = "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010"
-	readFilePath  = "/cfs/mnt/testread.txt"
+	readFilePath = "/cfs/mnt/testread.txt"
 )
 
 func TestMetaConsistenceRead(t *testing.T) {
 	mw, err := NewMetaWrapper(&MetaConfig{
 		Volume:        ltptestVolume,
-		Masters:       strings.Split(ltptestMaster, ","),
+		Masters:       ltptestMaster,
 		ValidateOwner: true,
 		Owner:         ltptestVolume,
 	})

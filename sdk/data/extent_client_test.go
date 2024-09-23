@@ -65,27 +65,57 @@ func TestSetExtentSize(t *testing.T) {
 }
 
 func TestRateLimit(t *testing.T) {
-	info, _ := create("TestRateLimit")
+	file := "TestRateLimit"
+	info, _ := create(file)
 	ec.OpenStream(info.Inode, false)
 	data := []byte("a")
-	limit := map[string]string{proto.VolumeKey: ltptestVolume, proto.ClientWriteVolRateKey: "1000"}
+	offset := uint64(unit.DefaultTinySizeLimit)
+
+	// limited by 100 op/s for writing
+	limit := map[string]string{proto.VolumeKey: ltptestVolume, proto.ClientWriteVolRateKey: "100"}
 	err := mc.AdminAPI().SetRateLimitWithMap(limit)
 	assert.Nil(t, err)
 	ec.updateConfig()
-	// wait limiter to fill burst
-	time.Sleep(time.Second)
+	// consume burst first
+	for i := 0; i < 100; i++ {
+		ec.Write(ctx, info.Inode, offset, data, false)
+		offset++
+	}
 	begin := time.Now()
-	offset := uint64(unit.DefaultTinySizeLimit)
-	for i := 0; i < 500; i++ {
+	for i := 0; i < 101; i++ {
 		ec.Write(ctx, info.Inode, offset, data, false)
 		offset++
 	}
 	cost := time.Since(begin)
-	assert.True(t, cost < 5*time.Millisecond)
+	assert.True(t, cost > time.Second)
 
+	// not limited for writing
 	limit[proto.ClientWriteVolRateKey] = "0"
-	mc.AdminAPI().SetRateLimitWithMap(limit)
+	err = mc.AdminAPI().SetRateLimitWithMap(limit)
+	assert.Nil(t, err)
 	ec.updateConfig()
+	begin = time.Now()
+	for i := 0; i < 200; i++ {
+		ec.Write(ctx, info.Inode, offset, data, false)
+		offset++
+	}
+	cost = time.Since(begin)
+	assert.True(t, cost < time.Millisecond)
+
+	// not limited if op count is not more than burst
+	limit[proto.ClientWriteVolRateKey] = "1000"
+	err = mc.AdminAPI().SetRateLimitWithMap(limit)
+	assert.Nil(t, err)
+	ec.updateConfig()
+	// wait limiter to fill burst
+	time.Sleep(time.Second)
+	begin = time.Now()
+	for i := 0; i < 500; i++ {
+		ec.Write(ctx, info.Inode, offset, data, false)
+		offset++
+	}
+	cost = time.Since(begin)
+	assert.True(t, cost < 5*time.Millisecond)
 }
 
 // with OverWriteBuffer enabled, ek of prepared request may have been modified by ROW, resulting data loss

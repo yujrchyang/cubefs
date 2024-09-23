@@ -2519,7 +2519,7 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	if val, ok := params[opcodeKey]; ok {
+	if val, ok := params[proto.OpcodeKey]; ok {
 		op = val.(uint64)
 	}
 
@@ -2621,10 +2621,10 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if val, ok := params[clientVolOpRateKey]; ok {
+	if val, ok := params[proto.ClientVolOpRateKey]; ok {
 		v := val.(int64)
 		if op <= 0 || op > 255 {
-			err = errors.NewErrorf("value range of parameter %v is 0~255", opcodeKey)
+			err = errors.NewErrorf("value range of parameter %v is 0~255", proto.OpcodeKey)
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 			return
 		}
@@ -5036,7 +5036,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	}
 
 	uintKeys := []string{nodeDeleteBatchCountKey, proto.DataNodeMarkDeleteRateKey, dataNodeRepairTaskCountKey, nodeDeleteWorkerSleepMs,
-		proto.NetworkFlowRatioKey, proto.RateLimitKey, proto.RateLimitIndexKey, opcodeKey, proto.ClientReadVolRateKey, proto.ClientWriteVolRateKey,
+		proto.NetworkFlowRatioKey, proto.RateLimitKey, proto.RateLimitIndexKey, proto.OpcodeKey, proto.ClientReadVolRateKey, proto.ClientWriteVolRateKey,
 		dataNodeFlushFDIntervalKey, dataNodeFlushFDParallelismOnDiskKey, normalExtentDeleteExpireKey, fixTinyDeleteRecordKey, metaNodeReadDirLimitKey, dataNodeRepairTaskCntZoneKey, dataNodeRepairTaskSSDKey, dumpWaterLevelKey,
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
@@ -5047,7 +5047,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
-	intKeys := []string{dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, clientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
+	intKeys := []string{dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, proto.ClientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
 		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.DpTimeoutCntThreshold,
 		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ConnTimeoutMsKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey,
 		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey, apiReqBwRateLimitKey}

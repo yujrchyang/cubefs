@@ -77,3 +77,17 @@ func TestRenameOpenedFile(t *testing.T) {
 	_, err = mw.InodeGet_ll(nil, info3.Inode)
 	assert.Equal(t, syscall.ENOENT, err)
 }
+
+func TestMknod(t *testing.T) {
+	fileName := "/cfs/mnt/TestMknod"
+	err := syscall.Mknod(fileName, 0600, 0)
+	assert.Nil(t, err)
+	f, _ := os.OpenFile(fileName, os.O_RDWR, 0)
+	data := []byte("abc")
+	f.Write(data)
+	readData := make([]byte, 3)
+	f.Seek(0, 0)
+	f.Read(readData)
+	f.Close()
+	assert.Equal(t, data, readData)
+}

@@ -799,7 +799,7 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 
 	var request = newAPIRequest(http.MethodGet, proto.AdminSetNodeInfo)
 	if info.Opcode >= 0 {
-		request.addParam("opcode", strconv.FormatInt(int64(info.Opcode), 10))
+		request.addParam(proto.OpcodeKey, strconv.FormatInt(int64(info.Opcode), 10))
 	}
 	if info.DataNodeFlushFDInterval >= 0 {
 		request.addParam("dataNodeFlushFDInterval", strconv.FormatInt(info.DataNodeFlushFDInterval, 10))
@@ -811,13 +811,13 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 		request.addParam("normalExtentDeleteExpire", strconv.FormatUint(uint64(info.DNNormalExtentDeleteExpire), 10))
 	}
 	if info.ClientReadVolRate >= 0 {
-		request.addParam("clientReadVolRate", strconv.FormatInt(info.ClientReadVolRate, 10))
+		request.addParam(proto.ClientReadVolRateKey, strconv.FormatInt(info.ClientReadVolRate, 10))
 	}
 	if info.ClientWriteVolRate >= 0 {
-		request.addParam("clientWriteVolRate", strconv.FormatInt(info.ClientWriteVolRate, 10))
+		request.addParam(proto.ClientWriteVolRateKey, strconv.FormatInt(info.ClientWriteVolRate, 10))
 	}
 	if info.ClientVolOpRate >= -1 {
-		request.addParam("clientVolOpRate", strconv.FormatInt(info.ClientVolOpRate, 10))
+		request.addParam(proto.ClientVolOpRateKey, strconv.FormatInt(info.ClientVolOpRate, 10))
 	}
 	if info.Action != "" {
 		request.addParam("action", info.Action)
@@ -989,7 +989,7 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	if info.DataNodeDiskReservedRatio >= 0 {
 		request.addParam(proto.DataNodeDiskReservedRatioKey, strconv.FormatFloat(info.DataNodeDiskReservedRatio, 'f', -1, 64))
 	}
-	request.addParam("volume", info.Volume)
+	request.addParam(proto.VolumeKey, info.Volume)
 	request.addParam("zoneName", info.ZoneName)
 	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
