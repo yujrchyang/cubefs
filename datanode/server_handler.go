@@ -1499,6 +1499,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 		partitionID uint64
 	)
 	var result = make([]struct {
+		PartitionID          uint64   `json:"partitionID"`
 		IsLeader             bool     `json:"isLeader"`
 		AvailableCh          int      `json:"availableCh"`
 		Volume               string   `json:"volume"`
@@ -1525,6 +1526,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 		avail := partition.extentStore.AvailableTinyExtentCnt()
 		broken := partition.extentStore.BrokenTinyExtentCnt()
 		result = append(result, struct {
+			PartitionID          uint64   `json:"partitionID"`
 			IsLeader             bool     `json:"isLeader"`
 			AvailableCh          int      `json:"availableCh"`
 			Volume               string   `json:"volume"`
@@ -1533,6 +1535,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 			AvailableTinyExtents []uint64 `json:"availableTinyExtents"`
 			BrokenTinyExtents    []uint64 `json:"brokenTinyExtents"`
 		}{
+			PartitionID:          partitionID,
 			IsLeader:             partition.isReplLeader,
 			AvailableCh:          avail,
 			Volume:               partition.volumeID,
@@ -1549,6 +1552,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 		avail := dp.extentStore.AvailableTinyExtentCnt()
 		broken := dp.extentStore.BrokenTinyExtentCnt()
 		result = append(result, struct {
+			PartitionID          uint64   `json:"partitionID"`
 			IsLeader             bool     `json:"isLeader"`
 			AvailableCh          int      `json:"availableCh"`
 			Volume               string   `json:"volume"`
@@ -1557,6 +1561,7 @@ func (s *DataNode) getTinyExtents(w http.ResponseWriter, r *http.Request) {
 			AvailableTinyExtents []uint64 `json:"availableTinyExtents"`
 			BrokenTinyExtents    []uint64 `json:"brokenTinyExtents"`
 		}{
+			PartitionID:          dp.partitionID,
 			IsLeader:             dp.isReplLeader,
 			AvailableCh:          avail,
 			Volume:               dp.volumeID,
