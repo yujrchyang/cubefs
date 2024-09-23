@@ -446,7 +446,8 @@ func TestDeleteOldExtents(t *testing.T) {
 	inodeOperation.startIndex = 0
 	inodeOperation.endIndex = 2
 	inodeOperation.mpOp = mpOp
-	inodeOperation.deleteOldExtents(inodeOperation.extents[inodeOperation.startIndex:inodeOperation.endIndex])
+	err := inodeOperation.deleteOldExtents(inodeOperation.extents[inodeOperation.startIndex:inodeOperation.endIndex])
+	assert.Nil(t, err)
 }
 
 var (

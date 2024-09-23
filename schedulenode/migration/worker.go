@@ -75,6 +75,10 @@ const (
 	migrationBack   = 1
 )
 
+var (
+	localIp string
+)
+
 type volumeMap map[string]struct{}
 
 type Worker struct {
@@ -114,6 +118,7 @@ func doStartWorker(s common.Server, cfg *config.Config) (err error) {
 		log.LogErrorf("[doStart] parse config info failed, error(%v)", err)
 		return
 	}
+	localIp = w.LocalIp
 	if err = w.parseControlConfig(cfg, w.WorkerType); err != nil {
 		log.LogErrorf("[doStart] parse metaNode control config failed, error(%v)", err)
 		return err
@@ -129,6 +134,7 @@ func doStartWorker(s common.Server, cfg *config.Config) (err error) {
 	go w.loadVolumeInfo()
 	go w.releaseVolume()
 	w.registerHandler()
+	log.LogErrorf("worker type(%v) localIp(%v) WorkerAddr(%v)", w.WorkerType, localIp, w.WorkerAddr)
 	return
 }
 

@@ -544,6 +544,7 @@ func (s *ExtentStore) __markDeleteOne(inode, extentID uint64, offset, size int64
 			}
 			s.cache.Del(extentID)
 			s.infoStore.Delete(extentID)
+			s.ttlStore.Delete(extentID)
 		}
 		s.recentDeletedExtents.Store(extentID, nowUnixSec)
 	}
@@ -571,6 +572,7 @@ func (s *ExtentStore) __markDeleteMore(marker Marker) (err error) {
 				}
 				s.cache.Del(extent)
 				s.infoStore.Delete(extent)
+				s.ttlStore.Delete(extent)
 			}
 			s.recentDeletedExtents.Store(extent, nowUnixSec)
 		}

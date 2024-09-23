@@ -461,7 +461,6 @@ func (s *DataNode) handleLockOrUnlockExtent(p *repl.Packet, c net.Conn) {
 	var err error
 	defer func() {
 		if err != nil {
-			log.LogErrorf(fmt.Sprintf("(%v) error(%v) data(%v)", p.GetUniqueLogId(), err, string(p.Data)))
 			p.PackErrorBody(ActionLockOrUnlockExtent, err.Error())
 		} else {
 			p.PacketOkReply()
