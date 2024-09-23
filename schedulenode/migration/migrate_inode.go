@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	limitSize            = 128    // 迁移的ek链片段数据最大大小MB
-	lockTime             = 5 * 60 //s
-	reserveTime          = 30     //s
+	limitSize            = 128               // 迁移的ek链片段数据最大大小MB
+	lockTime             = 3 * 24 * 60 * 60  //s
+	reserveTime          = 30                //s
 	maxConsumeTime       = lockTime - reserveTime
 	afterLockSleepTime   = 10 //s
 	retryUnlockExtentCnt = 3
@@ -486,8 +486,6 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 	}
 	migInode.newEks = nil
 	defer func() {
-		// 解锁extent
-		migInode.UnlockExtents()
 		if err != nil {
 			log.LogErrorf("inode[%v] %v:%v", migInode.name, InodeMergeFailed, err.Error())
 			migInode.MigTaskCloseStream()
@@ -497,29 +495,38 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 		migInode.stage = LookupEkSegment
 	}()
 	if migInode.mpOp.isRecover() {
+		migInode.UnlockExtents()
 		err = fmt.Errorf("mp[%v] is recovering", migInode.mpOp.mpId)
 		return
 	}
 	if !migInode.compareReplicasInodeEksEqual() {
+		migInode.UnlockExtents()
 		err = fmt.Errorf("unequal extensions between mp[%v] inode[%v] replicas", migInode.mpOp.mpId, migInode.inodeInfo.Inode)
 		return
 	}
 	// 分别从三副本中读取数据和新写的的数据进行crc比较
 	var replicateDataCRC []uint32
 	if replicateDataCRC, err = migInode.getReplicaDataCRC(); err != nil {
-		return err
+		migInode.UnlockExtents()
+		return
 	}
 	if err = migInode.checkReplicaCRCValid(replicateDataCRC); err != nil {
-		return err
+		migInode.UnlockExtents()
+		return
+	}
+	if ok, canDeleteExtentKeys := migInode.checkMigExtentCanDelete(migEks); !ok{
+		migInode.UnlockExtents()
+		err = fmt.Errorf("checkMigExtentCanDelete ino:%v rawEks length:%v delEks length:%v rawEks(%v) canDeleteExtentKeys(%v)", migInode.name, len(migEks), len(canDeleteExtentKeys), migEks, canDeleteExtentKeys)
+		return
 	}
 	// 读写的时间 超过（锁定时间-预留时间），放弃修改ek链
 	consumedTime := time.Since(migInode.rwStartTime)
 	if consumedTime >= maxConsumeTime*time.Second {
+		migInode.UnlockExtents()
 		migInode.stage = LookupEkSegment
 		log.LogWarnf("before MetaMergeExtents ino(%v) has been consumed time(%v) readRange(%v:%v), but maxConsumeTime(%v)", migInode.name, consumedTime, migInode.startIndex, migInode.endIndex, maxConsumeTime*time.Second)
 		return
 	}
-	log.LogDebugf("before MetaMergeExtents ino(%v) has been consumed time(%v) readRange(%v:%v) will be merged", migInode.name, consumedTime, migInode.startIndex, migInode.endIndex)
 	err = migInode.vol.MetaClient.InodeMergeExtents_ll(context.Background(), migInode.inodeInfo.Inode, migEks, copyNewEks, proto.FileMigMergeEk)
 	if err != nil {
 		// merge fail, delete new create extents
@@ -527,10 +534,25 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 		return
 	}
 	// merge success, delete old extents
-	migInode.deleteOldExtents(migEks)
+	err = migInode.deleteOldExtents(migEks)
+	if err == nil {
+		migInode.UnlockExtents()
+	} else {
+		warnMsg := fmt.Sprintf("migration cluster(%v) volume(%v) mp(%v) inode(%v) workerIp(%v) delete old extents fail", migInode.vol.ClusterName, migInode.vol.Name, migInode.mpOp.mpId, migInode.inodeInfo.Inode, localIp)
+		exporter.WarningBySpecialUMPKey(fmt.Sprintf("%v_%v_warning", proto.RoleDataMigWorker, "deleteOldExtents"), warnMsg)
+		log.LogErrorf("%v migEks(%v) newEks(%v) err(%v)", warnMsg, migEks, copyNewEks, err)
+	}
 	log.LogDebugf("InodeMergeExtents_ll success ino(%v) oldEks(%v) newEks(%v)", migInode.name, migEks, copyNewEks)
 	migInode.addInodeMigrateLog(migEks, copyNewEks)
 	migInode.SummaryStatisticsInfo(copyNewEks)
+	return
+}
+
+func (migInode *MigrateInode) checkMigExtentCanDelete(migEks []proto.ExtentKey) (ok bool, canDeleteExtentKeys []proto.ExtentKey) {
+	canDeleteExtentKeys = migInode.getDelExtentKeys(migEks)
+	if len(migEks) == len(canDeleteExtentKeys) {
+		ok = true
+	}
 	return
 }
 
@@ -676,7 +698,7 @@ func (migInode *MigrateInode) checkReplicaCRCValid(replicateCrc []uint32) (err e
 	return nil
 }
 
-func (migInode *MigrateInode) deleteOldExtents(extentKeys []proto.ExtentKey) {
+func (migInode *MigrateInode) deleteOldExtents(extentKeys []proto.ExtentKey) (err error) {
 	// 检查这些extentKey是否还在后面还未迁移的ek中
 	canDeleteExtentKeys := migInode.getDelExtentKeys(extentKeys)
 	if len(extentKeys) != len(canDeleteExtentKeys) {
@@ -690,13 +712,14 @@ func (migInode *MigrateInode) deleteOldExtents(extentKeys []proto.ExtentKey) {
 		dpIdEksMap[dpId] = append(dpIdEksMap[dpId], metaDelExtentKey)
 	}
 	for dpId, eks := range dpIdEksMap {
-		err := retryDeleteExtents(migInode.mpOp.mc, dpId, eks, migInode.inodeInfo.Inode)
+		err = retryDeleteExtents(migInode.mpOp.mc, dpId, eks, migInode.inodeInfo.Inode)
 		if err != nil {
 			log.LogErrorf("deleteOldExtents ino:%v partitionId:%v extentKeys:%v err:%v", migInode.name, dpId, eks, err)
-			continue
+			return
 		}
 		log.LogInfof("deleteOldExtents ino:%v partitionId:%v extentKeys:%v success", migInode.name, dpId, eks)
 	}
+	return
 }
 
 func retryDeleteExtents(mc *master.MasterClient, partitionId uint64, eks []proto.ExtentKey, inodeId uint64) (err error) {
