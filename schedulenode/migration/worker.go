@@ -75,6 +75,11 @@ const (
 	migrationBack   = 1
 )
 
+const (
+	compactClose = iota
+	compactOpen
+)
+
 var (
 	localIp string
 )
@@ -197,6 +202,11 @@ func (w *Worker) ConsumeCompactTask(task *proto.Task) (restore bool, err error) 
 		log.LogWarnf("ConsumeTask has canceled the compact task(%v)", task)
 		return false, nil
 	}
+	compactSwitch := w.getCompactSwitch(task.Cluster, task.VolName)
+	if !compactSwitch {
+		log.LogWarnf("ConsumeTask compact switch(%v) task(%v)", compactSwitch, task)
+		return false, nil
+	}
 	if err = w.checkVolumeInfo(task.Cluster, task.VolName, data.Normal); err != nil {
 		log.LogWarnf("ConsumeTask checkVolumeInfo task(%v) err(%v)", task, err)
 		return false, nil
@@ -224,6 +234,11 @@ func (w *Worker) ConsumeFileMigTask(task *proto.Task) (restore bool, err error) 
 	storeMode := w.getMetaNodeStoreMode(task.Cluster, task.VolName)
 	if storeMode != proto.StoreModeMem {
 		log.LogWarnf("ConsumeTask getMetaNodeStoreMode task(%v) storeMode(%v), can not migrate", task, storeMode)
+		return false, nil
+	}
+	migSwitch := w.getMigrationSwitch(task.Cluster, task.VolName)
+	if !migSwitch {
+		log.LogWarnf("ConsumeTask migration switch(%v) task(%v)", migSwitch, task)
 		return false, nil
 	}
 	if _, exist := w.getInodeATimePolicies(task.Cluster, task.VolName); !exist {
@@ -359,6 +374,71 @@ func (w *Worker) getMigrationConfig(cluster, volName string) (volumeConfig proto
 			SsdDirs:       sv.SsdDirs,
 			MigrationBack: sv.MigrationBack,
 		}
+	}
+	return
+}
+
+func (w *Worker) getMigrationSwitch(cluster, volName string) (migSwitch bool) {
+	migrationConfig := w.getMigrationConfig(cluster, volName)
+	if migrationConfig.Smart == migClose {
+		migSwitch = false
+		return
+	}
+	migSwitch = true
+	var (
+		volumeConfigs []*proto.MigrationConfig
+		err error
+	)
+	volumeConfigs, err = mysql.SelectVolumeConfig(cluster, volName)
+	if err != nil {
+		log.LogErrorf("getMigrationSwitch SelectVolumeConfig cluster(%v) volName(%v) err(%v)", cluster, volName, err)
+		return
+	}
+	if len(volumeConfigs) == 0 {
+		migSwitch = false
+		return
+	}
+	volumeConfigInMysql := volumeConfigs[0]
+	if volumeConfigInMysql.Smart == migClose {
+		migSwitch = false
+	} else {
+		migSwitch = true
+	}
+	return
+}
+
+func (w *Worker) getCompactSwitch(cluster, volName string) (compactSwitch bool) {
+	value, ok := w.volumeView.Load(cluster)
+	if !ok {
+		return
+	}
+	volView := value.(*proto.DataMigVolumeView)
+	for _, volume := range volView.DataMigVolumes {
+		if volume.Name == volName {
+			compactSwitch = volume.CompactTag.Bool()
+		}
+	}
+	if !compactSwitch {
+		return
+	}
+	var (
+		volumeConfigs []*proto.MigrationConfig
+		err error
+	)
+	volumeConfigs, err = mysql.SelectVolumeConfig(cluster, volName)
+	if err != nil {
+		log.LogErrorf("getCompactSwitch SelectVolumeConfig cluster(%v) volName(%v) err(%v)", cluster, volName, err)
+		return
+	}
+	if len(volumeConfigs) == 0 {
+		compactSwitch = false
+		return
+	}
+	volumeConfigInMysql := volumeConfigs[0]
+	if volumeConfigInMysql.Compact == compactClose {
+		compactSwitch = false
+	} else {
+		compactSwitch = true
 	}
 	return
 }
