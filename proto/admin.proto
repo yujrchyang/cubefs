@@ -252,6 +252,8 @@ message SimpleVolViewPb {
     bool                      NotCacheNode           = 98;
     bool                      Flock                  = 99;
     string                    UmpKeyPrefix           = 100;
+    int64                     ReadAheadMemMB         = 101;
+    int64                     ReadAheadWindowMB      = 102;
 }
 
 message NodeStatInfoPb {
