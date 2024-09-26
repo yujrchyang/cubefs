@@ -712,10 +712,11 @@ func (v *Volume) DeletePath(path string) (err error) {
 		}
 
 		if mode.IsDir() {
+			// 检查目标目录是否为空, 且不能删除非空目录。非空目录Inode的Nlink值大于2.
 			// Check if the directory is empty and cannot delete non-empty directories.
-			var dentries []proto.Dentry
-			dentries, err = v.mw.ReadDir_ll(context.Background(), ino)
-			if err != nil || len(dentries) > 0 {
+			var info *proto.InodeInfo
+			info, err = v.mw.InodeGet_ll(context.Background(), ino)
+			if err != nil  || info.Nlink > 2 {
 				return
 			}
 		}
