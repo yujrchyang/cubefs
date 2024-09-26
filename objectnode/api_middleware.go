@@ -39,7 +39,7 @@ var (
 )
 
 func IsMonitoredStatusCode(code int) bool {
-	if code > http.StatusInternalServerError {
+	if code >= http.StatusInternalServerError {
 		return true
 	}
 	return false
