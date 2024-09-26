@@ -16,10 +16,12 @@ package objectnode
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -117,6 +119,8 @@ type ObjectNode struct {
 
 	statistics       sync.Map // volume(string) -> []*statistics.MonitorData
 	statisticEnabled bool
+
+	reqIDMask string
 
 	control common.Control
 }
@@ -222,6 +226,29 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	o.updateRegion(ci.Cluster)
 	log.LogInfof("handleStart: get cluster information: region(%v)", o.region)
 
+	var localIP string
+	for i := 0; i < GetLocalIPMaxRetry; i++ {
+		err = nil
+		if localIP, err = iputil.GetLocalIPByDial(o.masters, time.Second*5); err == nil {
+			break
+		}
+		time.Sleep(GetLocalIPRetryInterval)
+	}
+	if err != nil {
+		var message = fmt.Sprintf("init statistics failed cause can not get local IP address: %v\n", err)
+		log.LogErrorf(message)
+		exporter.Warning(message)
+		return
+	}
+	// Build request ID mask
+	var ipMask string
+	if ipMask, err = buildIpMask(localIP); err != nil {
+		log.LogErrorf("handleStart: build local ip mask fail: %v", err)
+		o.reqIDMask = "cfs00000000"
+	} else {
+		o.reqIDMask = "cfs" + ipMask
+	}
+
 	// start rest api
 	if err = o.startMuxRestAPI(); err != nil {
 		log.LogInfof("handleStart: start rest api fail: err(%v)", err)
@@ -231,30 +258,36 @@ func handleStart(s common.Server, cfg *config.Config) (err error) {
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(ci.Cluster).WithModule(cfg.GetString("role")))
 
 	// Init SRE monitor
-	go func(cfg *config.Config, cluster string) {
-		var (
-			localIP string
-			err     error
-		)
-		for i := 0; i < GetLocalIPMaxRetry; i++ {
-			err = nil
-			if localIP, err = iputil.GetLocalIPByDial(o.masters, time.Second*5); err == nil {
-				break
-			}
-			time.Sleep(GetLocalIPRetryInterval)
-		}
-		if err != nil {
-			var message = fmt.Sprintf("init statistics failed cause can not get local IP address: %v\n", err)
-			log.LogErrorf(message)
-			exporter.Warning(message)
-			return
-		}
+	go func(cfg *config.Config, cluster, localIP string) {
 		statistics.InitStatistics(cfg, cluster, statistics.ModelObjectNode, "default", localIP, o.rangeMonitorData)
 		o.statisticEnabled = true
 		log.LogInfof("statistics inited, cluster [%v], module [%v], localIP [%v]", cluster, statistics.ModelObjectNode, localIP)
-	}(cfg, ci.Cluster)
+	}(cfg, ci.Cluster, localIP)
 
 	log.LogInfo("object subsystem start success")
+	return
+}
+
+func buildIpMask(localIp string) (mask string, err error) {
+	var bs []byte
+	if bs, err = ipv4AddressTo4Bytes(localIp); err != nil {
+		return
+	}
+	mask = strings.ToLower(hex.EncodeToString(bs))
+	return
+}
+
+func ipv4AddressTo4Bytes(ip string) (bs []byte, err error) {
+	parts := strings.Split(ip, ".")
+	if len(parts) != 4 {
+		err = fmt.Errorf("invalid ip address: %v", ip)
+		return
+	}
+	bs = make([]byte, 0)
+	for i, _ := range parts {
+		u, _ := strconv.ParseUint(parts[i], 10, 8)
+		bs = append(bs, byte(u))
+	}
 	return
 }
 

@@ -86,6 +86,43 @@ func (o *ObjectNode) crashMiddleware(next http.Handler) http.Handler {
 	return handlerFunc
 }
 
+type responseTracer struct{
+	http.ResponseWriter
+	statusCode int
+}
+
+func (t *responseTracer) Write(b []byte) (int, error) {
+	if t.statusCode == 0 {
+		t.statusCode = http.StatusOK
+	}
+	return t.ResponseWriter.Write(b)
+}
+
+func (t *responseTracer) WriteHeader(statusCode int) {
+	t.ResponseWriter.WriteHeader(statusCode)
+	if t.statusCode == 0 {
+		t.statusCode = statusCode
+	}
+}
+
+func (t *responseTracer) StatusCode() int {
+	if t.statusCode == 0 {
+		return http.StatusOK
+	}
+	return t.statusCode
+}
+
+func traceResponse(w http.ResponseWriter) *responseTracer {
+	return &responseTracer{ResponseWriter: w, statusCode: 0}
+}
+
+func getStatusCodeFromResponseWriter(w http.ResponseWriter) int {
+	if tracer, ok := w.(*responseTracer); ok {
+		return tracer.StatusCode()
+	}
+	return http.StatusOK
+}
+
 // TraceMiddleware returns a middleware handler to trace request.
 // After receiving the request, the handler will assign a unique RequestID to
 // the request and record the processing time of the request.
@@ -98,9 +135,10 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		if uUID, err = uuid.NewRandom(); err != nil {
 			return "", err
 		}
-		return strings.ReplaceAll(uUID.String(), "-", ""), nil
+		return o.reqIDMask + strings.ReplaceAll(uUID.String(), "-", ""), nil
 	}
 	var handlerFunc http.HandlerFunc = func(w http.ResponseWriter, r *http.Request) {
+		w = traceResponse(w)
 		var err error
 
 		// ===== pre-handle start =====
@@ -160,8 +198,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 		defer func() {
 			// failed request monitor
 			var err error = nil
-			var statusCode = GetStatusCodeFromContext(r)
-			if IsMonitoredStatusCode(statusCode) {
+			if statusCode := getStatusCodeFromResponseWriter(w); IsMonitoredStatusCode(statusCode) {
 				exporter.NewModuleTP(fmt.Sprintf("failed_%v", statusCode)).Set(nil)
 				var errorMessage = getResponseErrorMessage(r)
 				exporter.Warning(generateWarnDetail(r, errorMessage))
@@ -182,7 +219,7 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 			_ = AccessDenied.ServeResponse(w, r)
 		}
 
-		if log.IsDebugEnabled() {
+		if statusCode := getStatusCodeFromResponseWriter(w); IsMonitoredStatusCode(statusCode) || log.IsDebugEnabled() {
 			var headerToString = func(header http.Header) string {
 				var sb = strings.Builder{}
 				for k := range header {
@@ -194,11 +231,20 @@ func (o *ObjectNode) traceMiddleware(next http.Handler) http.Handler {
 				return "{" + sb.String() + "}"
 			}
 
-			log.LogDebugf("traceMiddleware: "+
-				"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
-				"remote(%v) cost(%v)",
-				action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
-				getRequestIP(r), time.Since(startTime))
+			if IsMonitoredStatusCode(statusCode) {
+				log.LogErrorf("traceMiddleware: "+
+					"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
+					"remote(%v) statusCode(%v) cost(%v)",
+					action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
+					getRequestIP(r), statusCode, time.Since(startTime))
+			} else {
+				log.LogDebugf("traceMiddleware: "+
+					"action(%v) requestID(%v) host(%v) method(%v) url(%v) header(%v) "+
+					"remote(%v) statusCode(%v) cost(%v)",
+					action.Name(), requestID, r.Host, r.Method, r.URL.String(), headerToString(r.Header),
+					getRequestIP(r), statusCode, time.Since(startTime))
+			}
+
 		}
 
 	}

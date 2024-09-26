@@ -635,7 +635,7 @@ func (o *ObjectNode) deleteObjectsHandler(w http.ResponseWriter, r *http.Request
 		err = vol.DeletePath(object.Key)
 		log.LogWarnf("deleteObjectsHandler: delete: requestID(%v) volume(%v) path(%v)",
 			GetRequestID(r), vol.Name(), object.Key)
-		if err != nil {
+		if err != nil && err != syscall.ENOENT && err != syscall.ENOTEMPTY {
 			deletedErrors = append(deletedErrors, Error{Key: object.Key, Message: err.Error()})
 			log.LogErrorf("deleteObjectsHandler: delete object failed: requestID(%v) volume(%v) path(%v) err(%v)",
 				GetRequestID(r), vol.Name(), object.Key, err)
@@ -1373,7 +1373,7 @@ func (o *ObjectNode) deleteObjectHandler(w http.ResponseWriter, r *http.Request)
 		errorCode = TooManyLevelsOfSymlinks
 		return
 	}
-	if err != nil {
+	if err != nil && err != syscall.ENOENT && err != syscall.ENOTEMPTY {
 		log.LogErrorf("deleteObjectHandler: Volume delete file fail: "+
 			"requestID(%v) volume(%v) path(%v) err(%v)", GetRequestID(r), vol.Name(), param.Object(), err)
 		errorCode = InternalErrorCode(err)

@@ -603,13 +603,21 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 
 	// apply new inode to dentry
-	err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
-	if err != nil {
-		log.LogErrorf("PutObject: apply new inode to dentry fail: volume(%v) path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
-			v.name, path, parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
-		return
+	for i:=0; i<MaxRetry; i++ {
+		err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
+		if err == nil {
+			return fsInfo, nil
+		}
+		if err != syscall.ENOENT {
+			log.LogErrorf("PutObject: apply new inode to dentry fail: volume(%v) path(%v) parentID(%v) name(%v) inode(%v) err(%v)",
+				v.name, path, parentId, lastPathItem.Name, invisibleTempDataInode.Inode, err)
+			return nil, err
+		}
+		if parentId, err = v.recursiveMakeDirectory(fixedPath); err != nil {
+			return nil, err
+		}
 	}
-	return fsInfo, nil
+	return nil, err
 }
 
 func (v *Volume) applyInodeToDEntry(parentId uint64, name string, inode uint64) (err error) {
@@ -1549,6 +1557,9 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 			return
 		}
 		if err == syscall.ENOENT {
+			if log.IsWarnEnabled() && v.name == "touchstonerec" {
+				log.LogWarnf("Volume(%v) lookup not found: parent(%v) name(%v) path(%v)", v.name, parent, pathItem.Name, path)
+			}
 			return
 		}
 		var curFileMode = os.FileMode(curMode)
@@ -1565,6 +1576,9 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 			var symlinkInodeInfo *proto.InodeInfo
 			symlinkInodeInfo, err = v.mw.InodeGet_ll(context.Background(), curIno)
 			if err == syscall.ENOENT {
+				if log.IsWarnEnabled() && v.name == "touchstonerec" {
+					log.LogWarnf("Volume(%v) lookup not found: parent(%v) name(%v) path(%v)", v.name, parent, pathItem.Name, path)
+				}
 				return
 			}
 			if err != nil {
@@ -1592,11 +1606,18 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 			if log.IsDebugEnabled() {
 				log.LogDebugf("volume[%v]: recursiveLookupTarget: found symlink [%v -> %v], path redirect [%v -> %v]", v.name, pathItem.Name, linkTarget, path, redirectPath)
 			}
-			entries, err = v.__recursiveLookupTarget(redirects+1, redirectPath, targetRedirect)
+			if entries, err = v.__recursiveLookupTarget(redirects+1, redirectPath, targetRedirect); err != nil && log.IsWarnEnabled() {
+				log.LogWarnf("Volume(%v) lookup symlink target failed: parent(%v) name(%v) path(%v) target(%v) cause(%v)",
+					v.name, parent, pathItem.Name, path, redirectPath, err)
+			}
 			return
 		}
 		if curFileMode.IsDir() != pathItem.IsDirectory {
 			err = syscall.ENOENT
+			if log.IsWarnEnabled() && v.name == "touchstonerec" {
+				log.LogWarnf("Volume(%v) lookup type conflict: parent(%v) name(%v) path(%v) expected(%v) actual(%v) ",
+					v.name, parent, pathItem.Name, path, pathItem.IsDirectory, curFileMode.IsDir())
+			}
 			return
 		}
 		entries = append(entries, POSIXDentry{
@@ -1616,6 +1637,17 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 }
 
 func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
+	for i:=0; i<MaxRetry; i++ {
+		ino, err = v.__recursiveMakeDirectory(path)
+		if err == syscall.ENOENT {
+			continue
+		}
+		break
+	}
+	return
+}
+
+func (v *Volume) __recursiveMakeDirectory(path string) (ino uint64, err error) {
 	ino = rootIno
 	var pathIterator = NewPathIterator(path)
 	if !pathIterator.HasNext() {
