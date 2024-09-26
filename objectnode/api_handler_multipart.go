@@ -201,6 +201,10 @@ func (o *ObjectNode) uploadPartHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = EntityTooSmall
 		return
 	}
+	if isRequestNetError(r, err) {
+		// Abort cause request network issue, no need to response.
+		return
+	}
 	if err != nil {
 		log.LogErrorf("uploadPartHandler: write part fail: requestID(%v) volume(%v) path(%v) uploadId(%v) part(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), uploadId, partNumberInt, getRequestIP(r), err)

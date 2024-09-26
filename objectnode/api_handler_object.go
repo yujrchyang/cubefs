@@ -359,6 +359,10 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = NoSuchKey
 		return
 	}
+	if isRequestNetError(r, err) {
+		// Abort cause request network issue, no need to response.
+		return
+	}
 	if err != nil {
 		log.LogErrorf("getObjectHandler: read from Volume fail: requestId(%v) volume(%v) path(%v) offset(%v) size(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), param.Object(), offset, size, err)
@@ -878,6 +882,10 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		errorCode = TooManyFilesInDirectory
 		return
 	}
+	if isRequestNetError(r, err) {
+		// Abort cause request network issue, no need to response.
+		return
+	}
 	if err != nil {
 		log.LogErrorf("copyObjectHandler: Volume copy file fail: requestID(%v) Volume(%v) source(%v) target(%v) err(%v)",
 			GetRequestID(r), param.Bucket(), sourceObject, param.Object(), err)
@@ -1294,6 +1302,10 @@ func (o *ObjectNode) putObjectHandler(w http.ResponseWriter, r *http.Request) {
 		log.LogWarnf("putObjectHandler: put object fail cause too many files in directory: requestID(%v) volume(%v) path(%v) remote(%v) err(%v)",
 			GetRequestID(r), vol.Name(), param.Object(), getRequestIP(r), err)
 		errorCode = TooManyFilesInDirectory
+		return
+	}
+	if isRequestNetError(r, err) {
+		// Abort cause request network issue, no need to response.
 		return
 	}
 	if err != nil {
