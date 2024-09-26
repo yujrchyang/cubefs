@@ -603,7 +603,7 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	}
 
 	// apply new inode to dentry
-	for i:=0; i<MaxRetry; i++ {
+	for i := 0; i < MaxRetry; i++ {
 		err = v.applyInodeToDEntry(parentId, lastPathItem.Name, invisibleTempDataInode.Inode)
 		if err == nil {
 			return fsInfo, nil
@@ -1340,7 +1340,30 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) (i
 }
 
 func (v *Volume) FileInfo(ctx context.Context, path string, targetRedirect bool) (info *FSFileInfo, err error) {
-	return v.__fileInfo(ctx, path, targetRedirect)
+	for i := 0; i < MaxRetry; i++ {
+		info, err = v.__fileInfo(ctx, path, targetRedirect)
+		if err == syscall.ENOENT && v.name == "touchstonerec" {
+			if log.IsWarnEnabled() {
+				log.LogWarnf("FileInfo: %v volume(%v) path(%v) not found, retry(%v)", RequestIdentityFromContext(ctx), v.name, path, i)
+			}
+			continue
+		}
+		if err == nil && v.name == "touchstonerec" && i > 0 {
+			// 这个业务如果通过重试找到了目标，记录一下。并且进行报警。
+			if log.IsWarnEnabled() {
+				log.LogWarnf("FileInfo: %v volume(%v) path(%v) get file info success after retry, inode(%v) retry loop(%v)",
+					RequestIdentityFromContext(ctx), v.name, path, info.Inode, i)
+			}
+			exporter.Warning(fmt.Sprintf("ISSUE MAYBE TRIGGERED.\n"+
+				"Volume: %v\n"+
+				"Path: %v\n"+
+				"Retry: %v\n"+
+				"RequestIentity: %v\n",
+				v.name, path, i, RequestIdentityFromContext(ctx)))
+		}
+		return
+	}
+	return
 }
 
 func (v *Volume) __fileInfo(ctx context.Context, path string, targetRedirect bool) (info *FSFileInfo, err error) {
@@ -1459,15 +1482,36 @@ func (v *Volume) FileReader(ctx context.Context, path string, targetRedirect boo
 
 func (v *Volume) __fileReader(ctx context.Context, path string, targetRedirect bool) (reader *FSFileReader, err error) {
 	var info *FSFileInfo
-	for limiter := NewLoopLimiter(MaxRetry); limiter.NextLoop(); {
-		if info, err = v.__fileInfo(ctx, path, targetRedirect); err != nil {
+	for i := 0; i < MaxRetry; i++ {
+		info, err = v.__fileInfo(ctx, path, targetRedirect)
+		if err == syscall.ENOENT && v.name == "touchstonerec" {
+			// 这个业务如果元信息查询的时候发现目标不存在，进行重试。
+			if log.IsWarnEnabled() {
+				log.LogWarnf("FileInfo: %v volume(%v) path(%v) not found, retry(%v)", RequestIdentityFromContext(ctx), v.name, path, i)
+			}
+			continue
+		}
+		if err != nil {
 			return
+		}
+		if i > 0 && v.name == "touchstonerec" {
+			// 这个业务如果通过重试找到了目标，记录一下。并且进行报警。
+			if log.IsWarnEnabled() {
+				log.LogWarnf("FileReader: %v volume(%v) path(%v) get file info success after retry, inode(%v) retry loop(%v)",
+					RequestIdentityFromContext(ctx), v.name, path, info.Inode, i)
+			}
+			exporter.Warning(fmt.Sprintf("ISSUE MAYBE TRIGGERED.\n"+
+				"Volume: %v\n"+
+				"Path: %v\n"+
+				"Retry: %v\n"+
+				"RequestIentity: %v\n",
+				v.name, path, i, RequestIdentityFromContext(ctx)))
 		}
 		reader, err = NewFSFileReader(v.name, info, v.ec)
 		if err == syscall.ENOENT {
 			if log.IsWarnEnabled() {
 				log.LogWarnf("FileReader: %v init file reader got unexpected ENOENT error, maybe get and put in concurrent: volume(%v) path(%v) inode(%v) retry loop(%v)",
-					RequestIdentityFromContext(ctx), v.name, path, info.Inode, limiter.Current())
+					RequestIdentityFromContext(ctx), v.name, path, info.Inode, i)
 			}
 			continue
 		}
@@ -1638,7 +1682,7 @@ func (v *Volume) __recursiveLookupTarget(ctx context.Context, redirects int, pat
 }
 
 func (v *Volume) recursiveMakeDirectory(path string) (ino uint64, err error) {
-	for i:=0; i<MaxRetry; i++ {
+	for i := 0; i < MaxRetry; i++ {
 		ino, err = v.__recursiveMakeDirectory(path)
 		if err == syscall.ENOENT {
 			continue
