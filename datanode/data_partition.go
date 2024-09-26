@@ -1228,14 +1228,18 @@ func (dp *DataPartition) repairDataOnRandomWriteFromHost(extentID uint64, fromOf
 func (dp *DataPartition) repairDataOnRandomWrite(extentID uint64, fromOffset, size uint64) (err error) {
 	hosts := dp.getReplicaClone()
 	addr, _ := dp.IsRaftLeader()
-	if addr != "" {
+
+	// 如果Leader地址不为空且地址不是本地地址
+	if addr != "" && !dp.IsLocalAddress(addr) {
 		err = dp.repairDataOnRandomWriteFromHost(extentID, fromOffset, size, addr)
 		if err == nil {
 			return
 		}
 	}
+
+	// 遍历所有非本地副本地址
 	for _, h := range hosts {
-		if h == addr {
+		if h == addr || dp.IsLocalAddress(h) {
 			continue
 		}
 		err = dp.repairDataOnRandomWriteFromHost(extentID, fromOffset, size, h)
