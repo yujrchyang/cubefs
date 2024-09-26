@@ -77,14 +77,18 @@ func NewContextFromRequest(r *http.Request) context.Context {
 }
 
 func RequestIdentityFromContext(ctx context.Context) string {
-	if ctx == nil {
-		return "requestID(unknown) action(unknown)"
+	var (
+		requestID string
+		action    string
+	)
+	if ctx != nil {
+		if val, ok := ctx.Value(ContextKeyRequestID).(string); ok && len(val) > 0 {
+			requestID = val
+		}
+		if val, ok := ctx.Value(ContextKeyRequestAction).(proto.Action); ok {
+			action = val.Name()
+		}
 	}
-	var requestID, _ = ctx.Value(ContextKeyRequestID).(string)
-	if len(requestID) == 0 {
-		requestID = "unknown"
-	}
-	var action, _ = ctx.Value(ContextKeyRequestAction).(proto.Action)
 	return fmt.Sprintf("requestID(%s) action(%s)", requestID, action)
 }
 

@@ -132,7 +132,7 @@ func (o *ObjectNode) unsupportedOperationHandler(w http.ResponseWriter, r *http.
 }
 
 func isRequestNetError(r *http.Request, err error) bool {
-	if err == nil || r == nil {
+	if err == nil || r == nil || r.RemoteAddr == "" {
 		return false
 	}
 	// Review后认为通过net.OpError判断较为复杂, 决定暂时通过判断错误信息里是否包含http请求对端IP和端口号的方式进行判断.
