@@ -195,8 +195,16 @@ func OpenExtent(name string, extentID uint64, handler HeaderHandler, interceptor
 	return e, nil
 }
 
-// Close this extent and release FD.
+// Close 关闭此 extent 并释放文件描述符。
+// 如果 `sync` 为 true，则在关闭前同步数据到磁盘。
+// 如果Header数据已被修改，则保存头部数据。
 func (e *Extent) Close(sync bool) (err error) {
+	if atomic.CompareAndSwapInt32(&e.hdirty, 1, 0) {
+		// header already dirty, then save all header
+		if err = e.saveHeader(); err != nil {
+			return
+		}
+	}
 	if sync {
 		if atomic.CompareAndSwapInt32(&e.modified, 1, 0) {
 			if err = e.file.Sync(); err != nil {
