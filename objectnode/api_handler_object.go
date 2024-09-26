@@ -42,6 +42,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err       error
 		errorCode *ErrorCode
+		ctx = NewContextFromRequest(r)
 	)
 
 	defer func() {
@@ -157,7 +158,7 @@ func (o *ObjectNode) getObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileReader *FSFileReader
-	fileReader, err = vol.FileReader(param.Object(), true)
+	fileReader, err = vol.FileReader(ctx, param.Object(), true)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -382,6 +383,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		err       error
 		errorCode *ErrorCode
+		ctx = NewContextFromRequest(r)
 	)
 	defer func() {
 		if errorCode != nil {
@@ -411,7 +413,7 @@ func (o *ObjectNode) headObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.FileInfo(param.Object(), true)
+	fileInfo, err = vol.FileInfo(ctx, param.Object(), true)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -707,6 +709,7 @@ func parseCopySourceInfo(r *http.Request) (sourceBucket, sourceObject string) {
 func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var errorCode *ErrorCode
+	var ctx = NewContextFromRequest(r)
 
 	defer func() {
 		if errorCode != nil {
@@ -783,7 +786,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 
 	// get object meta
 	var fileInfo *FSFileInfo
-	fileInfo, err = vol.FileInfo(sourceObject, true)
+	fileInfo, err = vol.FileInfo(ctx, sourceObject, true)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return
@@ -853,7 +856,7 @@ func (o *ObjectNode) copyObjectHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fsFileInfo, err := vol.CopyFile(sourceVol, sourceObject, param.Object(), metadataDirective, opt)
+	fsFileInfo, err := vol.CopyFile(ctx, sourceVol, sourceObject, param.Object(), metadataDirective, opt)
 	if err == syscall.ENOENT {
 		errorCode = NoSuchKey
 		return

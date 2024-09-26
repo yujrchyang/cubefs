@@ -119,7 +119,7 @@ func (fs *FileService) fileMeta(ctx context.Context, args struct {
 	if err != nil {
 		return nil, err
 	}
-	return volume.FileInfo(args.Path, false)
+	return volume.FileInfo(context.Background(), args.Path, false)
 }
 
 type ListFileInfo struct {
@@ -464,7 +464,7 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 		return err
 	}
 
-	reader, err := volume.FileReader(path, true)
+	reader, err := volume.FileReader(context.Background(), path, true)
 	if err != nil {
 		return err
 	}

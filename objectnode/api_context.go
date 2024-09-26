@@ -15,8 +15,11 @@
 package objectnode
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 
@@ -29,6 +32,61 @@ const (
 	ContextKeyStatusCode    = "status_code"
 	ContextKeyErrorMessage  = "error_message"
 )
+
+type Context struct{
+	parent context.Context
+	valMap map[any]any
+}
+
+func (c *Context) Deadline() (deadline time.Time, ok bool) {
+	return c.parent.Deadline()
+}
+
+func (c *Context) Done() <-chan struct{} {
+	return c.Done()
+}
+
+func (c *Context) Err() error {
+	return c.Err()
+}
+
+func (c *Context) Value(key any) any {
+	val, found := c.valMap[key]
+	if found {
+		return val
+	}
+	return c.parent.Value(key)
+}
+
+func (c *Context) Set(key any, val any) {
+	c.valMap[key] = val
+}
+
+func NewContext(parent context.Context) *Context {
+	return &Context{
+		parent: parent,
+		valMap: make(map[any]any),
+	}
+}
+
+func NewContextFromRequest(r *http.Request) context.Context {
+	ctx := NewContext(context.Background())
+	ctx.Set(ContextKeyRequestID, GetRequestID(r))
+	ctx.Set(ContextKeyRequestAction, GetActionFromContext(r))
+	return ctx
+}
+
+func RequestIdentityFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return "requestID(unknown) action(unknown)"
+	}
+	var requestID, _ = ctx.Value(ContextKeyRequestID).(string)
+	if len(requestID) == 0 {
+		requestID = "unknown"
+	}
+	var action, _ = ctx.Value(ContextKeyRequestAction).(proto.Action)
+	return fmt.Sprintf("requestID(%s) action(%s)", requestID, action)
+}
 
 func SetRequestID(r *http.Request, requestID string) {
 	mux.Vars(r)[ContextKeyRequestID] = requestID
@@ -65,3 +123,4 @@ func SetResponseErrorMessage(r *http.Request, message string) {
 func getResponseErrorMessage(r *http.Request) string {
 	return mux.Vars(r)[ContextKeyErrorMessage]
 }
+

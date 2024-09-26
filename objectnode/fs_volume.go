@@ -248,7 +248,7 @@ func (v *Volume) getInodeFromPath(path string, targetRedirect bool) (inode uint6
 		return volumeRootInode, nil
 	}
 	var entries POSIXDentries
-	if entries, err = v.recursiveLookupTarget(path, targetRedirect); err != nil {
+	if entries, err = v.recursiveLookupTarget(context.Background(), path, targetRedirect); err != nil {
 		return
 	}
 	inode = entries.Last().Inode
@@ -687,7 +687,7 @@ func (v *Volume) DeletePath(path string) (err error) {
 		}
 	}()
 	var entries POSIXDentries
-	entries, err = v.recursiveLookupTarget(path, false)
+	entries, err = v.recursiveLookupTarget(context.Background(), path, false)
 	if err != nil {
 		// An unexpected error occurred
 		return
@@ -1328,7 +1328,7 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) (i
 	var ino uint64
 	var mode os.FileMode
 	var entries POSIXDentries
-	if entries, err = v.recursiveLookupTarget(path, true); err != nil {
+	if entries, err = v.recursiveLookupTarget(context.Background(), path, true); err != nil {
 		return 0, err
 	}
 	var entry = entries.Last()
@@ -1339,11 +1339,11 @@ func (v *Volume) ReadFile(path string, writer io.Writer, offset, size uint64) (i
 	return v.ReadInode(ino, writer, offset, size)
 }
 
-func (v *Volume) FileInfo(path string, targetRedirect bool) (info *FSFileInfo, err error) {
-	return v.__fileInfo(path, targetRedirect)
+func (v *Volume) FileInfo(ctx context.Context, path string, targetRedirect bool) (info *FSFileInfo, err error) {
+	return v.__fileInfo(ctx, path, targetRedirect)
 }
 
-func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo, err error) {
+func (v *Volume) __fileInfo(ctx context.Context, path string, targetRedirect bool) (info *FSFileInfo, err error) {
 
 	// process path
 	var inode uint64
@@ -1353,7 +1353,7 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 
 	for limiter := NewLoopLimiter(MaxRetry); limiter.NextLoop(); {
 		var ents POSIXDentries
-		if ents, err = v.recursiveLookupTarget(path, targetRedirect); err != nil {
+		if ents, err = v.recursiveLookupTarget(ctx, path, targetRedirect); err != nil {
 			return
 		}
 		var entry = ents.Last()
@@ -1364,7 +1364,7 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 			continue
 		}
 		if err != nil {
-			log.LogErrorf("FileInfo: get inode fail: volume(%v) path(%v) inode(%v) loop(%v) err(%v)", v.name, path, inode, limiter.Current(), err)
+			log.LogErrorf("FileInfo: %v get inode fail: volume(%v) path(%v) inode(%v) loop(%v) err(%v)", RequestIdentityFromContext(ctx), v.name, path, inode, limiter.Current(), err)
 			return
 		}
 		break
@@ -1426,11 +1426,13 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 	if !mode.IsDir() && (!etagValue.Valid() || etagValue.TS.Before(inoInfo.ModifyTime)) {
 		// The ETag is invalid or outdated then generate a new ETag and make update.
 		if etagValue, err = v.updateETag(inoInfo.Inode, int64(inoInfo.Size), inoInfo.ModifyTime); err != nil {
-			log.LogErrorf("FileInfo: update ETag fail: volume(%v) path(%v) inode(%v) err(%v)",
-				v.name, path, inoInfo.Inode, err)
+			log.LogErrorf("FileInfo: %v update ETag fail: volume(%v) path(%v) inode(%v) err(%v)",
+				RequestIdentityFromContext(ctx), v.name, path, inoInfo.Inode, err)
 		}
-		log.LogDebugf("FileInfo: update ETag: volume(%v) path(%v) inode(%v) etagValue(%v)",
-			v.name, path, inoInfo.Inode, etagValue)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("FileInfo: %v update ETag: volume(%v) path(%v) inode(%v) etagValue(%v)",
+				RequestIdentityFromContext(ctx), v.name, path, inoInfo.Inode, etagValue)
+		}
 	}
 
 	info = &FSFileInfo{
@@ -1451,26 +1453,26 @@ func (v *Volume) __fileInfo(path string, targetRedirect bool) (info *FSFileInfo,
 	return
 }
 
-func (v *Volume) FileReader(path string, targetRedirect bool) (reader *FSFileReader, err error) {
-	return v.__fileReader(path, targetRedirect)
+func (v *Volume) FileReader(ctx context.Context, path string, targetRedirect bool) (reader *FSFileReader, err error) {
+	return v.__fileReader(ctx, path, targetRedirect)
 }
 
-func (v *Volume) __fileReader(path string, targetRedirect bool) (reader *FSFileReader, err error) {
+func (v *Volume) __fileReader(ctx context.Context, path string, targetRedirect bool) (reader *FSFileReader, err error) {
 	var info *FSFileInfo
 	for limiter := NewLoopLimiter(MaxRetry); limiter.NextLoop(); {
-		if info, err = v.__fileInfo(path, targetRedirect); err != nil {
+		if info, err = v.__fileInfo(ctx, path, targetRedirect); err != nil {
 			return
 		}
 		reader, err = NewFSFileReader(v.name, info, v.ec)
 		if err == syscall.ENOENT {
 			if log.IsWarnEnabled() {
-				log.LogWarnf("FileReader: init file reader got unexpected ENOENT error, maybe get and put in concurrent: volume(%v) path(%v) inode(%v) retry loop(%v)",
-					v.name, path, info.Inode, limiter.Current())
+				log.LogWarnf("FileReader: %v init file reader got unexpected ENOENT error, maybe get and put in concurrent: volume(%v) path(%v) inode(%v) retry loop(%v)",
+					RequestIdentityFromContext(ctx), v.name, path, info.Inode, limiter.Current())
 			}
 			continue
 		}
 		if err != nil {
-			log.LogErrorf("FileReader: init file reader failed: volume(%v) path(%v) inode(%v) err(%v)", v.name, path, info.Inode, err)
+			log.LogErrorf("FileReader: %v init file reader failed: volume(%v) path(%v) inode(%v) err(%v)", RequestIdentityFromContext(ctx), v.name, path, info.Inode, err)
 			return
 		}
 		break
@@ -1492,10 +1494,9 @@ func (v *Volume) Close() error {
 // and the actual search result is a non-directory, an ENOENT error is returned.
 //
 // ENOENT:
-//
-//	0x2 ENOENT No such file or directory. A component of a specified
-//	pathname did not exist, or the pathname was an empty string.
-func (v *Volume) recursiveLookupTarget(path string, targetRedirect bool) (entries POSIXDentries, err error) {
+// 		0x2 ENOENT No such file or directory. A component of a specified
+// 		pathname did not exist, or the pathname was an empty string.
+func (v *Volume) recursiveLookupTarget(ctx context.Context, path string, targetRedirect bool) (entries POSIXDentries, err error) {
 	defer func() {
 		if err == syscall.ELOOP {
 			exporter.Warning(fmt.Sprintf("Too many levels of symbolic link.\n"+
@@ -1504,7 +1505,7 @@ func (v *Volume) recursiveLookupTarget(path string, targetRedirect bool) (entrie
 				v.name, path))
 		}
 	}()
-	entries, err = v.__recursiveLookupTarget(0, path, targetRedirect)
+	entries, err = v.__recursiveLookupTarget(ctx, 0, path, targetRedirect)
 	return
 }
 
@@ -1537,7 +1538,7 @@ func (es POSIXDentries) Reverse() POSIXDentries {
 	return res
 }
 
-func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedirect bool) (entries POSIXDentries, err error) {
+func (v *Volume) __recursiveLookupTarget(ctx context.Context, redirects int, path string, targetRedirect bool) (entries POSIXDentries, err error) {
 	var parent = rootIno
 	var pathItems = NewPathIterator(path).ToSlice()
 	if len(pathItems) == 0 {
@@ -1552,20 +1553,20 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 		var curPath = base + pathSep + pathItem.Name
 		curIno, curMode, err = v.mw.Lookup_ll(context.Background(), parent, pathItem.Name)
 		if err != nil && err != syscall.ENOENT {
-			log.LogErrorf("volume[%v]: recursiveLookupTarget: lookup [path: %v, parent: %v, name: %v] failed: %v",
-				v.name, curPath, parent, pathItem.Name, err)
+			log.LogErrorf("%v volume[%v]: recursiveLookupTarget: lookup [path: %v, parent: %v, name: %v] failed: %v",
+				RequestIdentityFromContext(ctx), v.name, curPath, parent, pathItem.Name, err)
 			return
 		}
 		if err == syscall.ENOENT {
 			if log.IsWarnEnabled() && v.name == "touchstonerec" {
-				log.LogWarnf("Volume(%v) lookup not found: parent(%v) name(%v) path(%v)", v.name, parent, pathItem.Name, path)
+				log.LogWarnf("%v Volume(%v) lookup not found: parent(%v) name(%v) path(%v)", RequestIdentityFromContext(ctx), v.name, parent, pathItem.Name, path)
 			}
 			return
 		}
 		var curFileMode = os.FileMode(curMode)
 		if log.IsDebugEnabled() {
-			log.LogDebugf("volume[%v]: recursiveLookupTarget: lookup [path: %v, parent: %v, name: %v, inode: %v, mode: %v]",
-				v.name, curPath, parent, pathItem.Name, curIno, curFileMode)
+			log.LogDebugf("%v volume[%v]: recursiveLookupTarget: lookup [path: %v, parent: %v, name: %v, inode: %v, mode: %v]",
+				RequestIdentityFromContext(ctx), v.name, curPath, parent, pathItem.Name, curIno, curFileMode)
 		}
 		// Check file mode
 		if IsSymlink(curFileMode) && (targetRedirect || i < len(pathItems)-1) {
@@ -1577,13 +1578,13 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 			symlinkInodeInfo, err = v.mw.InodeGet_ll(context.Background(), curIno)
 			if err == syscall.ENOENT {
 				if log.IsWarnEnabled() && v.name == "touchstonerec" {
-					log.LogWarnf("Volume(%v) lookup not found: parent(%v) name(%v) path(%v)", v.name, parent, pathItem.Name, path)
+					log.LogWarnf("%v Volume(%v) lookup not found: parent(%v) name(%v) path(%v)", RequestIdentityFromContext(ctx), v.name, parent, pathItem.Name, path)
 				}
 				return
 			}
 			if err != nil {
-				log.LogErrorf("volume[%v]: recursiveLookupTarget: get symlink inode [path: %v, inode: %v] info failed: %v",
-					v.name, libpath.Join(base, pathItem.Name), curIno, err)
+				log.LogErrorf("%v volume[%v]: recursiveLookupTarget: get symlink inode [path: %v, inode: %v] info failed: %v",
+					RequestIdentityFromContext(ctx), v.name, libpath.Join(base, pathItem.Name), curIno, err)
 				return
 			}
 			var linkTarget = symlinkInodeInfo.TargetStr()
@@ -1604,19 +1605,19 @@ func (v *Volume) __recursiveLookupTarget(redirects int, path string, targetRedir
 				return
 			}
 			if log.IsDebugEnabled() {
-				log.LogDebugf("volume[%v]: recursiveLookupTarget: found symlink [%v -> %v], path redirect [%v -> %v]", v.name, pathItem.Name, linkTarget, path, redirectPath)
+				log.LogDebugf("%v volume[%v]: recursiveLookupTarget: found symlink [%v -> %v], path redirect [%v -> %v]", RequestIdentityFromContext(ctx), v.name, pathItem.Name, linkTarget, path, redirectPath)
 			}
-			if entries, err = v.__recursiveLookupTarget(redirects+1, redirectPath, targetRedirect); err != nil && log.IsWarnEnabled() {
-				log.LogWarnf("Volume(%v) lookup symlink target failed: parent(%v) name(%v) path(%v) target(%v) cause(%v)",
-					v.name, parent, pathItem.Name, path, redirectPath, err)
+			if entries, err = v.__recursiveLookupTarget(ctx, redirects+1, redirectPath, targetRedirect); err != nil && log.IsWarnEnabled() {
+				log.LogWarnf("%v Volume(%v) lookup symlink target failed: parent(%v) name(%v) path(%v) target(%v) cause(%v)",
+					RequestIdentityFromContext(ctx), v.name, parent, pathItem.Name, path, redirectPath, err)
 			}
 			return
 		}
 		if curFileMode.IsDir() != pathItem.IsDirectory {
 			err = syscall.ENOENT
 			if log.IsWarnEnabled() && v.name == "touchstonerec" {
-				log.LogWarnf("Volume(%v) lookup type conflict: parent(%v) name(%v) path(%v) expected(%v) actual(%v) ",
-					v.name, parent, pathItem.Name, path, pathItem.IsDirectory, curFileMode.IsDir())
+				log.LogWarnf("%v Volume(%v) lookup type conflict: parent(%v) name(%v) path(%v) expected(%v) actual(%v) ",
+					RequestIdentityFromContext(ctx), v.name, parent, pathItem.Name, path, pathItem.IsDirectory, curFileMode.IsDir())
 			}
 			return
 		}
@@ -1926,7 +1927,7 @@ func (v *Volume) lookupPrefix(prefix string) (inode uint64, prefixDirs []string,
 
 				linkTargetEntries POSIXDentries
 			)
-			linkTargetEntries, err = v.recursiveLookupTarget(redirectPath, true)
+			linkTargetEntries, err = v.recursiveLookupTarget(context.Background(), redirectPath, true)
 			if err == syscall.ENOENT {
 				return 0, nil, syscall.ENOENT
 			}
@@ -2289,7 +2290,7 @@ func (v *Volume) ListParts(path, uploadId string, maxParts, partNumberMarker uin
 	return parts, nextMarker, isTruncated, nil
 }
 
-func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective string, opt *PutFileOption) (info *FSFileInfo, err error) {
+func (v *Volume) CopyFile(ctx context.Context, sv *Volume, sourcePath, targetPath, metaDirective string, opt *PutFileOption) (info *FSFileInfo, err error) {
 	defer func() {
 		log.LogInfof("Audit: copy file: source path(%v) target path(%v) err(%v)",
 			sourcePath, targetPath, err)
@@ -2297,7 +2298,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 
 	// operation at source object
 	var sFileReader *FSFileReader // File reader for source
-	if sFileReader, err = sv.FileReader(sourcePath, true); err != nil {
+	if sFileReader, err = sv.FileReader(ctx, sourcePath, true); err != nil {
 		log.LogErrorf("CopyFile: init file reader for source path(%v) failed: %v", sourcePath, err)
 		return
 	}
@@ -2370,7 +2371,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			log.LogInfof("CopyFile: target path is equal with source path, replace metadata, source path(%v) target path(%v) opt(%v)",
 				sourcePath, targetPath, opt)
 		}
-		return sv.FileInfo(sourcePath, true)
+		return sv.FileInfo(ctx, sourcePath, true)
 	}
 
 	// operation at target object
@@ -2383,7 +2384,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 		tLastName  string
 		tEntries   POSIXDentries
 	)
-	if tEntries, err = v.recursiveLookupTarget(targetPath, true); err != nil && err != syscall.ENOENT {
+	if tEntries, err = v.recursiveLookupTarget(ctx, targetPath, true); err != nil && err != syscall.ENOENT {
 		log.LogErrorf("CopyFile: look up target path failed, target path(%v), err(%v)", targetPath, err)
 		return
 	}
