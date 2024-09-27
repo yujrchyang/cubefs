@@ -92,6 +92,14 @@ func (blckTaskSchedule *BlockCheckTaskSchedule) GetCreatorDuration() int {
 	return blckTaskSchedule.WorkerConfig.TaskCreatePeriod
 }
 
+func isMetaOutVolume(volName string) bool {
+	if volName == "jss-online" || volName == "jss-online-ssd" || volName == "ofw-cof-bak" ||
+		volName == "ofw-cof" || volName == "ofw-cof-yc" {
+		return true
+	}
+	return false
+}
+
 func (blckTaskSchedule *BlockCheckTaskSchedule) CreateTask(clusterID string, taskNum int64, runningTasks []*proto.Task, wns []*proto.WorkerNode) (newTasks []*proto.Task, err error) {
 	blckTaskSchedule.RLock()
 	defer blckTaskSchedule.RUnlock()
@@ -141,6 +149,18 @@ func (blckTaskSchedule *BlockCheckTaskSchedule) CreateTask(clusterID string, tas
 
 		latestFinishedTime := blckTaskSchedule.GetLatestFinishedTime(newTask)
 		if time.Since(latestFinishedTime) < DefaultCheckInterval {
+			continue
+		}
+
+		var volView *proto.SimpleVolView
+		volView, err = masterClient.AdminAPI().GetVolumeSimpleInfo(volName)
+		if err != nil {
+			log.LogErrorf("BlockCheckTaskSchedule CreateTask, %s %s getVolumeSimpleInfo failed: %v",
+				clusterID, volName, err)
+			continue
+		}
+		if volView.MetaOut || isMetaOutVolume(volName) {
+			log.LogInfof("BlockCheckTask CreateTask, %s %s meta data out, skip check", clusterID, volName)
 			continue
 		}
 

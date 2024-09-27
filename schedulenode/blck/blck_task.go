@@ -190,6 +190,35 @@ func (t *BlockCheckTask) getDataPartitionView(dpID uint64, dataNodeAddr string) 
 	return
 }
 
+func (t *BlockCheckTask) checkDataNodeStatus(dataNodeAddr string) (startComplete bool) {
+	client := &http.Client{}
+	client.Timeout = time.Second * 60
+	url := fmt.Sprintf("http://%s:%v/status", strings.Split(dataNodeAddr, ":")[0], t.masterClient.DataNodeProfPort)
+	resp, err := client.Get(url)
+	if err != nil {
+		log.LogErrorf("get url(%s) failed, cluster:%s, error:%v", url, t.Cluster, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var respData []byte
+	respData, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.LogErrorf("read all response body failed: %v", err)
+		return
+	}
+
+	body := &struct {
+		StartComplete bool `json:"StartComplete"`
+	}{}
+	if err = json.Unmarshal(respData, &body); err != nil {
+		log.LogErrorf("Unmarshal resp data failed, cluster(%s), url(%s) err(%v)", t.Cluster, url, err)
+		return
+	}
+	startComplete = body.StartComplete
+	return
+}
+
 func (t *BlockCheckTask) getExtentsByDPs(dps []*proto.DataPartitionResponse) (err error) {
 	var (
 		wg             sync.WaitGroup
@@ -216,6 +245,12 @@ func (t *BlockCheckTask) getExtentsByDPs(dps []*proto.DataPartitionResponse) (er
 				}
 
 				if dp == nil {
+					continue
+				}
+
+				if startComplete := t.checkDataNodeStatus(dp.Hosts[0]); !startComplete {
+					err = fmt.Errorf("action[getExtentsByDPs] cluster[%s] volume[%s] dpHost[%s] start incomplete",
+						t.Cluster, t.VolName, dp.Hosts[0])
 					continue
 				}
 
@@ -255,6 +290,12 @@ func (t *BlockCheckTask) getExtentsByDataPartition(dpId uint64, dataNodeAddr str
 		return
 	}
 
+	if !dpView.IsFinishLoad {
+		log.LogInfof("action[getExtentsByDataPartition] cluster[%s] data partition[id: %v, addr: %s] is loading",
+			t.Cluster, dpId, dataNodeAddr)
+		return
+	}
+
 	year, month, day := time.Now().Date()
 	today := time.Date(year, month, day, 0, 0, 0, 0, time.Local)
 	extentsID = make([]uint64, 0, len(dpView.Files))
@@ -263,7 +304,11 @@ func (t *BlockCheckTask) getExtentsByDataPartition(dpId uint64, dataNodeAddr str
 			continue
 		}
 
-		if today.Unix() - int64(ex[storage.ModifyTime]) >= t.safeCleanInterval {
+		if ex[storage.ModifyTime] == 0 {
+			ex[storage.ModifyTime] = uint64(time.Now().Unix())
+		}
+
+		if ex[storage.ModifyTime] != 0 && today.Unix() - int64(ex[storage.ModifyTime]) >= t.safeCleanInterval {
 			extentsID = append(extentsID, ex[storage.FileID])
 		}
 	}
@@ -757,6 +802,14 @@ func (t *BlockCheckTask) init() (err error) {
 	return
 }
 
+func (t *BlockCheckTask) isMetaOutVolume() bool {
+	if  t.VolName == "jss-online" || t.VolName == "jss-online-ssd" || t.VolName == "ofw-cof-bak" ||
+		t.VolName == "ofw-cof" || t.VolName == "ofw-cof-yc" {
+		return true
+	}
+	return false
+}
+
 func (t *BlockCheckTask) RunOnce() {
 	log.LogInfof("BlockCheckTask RunOnce %s %s start check", t.Cluster, t.VolName)
 	if err := t.init(); err != nil {
@@ -767,6 +820,11 @@ func (t *BlockCheckTask) RunOnce() {
 	volView, err := t.masterClient.AdminAPI().GetVolumeSimpleInfo(t.VolName)
 	if err != nil {
 		log.LogErrorf("BlockCheckTask RunOnce, %s %s getVolumeSimpleInfo failed: %v", t.Cluster, t.VolName, err)
+		return
+	}
+
+	if volView.MetaOut || t.isMetaOutVolume() {
+		log.LogInfof("BlockCheckTask RunOnce, %s %s meta data out, skip check", t.Cluster, t.VolName)
 		return
 	}
 
