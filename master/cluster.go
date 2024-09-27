@@ -3718,7 +3718,12 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 
 	oldDeleteMarkDelVolInterval := c.cfg.DeleteMarkDelVolInterval
 	if val, ok := params[proto.DeleteMarkDelVolIntervalKey]; ok {
-		c.cfg.DeleteMarkDelVolInterval = val.(int64)
+		v := val.(int64)
+		if v < minDeleteMarkDelVolInterval {
+			err = errors.NewErrorf("parameter %s must be greater than %d,current value is:%v", proto.DeleteMarkDelVolIntervalKey, minDeleteMarkDelVolInterval, v)
+			return
+		}
+		c.cfg.DeleteMarkDelVolInterval = v
 	}
 
 	oldRemoteCacheBoostEnable := c.cfg.RemoteCacheBoostEnable

@@ -283,6 +283,7 @@ const (
 	maxBw                                                  = 1800 * 1024 * 1024
 	minBw                                                  = 500 * 1024 * 1024
 	minInodeCountThreshold                                 = 10000000
+	minDeleteMarkDelVolInterval                            = 60 * 60 * 2
 )
 
 const (

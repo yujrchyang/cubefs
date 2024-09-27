@@ -1556,6 +1556,33 @@ func TestSetNodeInfoHandler(t *testing.T) {
 	assert.Equalf(t, uint64(deleteRecord), limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk, "deleteRecordLimit expect:%v,real:%v", deleteRecord, limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
 }
 
+func TestSetDeleteMarkDelVolInterval(t *testing.T) {
+
+	//case 1, set DeleteMarkDelVolInterval to 2*60*60 will be success
+	interval := 2 * 60 * 60
+	reqURL := fmt.Sprintf("%v%v?%v=%v", hostAddr, proto.AdminSetNodeInfo, proto.DeleteMarkDelVolIntervalKey, interval)
+	process(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reply := processReturnRawReply(reqURL, t)
+	limitInfo := &proto.LimitInfo{}
+
+	err := json.Unmarshal(reply.Data, limitInfo)
+	assert.NoErrorf(t, err, "unmarshal limitinfo failed,err:%v", err)
+	assert.Equalf(t, int64(interval), limitInfo.DeleteMarkDelVolInterval, "deleteRecordLimit expect:%v,real:%v", interval, limitInfo.DeleteMarkDelVolInterval)
+	//case 2,set DeleteMarkDelVolInterval to 10 will be failed
+	oldInterval := interval
+	interval = 10
+	reqURL = fmt.Sprintf("%v%v?%v=%v", hostAddr, proto.AdminSetNodeInfo, proto.DeleteMarkDelVolIntervalKey, interval)
+	processWithError(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reply = processReturnRawReply(reqURL, t)
+	limitInfo = &proto.LimitInfo{}
+
+	err = json.Unmarshal(reply.Data, limitInfo)
+	assert.NoErrorf(t, err, "unmarshal limitinfo failed,err:%v", err)
+	assert.Equalf(t, int64(oldInterval), limitInfo.DeleteMarkDelVolInterval, "deleteRecordLimit expect:%v,real:%v", oldInterval, limitInfo.DeleteMarkDelVolInterval)
+}
+
 func TestSetVolConvertModeOfDPConvertMode(t *testing.T) {
 	volName := commonVolName
 	reqURL := fmt.Sprintf("%v%v?name=%v&partitionType=dataPartition&convertMode=1", hostAddr, proto.AdminSetVolConvertMode, volName)
