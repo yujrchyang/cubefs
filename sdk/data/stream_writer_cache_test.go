@@ -814,9 +814,9 @@ func verifyLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, offset i
 	return nil
 }
 
-func truncateLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, oldSize uint64, truncateSize int64) error {
+func truncateLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, truncateSize int64) error {
 	localF.Truncate(truncateSize)
-	err := ec.Truncate(context.Background(), inoID, oldSize, uint64(truncateSize))
+	err := ec.Truncate(context.Background(), inoID, 0, uint64(truncateSize))
 	if err != nil {
 		return fmt.Errorf("truncate file ino(%v) to size(%v) err(%v)", inoID, truncateSize, err)
 	}

@@ -17,7 +17,6 @@ package data
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
 	"net"
 	"runtime/debug"
 	"strings"
@@ -31,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"golang.org/x/time/rate"
@@ -119,8 +119,8 @@ type ExtentConfig struct {
 	MetaWrapper         *meta.MetaWrapper
 	StreamerSegCount    int64
 	ExtentClientType    ExtentClientType
-	ReadAheadMemMB			 int64
-	ReadAheadWindowMB		 int64
+	ReadAheadMemMB		int64
+	ReadAheadWindowMB	int64
 }
 
 // ExtentClient defines the struct of the extent client.
