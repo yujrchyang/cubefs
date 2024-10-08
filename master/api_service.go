@@ -7077,6 +7077,11 @@ func (m *Server) recoverMarkDeletedVolToNormal(w http.ResponseWriter, r *http.Re
 	if newVolName == "" { //新vol名默认使用原volName
 		newVolName = oldVol.OldVolName
 	}
+	if newVolName != oldVol.OldVolName {
+		err = fmt.Errorf("the volume %v which has been marked deleted can rename to origin name only. origin name:%v", oldVol.Name, oldVol.OldVolName)
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
 	newVolOwner := oldVol.Owner //owner信息不变
 	if err = m.cluster.renameVolToNewVolName(oldVolName, authKey, newVolName, newVolOwner, proto.VolStNormal); err != nil {
 		log.LogError(fmt.Sprintf("action[recoverMarkDeletedVolToNormal]oldVolName:%v newVolName:%v err[%v]", oldVolName, newVolName, err))

@@ -468,7 +468,8 @@ func TestRecoverVol(t *testing.T) {
 	oldVolName := "oldVol123_del"
 	newVolNameMarkDel := "newVol456_mark_del"
 	owner := "test2"
-	newVolNameRecover := "newVol456_recover"
+	newVolNameRecover := oldVolName
+	newVolNameRecoverInvalid := "newVol456_recover"
 	//do delete:oldVolName --> newVolNameMarkDel
 	zoneName := fmt.Sprintf("%s,%s,%s", testZone1, testZone2, testZone3)
 	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&capacity=100&owner=%v&mpCount=10&enableToken=true&zoneName=%v", hostAddr, proto.AdminCreateVol, oldVolName, "cfs", zoneName)
@@ -509,6 +510,8 @@ func TestRecoverVol(t *testing.T) {
 	checkClientViews(t, newVolMarkDel)
 
 	//rename recover:newVolNameMarkDel --> newVolNameRecover
+	err = mc.AdminAPI().RecoverVolume(newVolNameMarkDel, buildAuthKey(owner), newVolNameRecoverInvalid)
+	assertErrNotNilOtherwiseFailNow(t, err)
 	err = mc.AdminAPI().RecoverVolume(newVolNameMarkDel, buildAuthKey(owner), newVolNameRecover)
 	assertErrNilOtherwiseFailNow(t, err)
 	newVolMarkDel, err = server.cluster.getVol(newVolNameMarkDel)
