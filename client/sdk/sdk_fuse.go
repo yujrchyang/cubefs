@@ -89,6 +89,9 @@ const (
 	ControlClearCache = "/clearCache"
 	ControlGetConf    = "/conf/get"
 
+	ControlReadAheadSet	= "/readAhead/set"
+	ControlReadAheadGet	= "/readAhead/get"
+
 	Role = "Client"
 )
 
@@ -367,6 +370,8 @@ func mount(opt *proto.MountOptions, fuseFd *os.File, first_start bool, clientSta
 	http.HandleFunc(ControlBatchDownloadPath, super.BatchDownloadPath)
 	http.HandleFunc(ControlClearCache, super.ClearCache)
 	http.HandleFunc(ControlGetConf, super.GetConf)
+	http.HandleFunc(ControlReadAheadSet, super.SetReadAheadConfig)
+	http.HandleFunc(ControlReadAheadGet, super.GetReadAheadConfig)
 	var (
 		server *http.Server
 		lc     net.ListenConfig
@@ -571,6 +576,8 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 	opt.NotCacheNode = GlobalMountOptions[proto.NotCacheNode].GetBool()
 	opt.UseLastExtent = GlobalMountOptions[proto.UseLastExtent].GetBool()
 	opt.SeqWriteCluster = GlobalMountOptions[proto.SeqWriteCluster].GetBool()
+	opt.ReadAheadMemMB = GlobalMountOptions[proto.ReadAheadMemMB].GetInt64()
+	opt.ReadAheadWindowMB = GlobalMountOptions[proto.ReadAheadWindowMB].GetInt64()
 
 	opt.Profile = GlobalMountOptions[proto.Profile].GetString()
 	if opt.Profile == proto.ProfileAiPrefetch {

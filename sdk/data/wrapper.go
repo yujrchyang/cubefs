@@ -34,6 +34,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 )
 
 var (
@@ -115,6 +116,9 @@ type Wrapper struct {
 	HostsDelay              sync.Map
 	extentClientType        ExtentClientType
 	umpKeyPrefix            string
+	getStreamerFunc			func(inode uint64) *Streamer
+	readAheadController		*ReadAheadController
+	readAheadInitMutex		sync.Mutex
 }
 
 type DataState struct {
@@ -154,7 +158,7 @@ func (level *connConfigLevel) String() string {
 }
 
 // NewDataPartitionWrapper returns a new data partition wrapper.
-func NewDataPartitionWrapper(volName string, masters []string, extentClientType ExtentClientType) (w *Wrapper, err error) {
+func NewDataPartitionWrapper(volName string, masters []string, extentClientType ExtentClientType, readAheadMemMB, readAheadWindowMB int64, getStreamerFunc func(inode uint64) *Streamer) (w *Wrapper, err error) {
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters
@@ -173,6 +177,10 @@ func NewDataPartitionWrapper(volName string, masters []string, extentClientType 
 	w.dpFollowerReadDelayConfig = &proto.DpFollowerReadDelayConfig{
 		EnableCollect:        true,
 		DelaySummaryInterval: followerReadDelaySummaryInterval,
+	}
+	w.getStreamerFunc = getStreamerFunc
+	if readAheadMemMB > 0 {
+		w.updateReadAheadLocalConfig(readAheadMemMB, readAheadWindowMB)
 	}
 	if err = w.updateClusterInfo(); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
@@ -207,7 +215,7 @@ func NewDataPartitionWrapper(volName string, masters []string, extentClientType 
 	return
 }
 
-func RebuildDataPartitionWrapper(volName string, masters []string, dataState *DataState, extentClientType ExtentClientType) (w *Wrapper) {
+func RebuildDataPartitionWrapper(volName string, masters []string, dataState *DataState, extentClientType ExtentClientType, localReadAheadMemMB, localReadAheadWindowMB int64, getStreamerFunc func(inode uint64) *Streamer) (w *Wrapper) {
 	w = new(Wrapper)
 	w.stopC = make(chan struct{})
 	w.masters = masters
@@ -228,6 +236,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 		DelaySummaryInterval: followerReadDelaySummaryInterval,
 	}
 	w.clusterName = dataState.ClusterName
+	w.getStreamerFunc = getStreamerFunc
 	LocalIP = dataState.LocalIP
 
 	view := dataState.VolView
@@ -249,6 +258,9 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
 	w.initDpSelector()
+
+	w.updateReadAheadRemoteConfig(view.ReadAheadMemMB, view.ReadAheadWindowMB)
+	w.updateReadAheadLocalConfig(localReadAheadMemMB, localReadAheadWindowMB)
 
 	w.volNotExistCount = dataState.VolNotExistCount
 	if !w.VolNotExists() {
@@ -321,6 +333,9 @@ func (w *Wrapper) saveDataState() *DataState {
 
 func (w *Wrapper) Stop() {
 	w.stopOnce.Do(func() {
+		if w.readAheadController != nil {
+			w.readAheadController.Stop()
+		}
 		if w.remoteCache != nil {
 			w.remoteCache.Stop()
 		}
@@ -391,13 +406,14 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.updateConnConfig(view.ConnConfig, volumeConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
+	_ = w.updateReadAheadRemoteConfig(view.ReadAheadMemMB, view.ReadAheadWindowMB)
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) enableWriteCache(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v) dpFolReadDelayConfig(%v) connConfig(%v)",
+		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v) dpFolReadDelayConfig(%v) connConfig(%v) readAheadMemMB(%v) readAheadWindowMB(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
 		view.DpCnt, view.FollowerRead, view.ForceROW, view.EnableWriteCache, view.CreateTime, view.DpSelectorName, view.DpSelectorParm,
-		view.Quorum, view.ExtentCacheExpireSec, view.DpFolReadDelayConfig, view.ConnConfig)
+		view.Quorum, view.ExtentCacheExpireSec, view.DpFolReadDelayConfig, view.ConnConfig, view.ReadAheadMemMB, view.ReadAheadWindowMB)
 	return nil
 }
 
@@ -416,6 +432,8 @@ func (w *Wrapper) saveSimpleVolView() *proto.SimpleVolView {
 		EcEnable:             w.ecEnable,
 		ExtentCacheExpireSec: w.extentCacheExpireSec,
 		UmpKeyPrefix:         w.umpKeyPrefix,
+		ReadAheadMemMB: 	  w.readAheadController.getMemoryMB(),
+		ReadAheadWindowMB:	  w.readAheadController.getWindowMB(),
 	}
 	view.ConnConfig = &proto.ConnConfig{
 		IdleTimeoutSec:   w.connConfig.IdleTimeoutSec,
@@ -608,6 +626,7 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	w.updateConnConfig(view.ConnConfig, volumeConfig)
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
+	w.updateReadAheadRemoteConfig(view.ReadAheadMemMB, view.ReadAheadWindowMB)
 	if w.dpLowestDelayHostWeight != view.FolReadHostWeight {
 		log.LogInfof("updateSimpleVolView: update FolReadHostWeight from old(%v) to new(%v)", w.dpLowestDelayHostWeight, view.FolReadHostWeight)
 		w.dpLowestDelayHostWeight = view.FolReadHostWeight
@@ -1125,6 +1144,105 @@ func (w *Wrapper) VolNotExists() bool {
 		return true
 	}
 	return false
+}
+
+func (w *Wrapper) updateReadAheadLocalConfig(localReadAheadMemMB, localReadAheadWindowMB int64) (err error) {
+	var (
+		newMemMB	int64
+		newWindowMB	int64
+	)
+	if err = validateReadAheadConfig(localReadAheadMemMB, localReadAheadWindowMB); err != nil {
+		log.LogErrorf("invalid read ahead config: memMB(%v), windowMB(%v)", localReadAheadMemMB, localReadAheadWindowMB)
+		return
+	}
+	defer func() {
+		if err == nil && w.readAheadController != nil {
+			if localReadAheadMemMB != 0 {
+				w.readAheadController.localMemMB = localReadAheadMemMB
+			}
+			if localReadAheadWindowMB != 0 {
+				w.readAheadController.localWindowMB = localReadAheadWindowMB
+			}
+		}
+	}()
+
+	if localReadAheadMemMB < 0 && w.readAheadController == nil {
+		return
+	} else if localReadAheadMemMB < 0 && w.readAheadController.remoteMemMB > 0 {
+		newMemMB = w.readAheadController.remoteMemMB
+	} else {
+		newMemMB = localReadAheadMemMB
+	}
+
+	if localReadAheadWindowMB < 0 && w.readAheadController != nil && w.readAheadController.remoteWindowMB > 0 {
+		newWindowMB = w.readAheadController.remoteWindowMB
+	} else {
+		newWindowMB = localReadAheadWindowMB
+	}
+
+	if err = w.updateReadAheadConfig(newMemMB, newWindowMB); err != nil {
+		log.LogErrorf("update local read ahead config failed: %v", err)
+		return
+	}
+	return
+}
+
+func (w *Wrapper) updateReadAheadRemoteConfig(remoteReadAheadMemMB, remoteReadAheadWindowMB int64) (err error) {
+	if err = validateReadAheadConfig(remoteReadAheadMemMB, remoteReadAheadWindowMB); err != nil {
+		return
+	}
+	defer func() {
+		if err == nil && w.readAheadController != nil {
+			w.readAheadController.remoteMemMB = remoteReadAheadMemMB
+			w.readAheadController.remoteWindowMB = remoteReadAheadWindowMB
+		}
+	}()
+
+	newMemMB := remoteReadAheadMemMB
+	newWindowMB := remoteReadAheadWindowMB
+	if w.readAheadController != nil && w.readAheadController.localMemMB > 0 {
+		newMemMB = 0
+	}
+	if w.readAheadController != nil && w.readAheadController.localWindowMB > 0 {
+		newWindowMB = 0
+	}
+	if newMemMB == 0 && newWindowMB == 0 {
+		return
+	}
+
+	if err = w.updateReadAheadConfig(newMemMB, newWindowMB); err != nil {
+		log.LogErrorf("update remote read ahead config failed: %v", err)
+		return
+	}
+	return
+}
+
+func (w *Wrapper) updateReadAheadConfig(readAheadMemMB, readAheadWindowMB int64) (err error) {
+	if err = validateReadAheadConfig(readAheadMemMB, readAheadWindowMB); err != nil {
+		return
+	}
+	w.readAheadInitMutex.Lock()
+	defer w.readAheadInitMutex.Unlock()
+
+	if readAheadMemMB > 0 && w.readAheadController == nil {
+		readAheadWindowSize := uint64(defaultReadAheadWindowMB) * unit.MB
+		if readAheadWindowMB > 0 {
+			readAheadWindowSize = uint64(readAheadWindowMB) * unit.MB
+		}
+		var controller *ReadAheadController
+		if controller, err = NewReadAheadController(w, readAheadMemMB, readAheadWindowSize); err != nil {
+			return
+		}
+		w.readAheadController = controller
+		return
+	}
+	if readAheadMemMB != 0 {
+		w.readAheadController.updateBlockCntThreshold(readAheadMemMB)
+	}
+	if readAheadWindowMB != 0 {
+		w.readAheadController.updateWindowSize(readAheadWindowMB)
+	}
+	return
 }
 
 func distanceFromLocal(b string) int {

@@ -70,6 +70,8 @@ const (
 	NotCacheNode
 	UseLastExtent
 	SeqWriteCluster
+	ReadAheadMemMB
+	ReadAheadWindowMB
 
 	MaxMountOption
 )
@@ -166,6 +168,8 @@ func InitMountOptions(opts []MountOption) {
 	opts[NotCacheNode] = NewMountOption("notCacheNode", "not cache node in libfuse", false)
 	opts[UseLastExtent] = NewMountOption("useLastExtent", "use last extent when writing", true)
 	opts[SeqWriteCluster] = NewMountOption("seqWriteCluster", "is sequential write cluster", false)
+	opts[ReadAheadMemMB] = NewMountOption("readAheadMemMB", "total memory usage size(MB) of read ahead", int64(0))
+	opts[ReadAheadWindowMB] = NewMountOption("readAheadWindowMB", "window size(MB) of read ahead", int64(0))
 }
 
 func ParseMountOptions(opts []MountOption, cfg *config.Config) {
@@ -317,4 +321,6 @@ type MountOptions struct {
 	NotCacheNode             bool
 	UseLastExtent            bool
 	SeqWriteCluster          bool
+	ReadAheadMemMB			 int64
+	ReadAheadWindowMB		 int64
 }

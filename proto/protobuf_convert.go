@@ -348,6 +348,8 @@ func ConvertSimpleVolViewPb(vv *SimpleVolViewPb) *SimpleVolView {
 		FileTotalSize:            vv.FileTotalSize,
 		TrashUsedSize:            vv.TrashUsedSize,
 		EnableCheckDeleteEK:      vv.EnableCheckDeleteEK,
+		ReadAheadMemMB:			  vv.ReadAheadMemMB,
+		ReadAheadWindowMB:		  vv.ReadAheadWindowMB,
 	}
 	if vv.SmartRules != nil {
 		simpleVolView.SmartRules = vv.SmartRules
@@ -457,6 +459,8 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		EnableCheckDeleteEK:    vv.EnableCheckDeleteEK,
 		NotCacheNode:           vv.NotCacheNode,
 		Flock:                  vv.Flock,
+		ReadAheadMemMB:			vv.ReadAheadMemMB,
+		ReadAheadWindowMB:		vv.ReadAheadWindowMB,
 	}
 }
 

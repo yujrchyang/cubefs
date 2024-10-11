@@ -72,6 +72,9 @@ type Streamer struct {
 
 	initLock   sync.RWMutex
 	initServer bool
+
+	readAheadBlocks  sync.Map // startFileOffset -> *ReadAheadBlock
+	readAheadLock	 sync.RWMutex
 }
 
 // NewStreamer returns a new streamer.
@@ -153,11 +156,6 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 		fileSize          uint64
 	)
 	ctx = context.Background()
-	if s.client.readRate > 0 {
-		tpObject := exporter.NewModuleTPUs("read_wait")
-		s.client.readLimiter.Wait(ctx)
-		tpObject.Set(nil)
-	}
 
 	requests, fileSize = s.extents.PrepareRequests(offset, size, data)
 	for _, req := range requests {

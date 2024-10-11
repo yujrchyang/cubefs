@@ -1307,6 +1307,8 @@ type SimpleVolView struct {
 	EnableCheckDeleteEK    bool
 	NotCacheNode           bool
 	Flock                  bool
+	ReadAheadMemMB		   int64
+	ReadAheadWindowMB	   int64
 
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
