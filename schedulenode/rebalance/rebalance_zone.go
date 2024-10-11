@@ -698,6 +698,7 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 		srcMetaNode.alreadyMigrateFinishedPartitions = make(map[uint64]bool)
 		// goal=0表示全部迁出
 		// todo：没有mp但还使用率一直不下降
+		migrateLimit := len(srcMetaNode.nodeInfo.PersistenceMetaPartitions) / 3
 		for srcMetaNode.nodeInfo.Ratio > zoneCtrl.goalRatio {
 			select {
 			case <-zoneCtrl.ctx.Done():
@@ -706,7 +707,9 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 				return
 			default:
 			}
-
+			if migrateLimit <= 0 {
+				break
+			}
 			if err := srcMetaNode.updateMetaNodeInfo(); err != nil {
 				updateMetaNodeFailedCount++
 				if updateMetaNodeFailedCount > 10 {
@@ -717,7 +720,7 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 				time.Sleep(time.Second * 30)
 				continue
 			}
-
+			migrateLimit--
 			if err := srcMetaNode.doMigrate(); err != nil {
 				log.LogInfof("migrate failed, task info: %v, node: %v, err: %v", zoneCtrl.reBalanceTaskInfo(),
 					srcMetaNode.nodeInfo.Addr, err)
