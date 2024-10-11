@@ -396,7 +396,7 @@ func (zoneCtrl *ZoneReBalanceController) isInRecoveringDPsMoreThanMaxBatchCount(
 }
 
 func (zoneCtrl *ZoneReBalanceController) getInRecoveringDPMapIgnoreMig() (inRecoveringDPMap map[uint64]int, err error) {
-	clusterView, err := zoneCtrl.AdminAPI().GetCluster()
+	clusterView, err := zoneCtrl.AdminAPI().GetClusterNoCache(time.Now().Unix())
 	if err != nil {
 		return
 	}
@@ -447,7 +447,7 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 			inRecoveringDPMap, err := zoneCtrl.isInRecoveringDPsMoreThanMaxBatchCount(zoneCtrl.clusterMaxBatchCount)
 			if err != nil {
 				log.LogWarnf("ScheduleToMigHighRatioDiskDataPartition err:%v", err.Error())
-				time.Sleep(defaultInterval)
+				time.Sleep(30 * time.Second)
 				continue
 			}
 			canBeMigCount := zoneCtrl.clusterMaxBatchCount - len(inRecoveringDPMap)
@@ -456,8 +456,8 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 			if err != nil {
 				break
 			}
-			time.Sleep(defaultInterval)
 		}
+		time.Sleep(time.Minute * 1)
 		srcNode.isFinished = true
 		log.LogInfof("doReBalance cluster:%v zoneName:%v srcDataNode:%v finished", zoneCtrl.cluster, zoneCtrl.zoneName, srcNode.Addr)
 	}
@@ -723,11 +723,10 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 					srcMetaNode.nodeInfo.Addr, err)
 				return
 			}
-			time.Sleep(time.Second * 15)
 		}
+		time.Sleep(time.Minute * 1)
 		srcMetaNode.isFinished = true
 		log.LogInfof("doReBalance cluster:%v zoneName:%v srcMetaNode:%v finished", zoneCtrl.cluster, zoneCtrl.zoneName, srcMetaNode.nodeInfo.Addr)
-		time.Sleep(time.Minute * 5)
 	}
 }
 
