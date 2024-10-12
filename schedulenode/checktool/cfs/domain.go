@@ -22,6 +22,7 @@ type AlarmMetric struct {
 
 type ClusterHost struct {
 	host                          string
+	masterNodes                   []string
 	deadDataNodes                 map[string]*DeadNode
 	deadMetaNodes                 map[string]*DeadNode
 	deadFlashNodes                map[string]*DeadNode
@@ -64,6 +65,7 @@ type ClusterHost struct {
 func newClusterHost(host string) *ClusterHost {
 	ch := &ClusterHost{
 		host:                      host,
+		masterNodes:               make([]string, 0),
 		deadMetaNodes:             make(map[string]*DeadNode, 0),
 		deadDataNodes:             make(map[string]*DeadNode, 0),
 		deadFlashNodes:            make(map[string]*DeadNode, 0),

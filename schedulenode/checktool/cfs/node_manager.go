@@ -42,7 +42,11 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 			defer checkNodeWg.Done()
 			log.LogInfof("checkNodesAlive [%v] begin", host)
 			startTime := time.Now()
-			cv, err := getCluster(host)
+			cv, err := getClusterByMasterNodes(host)
+			if err != nil {
+				log.LogErrorf("get cluster by master nodes error, retry by domain, err:%v", err)
+				cv, err = getCluster(host)
+			}
 			if err != nil {
 				if isConnectionRefusedFailure(err) {
 					msg := fmt.Sprintf("get cluster info from %v failed, err:%v ", host.host, err)
@@ -686,6 +690,41 @@ func getCluster(host *ClusterHost) (cv *ClusterView, err error) {
 		}
 	}
 	log.LogInfof("action[getCluster],host[%v],len(VolStat)=%v,len(metaNodes)=%v,len(dataNodes)=%v",
+		host, len(cv.VolStat), len(cv.MetaNodes), len(cv.DataNodes))
+	return
+}
+
+func getClusterByMasterNodes(host *ClusterHost) (cv *ClusterView, err error) {
+	var data []byte
+	if len(host.masterNodes) == 0 {
+		return nil, fmt.Errorf("master nodes is empty")
+	}
+	for _, masterNode := range host.masterNodes {
+		reqURL := fmt.Sprintf("http://%v/admin/getCluster", masterNode)
+		data, err = doRequest(reqURL, host.isReleaseCluster)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return
+	}
+	cv = &ClusterView{}
+	if err = json.Unmarshal(data, cv); err != nil {
+		log.LogErrorf("action[getClusterByMasterNodes] from %v failed ,data:%v,err:%v", host, string(data), err)
+		return
+	}
+	if !host.isReleaseCluster {
+		cv.DataNodeStat = cv.DataNodeStatInfo
+		cv.MetaNodeStat = cv.MetaNodeStatInfo
+		if cv.VolStat, err = GetVolStatFromVolList(host.host, host.isReleaseCluster); err != nil {
+			return
+		}
+		if len(cv.VolStatInfo) == 0 {
+			cv.VolStatInfo = cv.VolStat
+		}
+	}
+	log.LogInfof("action[getClusterByMasterNodes],host[%v],len(VolStat)=%v,len(metaNodes)=%v,len(dataNodes)=%v",
 		host, len(cv.VolStat), len(cv.MetaNodes), len(cv.DataNodes))
 	return
 }

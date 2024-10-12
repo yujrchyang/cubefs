@@ -258,6 +258,13 @@ func (s *ChubaoFSMonitor) extractChubaoFSInfo(filePath string) (err error) {
 		return
 	}
 	fmt.Println("chubaoFSMasterNodes:", s.chubaoFSMasterNodes)
+
+	for _, host := range s.hosts {
+		if masterNodes, ok := s.chubaoFSMasterNodes[host.host]; ok {
+			host.masterNodes = masterNodes
+			fmt.Printf("domain: %v chubaoFSMasterNodes: %v\n", host.host, s.chubaoFSMasterNodes)
+		}
+	}
 	return
 }
 
