@@ -44,7 +44,7 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 			startTime := time.Now()
 			cv, err := getClusterByMasterNodes(host)
 			if err != nil {
-				log.LogErrorf("get cluster by master nodes error, retry by domain, err:%v", err)
+				log.LogErrorf("Domain[%v] get cluster by master nodes error, retry by domain, err:%v", host.host, err)
 				cv, err = getCluster(host)
 			}
 			if err != nil {

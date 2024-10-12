@@ -236,6 +236,7 @@ func (s *ChubaoFSMonitor) Start(cfg *config.Config) (err error) {
 		return
 	}
 	noLeaderMps = new(sync.Map)
+	s.umpClient = ump.NewUmpClient(cfg.GetString(cfgUmpAPiToken), umpOpenAPiDomain)
 	s.scheduleTask(cfg)
 	releaser := StartChubaoFSDPReleaser(cfg)
 	if releaser == nil {
