@@ -145,17 +145,8 @@ type DataNodeStats struct {
 	Status              int
 	Result              string
 	BadDisks            []string
-	DiskInfos           map[string]*CfsDisk
+	DiskInfos           map[string]*DiskInfo
 	Version             string
-}
-
-type CfsDisk struct {
-	Total         int64
-	Used          int64
-	ReservedSpace int64
-	Status        int
-	Path          string
-	UsageRatio    float64
 }
 
 type StatInfo struct {

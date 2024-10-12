@@ -504,19 +504,16 @@ func loadDataNodeUsageRatio(host, zoneName string) (dataNodeInfo []*NodeUsageInf
 				<-ch
 				wg.Done()
 			}()
-			node, errForGet := mc.NodeAPI().GetDataNode(dataNodeAddr)
+			node, errForGet := getDataNodeInfo(dataNodeAddr)
 			if errForGet != nil {
 				log.LogErrorf("handleZoneUsageRatio get dataNode:%v err:%v", dataNodeAddr, errForGet)
 				return
 			}
-			var used uint64
-			for _, partitionReport := range node.DataPartitionReports {
-				used += partitionReport.Used
-			}
+			convertActualUsageRatio(node)
 			mu.Lock()
 			dataNodeInfo = append(dataNodeInfo, &NodeUsageInfo{
 				Addr:       dataNodeAddr,
-				UsageRatio: float64(used) / float64(node.Total),
+				UsageRatio: node.UsageRatio,
 			})
 			mu.Unlock()
 		}(dataNodeAddr)

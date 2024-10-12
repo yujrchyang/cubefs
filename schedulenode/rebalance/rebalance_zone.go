@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 	"gorm.io/gorm/utils"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -282,7 +284,7 @@ func (zoneCtrl *ZoneReBalanceController) updateDataNodes() error {
 
 		for _, addr := range nodeList {
 			go func(addr string) {
-				node, err := zoneCtrl.MasterClient.NodeAPI().GetDataNode(addr)
+				node, err := getDataNodeInfo(addr)
 				if err != nil {
 					log.LogErrorf("updateDataNodes error Zone: %v DataNode: %v %v", zoneCtrl.zoneName, addr, err.Error())
 					return
@@ -321,7 +323,12 @@ func convertActualUsageRatio(node *proto.DataNodeInfo) {
 	}
 	var used uint64
 	for _, dpReport := range node.DataPartitionReports {
-		used += dpReport.Used
+		diskInfo := node.DiskInfos[dpReport.DiskPath]
+		if dpReport.IsSFX && diskInfo.CompressionRatio != 0 {
+			used += dpReport.Used*100/uint64(diskInfo.CompressionRatio)
+		} else {
+			used += dpReport.Used
+		}
 	}
 	node.UsageRatio = float64(used) / float64(node.Total)
 }
@@ -368,7 +375,7 @@ func (zoneCtrl *ZoneReBalanceController) selectDstNode(dpInfo *proto.DataPartiti
 	for offset < len(zoneCtrl.dstDataNodes) {
 		index := (zoneCtrl.dstIndex + offset) % len(zoneCtrl.dstDataNodes)
 		node = zoneCtrl.dstDataNodes[index]
-		if node.IsActive && node.UsageRatio < 0.8 && !utils.Contains(dpInfo.Hosts, node.Addr) {
+		if node.UsageRatio < 0.8 && !utils.Contains(dpInfo.Hosts, node.Addr) {
 			break
 		}
 		offset++
@@ -536,9 +543,9 @@ func (zoneCtrl *ZoneReBalanceController) refreshDstDataNodes() {
 		select {
 		case <-ticker.C:
 			for _, node := range zoneCtrl.dstDataNodes {
-				dataNode, err := zoneCtrl.MasterClient.NodeAPI().GetDataNode(node.Addr)
+				dataNode, err := getDataNodeInfo(node.Addr)
 				if err != nil {
-					log.LogErrorf("[refreshDstNodes] taskId:%v cluster:%v zoneName:%v datanodeAddr:%v", zoneCtrl.Id, zoneCtrl.cluster, zoneCtrl.zoneName, node.Addr)
+					log.LogErrorf("[refreshDstNodes] taskId:%v cluster:%v zoneName:%v datanodeAddr:%v err:%v", zoneCtrl.Id, zoneCtrl.cluster, zoneCtrl.zoneName, node.Addr, err)
 					continue
 				}
 				*node = *dataNode
@@ -560,9 +567,9 @@ func (zoneCtrl *ZoneReBalanceController) refreshSrcDataNodes() {
 		select {
 		case <-ticker.C:
 			for _, node := range zoneCtrl.srcDataNodes {
-				dataNode, err := zoneCtrl.MasterClient.NodeAPI().GetDataNode(node.Addr)
+				dataNode, err := getDataNodeInfo(node.Addr)
 				if err != nil {
-					log.LogErrorf("[refreshDstNodes] taskId:%v cluster:%v zoneName:%v datanodeAddr:%v", zoneCtrl.Id, zoneCtrl.cluster, zoneCtrl.zoneName, node.Addr)
+					log.LogErrorf("[refreshSrcDataNodes] taskId:%v cluster:%v zoneName:%v datanodeAddr:%v err:%v", zoneCtrl.Id, zoneCtrl.cluster, zoneCtrl.zoneName, node.Addr, err)
 					continue
 				}
 				convertActualUsageRatio(dataNode)
@@ -573,6 +580,29 @@ func (zoneCtrl *ZoneReBalanceController) refreshSrcDataNodes() {
 			return
 		}
 	}
+}
+
+func getDataNodeInfo(nodeAddr string) (dataNode *proto.DataNodeInfo, err error) {
+	var (
+		stats *proto.DataNodeStats
+	)
+	dataClient := http_client.NewDataClient(fmt.Sprintf("%s:%d", strings.Split(nodeAddr, ":")[0], 6001), false)
+	stats, err = dataClient.GetDatanodeStats()
+	if err != nil {
+		log.LogErrorf("GetDatanodeStats nodeAddr:%v err:%v", nodeAddr, err)
+		return
+	}
+	dataNode = &proto.DataNodeInfo{
+		Total:                stats.Total,
+		Used:                 stats.Used,
+		AvailableSpace:       stats.Available,
+		ZoneName:             stats.ZoneName,
+		Addr:                 nodeAddr,
+		UsageRatio:           float64(stats.Used) / float64(stats.Total),
+		DataPartitionReports: stats.PartitionReports,
+		DiskInfos:            stats.DiskInfos,
+	}
+	return
 }
 
 func (zoneCtrl *ZoneReBalanceController) updateMetaNodes() (err error) {

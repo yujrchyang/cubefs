@@ -114,7 +114,7 @@ func (dnCtrl *DNReBalanceController) SetMigrateLimitPerDisk(limit int) {
 
 // 更新当前dataNode的信息
 func (dnCtrl *DNReBalanceController) updateDataNode() error {
-	node, err := dnCtrl.MasterClient.NodeAPI().GetDataNode(dnCtrl.Addr)
+	node, err := getDataNodeInfo(dnCtrl.Addr)
 	if err != nil {
 		return err
 	}
@@ -153,17 +153,9 @@ func (dnCtrl *DNReBalanceController) updateDisks() error {
 func (dnCtrl *DNReBalanceController) updateDps() error {
 	dnCtrl.migratedSize = 0
 
-	persistenceDataPartitionsMap := make(map[uint64]struct{})
-	for _, dpID := range dnCtrl.PersistenceDataPartitions {
-		persistenceDataPartitionsMap[dpID] = struct{}{}
-	}
-
 	// 将dp绑定对应disk
 	dpReportsMap := make(map[uint64]*proto.PartitionReport)
 	for _, dpReport := range dnCtrl.DataPartitionReports {
-		if _, ok := persistenceDataPartitionsMap[dpReport.PartitionID]; !ok {
-			continue
-		}
 		if disk, ok := dnCtrl.disks[dpReport.DiskPath]; ok {
 			disk.AddDP(dpReport)
 		}
