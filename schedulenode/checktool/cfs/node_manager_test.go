@@ -85,3 +85,21 @@ func TestCheckNodeAlive(t *testing.T) {
 		t.Logf("check-%v inactive datanodes: %v\n", i, len(inactive))
 	}
 }
+
+func TestGetClusterByMasterNodes(t *testing.T) {
+	initTestLog("checknode")
+	defer func() {
+		log.LogFlush()
+	}()
+	host := newClusterHost("test.chubaofs.jd.local")
+	host.masterNodes = []string{
+		"1.1.1.1:80",
+		"",
+	}
+	host.isReleaseCluster = false
+	cv, err := getClusterByMasterNodes(host)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.NotZero(t, len(cv.DataNodes))
+}
