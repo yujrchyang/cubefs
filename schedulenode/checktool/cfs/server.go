@@ -4,16 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/multi_email"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/checktool/ump"
 	"github.com/cubefs/cubefs/util/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
 )
 
 const (
@@ -341,6 +342,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.NewSchedule(s.resetTokenMap, time.Minute*30)
 	go s.NewSchedule(s.checkDbbakDataPartition, time.Hour*6)
 	go s.NewSchedule(s.checkAvailableTinyExtents, time.Minute*2)
+	go s.NewSchedule(s.clientAlarm, clientAlarmInterval*time.Second)
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
