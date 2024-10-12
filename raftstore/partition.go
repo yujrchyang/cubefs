@@ -303,7 +303,7 @@ func (p *partition) Start() (err error) {
 		peers = append(peers, peerAddress.Peer)
 	}
 	var applied = p.config.GetStartIndex.Get(fi, li)
-	if p.config.LastIndexCheck && applied > li {
+	if p.config.LogIndexCheck && (applied > li || (fi > 1 && applied < fi)) {
 		err = raft.ErrLackOfRaftLog
 		return
 	}
