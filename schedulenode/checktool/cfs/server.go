@@ -44,6 +44,7 @@ const (
 	UMPCFSSparkFlashNodeVersionKey          = checktool.UmpKeyStorageBotPrefix + "cfs.flashnode.version"
 	UMPCFSMasterMetaCompareKey              = checktool.UmpKeyStorageBotPrefix + "cfs.master.rocksdb.compare"
 	UMPCFSNodeSetNumKey                     = checktool.UmpKeyStorageBotPrefix + "cfs.nodeset.num"
+	UMPCFSNodeTinyExtentCheckKey            = checktool.UmpKeyStorageBotPrefix + "cfs.tiny.extent.check"
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024
 	defaultMpNoLeaderWarnInternal           = 10 * 60
