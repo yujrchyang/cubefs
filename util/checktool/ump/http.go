@@ -4,22 +4,32 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
-func doPost(url string, body []byte, headers map[string]string) ([]byte, error) {
-	client := &http.Client{}
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(body)))
+func doPost(url string, body []byte, headers map[string]string) (resultBody []byte, err error) {
+	var (
+		req  *http.Request
+		resp *http.Response
+	)
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	req, err = http.NewRequest("POST", url, strings.NewReader(string(body)))
 	if err != nil {
-		return make([]byte, 0), err
+		return
 	}
 	for key, header := range headers {
 		req.Header.Set(key, header)
 	}
-	resp, err := client.Do(req)
-	defer resp.Body.Close()
-	resultBody, err := io.ReadAll(resp.Body)
+	resp, err = client.Do(req)
 	if err != nil {
-		return make([]byte, 0), err
+		return
 	}
-	return resultBody, nil
+	defer resp.Body.Close()
+	resultBody, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	return
 }
