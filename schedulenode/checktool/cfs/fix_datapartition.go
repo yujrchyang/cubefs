@@ -40,7 +40,6 @@ func (s *ChubaoFSMonitor) scheduleToFixBadDataPartition(cfg *config.Config) {
 		return
 	}
 	log.LogInfof("scheduleToFixBadDataPartition started")
-	s.umpClient = ump.NewUmpClient(cfg.GetString(cfgUmpAPiToken), umpOpenAPiDomain)
 	var fixTick = time.NewTicker(time.Second)
 	defer fixTick.Stop()
 	for {
