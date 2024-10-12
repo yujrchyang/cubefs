@@ -96,7 +96,7 @@ type PartitionConfig struct {
 
 	StorageListener StorageListener
 
-	LastIndexCheck bool
+	LogIndexCheck bool
 }
 
 func (p PeerAddress) String() string {
