@@ -1320,9 +1320,10 @@ func (ch *ClusterHost) doWarnInactiveNodesBySpecialUMPKey() {
 
 // 获取 mdc 存入到数据库的日志 磁盘使用率 大于阈值 电话告警
 func (cv *ClusterView) checkMetaNodeDiskStatByMDCInfoFromSre(host *ClusterHost, s *ChubaoFSMonitor) {
-	if host.host != "cn.elasticdb.jd.local" {
+	if time.Since(host.metaNodeDiskRatioCheckTime) < time.Minute*5 {
 		return
 	}
+
 	var (
 		err             error
 		dashboardMdcIps []string
@@ -1337,9 +1338,10 @@ func (cv *ClusterView) checkMetaNodeDiskStatByMDCInfoFromSre(host *ClusterHost, 
 		err = fmt.Errorf("sreDB is nil")
 		return
 	}
-	//select * from `tb_dashboard_mdc` where origin='cfs' and disk_path='/export' and fs_usage_percent > 75 and time_stamp >= now()-interval 20 minute;
-	sqlStr := fmt.Sprintf(" select DISTINCT(ip) from `%s` where origin='cfs' and disk_path='/export' and fs_usage_percent > %v "+
-		"and time_stamp >= now()-interval 10 minute ",
+	/*select DISTINCT(ip) from tb_dashboard_mdc where origin='cfs' and (disk_path='/exportvolume' or disk_path='/export'
+	or disk_path='/nvme') and fs_usage_percent > 70 and time_stamp >= now()-interval 20 minute;*/
+	sqlStr := fmt.Sprintf(" select DISTINCT(ip) from `%s` where origin='cfs' and (disk_path='/exportvolume' or" +
+		" disk_path='/export' or disk_path='/nvme') and fs_usage_percent > %v and time_stamp >= now()-interval 10 minute ",
 		DashboardMdc{}.TableName(), s.metaNodeExportDiskUsedRatio)
 	if err = s.sreDB.Raw(sqlStr).Scan(&dashboardMdcIps).Error; err != nil {
 		return
@@ -1360,12 +1362,8 @@ func (cv *ClusterView) checkMetaNodeDiskStatByMDCInfoFromSre(host *ClusterHost, 
 		return
 	}
 	msg := fmt.Sprintf("%v has meta nodes export disk used ratio more than %v%%,detail:%v", host, s.metaNodeExportDiskUsedRatio, highRatioNodes)
-	if time.Since(host.metaNodeDiskRatioWarnTime) >= time.Minute*5 {
-		checktool.WarnBySpecialUmpKey(UMPKeyMetaNodeDiskRatio, msg)
-		host.metaNodeDiskRatioWarnTime = time.Now()
-	} else {
-		log.LogWarnf("action[checkMetaNodeDiskStatByMDCInfoFromSre] :%v", msg)
-	}
+	checktool.WarnBySpecialUmpKey(UMPKeyMetaNodeDiskRatio, msg)
+	host.metaNodeDiskRatioCheckTime = time.Now()
 }
 
 func isSSD(host, zoneName string) bool {
