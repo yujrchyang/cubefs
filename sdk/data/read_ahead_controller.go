@@ -18,13 +18,15 @@ import (
 )
 
 const (
-	readAheadChanCap 	= 102400
-	readAheadBlockSize 	= uint64(128 * unit.KB)
+	DefaultReadAheadMemMB		= 0
+	DefaultReadAheadWindowMB	= 2
+
+	readAheadChanCap 			= 102400
+	readAheadBlockSize 			= uint64(128 * unit.KB)
 
 	maxReadAheadWorkerNum    	= 128
 	maxReadAheadMemMB  			= 8192
 	maxReadAheadWindowMB  		= 64
-	defaultReadAheadWindowMB	= 2
 
 	readAheadPrintInterval		= 60 * time.Second
 	readAheadEvictInterval		= 1 * time.Second
@@ -511,7 +513,7 @@ func (c *ReadAheadController) updateWindowSize(windowMB int64) {
 	if c == nil {
 		return
 	}
-	newWindowSize := uint64(defaultReadAheadWindowMB) * unit.MB
+	newWindowSize := uint64(DefaultReadAheadWindowMB) * unit.MB
 	if windowMB > 0 {
 		newWindowSize = uint64(windowMB) * unit.MB
 	}

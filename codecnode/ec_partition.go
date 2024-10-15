@@ -62,8 +62,7 @@ func getDataSdkWrapper(volume string, masters []string) (w *dataSdk.Wrapper, err
 	}
 	limit := MaxRetryLimit
 retry:
-	readAheadMemMB, readAheadWindowMB := int64(0), int64(0)
-	w, err = dataSdk.NewDataPartitionWrapper(volume, masters, dataSdk.Normal, readAheadMemMB, readAheadWindowMB, nil)
+	w, err = dataSdk.NewDataPartitionWrapper(volume, masters, dataSdk.Normal, dataSdk.DefaultReadAheadMemMB, dataSdk.DefaultReadAheadWindowMB, nil)
 	if err != nil {
 		if limit <= 0 {
 			return nil, errors.Trace(err, "Init data wrapper failed!")

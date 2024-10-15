@@ -58,7 +58,7 @@ func TestNearRead(t *testing.T) {
 		"", false, false, 0, false, 0, readConnTimeout, readConnTimeout, 0, 0, false, false); err != nil {
 		t.Fatalf("update followerRead and nearRead to 'true' failed: err(%v) vol(ltptest)", err)
 	}
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal)
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal, DefaultReadAheadMemMB, DefaultReadAheadWindowMB, ec.GetStreamer)
 	if err != nil {
 		t.Fatalf("NewDataPartitionWrapper: err(%v) vol(%v) master addr(%v)", err, ltptestVolume, ltptestMaster)
 	}

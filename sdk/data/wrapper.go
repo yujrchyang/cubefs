@@ -1225,7 +1225,7 @@ func (w *Wrapper) updateReadAheadConfig(readAheadMemMB, readAheadWindowMB int64)
 	defer w.readAheadInitMutex.Unlock()
 
 	if readAheadMemMB > 0 && w.readAheadController == nil {
-		readAheadWindowSize := uint64(defaultReadAheadWindowMB) * unit.MB
+		readAheadWindowSize := uint64(DefaultReadAheadWindowMB) * unit.MB
 		if readAheadWindowMB > 0 {
 			readAheadWindowSize = uint64(readAheadWindowMB) * unit.MB
 		}
