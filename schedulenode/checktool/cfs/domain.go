@@ -52,7 +52,7 @@ type ClusterHost struct {
 	badPartitionPendingMapMutex   sync.Mutex
 	inactiveNodesForCheckVol      map[string]bool
 	inactiveNodesForCheckVolLock  sync.RWMutex
-	metaNodeDiskRatioWarnTime     time.Time
+	metaNodeDiskRatioCheckTime    time.Time
 	metaNodeDiskUsedWarnTime      time.Time
 	lastDisableFlashNodeTime      time.Time
 	lastCleanExpiredMetaTime      time.Time
