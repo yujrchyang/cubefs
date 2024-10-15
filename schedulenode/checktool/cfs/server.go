@@ -18,34 +18,36 @@ import (
 )
 
 const (
-	domainSeparator                         = ","
-	UMPCFSNormalWarnKey                     = checktool.UmpKeyStorageBotPrefix + "cfs"
-	UMPCFSBadDiskWarnKey                    = UMPCFSNormalWarnKey + ".bad.disk"
-	UMPCFSZoneUsedRatioWarnKey              = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio"
-	UMPCFSZoneUsedRatioOPWarnKey            = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio.op"
-	UMPCFSRaftlogBackWarnKey                = checktool.UmpKeyStorageBotPrefix + "chubaofs.raft.log.backup"
-	UMPCFSClusterUsedRatio                  = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.used.ratio"
-	UMPCFSClusterConnRefused                = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.connection.refused"
-	UMPKeyInactiveNodes                     = checktool.UmpKeyStorageBotPrefix + "chubaofs.inactive.nodes"
-	UMPKeyMetaPartitionNoLeader             = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.no.leader"
-	UMPKeyDataPartitionLoadFailed           = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.load.failed"
-	UMPKeyMetaPartitionPeerInconsistency    = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.peer.inconsistency"
-	UMPKeyDataPartitionPeerInconsistency    = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.peer.inconsistency"
-	UMPKeyMetaNodeDiskSpace                 = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.space"
-	UMPKeyMetaNodeDiskRatio                 = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.ratio"
-	UMPKeyMasterLbPodStatus                 = checktool.UmpKeyStorageBotPrefix + "chubaofs.master.lb.pod.status"
-	UMPKeyClusterConfigCheck                = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.config"
-	UMPCFSNodeRestartWarnKey                = checktool.UmpKeyStorageBotPrefix + "cfs.restart.node"
-	UMPCFSInactiveNodeWarnKey               = checktool.UmpKeyStorageBotPrefix + "cfs.inactive.node"
-	UMPCFSZoneWriteAbilityWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.zone.writeability.ratio"
-	UMPCFSInodeCountDiffWarnKey             = checktool.UmpKeyStorageBotPrefix + "cfs.inode.count.diff"
-	UMPCFSRapidMemIncreaseWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.rapid.mem.increase"
-	UMPCFSMySqlMemWarnKey                   = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.mem"
-	UMPCFSSparkFixPartitionKey              = checktool.UmpKeyStorageBotPrefix + "cfs.fix_bad_replica"
-	UMPCFSSparkFlashNodeVersionKey          = checktool.UmpKeyStorageBotPrefix + "cfs.flashnode.version"
-	UMPCFSMasterMetaCompareKey              = checktool.UmpKeyStorageBotPrefix + "cfs.master.rocksdb.compare"
-	UMPCFSNodeSetNumKey                     = checktool.UmpKeyStorageBotPrefix + "cfs.nodeset.num"
-	UMPCFSNodeTinyExtentCheckKey            = checktool.UmpKeyStorageBotPrefix + "cfs.tiny.extent.check"
+	domainSeparator                      = ","
+	UMPCFSNormalWarnKey                  = checktool.UmpKeyStorageBotPrefix + "cfs"
+	UMPCFSBadDiskWarnKey                 = UMPCFSNormalWarnKey + ".bad.disk"
+	UMPCFSZoneUsedRatioWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio"
+	UMPCFSZoneUsedRatioOPWarnKey         = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio.op"
+	UMPCFSRaftlogBackWarnKey             = checktool.UmpKeyStorageBotPrefix + "chubaofs.raft.log.backup"
+	UMPCFSClusterUsedRatio               = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.used.ratio"
+	UMPCFSClusterConnRefused             = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.connection.refused"
+	UMPKeyInactiveNodes                  = checktool.UmpKeyStorageBotPrefix + "chubaofs.inactive.nodes"
+	UMPKeyMetaPartitionNoLeader          = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.no.leader"
+	UMPKeyDataPartitionLoadFailed        = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.load.failed"
+	UMPKeyMetaPartitionPeerInconsistency = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.peer.inconsistency"
+	UMPKeyDataPartitionPeerInconsistency = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.peer.inconsistency"
+	UMPKeyMetaNodeDiskSpace              = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.space"
+	UMPKeyMetaNodeDiskRatio              = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.ratio"
+	UMPKeyMasterLbPodStatus              = checktool.UmpKeyStorageBotPrefix + "chubaofs.master.lb.pod.status"
+	UMPKeyClusterConfigCheck             = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.config"
+	UMPCFSNodeRestartWarnKey             = checktool.UmpKeyStorageBotPrefix + "cfs.restart.node"
+	UMPCFSInactiveNodeWarnKey            = checktool.UmpKeyStorageBotPrefix + "cfs.inactive.node"
+	UMPCFSZoneWriteAbilityWarnKey        = checktool.UmpKeyStorageBotPrefix + "cfs.zone.writeability.ratio"
+	UMPCFSInodeCountDiffWarnKey          = checktool.UmpKeyStorageBotPrefix + "cfs.inode.count.diff"
+	UMPCFSRapidMemIncreaseWarnKey        = checktool.UmpKeyStorageBotPrefix + "cfs.rapid.mem.increase"
+	UMPCFSMySqlMemWarnKey                = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.mem"
+	UMPCFSSparkFixPartitionKey           = checktool.UmpKeyStorageBotPrefix + "cfs.fix_bad_replica"
+	UMPCFSSparkFlashNodeVersionKey       = checktool.UmpKeyStorageBotPrefix + "cfs.flashnode.version"
+	UMPCFSMasterMetaCompareKey           = checktool.UmpKeyStorageBotPrefix + "cfs.master.rocksdb.compare"
+	UMPCFSNodeSetNumKey                  = checktool.UmpKeyStorageBotPrefix + "cfs.nodeset.num"
+	UMPCFSNodeTinyExtentCheckKey         = checktool.UmpKeyStorageBotPrefix + "cfs.tiny.extent.check"
+	UMPCFSCoreVolWarnKey                 = checktool.UmpKeyStorageBotPrefix + "cfs.core.vol"
+
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024
 	defaultMpNoLeaderWarnInternal           = 10 * 60
@@ -343,6 +345,7 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.NewSchedule(s.checkDbbakDataPartition, time.Hour*6)
 	go s.NewSchedule(s.checkAvailableTinyExtents, time.Minute*2)
 	go s.NewSchedule(s.clientAlarm, clientAlarmInterval*time.Second)
+	go s.NewSchedule(s.checkCoreVols, time.Minute*2)
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
