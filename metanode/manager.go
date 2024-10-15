@@ -94,6 +94,7 @@ type metadataManager struct {
 	flDeleteBatchCount    atomic.Value
 	stopC                 chan bool
 	tokenM                *tokenmanager.TokenManager
+	noLeaderMpsMap        map[uint64]int64
 }
 
 type VolumeConfig struct {
@@ -460,6 +461,7 @@ func (m *metadataManager) onStart() (err error) {
 		log.LogError(err.Error())
 		return
 	}
+	go m.doCheckNoLeaderPartitionsSchedule()
 	return
 }
 
@@ -526,6 +528,58 @@ func (m *metadataManager) syncMetaPartitionsRocksDBWalLogScheduler() {
 			return
 		}
 	}
+}
+
+func (m *metadataManager) doCheckNoLeaderPartitionsSchedule() {
+	ticker := time.NewTicker(time.Second*NoLeaderCheckIntervalSecond)
+	for {
+		select{
+		case <- m.stopC:
+			ticker.Stop()
+			return
+		case <- ticker.C:
+			m.checkNoLeaderPartitions()
+		}
+	}
+}
+
+func (m *metadataManager) checkNoLeaderPartitions() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogErrorf("check no leader partitions panic, %v", r)
+			exporter.WarningAppendKey(PanicBackGroundKey, "check no leader partitions panic")
+		}
+	}()
+	noLeaderMPsID := make([]uint64, 0)
+	ids := make([]uint64, 0, len(m.partitions))
+	m.Range(func(i uint64, p MetaPartition) bool {
+		ids = append(ids, i)
+		return true
+	})
+	m.walkRecorders(func(recorder *metaRecorder) bool {
+		ids = append(ids, recorder.partitionID)
+		return true
+	})
+	for _, id := range ids {
+		leader, _ := m.raftStore.RaftServer().LeaderTerm(id)
+		if leader != raft.NoLeader {
+			delete(m.noLeaderMpsMap, id)
+			continue
+		}
+
+		lastNoLeaderTimestamp, ok := m.noLeaderMpsMap[id]
+		if !ok {
+			m.noLeaderMpsMap[id] = time.Now().Unix()
+		} else if time.Now().Unix() - lastNoLeaderTimestamp >= 6*NoLeaderCheckIntervalSecond {
+			noLeaderMPsID = append(noLeaderMPsID, id)
+		}
+	}
+	if len(noLeaderMPsID) == 0 {
+		return
+	}
+	warningMsg := fmt.Sprintf("some meta partition no leader more than 1min, no leader meta partitions: %v",
+		noLeaderMPsID)
+	exporter.WarningAppendKey(PartitionNoLeader, warningMsg)
 }
 
 func (m *metadataManager) cleanOldDeleteEKRecordFileSchedule() {
@@ -1385,16 +1439,17 @@ func (m *metadataManager) expireRecorder(fileName string)  {
 // NewMetadataManager returns a new metadata manager.
 func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (MetadataManager, error) {
 	mm := &metadataManager{
-		nodeId:      conf.NodeID,
-		zoneName:    conf.ZoneName,
-		rootDir:     conf.RootDir,
-		raftStore:   conf.RaftStore,
-		partitions:  make(map[uint64]MetaPartition),
-		metaNode:    metaNode,
-		connPool:    connpool.NewConnectPool(),
-		stopC:       make(chan bool, 0),
-		rocksDBDirs: metaNode.rocksDirs,
-		tokenM:      tokenmanager.NewTokenManager(10),
+		nodeId:         conf.NodeID,
+		zoneName:       conf.ZoneName,
+		rootDir:        conf.RootDir,
+		raftStore:      conf.RaftStore,
+		partitions:     make(map[uint64]MetaPartition),
+		metaNode:       metaNode,
+		connPool:       connpool.NewConnectPool(),
+		stopC:          make(chan bool, 0),
+		rocksDBDirs:    metaNode.rocksDirs,
+		tokenM:         tokenmanager.NewTokenManager(10),
+		noLeaderMpsMap: make(map[uint64]int64),
 	}
 
 	var (
