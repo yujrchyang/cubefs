@@ -1251,9 +1251,9 @@ type SimpleVolView struct {
 	MPConvertMode         ConvertMode
 	MasterRegionZone      string
 	SlaveRegionZone       string
-	ConnConfig            *ConnConfig // todo
+	ConnConfig            *ConnConfig
 	ExtentCacheExpireSec  int64
-	DpMetricsReportConfig *DpMetricsReportConfig // todo
+	DpMetricsReportConfig *DpMetricsReportConfig
 	DpFolReadDelayConfig  DpFollowerReadDelayConfig
 	FolReadHostWeight     int
 	RwMpCnt               int
