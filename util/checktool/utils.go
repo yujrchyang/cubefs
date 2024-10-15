@@ -23,7 +23,8 @@ const (
 )
 
 var (
-	ddAlarm *dongdong.CommonAlarm = nil
+	DebugMod  bool
+	ddAlarm   *dongdong.CommonAlarm = nil
 	ddAlarmMu sync.RWMutex
 )
 
@@ -83,6 +84,9 @@ func warnToTargetGidByDongDongAlarm(targetGid int, app, umpKey, msg string) {
 
 func WarnBySpecialUmpKey(umpKey, msg string) {
 	log.LogWarn(msg)
+	if DebugMod {
+		return
+	}
 	if isNormalUmpKey(umpKey) {
 		warnByDongDongAlarm(umpKey, msg)
 		return

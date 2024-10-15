@@ -228,6 +228,7 @@ type SimpleVolView struct {
 	Owner               string
 	DpReplicaNum        uint8
 	MpReplicaNum        uint8
+	InodeCount          uint64
 	Status              uint8
 	Capacity            uint64 // GB
 	RwDpCnt             int

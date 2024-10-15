@@ -117,6 +117,7 @@ func (s *ChubaoFSMonitor) CheckVolHealth(ch *ClusterHost) {
 			}
 			log.LogWarnf(msg)
 		}
+
 		if canCreateNewDP && ch.isReleaseCluster && availableSpaceRatio < s.availSpaceRatio {
 			if vss.UsedGB < vol.AvailSpaceAllocated {
 				continue
@@ -355,4 +356,47 @@ func (ch *ClusterHost) missReplicaIsInactiveNodes(mp *MetaPartition) bool {
 		}
 	}
 	return true
+}
+
+func (s *ChubaoFSMonitor) checkCoreVols() {
+	dpCheckStartTime := time.Now()
+	log.LogInfof("checkCoreVols start")
+	for _, host := range s.hosts {
+		checkCoreVols(host)
+	}
+	log.LogInfof("checkCoreVols end, cost [%v]", time.Since(dpCheckStartTime))
+}
+
+type volThreshold struct {
+	maxInodeCount uint64
+	minRWDpCount  int
+}
+
+// todo 下个版本入数据库
+var importantVolMap = map[string]map[string]*volThreshold{
+	"cn.chubaofs-seqwrite.jd.local": {
+		"offline_logs": {
+			maxInodeCount: 1200000000,
+			minRWDpCount:  20000,
+		},
+	},
+}
+
+func checkCoreVols(ch *ClusterHost) {
+	volThresholdMap := importantVolMap[ch.host]
+	if volThresholdMap == nil || len(volThresholdMap) == 0 {
+		return
+	}
+	for volName, threshold := range volThresholdMap {
+		vol, err := getVolSimpleView(volName, ch)
+		if err != nil {
+			log.LogErrorf("check vol[%v] failed,err[%v]\n", volName, err)
+			continue
+		}
+		if vol.RwDpCnt < threshold.minRWDpCount || vol.InodeCount > threshold.maxInodeCount {
+			msg := fmt.Sprintf("Domain[%v] vol[%v] is unhealthy, rwDpCount[%v] minRWDpCount[%v] inodeCount[%v] maxInodeCount[%v]",
+				ch.host, volName, vol.RwDpCnt, threshold.minRWDpCount, vol.InodeCount, threshold.maxInodeCount)
+			checktool.WarnBySpecialUmpKey(UMPCFSCoreVolWarnKey, msg)
+		}
+	}
 }

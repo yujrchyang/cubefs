@@ -1,6 +1,10 @@
 package cfs
 
-import "testing"
+import (
+	"github.com/cubefs/cubefs/util/checktool"
+	"github.com/cubefs/cubefs/util/log"
+	"testing"
+)
 
 func TestCheckIsMissReplicaAllInactiveNodes(t *testing.T) {
 	mn3 := "mn3"
@@ -27,4 +31,25 @@ func TestCheckIsMissReplicaAllInactiveNodes(t *testing.T) {
 	if len(missHosts) != 0 {
 		t.Errorf("missHosts expect 0 but get:%v", missHosts)
 	}
+}
+
+func TestCheckCoreVol(t *testing.T) {
+	t.Skipf("skip test")
+	initTestLog("vol_manager")
+	defer func() {
+		log.LogFlush()
+	}()
+	ch := new(ClusterHost)
+	ch.isReleaseCluster = true
+	ch.host = "xxx.xxx.xxx"
+	importantVolMap = map[string]map[string]*volThreshold{
+		ch.host: {
+			"offline_logs": {
+				maxInodeCount: 900000000,
+				minRWDpCount:  20000,
+			},
+		},
+	}
+	checktool.DebugMod = true
+	checkCoreVols(ch)
 }
