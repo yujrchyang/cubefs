@@ -94,6 +94,7 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		extentID uint64
 		err      error
 	)
+
 	if p.IsLeaderPacket() && p.IsTinyExtentType() && p.IsWriteOperation() {
 		extentID, err = store.GetAvailableTinyExtent()
 		if err != nil {
@@ -120,6 +121,9 @@ func (s *DataNode) addExtentInfo(p *repl.Packet) error {
 		p.Data, _ = json.Marshal(record)
 		p.Size = uint32(len(p.Data))
 		p.OrgBuffer = p.Data
+	}
+	if (p.IsCreateExtentOperation() || p.IsWriteOperation()) && p.ExtentID == 0 {
+		return fmt.Errorf("addExtentInfo extentId is 0")
 	}
 
 	return nil
