@@ -273,6 +273,8 @@ const (
 	cleanExpiredExtentsMaxCountEveryTime = 10 * 10000 //10w
 
 	defBitMapAllocatorFrozenHour = 48
+
+	NoLeaderCheckIntervalSecond = 10
 )
 
 const (
@@ -283,6 +285,7 @@ const (
 	PanicBackGroundKey      = "RecoverPanic"
 	PartitionStartFailed    = "MPStartFailed"
 	PartitionDumpSnapFailed = "DumpSnapFailed"
+	PartitionNoLeader       = "MPNoLeader"
 )
 
 const (
