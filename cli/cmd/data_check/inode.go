@@ -96,24 +96,6 @@ func (checkEngine *CheckEngine) checkInodeEk(ek proto.ExtentKey, ino uint64) {
 			return
 		}
 	}
-	if len(checkEngine.config.Filter.ZoneFilter) > 0 {
-		for _, zone := range partition.Zones {
-			if !proto.FuzzyMatchString(zone, checkEngine.config.Filter.ZoneFilter) {
-				return
-			}
-		}
-	}
-	if len(checkEngine.config.Filter.ZoneExcludeFilter) > 0 {
-		allExclude := true
-		for _, zone := range partition.Zones {
-			if !proto.FuzzyMatchString(zone, checkEngine.config.Filter.ZoneExcludeFilter) {
-				allExclude = false
-			}
-		}
-		if allExclude {
-			return
-		}
-	}
 	var badExtentInfo BadExtentInfo
 	var badExtent bool
 	badExtent, badExtentInfo, err = checkInodeExtentKey(checkEngine.cluster, checkEngine.mc.DataNodeProfPort, partition.Replicas, &ek, ino, checkEngine.currentVol, checkEngine.config.QuickCheck)
