@@ -46,6 +46,10 @@ const (
 	LeaseMsgTimeout
 	ReqCheckQuorum
 	RespCheckQuorum
+	ReqCompleteEntry
+	RespCompleteEntry
+	ReqMsgGetApplyIndex
+	RespMsgGetApplyIndex
 )
 
 const (
@@ -54,13 +58,16 @@ const (
 	ConfUpdateNode     ConfChangeType = 2
 	ConfAddLearner     ConfChangeType = 3
 	ConfPromoteLearner ConfChangeType = 4
+	ConfAddRecorder    ConfChangeType = 5
+	ConfRemoveRecorder ConfChangeType = 6
 
 	EntryNormal     EntryType = 0
 	EntryConfChange EntryType = 1
 	EntryRollback   EntryType = 2
 
-	PeerNormal  PeerType = 0
-	PeerArbiter PeerType = 1
+	PeerNormal  	PeerType = 0
+	PeerArbiter 	PeerType = 1
+	PeerRecorder	PeerType = 2
 
 	LearnerProgress = 90
 )
@@ -211,8 +218,8 @@ func (m *Message) SetCtx(ctx context.Context) {
 
 func (m *Message) ToString() (mesg string) {
 	return fmt.Sprintf("Mesg:[%v] type(%v) ForceVote(%v) Reject(%v) RejectIndex(%v) "+
-		"From(%v) To(%v) Term(%v) LogTrem(%v) Index(%v) Commit(%v)", m.ID, m.Type.String(), m.ForceVote,
-		m.Reject, m.RejectIndex, m.From, m.To, m.Term, m.LogTerm, m.Index, m.Commit)
+		"From(%v) To(%v) Term(%v) LogTrem(%v) Index(%v) Commit(%v) EntryLen(%v)", m.ID, m.Type.String(), m.ForceVote,
+		m.Reject, m.RejectIndex, m.From, m.To, m.Term, m.LogTerm, m.Index, m.Commit, len(m.Entries))
 }
 
 type ConfChange struct {
@@ -265,40 +272,48 @@ func (ctx HeartbeatContext) Get(id uint64) (e ContextInfo, exist bool) {
 
 func (t MsgType) String() string {
 	switch t {
-	case 0:
+	case ReqMsgAppend:
 		return "ReqMsgAppend"
-	case 1:
+	case ReqMsgVote:
 		return "ReqMsgVote"
-	case 2:
+	case ReqMsgHeartBeat:
 		return "ReqMsgHeartBeat"
-	case 3:
+	case ReqMsgSnapShot:
 		return "ReqMsgSnapShot"
-	case 4:
+	case ReqMsgElectAck:
 		return "ReqMsgElectAck"
-	case 5:
+	case RespMsgAppend:
 		return "RespMsgAppend"
-	case 6:
+	case RespMsgVote:
 		return "RespMsgVote"
-	case 7:
+	case RespMsgHeartBeat:
 		return "RespMsgHeartBeat"
-	case 8:
+	case RespMsgSnapShot:
 		return "RespMsgSnapShot"
-	case 9:
+	case RespMsgElectAck:
 		return "RespMsgElectAck"
-	case 10:
+	case LocalMsgHup:
 		return "LocalMsgHup"
-	case 11:
+	case LocalMsgProp:
 		return "LocalMsgProp"
-	case 12:
+	case LeaseMsgOffline:
 		return "LeaseMsgOffline"
-	case 13:
+	case LeaseMsgTimeout:
 		return "LeaseMsgTimeout"
-	case 14:
+	case ReqCheckQuorum:
 		return "ReqCheckQuorum"
-	case 15:
+	case RespCheckQuorum:
 		return "RespCheckQuorum"
+	case ReqCompleteEntry:
+		return "ReqCompleteEntry"
+	case RespCompleteEntry:
+		return "RespCompleteEntry"
+	case ReqMsgGetApplyIndex:
+		return "ReqMsgGetApplyIndex"
+	case RespMsgGetApplyIndex:
+		return "RespMsgGetApplyIndex"
 	}
-	return "unkown"
+	return "unknown"
 }
 
 func (t EntryType) String() string {
@@ -315,28 +330,34 @@ func (t EntryType) String() string {
 
 func (t ConfChangeType) String() string {
 	switch t {
-	case 0:
+	case ConfAddNode:
 		return "ConfAddNode"
-	case 1:
+	case ConfRemoveNode:
 		return "ConfRemoveNode"
-	case 2:
+	case ConfUpdateNode:
 		return "ConfUpdateNode"
-	case 3:
+	case ConfAddLearner:
 		return "ConfAddLearner"
-	case 4:
+	case ConfPromoteLearner:
 		return "ConfPromoteLearner"
+	case ConfAddRecorder:
+		return "ConfAddRecorder"
+	case ConfRemoveRecorder:
+		return "ConfRemoveRecorder"
 	}
-	return "unkown"
+	return "unknown"
 }
 
 func (t PeerType) String() string {
 	switch t {
-	case 0:
+	case PeerNormal:
 		return "PeerNormal"
-	case 1:
+	case PeerArbiter:
 		return "PeerArbiter"
+	case PeerRecorder:
+		return "PeerRecorder"
 	}
-	return "unkown"
+	return "unknown"
 }
 
 func (p Peer) String() string {

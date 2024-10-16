@@ -181,7 +181,11 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		return
 	}
 	if req.header.Term > s.raftFsm.term || s.raftFsm.state != stateFollower {
-		s.raftFsm.becomeFollower(nil, req.header.Term, req.header.From)
+		if s.raftFsm.state == stateRecorder {
+			s.raftFsm.becomeRecorder(nil, req.header.Term, req.header.From)
+		} else {
+			s.raftFsm.becomeFollower(nil, req.header.Term, req.header.From)
+		}
 		s.maybeChange(true)
 	}
 	if !s.raftFsm.checkSnapshot(req.header.SnapshotMeta) {

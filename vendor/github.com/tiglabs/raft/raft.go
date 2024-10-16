@@ -87,9 +87,9 @@ type monitorStatus struct {
 func (s *peerState) change(c *proto.ConfChange) {
 	s.mu.Lock()
 	switch c.Type {
-	case proto.ConfAddNode, proto.ConfAddLearner, proto.ConfPromoteLearner:
+	case proto.ConfAddNode, proto.ConfAddLearner, proto.ConfPromoteLearner, proto.ConfAddRecorder:
 		s.peers[c.Peer.ID] = c.Peer
-	case proto.ConfRemoveNode:
+	case proto.ConfRemoveNode, proto.ConfRemoveRecorder:
 		delete(s.peers, c.Peer.ID)
 	case proto.ConfUpdateNode:
 		s.peers[c.Peer.ID] = c.Peer
@@ -163,6 +163,7 @@ type raft struct {
 	recvc             chan *proto.Message
 	snapRecvc         chan *snapshotRequest
 	truncatec         chan uint64
+	getIndexForTrunC  chan uint64
 	flushc            chan *Future
 	readIndexC        chan *Future
 	statusc           chan chan *Status
@@ -206,6 +207,7 @@ func newRaft(config *Config, raftConfig *RaftConfig) (*raft, error) {
 		askRollbackc:  make(chan *askRollback, 256),
 		snapRecvc:     make(chan *snapshotRequest, 1),
 		truncatec:     make(chan uint64, 1),
+		getIndexForTrunC:	make(chan uint64, 1),
 		flushc:        make(chan *Future, 1),
 		readIndexC:    make(chan *Future, 256),
 		resetPeersc:   make(chan *resetPeerRequest, 1),
@@ -488,6 +490,8 @@ func (s *raft) run() {
 				continue
 			} else if _, ok := s.raftFsm.replicas[m.From]; ok || (!m.IsResponseMsg() && m.Type != proto.ReqMsgVote) ||
 				(m.Type == proto.ReqMsgVote && s.raftFsm.raftLog.isUpToDate(m.Index, m.LogTerm, 0, 0)) {
+				mType := m.Type
+				mReject := m.Reject
 				switch m.Type {
 				case proto.ReqMsgHeartBeat:
 					if s.raftFsm.leader == m.From && m.From != s.config.NodeID {
@@ -497,11 +501,15 @@ func (s *raft) run() {
 					if s.raftFsm.leader == s.config.NodeID && m.From != s.config.NodeID {
 						s.raftFsm.Step(m)
 					}
+				case proto.ReqMsgGetApplyIndex:
+					s.raftFsm.handleGetApplyIndex(m)
+				case proto.RespMsgGetApplyIndex:
+					s.raftFsm.maybeTruncate(m, s.truncatec)
 				default:
 					s.raftFsm.Step(m)
 				}
 				var respErr = true
-				if m.Type == proto.RespMsgAppend && m.Reject != true {
+				if mType == proto.RespMsgAppend && mReject != true {
 					respErr = false
 				}
 				s.maybeChange(respErr)
@@ -564,6 +572,11 @@ func (s *raft) run() {
 
 				}
 			}(truncIndex)
+
+		case truncIndex := <-s.getIndexForTrunC:
+			if s.raftFsm.state == stateRecorder {
+				s.raftFsm.bcastGetApplyIndex(truncIndex)
+			}
 
 		case <-s.promtec:
 			s.promoteLearner()
@@ -814,6 +827,15 @@ func (s *raft) status() *Status {
 
 func (s *raft) truncate(index uint64) {
 	if s.restoringSnapshot.Get() {
+		return
+	}
+
+	if s.raftFsm.state == stateRecorder {
+		select {
+		case <-s.stopc:
+		case s.getIndexForTrunC <- index:
+		default:
+		}
 		return
 	}
 
@@ -1204,6 +1226,7 @@ func (s *raft) getStatus() *Status {
 				Active:      p.active,
 				LastActive:  p.lastActive,
 				Inflight:    p.count,
+				PeerType:	 p.peer.Type,
 				IsLearner:   p.isLearner,
 				PromConfig:  p.promConfig,
 			}

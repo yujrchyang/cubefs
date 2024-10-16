@@ -133,11 +133,12 @@ func (l *raftLog) matchTerm(i, term uint64) bool {
 	return t == term
 }
 
-func (l *raftLog) findConflict(ents []*proto.Entry) uint64 {
+func (l *raftLog) findConflict(nodeID, raftID uint64, ents []*proto.Entry) uint64 {
 	for _, ne := range ents {
 		if !l.matchTerm(ne.Index, ne.Term) {
 			if ne.Index <= l.lastIndex() && logger.IsEnableDebug() {
-				logger.Debug("[raftLog->findConflict]found conflict at index %d [existing term: %d, conflicting term: %d]", ne.Index, l.zeroTermOnErrCompacted(l.term(ne.Index)), ne.Term)
+				logger.Debug("ID[%v] raft[%v] [raftLog->findConflict]found conflict at index %d [existing term: %d, conflicting term: %d]",
+					nodeID, raftID, ne.Index, l.zeroTermOnErrCompacted(l.term(ne.Index)), ne.Term)
 			}
 			return ne.Index
 		}
@@ -145,21 +146,23 @@ func (l *raftLog) findConflict(ents []*proto.Entry) uint64 {
 	return 0
 }
 
-func (l *raftLog) maybeAppend(index, logTerm, committed uint64, ents ...*proto.Entry) (lastnewi uint64, ok bool) {
+func (l *raftLog) maybeAppend(nodeID, raftID uint64, commitTo bool, index, logTerm, committed uint64, ents ...*proto.Entry) (lastnewi uint64, ok bool) {
 	if l.matchTerm(index, logTerm) {
 		lastnewi = index + uint64(len(ents))
-		ci := l.findConflict(ents)
+		ci := l.findConflict(nodeID, raftID, ents)
 		switch {
 		case ci == 0:
 		case ci <= l.committed:
-			errMsg := fmt.Sprintf("[raftLog->maybeAppend]entry %d conflict with committed entry [committed(%d)]", ci, l.committed)
+			errMsg := fmt.Sprintf("ID[%v] raft[%v] [raftLog->maybeAppend]entry %d conflict with committed entry [committed(%d)]", nodeID, raftID, ci, l.committed)
 			logger.Error(errMsg)
 			panic(AppPanicError(errMsg))
 
 		default:
 			l.append(ents[ci-(index+1):]...)
 		}
-		l.commitTo(util.Min(committed, lastnewi))
+		if commitTo {
+			l.commitTo(util.Min(committed, lastnewi))
+		}
 		return lastnewi, true
 	}
 	return 0, false
@@ -259,6 +262,11 @@ func (l *raftLog) stableTo(i, t uint64) { l.unstable.stableTo(i, t, false) }
 func (l *raftLog) isUpToDate(lasti, term uint64, fpri, lpri uint16) bool {
 	li, lt := l.lastIndexAndTerm()
 	return term > lt || (term == lt && lasti > li) || (term == lt && lasti == li && fpri >= lpri)
+}
+
+func (l *raftLog) isUpToDateForRecorder(lasti, term uint64, fpri, lpri uint16) bool {
+	li, lt := l.lastIndexAndTerm()
+	return term > lt || (term == lt && lasti > li) || (fpri >= lpri)
 }
 
 func (l *raftLog) restore(index uint64) {

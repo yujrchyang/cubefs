@@ -205,6 +205,11 @@ func (s *Storage) LastIndex() (index uint64, err error) {
 	return
 }
 
+func (s *Storage) TruncateIndex() (index uint64) {
+	index = s.truncIndex
+	return
+}
+
 func (s *Storage) EntriesForWalreader(lo, hi uint64, maxSize uint64) (entries []*proto.Entry, isCompact bool, err error) {
 	entries, isCompact, err = s.ls.Entries(lo, hi, maxSize)
 	return

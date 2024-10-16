@@ -25,6 +25,7 @@ const (
 	stateCandidate            = 1
 	stateLeader               = 2
 	stateElectionACK          = 3
+	stateRecorder             = 4
 
 	replicaStateProbe     replicaState = 0
 	replicaStateReplicate              = 1
@@ -41,6 +42,8 @@ func (st fsmState) String() string {
 		return "StateLeader"
 	case 3:
 		return "StateElectionACK"
+	case 4:
+		return "StateRecorder"
 	}
 	return ""
 }

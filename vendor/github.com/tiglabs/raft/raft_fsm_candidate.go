@@ -16,6 +16,7 @@
 package raft
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/tiglabs/raft/logger"
@@ -85,7 +86,7 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 
 	case proto.RespMsgVote:
 		r.maybeUpdateReplica(m.From, m.Index, m.Commit)
-		gr := r.poll(m.From, !m.Reject)
+		gr := r.poll(m.From, !m.Reject, m.Index, m.LogTerm)
 		quorum := r.quorum()
 		if logger.IsEnableDebug() {
 			logger.Debug("raft[%v] [quorum:%d] has received %d votes and %d vote rejections.", r.id, quorum, gr, len(r.votes)-gr)
@@ -95,6 +96,10 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		}
 		switch quorum {
 		case gr:
+			if r.needToCompleteEntry(m.Ctx()) {
+				proto.ReturnMessage(m)
+				return
+			}
 			if r.config.LeaseCheck {
 				r.becomeElectionAck()
 			} else {
@@ -104,6 +109,16 @@ func stepCandidate(r *raftFsm, m *proto.Message) {
 		case len(r.votes) - gr:
 			r.becomeFollower(m.Ctx(), r.term, NoLeader)
 		}
+		proto.ReturnMessage(m)
+		return
+
+	case proto.RespCompleteEntry:
+		if r.needCompleteEntryTo != 0 {
+			r.handleCompleteEntry(m)
+		}
+		proto.ReturnMessage(m)
+		return
+		
 	}
 }
 func (r *raftFsm) isCommitReady() bool {
@@ -119,7 +134,8 @@ func (r *raftFsm) isCommitReady() bool {
 func (r *raftFsm) campaign(force bool) {
 	r.becomeCandidate()
 
-	if r.isCommitReady() && r.quorum() == r.poll(r.config.NodeID, true) {
+	li, lt := r.raftLog.lastIndexAndTerm()
+	if r.isCommitReady() && r.quorum() == r.poll(r.config.NodeID, true, li, lt) {
 		if r.config.LeaseCheck {
 			r.becomeElectionAck()
 		} else {
@@ -128,11 +144,14 @@ func (r *raftFsm) campaign(force bool) {
 		return
 	}
 
+	if r.needCompleteEntryTo > 0 {
+		return
+	}
+
 	for id := range r.replicas {
 		if id == r.config.NodeID || r.replicas[id].isLearner {
 			continue
 		}
-		li, lt := r.raftLog.lastIndexAndTerm()
 		if logger.IsEnableDebug() {
 			logger.Debug("raft[%v] [logterm: %d, index: %d] [commited:%v,applied:%v] sent vote request to %v at term %d.", r.id, lt, li,r.raftLog.committed,r.raftLog.applied, id, r.term)
 		}
@@ -143,11 +162,12 @@ func (r *raftFsm) campaign(force bool) {
 		m.ForceVote = force
 		m.Index = li
 		m.LogTerm = lt
+		m.Commit = r.raftLog.committed
 		r.send(m)
 	}
 }
 
-func (r *raftFsm) poll(id uint64, vote bool) (granted int) {
+func (r *raftFsm) poll(id uint64, vote bool, li, lt uint64) (granted int) {
 	if logger.IsEnableDebug() {
 		if vote {
 			logger.Debug("raft[%v] received vote from %v at term %d.", r.id, id, r.term)
@@ -156,15 +176,94 @@ func (r *raftFsm) poll(id uint64, vote bool) (granted int) {
 		}
 	}
 	if _, exist := r.replicas[id]; exist {
-		if _, ok := r.votes[id]; !ok {
-			r.votes[id] = vote
+		if vInfo, ok := r.votes[id]; !ok {
+			r.votes[id] = &voterInfo{
+				vote:      vote,
+				lastIndex: li,
+				lastTerm:  lt,
+			}
+		} else {
+			vInfo.lastIndex = li
+			vInfo.lastTerm = lt
 		}
 	}
 
 	for _, vv := range r.votes {
-		if vv {
+		if vv.vote {
 			granted++
 		}
 	}
 	return granted
+}
+
+func (r *raftFsm) needToCompleteEntry(ctx context.Context) bool {
+	var maxId, maxLastIndex, maxLastTerm uint64
+	for id, vv := range r.votes {
+		if vv.vote && ( (vv.lastTerm > maxLastTerm) || ((vv.lastTerm == maxLastTerm) && (vv.lastIndex > maxLastIndex)) ) {
+			maxId = id
+			maxLastIndex = vv.lastIndex
+			maxLastTerm = vv.lastTerm
+		}
+	}
+	li, lt := r.raftLog.lastIndexAndTerm()
+	if maxId != 0 && maxId != r.config.NodeID && ((maxLastTerm > lt) || (maxLastIndex > li)) {
+		if logger.IsEnableDebug() {
+			logger.Debug("ID[%v] raft[%v] needToCompleteEntry from ID[%v] in voters[%v]", r.config.NodeID, r.id, maxId, r.votes)
+		}
+		pr, ok := r.replicas[maxId]
+		if ok && pr.peer.Type == proto.PeerRecorder {
+			r.needCompleteEntryTo = maxLastIndex
+			nmsg := proto.GetMessage()
+			nmsg.Type = proto.ReqCompleteEntry
+			nmsg.To = maxId
+			nmsg.Index, nmsg.LogTerm = r.raftLog.lastIndexAndTerm()
+			nmsg.Commit = r.raftLog.committed
+			nmsg.SetCtx(ctx)
+			r.send(nmsg)
+		}
+		// 如果最高水位者既不是自己，也不是recorder或者不在副本内，说明此次选举无效，等待下一轮选举
+		return true
+	}
+	return false
+}
+
+func (r *raftFsm) handleCompleteEntry(m *proto.Message) {
+	if logger.IsEnableDebug() {
+		logger.Debug("ID[%v] raft[%v] [logterm: %d, index: %d, commit: %d] handle RespCompleteEntry [%v], needCompleteEntryTo[%v]",
+			r.config.NodeID, r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.raftLog.committed, m.ToString(), r.needCompleteEntryTo)
+	}
+	if m.Reject {
+		// reject说明日志已经truncate，等待下一轮选举(是否需要尝试其它节点?)
+		r.needCompleteEntryTo = 0
+		return
+	}
+	if mlastIndex, ok := r.raftLog.maybeAppend(r.config.NodeID, r.id, false, m.Index, m.LogTerm, m.Commit, m.Entries...); ok {
+		mlastLogTerm, errt := r.raftLog.term(mlastIndex)
+		if errt == nil && mlastIndex < r.needCompleteEntryTo {
+			nmsg := proto.GetMessage()
+			nmsg.Type = proto.ReqCompleteEntry
+			nmsg.To = m.From
+			nmsg.Index = mlastIndex
+			nmsg.LogTerm = mlastLogTerm
+			nmsg.Commit = r.raftLog.committed
+			nmsg.SetCtx(m.Ctx())
+			r.send(nmsg)
+			if logger.IsEnableDebug() {
+				logger.Debug("ID[%v] raft[%v] [logterm: %d, index: %d, commit: %d] handle RespCompleteEntry [%v], needCompleteEntryTo[%v]",
+					r.config.NodeID, r.id, mlastLogTerm, mlastIndex, r.raftLog.committed, m.ToString(), r.needCompleteEntryTo)
+			}
+		} else {
+			if logger.IsEnableDebug() {
+				logger.Debug("ID[%v] raft[%v] has completeEntry to [logterm: %d, index: %d, commit: %d, errt: %v] from msg [%v], needCompleteEntryTo[%v]",
+					r.config.NodeID, r.id, mlastLogTerm, mlastIndex, r.raftLog.committed, errt, m.ToString(), r.needCompleteEntryTo)
+			}
+			r.needCompleteEntryTo = 0
+		}
+	} else {
+		if logger.IsEnableDebug() {
+			logger.Debug("ID[%v] raft[%v] [logterm: %d, index: %d, commit: %d] rejected message completeEntry [logterm: %d, index: %d, commit: %d] from %v",
+				r.config.NodeID, r.id, r.raftLog.zeroTermOnErrCompacted(r.raftLog.term(m.Index)), m.Index, r.raftLog.committed, m.LogTerm, m.Index, m.Commit, m.From)
+		}
+		r.needCompleteEntryTo = 0
+	}
 }

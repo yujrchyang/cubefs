@@ -38,6 +38,7 @@ type ReplicaStatus struct {
 	Active      bool
 	LastActive  time.Time
 	Inflight    int
+	PeerType	proto.PeerType
 	IsLearner   bool
 	PromConfig  *proto.PromoteConfig
 }

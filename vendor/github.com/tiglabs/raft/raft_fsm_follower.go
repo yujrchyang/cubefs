@@ -32,6 +32,7 @@ func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
 	r.tick = r.tickElection
 	r.leader = lead
 	r.state = stateFollower
+	r.needCompleteEntryTo = 0
 	if logger.IsEnableDebug() {
 		logger.Debug("raft[%v] became follower at term[%d] leader[%d].", r.id, r.term, r.leader)
 	}
@@ -120,7 +121,7 @@ func stepFollower(r *raftFsm, m *proto.Message) {
 			nmsg := proto.GetMessage()
 			nmsg.Type = proto.RespMsgVote
 			nmsg.To = m.From
-			nmsg.Index = r.raftLog.lastIndex()
+			nmsg.Index, nmsg.LogTerm = r.raftLog.lastIndexAndTerm()
 			nmsg.Commit = r.raftLog.committed
 			nmsg.SetCtx(m.Ctx())
 			r.send(nmsg)
@@ -197,7 +198,7 @@ func (r *raftFsm) handleAppendEntries(m *proto.Message) {
 		return
 	}
 
-	if mlastIndex, ok := r.raftLog.maybeAppend(m.Index, m.LogTerm, m.Commit, m.Entries...); ok {
+	if mlastIndex, ok := r.raftLog.maybeAppend(r.config.NodeID, r.id,true, m.Index, m.LogTerm, m.Commit, m.Entries...); ok {
 		nmsg := proto.GetMessage()
 		nmsg.Type = proto.RespMsgAppend
 		nmsg.To = m.From

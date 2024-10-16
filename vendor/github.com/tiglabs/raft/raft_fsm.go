@@ -74,6 +74,18 @@ func (f askRollbackListener) ask(startIndex uint64) (n int, err error) {
 	return
 }
 
+type voterInfo struct {
+	vote				bool
+	lastIndex, lastTerm uint64
+}
+
+func (vi *voterInfo) String() string {
+	if vi == nil {
+		return ""
+	}
+	return fmt.Sprintf("vote(%v) li(%v) lt(%v)", vi.vote, vi.lastIndex, vi.lastTerm)
+}
+
 type raftFsm struct {
 	id               uint64
 	term             uint64
@@ -91,7 +103,7 @@ type raftFsm struct {
 	config      *Config
 	raftLog     *raftLog
 	rand        *rand.Rand
-	votes       map[uint64]bool
+	votes       map[uint64]*voterInfo
 	acks        map[uint64]bool
 	replicas    map[uint64]*replica
 	readOnly    *readOnly
@@ -114,6 +126,9 @@ type raftFsm struct {
 	// When the commit index of the replication group calculated by the quorum algorithm is lower than this value,
 	// no commit will be performed.
 	mci uint64
+
+	needCompleteEntryTo uint64 // 0 means no need to complete entry
+	appliedIndexes      map[uint64]uint64
 }
 
 func (r *raftFsm) getReplicas() (m string) {
@@ -161,8 +176,12 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		consistencyMode: raftConfig.Mode,
 	}
 	r.rand = rand.New(rand.NewSource(int64(config.NodeID + r.id)))
+	isRecorder := false
 	for _, p := range raftConfig.Peers {
 		r.replicas[p.ID] = newReplica(p, 0)
+		if p.ID == config.NodeID && p.Type == proto.PeerRecorder {
+			isRecorder = true
+		}
 	}
 	for _, learner := range raftConfig.Learners {
 		r.replicas[learner.ID].isLearner = true
@@ -220,6 +239,12 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		} else {
 			r.becomeFollower(nil, r.term, NoLeader)
 		}
+	} else if isRecorder {
+		if raftConfig.Leader == NoLeader {
+			r.becomeRecorder(nil, r.term, NoLeader)
+		} else {
+			r.becomeRecorder(nil, raftConfig.Term, raftConfig.Leader)
+		}
 	} else {
 		if raftConfig.Leader == NoLeader {
 			r.becomeFollower(nil, r.term, NoLeader)
@@ -261,7 +286,7 @@ func (r *raftFsm) StopFsm() {
 func (r *raftFsm) Step(m *proto.Message) {
 
 	if m.Type == proto.LocalMsgHup {
-		if r.state != stateLeader && r.promotable() {
+		if r.state != stateLeader && r.state != stateRecorder && r.promotable() {
 			ents, err := r.raftLog.slice(r.raftLog.applied+1, r.raftLog.committed+1, noLimit)
 			if err != nil {
 				errMsg := fmt.Sprintf("raft[%v] unexpected error getting unapplied entries: [%v]", r.id, err)
@@ -310,7 +335,11 @@ func (r *raftFsm) Step(m *proto.Message) {
 				return
 			}
 		}
-		r.becomeFollower(m.Ctx(), m.Term, lead)
+		if r.state == stateRecorder {
+			r.becomeRecorder(m.Ctx(), m.Term, lead)
+		} else {
+			r.becomeFollower(m.Ctx(), m.Term, lead)
+		}
 
 	case m.Term < r.term:
 		if logger.IsEnableDebug() {
@@ -396,9 +425,9 @@ func (r *raftFsm) applyConfChange(cc *proto.ConfChange) {
 	}
 
 	switch cc.Type {
-	case proto.ConfAddNode, proto.ConfPromoteLearner:
+	case proto.ConfAddNode, proto.ConfPromoteLearner, proto.ConfAddRecorder:
 		r.addPeer(cc.Peer, false, nil)
-	case proto.ConfRemoveNode:
+	case proto.ConfRemoveNode, proto.ConfRemoveRecorder:
 		r.removePeer(cc.Peer)
 	case proto.ConfUpdateNode:
 		r.updatePeer(cc.Peer)
@@ -432,7 +461,11 @@ func (r *raftFsm) maybeResetPeer(rp *proto.ResetPeers) error {
 		r.replicas[learner.ID].isLearner = true
 		r.replicas[learner.ID].promConfig = learner.PromConfig
 	}
-	r.becomeFollower(context.Background(), r.term+1, NoLeader)
+	if r.state == stateRecorder {
+		r.becomeRecorder(context.Background(), r.term+1, NoLeader)
+	} else {
+		r.becomeFollower(context.Background(), r.term+1, NoLeader)
+	}
 	return nil
 }
 
@@ -446,6 +479,7 @@ func (r *raftFsm) addPeer(peer proto.Peer, isLearner bool, promConfig *proto.Pro
 			r.replicas[peer.ID] = newReplica(peer, 0)
 		}
 	}
+	r.replicas[peer.ID].peer = peer
 	r.replicas[peer.ID].isLearner = isLearner
 	if isLearner {
 		r.replicas[peer.ID].promConfig = promConfig
@@ -468,7 +502,11 @@ func (r *raftFsm) removePeer(peer proto.Peer) {
 	delete(r.replicas, peer.ID)
 
 	if peer.ID == r.config.NodeID {
-		r.becomeFollower(nil, r.term, NoLeader)
+		if r.state == stateRecorder {
+			r.becomeRecorder(nil, r.term, NoLeader)
+		} else {
+			r.becomeFollower(nil, r.term, NoLeader)
+		}
 	} else if r.state == stateLeader && len(r.replicas) > 0 {
 		if r.maybeCommitForRemovePeer() {
 			r.bcastAppend(nil)
@@ -511,10 +549,11 @@ func (r *raftFsm) reset(term, lasti uint64, isLeader bool, keepReplicaIndex bool
 	r.leader = NoLeader
 	r.electionElapsed = 0
 	r.heartbeatElapsed = 0
-	r.votes = make(map[uint64]bool)
+	r.votes = make(map[uint64]*voterInfo)
 	r.pendingConf = false
 	r.readOnly.reset(ErrNotLeader)
 	r.setMinimumCommitIndex(0)
+	r.appliedIndexes = make(map[uint64]uint64)
 
 	if isLeader {
 		r.randElectionTick = r.config.ElectionTick - 1
@@ -643,6 +682,20 @@ func (r *raftFsm) maybeUpdateReplica(id, match, committed uint64) {
 			logger.Debug("raft[%v] update replica %v[%v]", r.id, id, re)
 		}
 	}
+}
+
+func (r *raftFsm) handleGetApplyIndex(m *proto.Message) {
+	nmsg := proto.GetMessage()
+	nmsg.Type = proto.RespMsgGetApplyIndex
+	nmsg.To = m.From
+	nmsg.Index = r.raftLog.applied
+	//firstIndex, _ := r.raftLog.storage.FirstIndex()
+	//nmsg.Index = firstIndex - 1
+	r.send(nmsg)
+	if logger.IsEnableDebug() {
+		logger.Debug("ID[%v] raft[%v] send applied index[%v] to ID[%v]", r.config.NodeID, r.id, nmsg.Index, nmsg.To)
+	}
+	proto.ReturnMessage(m)
 }
 
 func numOfPendingConf(ents []*proto.Entry) int {
