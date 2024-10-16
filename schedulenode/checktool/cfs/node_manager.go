@@ -1358,12 +1358,12 @@ func (cv *ClusterView) checkMetaNodeDiskStatByMDCInfoFromSre(host *ClusterHost, 
 		}
 	}
 
+	host.metaNodeDiskRatioCheckTime = time.Now()
 	if len(highRatioNodes) == 0 {
 		return
 	}
 	msg := fmt.Sprintf("%v has meta nodes export disk used ratio more than %v%%,detail:%v", host, s.metaNodeExportDiskUsedRatio, highRatioNodes)
 	checktool.WarnBySpecialUmpKey(UMPKeyMetaNodeDiskRatio, msg)
-	host.metaNodeDiskRatioCheckTime = time.Now()
 }
 
 func isSSD(host, zoneName string) bool {
