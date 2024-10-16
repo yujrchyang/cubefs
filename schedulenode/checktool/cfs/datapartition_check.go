@@ -206,7 +206,9 @@ func checkTinyExtentsByVol(host *ClusterHost, vols []string) {
 		summary := `Domain    : ` + host.host + `<br>` +
 			`Volume    : ` + vol + `<br>` +
 			`Partition : ` + partitionStr + `<br>`
-		checktool.WarnBySpecialUmpKey(UMPCFSNodeTinyExtentCheckKey, fmt.Sprintf("Domain: %v Volume: %v BadPartitions: %v", host.host, vol, partitionStr))
+		if len(elements) > 10 {
+			checktool.WarnBySpecialUmpKey(UMPCFSNodeTinyExtentCheckKey, fmt.Sprintf("Domain: %v Volume: %v BadPartitions: %v", host.host, vol, partitionStr))
+		}
 		err = multi_email.Email(fmt.Sprintf("AvailableTinyExtentCheck [Domain: %v, Volume: %v]", host.host, vol), summary, elements)
 		if err != nil {
 			log.LogErrorf("send email failed, err:%v", err)
