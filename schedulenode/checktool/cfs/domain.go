@@ -234,6 +234,8 @@ type SimpleVolView struct {
 	RwDpCnt             int
 	MpCnt               int
 	DpCnt               int
+	MinWritableDPNum    int
+	MinWritableMPNum    int
 	AvailSpaceAllocated uint64 //GB
 	MaxMetaPartitionID  uint64
 }

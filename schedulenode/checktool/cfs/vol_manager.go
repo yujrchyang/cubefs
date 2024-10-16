@@ -380,6 +380,12 @@ var importantVolMap = map[string]map[string]*volThreshold{
 			minRWDpCount:  20000,
 		},
 	},
+	"cn.chubaofs.jd.local": {
+		"ofw-cof": {
+			maxInodeCount: 1000000000,
+			minRWDpCount:  50,
+		},
+	},
 }
 
 func checkCoreVols(ch *ClusterHost) {
@@ -393,7 +399,7 @@ func checkCoreVols(ch *ClusterHost) {
 			log.LogErrorf("check vol[%v] failed,err[%v]\n", volName, err)
 			continue
 		}
-		if vol.RwDpCnt < threshold.minRWDpCount || vol.InodeCount > threshold.maxInodeCount {
+		if vol.RwDpCnt < threshold.minRWDpCount || vol.InodeCount > threshold.maxInodeCount || vol.RwDpCnt < vol.MinWritableDPNum {
 			msg := fmt.Sprintf("Domain[%v] vol[%v] is unhealthy, rwDpCount[%v] minRWDpCount[%v] inodeCount[%v] maxInodeCount[%v]",
 				ch.host, volName, vol.RwDpCnt, threshold.minRWDpCount, vol.InodeCount, threshold.maxInodeCount)
 			checktool.WarnBySpecialUmpKey(UMPCFSCoreVolWarnKey, msg)

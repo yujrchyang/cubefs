@@ -11,6 +11,8 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/robfig/cron"
 	"github.com/tiglabs/raft"
+	"os"
+	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -172,7 +174,9 @@ func checkTinyExtentsByVol(host *ClusterHost, vols []string) {
 		var checkFailedNum = new(atomic.Int32)
 		for i := 0; i < 32; i++ {
 			go func() {
-				defer wg.Done()
+				defer func() {
+					wg.Done()
+				}()
 				for {
 					select {
 					case dp := <-dpCh:
@@ -201,27 +205,77 @@ func checkTinyExtentsByVol(host *ClusterHost, vols []string) {
 			continue
 		}
 
+		var brokenCount int
+		for _, element := range elements {
+			if element[1] == BrokenTinyMsg {
+				brokenCount++
+			}
+		}
 		partitionStr := fmt.Sprintf("total[%v]rw[%v]ro[%v]broken[%v]broken_rw[%v]check_fail[%v]recover[%v]", len(volView.DataPartitions), volInfo.RwDpCnt,
 			len(volView.DataPartitions)-volInfo.RwDpCnt, len(elements)-1, brokenRw.Load(), checkFailedNum.Load(), recoverNum.Load())
 		summary := `Domain    : ` + host.host + `<br>` +
 			`Volume    : ` + vol + `<br>` +
 			`Partition : ` + partitionStr + `<br>`
-		if len(elements) > 10 {
-			checktool.WarnBySpecialUmpKey(UMPCFSNodeTinyExtentCheckKey, fmt.Sprintf("Domain: %v Volume: %v BadPartitions: %v", host.host, vol, partitionStr))
+
+		// broken tiny extent over 100 or 60% warn by ump
+		warnMsg := fmt.Sprintf("Domain: %v Volume: %v BadPartitions: %v", host.host, vol, partitionStr)
+		if (volInfo.RwDpCnt > 0 && brokenCount*100/volInfo.RwDpCnt > 60) || brokenCount > 100 {
+			checktool.WarnBySpecialUmpKey(UMPCFSNodeTinyExtentCheckKey, warnMsg)
+		} else {
+			log.LogWarnf(warnMsg)
 		}
-		err = multi_email.Email(fmt.Sprintf("AvailableTinyExtentCheck [Domain: %v, Volume: %v]", host.host, vol), summary, elements)
-		if err != nil {
-			log.LogErrorf("send email failed, err:%v", err)
+
+		// broken tiny extent over 20 or 20% warn by email
+		if (volInfo.RwDpCnt > 0 && brokenCount*100/volInfo.RwDpCnt > 20) || brokenCount > 20 {
+			err = multi_email.Email(fmt.Sprintf("AvailableTinyExtentCheck [Domain: %v, Volume: %v]", host.host, vol), summary, elements)
+			if err != nil {
+				log.LogErrorf("send email failed, err:%v", err)
+			}
+		} else {
+			persistBrokenData(host.host, vol, elements)
 		}
 	}
 }
 
+func persistBrokenData(domain string, vol string, elements [][]string) {
+	var items [][]string
+	if len(elements) > 2000 {
+		items = elements[:2000]
+	} else {
+		items = elements
+	}
+	var err error
+	dir := os.TempDir()
+	fName := fmt.Sprintf("broken_tiny_%v_%v.csv", domain, vol)
+	fPath := path.Join(dir, fName)
+	os.Remove(fPath)
+	var fd *os.File
+	fd, err = os.OpenFile(fPath, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
+	if err != nil {
+		return
+	}
+	defer func() {
+		fd.Close()
+	}()
+	for _, item := range items {
+		fd.WriteString(strings.Join(item, ",") + "\n")
+	}
+}
+
+const (
+	DpInRecoverMsg     = "InRecover"
+	CheckTinyFailedMsg = "CheckExtentFailed"
+	BrokenTinyMsg      = "BrokenTinyExtent"
+	InvalidExtentIDMsg = "InvalidExtentID"
+)
+
 func checkDataPartitionAvailTiny(vol string, dp *DataPartitionResponse, brokenRw, recoverNum, checkFailedNum *atomic.Int32, mc *master.MasterClient) []string {
 	var (
-		err            error
-		recoverReplica bool
-		primaryLeader  string
-		tinyExtents    []*http_client.TinyExtentsInfo
+		err           error
+		primaryLeader string
+		good          bool
+		brokenType    string
+		tinyExtents   []*http_client.TinyExtentsInfo
 	)
 	if len(dp.Hosts) < 1 {
 		return []string{}
@@ -243,58 +297,92 @@ func checkDataPartitionAvailTiny(vol string, dp *DataPartitionResponse, brokenRw
 	}
 	if dp.IsRecover {
 		recoverNum.Add(1)
-		result[1] = "InRecover"
+		result[1] = DpInRecoverMsg
 		return result
 	}
 	dHost := fmt.Sprintf("%v:%v", strings.Split(primaryLeader, ":")[0], profPortMap[strings.Split(primaryLeader, ":")[1]])
 	dataClient := http_client.NewDataClient(dHost, false)
-	tinyExtents, err = dataClient.GetTinyExtents(dp.PartitionID)
+	good, brokenType, tinyExtents, err = retryCheckAvailTinyExtent(vol, dataClient, dp, mc)
 	if err != nil {
+		log.LogErrorf("vol[%v] dp[%v] get tiny extents err:%v", vol, dp.PartitionID, err)
 		checkFailedNum.Add(1)
-		log.LogErrorf("dp[%v] get tiny extents err:%v", dp.PartitionID, err)
-		result[1] = "GetTinyFailed"
+		result[1] = CheckTinyFailedMsg
 		return result
 	}
-	if len(tinyExtents) != 1 {
-		checkFailedNum.Add(1)
-		log.LogErrorf("dp[%v] get invalid tiny extents, len(%v)", dp.PartitionID, len(tinyExtents))
-		result[1] = "GetTinyFailed"
-		return result
-	}
-	if !(tinyExtents[0].TotalTinyExtent < 64 || tinyExtents[0].AvailableCh < 10) {
+	if good {
 		return []string{}
-	}
-	var partition *proto.DataPartitionInfo
-	partition, err = mc.AdminAPI().GetDataPartition(vol, dp.PartitionID)
-	if err != nil {
-		checkFailedNum.Add(1)
-		log.LogErrorf("dp[%v] get data partition from master failed, err:%v", dp.PartitionID, err)
-		result[1] = "GetPartitionFailed"
-		return result
-	}
-	for _, replica := range partition.Replicas {
-		if replica.IsRecover {
-			recoverReplica = true
-			break
-		}
 	}
 	if dp.Status == ReadWrite {
 		brokenRw.Add(1)
 	}
 	return []string{
 		fmt.Sprintf("%v", dp.PartitionID),
-		"BrokenTinyExtent",
+		brokenType,
 		fmt.Sprintf("%v", dp.ReplicaNum),
 		strings.Join(dp.Hosts, ","),
 		dp.LeaderAddr,
 		fmt.Sprintf("%v", dp.Status),
-		fmt.Sprintf("%v", recoverReplica),
+		fmt.Sprintf("%v", dp.IsRecover || DpInRecoverMsg == brokenType),
 		fmt.Sprintf("%v", tinyExtents[0].AvailableCh),
 		fmt.Sprintf("%v", tinyExtents[0].BrokenCh),
 		fmt.Sprintf("%v", tinyExtents[0].TotalTinyExtent),
 		fmt.Sprintf("%v", tinyExtents[0].AvailableTinyExtents),
 		fmt.Sprintf("%v", tinyExtents[0].BrokenTinyExtents),
 	}
+}
+
+func retryCheckAvailTinyExtent(vol string, dataClient *http_client.DataClient, dp *DataPartitionResponse, mc *master.MasterClient) (good bool, brokenType string, tinyExtents []*http_client.TinyExtentsInfo, err error) {
+	extentMap := make(map[uint64]bool, 0)
+	for i := 0; i < 30; i++ {
+		tinyExtents, err = dataClient.GetTinyExtents(dp.PartitionID)
+		if err != nil {
+			continue
+		}
+		if len(tinyExtents) != 1 {
+			err = fmt.Errorf("get invalid tiny extents")
+			continue
+		}
+		if tinyExtents[0].TotalTinyExtent == proto.TinyExtentCount && tinyExtents[0].AvailableCh > 10 {
+			return true, "", nil, nil
+		}
+		for _, extent := range tinyExtents[0].AvailableTinyExtents {
+			if !proto.IsTinyExtent(extent) {
+				log.LogErrorf("found invalid tiny extent, vol:%v, partition:%v, extent:%v", vol, dp.PartitionID, extent)
+				return false, InvalidExtentIDMsg, tinyExtents, nil
+			}
+			extentMap[extent] = true
+		}
+		for _, extent := range tinyExtents[0].BrokenTinyExtents {
+			if !proto.IsTinyExtent(extent) {
+				log.LogErrorf("found invalid tiny extent, vol:%v, partition:%v, extent:%v", vol, dp.PartitionID, extent)
+				return false, InvalidExtentIDMsg, tinyExtents, nil
+			}
+			extentMap[extent] = true
+		}
+
+		if len(extentMap) == proto.TinyExtentCount && tinyExtents[0].AvailableCh > 10 {
+			return true, "", nil, nil
+		}
+
+		if tinyExtents[0].AvailableCh == 0 {
+			partition, e := mc.AdminAPI().GetDataPartition(vol, dp.PartitionID)
+			if e != nil {
+				log.LogErrorf("get data partition failed, vol:%v, partition:%v, err:%v", vol, dp.PartitionID, err)
+			} else {
+				if partition.IsRecover {
+					return false, DpInRecoverMsg, tinyExtents, nil
+				}
+				for _, replica := range partition.Replicas {
+					if replica.IsRecover {
+						return false, DpInRecoverMsg, tinyExtents, nil
+					}
+				}
+				return false, BrokenTinyMsg, tinyExtents, nil
+			}
+		}
+		time.Sleep(time.Second)
+	}
+	return false, BrokenTinyMsg, tinyExtents, nil
 }
 
 func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64) {

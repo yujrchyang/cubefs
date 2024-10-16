@@ -66,7 +66,7 @@ func initTestLog(module string) {
 }
 
 func TestCheckNodeAlive(t *testing.T) {
-	initTestLog("checknode")
+	initTestLog("storagebot")
 	defer func() {
 		log.LogFlush()
 	}()
@@ -87,7 +87,7 @@ func TestCheckNodeAlive(t *testing.T) {
 }
 
 func TestGetClusterByMasterNodes(t *testing.T) {
-	initTestLog("checknode")
+	initTestLog("storagebot")
 	defer func() {
 		log.LogFlush()
 	}()

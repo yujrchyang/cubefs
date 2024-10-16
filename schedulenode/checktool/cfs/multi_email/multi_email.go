@@ -37,7 +37,7 @@ const (
 			}
 			</style>`
 	maxEmailElements  = 100
-	maxAttachElements = 100000
+	maxAttachElements = 2000
 )
 
 type multiMail struct {
@@ -82,7 +82,7 @@ func Email(subject string, summary string, items [][]string) (err error) {
 	// gen attach file
 	if len(items) > maxEmailElements {
 		pwd, _ := os.Getwd()
-		fName := fmt.Sprintf("data_%v.csv", time.Now().Format("200601021504"))
+		fName := fmt.Sprintf("data_%v.csv", time.Now().UnixNano())
 		fPath := path.Join(pwd, fName)
 		var fd *os.File
 		fd, err = os.OpenFile(fPath, os.O_RDWR|os.O_APPEND|os.O_CREATE, 0666)
