@@ -12,7 +12,7 @@ import (
 
 func TestCompareMeta(t *testing.T) {
 	t.Skipf("skip online ip")
-	initTestLog("master_compare")
+	initTestLog("storagebot")
 	defer func() {
 		log.LogFlush()
 	}()

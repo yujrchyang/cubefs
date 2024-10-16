@@ -6,7 +6,7 @@ import (
 )
 
 func TestCheckDbBackPeer(t *testing.T) {
-	initTestLog("checkdbbak")
+	initTestLog("storagebot")
 	defer func() {
 		log.LogFlush()
 	}()

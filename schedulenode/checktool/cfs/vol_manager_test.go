@@ -35,7 +35,7 @@ func TestCheckIsMissReplicaAllInactiveNodes(t *testing.T) {
 
 func TestCheckCoreVol(t *testing.T) {
 	t.Skipf("skip test")
-	initTestLog("vol_manager")
+	initTestLog("storagebot")
 	defer func() {
 		log.LogFlush()
 	}()
