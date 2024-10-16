@@ -81,6 +81,14 @@ message MetaPartitionReportPb {
     uint64 DelInodesTotalSize = 19;
 }
 
+message MetaRecorderReportPb {
+    uint64 PartitionID = 1;
+    string VolName = 2;
+    int32 Status = 3;
+    bool IsRecover = 4;
+    uint64 ApplyId  = 5;
+}
+
 message MetaNodeDiskInfoPb {
     string Path = 1;
     uint64 Total = 2;
@@ -100,6 +108,7 @@ message MetaNodeHeartbeatResponsePb {
     string Result = 7;
     repeated MetaNodeDiskInfoPb RocksDBDiskInfo = 8;
     string Version = 9;
+    repeated MetaRecorderReportPb MetaRecorderReports = 10;
 }
 
 message HeartBeatRequestPb {

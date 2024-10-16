@@ -49,6 +49,7 @@ message MetaPartitionViewPb {
     uint32          StoreMode   = 13;
     uint32          MemCount    = 14;
     uint32          RocksCount  = 15;
+    repeated string Recorders   = 16;
 }
 
 message MetaPartitionViewsPb {
@@ -254,6 +255,8 @@ message SimpleVolViewPb {
     string                    UmpKeyPrefix           = 100;
     int64                     ReadAheadMemMB         = 101;
     int64                     ReadAheadWindowMB      = 102;
+    uint32                    DpRecorderNum          = 103;
+    uint32                    MpRecorderNum          = 104;
 }
 
 message NodeStatInfoPb {
