@@ -27,44 +27,62 @@ import (
 func TestMember(t *testing.T) {
 	tests := []RaftTestConfig{
 		{
-			name:    "memberWithNoLease_default",
-			isLease: false,
-			mode:    StandardMode,
+			name:    	"memberWithNoLease_default",
+			isLease: 	false,
+			mode:    	StandardMode,
+			peers:		peers,
 		},
 		{
-			name:    "memberWithLease_default",
-			isLease: true,
-			mode:    StandardMode,
+			name:    	"memberWithLease_default",
+			isLease: 	true,
+			mode:    	StandardMode,
+			peers:		peers,
 		},
 		{
-			name:    "memberWithNoLease_strict",
-			isLease: false,
-			mode:    StrictMode,
+			name:    	"memberWithNoLease_strict",
+			isLease: 	false,
+			mode:    	StrictMode,
+			peers:		peers,
 		},
 		{
-			name:    "memberWithLease_strict",
-			isLease: true,
-			mode:    StrictMode,
+			name:    	"memberWithLease_strict",
+			isLease: 	true,
+			mode:    	StrictMode,
+			peers:		peers,
 		},
 		{
-			name:    "memberWithNoLease_mix",
-			isLease: false,
-			mode:    MixMode,
+			name:    	"memberWithNoLease_mix",
+			isLease: 	false,
+			mode:    	MixMode,
+			peers:		peers,
 		},
 		{
-			name:    "memberWithLease_mix",
-			isLease: true,
-			mode:    MixMode,
+			name:    	"memberWithLease_mix",
+			isLease: 	true,
+			mode:    	MixMode,
+			peers:		peers,
+		},
+		{
+			name:    	"memberWithNoLease_recorder",
+			isLease: 	false,
+			mode:    	StandardMode,
+			peers:		recorderPeers,
+		},
+		{
+			name:    	"memberWithLease_recorder",
+			isLease: 	true,
+			mode:    	StandardMode,
+			peers:		recorderPeers,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			member(t, tt.name, tt.isLease, tt.mode)
+			member(t, tt.name, tt.isLease, tt.mode, tt.peers)
 		})
 	}
 }
 
-func member(t *testing.T, testName string, isLease bool, mode RaftMode) {
+func member(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, isLease, true, 1, mode)
 	f, w := getLogFile("", testName+".log")
 	defer func() {
@@ -81,14 +99,15 @@ func member(t *testing.T, testName string, isLease bool, mode RaftMode) {
 	printStatus(servers, w)
 
 	// test add node
-	w.WriteString(fmt.Sprintf("[%s] Add new node \r\n", time.Now().Format(format_time)))
+	addNodeID := uint64(6)
+	w.WriteString(fmt.Sprintf("[%s] Add new node [%v]\r\n", time.Now().Format(format_time), addNodeID))
 	leader, term := leadServer.raft.LeaderTerm(1)
-	raftConfig := &raft.RaftConfig{Peers: peers, Leader: leader, Term: term, Mode: getConsistencyMode(mode, 4)}
-	newServer := createRaftServer(4, isLease, true, 1, raftConfig)
+	raftConfig := &raft.RaftConfig{Peers: peers, Leader: leader, Term: term, Mode: getConsistencyMode(mode, addNodeID)}
+	newServer := createRaftServer(addNodeID, isLease, true, 1, raftConfig)
 	// add node
-	resolver.addNode(4, 0)
+	resolver.addNode(addNodeID, 0)
 	output("starting add node")
-	leadServer.sm[1].AddNode(proto.Peer{ID: 4})
+	leadServer.sm[1].AddNode(proto.Peer{ID: addNodeID})
 	output("added node")
 	time.Sleep(time.Second)
 	servers = append(servers, newServer)
@@ -107,7 +126,7 @@ func member(t *testing.T, testName string, isLease bool, mode RaftMode) {
 	// test remove node
 	w.WriteString(fmt.Sprintf("[%s] Remove node \r\n", time.Now().Format(format_time)))
 	output("starting remove node")
-	leadServer.sm[1].RemoveNode(proto.Peer{ID: 4})
+	leadServer.sm[1].RemoveNode(proto.Peer{ID: addNodeID})
 	output("removed node")
 	output("starting put data")
 	if err := leadServer.sm[1].Put("test3", "test3_val", NoCheckLinear, NoCheckLinear); err != nil {
@@ -125,10 +144,10 @@ func member(t *testing.T, testName string, isLease bool, mode RaftMode) {
 	servers = newServers
 	time.Sleep(100 * time.Millisecond)
 	waitElect(servers, 1, w)
-	raftConfig = &raft.RaftConfig{Peers: append(peers, proto.Peer{ID: 4}), Leader: 0, Term: 10, Mode: getConsistencyMode(mode, 4)}
-	newServer = createRaftServer(4, isLease, false, 1, raftConfig)
+	raftConfig = &raft.RaftConfig{Peers: append(peers, proto.Peer{ID: addNodeID}), Leader: 0, Term: 10, Mode: getConsistencyMode(mode, addNodeID)}
+	newServer = createRaftServer(addNodeID, isLease, false, 1, raftConfig)
 	servers = append(servers, newServer)
 	printStatus(servers, w)
-	resolver.delNode(4)
+	resolver.delNode(addNodeID)
 
 }

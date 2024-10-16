@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"strconv"
 	"sync/atomic"
@@ -285,7 +284,6 @@ func (s *testServer) createRaft(w http.ResponseWriter, r *http.Request) {
 		}
 		s.sm[uint64(i)] = sm
 		s.store[uint64(i)] = st
-		subTimeMap[uint64(i)] = &subTime{minSubTime: math.MaxInt64, maxSubTime: 0, totalSubTime: 0, subCount: 0}
 	}
 	sendReply(w, r, &HTTPReply{Code: 0, Msg: fmt.Sprintf("create raft num[%v] to leader success", num)})
 	return

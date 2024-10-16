@@ -8,52 +8,107 @@ import (
 	"time"
 
 	"github.com/tiglabs/raft"
+	"github.com/tiglabs/raft/proto"
 )
 
 func TestLinear(t *testing.T) {
 	tests := []RaftTestConfig{
 		{
-			name:     "linearWithLeaderChange_default",
-			mode:     StandardMode,
-			testFunc: linearWithLeaderChange,
+			name:     	"linearWithLeaderChange_default",
+			mode:     	StandardMode,
+			testFunc:	linearWithLeaderChange,
+			peers:		peers,
 		},
 		{
-			name:     "linearWithLeaderChange_strict",
-			mode:     StrictMode,
-			testFunc: linearWithLeaderChange,
+			name:     	"linearWithLeaderChange_strict",
+			mode:     	StrictMode,
+			testFunc: 	linearWithLeaderChange,
+			peers:		peers,
 		},
 		{
-			name:     "linearWithLeaderChange_mix",
-			mode:     MixMode,
-			testFunc: linearWithLeaderChange,
+			name:     	"linearWithLeaderChange_mix",
+			mode:     	MixMode,
+			testFunc: 	linearWithLeaderChange,
+			peers:		peers,
 		},
 		{
-			name:     "linearWithDelLeader_default",
-			mode:     StandardMode,
-			testFunc: linearWithDelLeader,
+			name:     	"linearWithLeaderChange_recorder",
+			mode:     	StandardMode,
+			testFunc:	linearWithLeaderChange,
+			peers:		recorderPeers,
 		},
 		{
-			name:     "linearWithDelLeader_strict",
-			mode:     StrictMode,
-			testFunc: linearWithDelLeader,
+			name:     	"linearWithDelLeader_default",
+			mode:     	StandardMode,
+			testFunc: 	linearWithDelLeader,
+			peers:		peers,
 		},
 		{
-			name:     "linearWithDelLeader_mix",
-			mode:     MixMode,
-			testFunc: linearWithDelLeader,
+			name:     	"linearWithDelLeader_strict",
+			mode:     	StrictMode,
+			testFunc: 	linearWithDelLeader,
+			peers:		peers,
+		},
+		{
+			name:     	"linearWithDelLeader_mix",
+			mode:     	MixMode,
+			testFunc: 	linearWithDelLeader,
+			peers:		peers,
+		},
+		{
+			name:     	"linearWithDelLeader_recorder",
+			mode:     	StandardMode,
+			testFunc: 	linearWithDelLeader,
+			peers:		recorderPeers,
+		},
+		{
+			name:     	"linearWithMemChange_default",
+			mode:     	StandardMode,
+			testFunc: 	linearWithMemberChange,
+			peers:		peers,
+		},
+		{
+			name:     	"linearWithMemChange_recorder",
+			mode:     	StandardMode,
+			testFunc: 	linearWithMemberChange,
+			peers:		recorderPeers,
+		},
+		{
+			name:     	"linearWithFollowerDown_default",
+			mode:     	StandardMode,
+			testFunc: 	linearWithFollowerDown,
+			peers:		peers,
+		},
+		{
+			name:     	"linearWithFollowerDown_recorder",
+			mode:     	StandardMode,
+			testFunc: 	linearWithFollowerDown,
+			peers:		recorderPeers,
+		},
+		{
+			name:     	"linearWithLeaderDown_default",
+			mode:     	StandardMode,
+			testFunc: 	linearWithLeaderDown,
+			peers:		peers,
+		},
+		{
+			name:     	"linearWithLeaderDown_recorder",
+			mode:     	StandardMode,
+			testFunc: 	linearWithLeaderDown,
+			peers:		recorderPeers,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.testFunc(t, tt.name, tt.isLease, tt.mode)
+			tt.testFunc(t, tt.name, tt.isLease, tt.mode, tt.peers)
 		})
 	}
 }
 
-func TestLinearWithMemberChange(t *testing.T) {
+func linearWithMemberChange(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, true, true, 1, StandardMode)
-	f, w := getLogFile("", "TestLinearWithMemberChange.log")
+	f, w := getLogFile("", testName+".log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -80,7 +135,7 @@ func TestLinearWithMemberChange(t *testing.T) {
 	}(dataLen)
 	dataLen += PutDataStep
 	// test add member
-	newServer := leadServer.addMember(4, raft.DefaultMode, w, t)
+	newServer := leadServer.addMember(peers, 6, raft.DefaultMode, w, t)
 	servers = append(servers, newServer)
 	printStatus(servers, w)
 	wg.Wait()
@@ -93,7 +148,7 @@ func TestLinearWithMemberChange(t *testing.T) {
 	go func(len int) {
 		defer wg.Done()
 		if _, err := leadServer.putData(1, len, PutDataStep, w); err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 	}(dataLen)
 	// delete node
@@ -178,7 +233,7 @@ func TestLinearWithMemberChange(t *testing.T) {
 //	time.Sleep(100 * time.Millisecond)
 //}
 
-func linearWithLeaderChange(t *testing.T, testName string, isLease bool, mode RaftMode) {
+func linearWithLeaderChange(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, true, true, 1, mode)
 	f, w := getLogFile("", testName+".log")
 	defer func() {
@@ -208,9 +263,9 @@ func linearWithLeaderChange(t *testing.T, testName string, isLease bool, mode Ra
 	// try follower to leader
 	output("let follower to leader")
 	var tryLeaderServer *testServer
-	for _, s := range servers {
+	for i, s := range servers {
 		l, _ := s.raft.LeaderTerm(1)
-		if l != s.nodeID {
+		if l != s.nodeID && peers[i].Type != proto.PeerRecorder {
 			tryLeaderServer = s
 			break
 		}
@@ -225,7 +280,7 @@ func linearWithLeaderChange(t *testing.T, testName string, isLease bool, mode Ra
 	printStatus(servers, w)
 }
 
-func linearWithDelLeader(t *testing.T, testName string, isLease bool, mode RaftMode) {
+func linearWithDelLeader(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, true, true, 1, mode)
 	f, w := getLogFile("", testName+".log")
 	defer func() {
@@ -251,7 +306,7 @@ func linearWithDelLeader(t *testing.T, testName string, isLease bool, mode RaftM
 	}(dataLen)
 
 	// delete raft leader server and add
-	leadServer, servers = delAndAddLeader(servers, w, t)
+	leadServer, servers = delAndAddLeader(peers, servers, w, t)
 	startIndex := verifyRestoreValue(servers, leadServer, w)
 	output("start put data")
 	if _, err := leadServer.putData(1, startIndex, PutDataStep/5, w); err != nil {
@@ -261,9 +316,9 @@ func linearWithDelLeader(t *testing.T, testName string, isLease bool, mode RaftM
 	printStatus(servers, w)
 }
 
-func TestLinearWithFollowerDown(t *testing.T) {
+func linearWithFollowerDown(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, true, false, 1, StandardMode)
-	f, w := getLogFile("", "linearWithFollowerDown.log")
+	f, w := getLogFile("", testName+".log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -285,7 +340,7 @@ func TestLinearWithFollowerDown(t *testing.T) {
 	go func(len int) {
 		defer wg.Done()
 		if _, err := leadServer.putData(1, len, PutDataStep, w); err != nil {
-			t.Fatal(err)
+			panic(err)
 		}
 	}(dataLen)
 	dataLen += PutDataStep
@@ -316,9 +371,9 @@ func TestLinearWithFollowerDown(t *testing.T) {
 	printStatus(servers, w)
 }
 
-func TestLinearWithLeaderDown(t *testing.T) {
+func linearWithLeaderDown(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, true, false, 1, StandardMode)
-	f, w := getLogFile("", "linearWithLeaderDown.log")
+	f, w := getLogFile("", testName+".log")
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -345,7 +400,7 @@ func TestLinearWithLeaderDown(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	// stop and restart raft leader server
-	leadServer, servers = restartLeader(servers, w)
+	leadServer, servers = restartLeader(peers, servers, w)
 	waitForApply(servers, 1, w)
 
 	startIndex := verifyRestoreValue(servers, leadServer, w)
@@ -358,7 +413,72 @@ func TestLinearWithLeaderDown(t *testing.T) {
 	printStatus(servers, w)
 }
 
-func delAndAddLeader(servers []*testServer, w *bufio.Writer, t *testing.T) (leadServer *testServer, newServers []*testServer) {
+func TestLinearWithRecorderChange(t *testing.T) {
+	servers := initTestServer(peers, true, false, 1, StandardMode)
+	f, w := getLogFile("", "TestLinearWithRecorderChange.log")
+	defer func() {
+		w.Flush()
+		f.Close()
+		// end
+		for _, s := range servers {
+			s.raft.Stop()
+		}
+	}()
+
+	leadServer := waitElect(servers, 1, w)
+	printStatus(servers, w)
+	dataLen := verifyRestoreValue(servers, leadServer, w)
+	// add 2 recorders
+	for nodeID := uint64(4); nodeID < 6; nodeID++ {
+		// put data
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func(len int) {
+			defer wg.Done()
+			if _, err := leadServer.putData(1, len, PutDataStep, w); err != nil {
+				panic(err)
+			}
+		}(dataLen)
+		dataLen += PutDataStep
+		// test add recorder
+		newServer := leadServer.addRecorder(peers, nodeID, w, t)
+		servers = append(servers, newServer)
+		wg.Wait()
+		leadServer = waitElect(servers, 1, w)
+		compareTwoServers(leadServer, newServer, w, t)
+		printStatus(servers, w)
+	}
+
+	// delete 2 recorders
+	for nodeID := uint64(4); nodeID < 6; nodeID++ {
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func(len int) {
+			defer wg.Done()
+			if _, err := leadServer.putData(1, len, PutDataStep, w); err != nil {
+				panic(err)
+			}
+		}(dataLen)
+		dataLen += PutDataStep
+		// delete recorder
+		var delServer *testServer
+		newServers := make([]*testServer, 0)
+		for _, s := range servers {
+			if s.nodeID == nodeID {
+				delServer = s
+				continue
+			}
+			newServers = append(newServers, s)
+		}
+		servers = newServers
+		leadServer.deleteRecorder(delServer, w, t)
+		wg.Wait()
+		printStatus(servers, w)
+		compareServersWithLeader(servers, w, t)
+	}
+}
+
+func delAndAddLeader(peers []proto.Peer, servers []*testServer, w *bufio.Writer, t *testing.T) (leadServer *testServer, newServers []*testServer) {
 	time.Sleep(1 * time.Second)
 	output("delete raft leader server and add a member")
 	var delServer *testServer
@@ -374,7 +494,7 @@ func delAndAddLeader(servers []*testServer, w *bufio.Writer, t *testing.T) (lead
 	w.WriteString(fmt.Sprintf("delete member of raft leader server[%v] at(%v).\r\n", delServer.nodeID, time.Now().Format(format_time)))
 	delServer.deleteMember(delServer, w, t)
 	leadServer = waitElect(newServers, 1, w)
-	delServer = leadServer.addMember(delServer.nodeID, delServer.mode, w, t)
+	delServer = leadServer.addMember(peers, delServer.nodeID, delServer.mode, w, t)
 	newServers = append(newServers, delServer)
 	leadServer = waitElect(newServers, 1, w)
 	return

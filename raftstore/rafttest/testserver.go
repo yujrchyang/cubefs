@@ -17,7 +17,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"math"
 	"math/rand"
 	"os"
 	"path"
@@ -67,8 +66,14 @@ var (
 	temp        = "0123456789abcdefghijklmnopqrstuvwxyz"
 	format_time = "2006-01-02 15:04:05.000"
 
-	peers      = []proto.Peer{{ID: 1}, {ID: 2}, {ID: 3}}
-	subTimeMap map[uint64]*subTime
+	peers      		= []proto.Peer{{ID: 1}, {ID: 2}, {ID: 3}}
+	recorderPeers	= []proto.Peer{
+		{ID: 1},
+		{ID: 2},
+		{ID: 3},
+		{ID: 4, Type: proto.PeerRecorder},
+		{ID: 5, Type: proto.PeerRecorder},
+	}
 
 	outputToStdout bool
 )
@@ -78,7 +83,6 @@ func init() {
 	runtime.GOMAXPROCS(numCpu)
 	initRaftLog(getTestPath())
 	output("[System], Cpu Num = [%d], Test Path = [%v]\r", numCpu, getTestPath())
-	subTimeMap = make(map[uint64]*subTime)
 
 	outputToStdout = os.Getenv("DEBUG") == "1"
 }
@@ -110,6 +114,8 @@ func newNodeManager() *nodeManager {
 		3: {heart: "127.0.0.1:8002", repl: "127.0.0.1:9002"},
 		4: {heart: "127.0.0.1:8003", repl: "127.0.0.1:9003"},
 		5: {heart: "127.0.0.1:8004", repl: "127.0.0.1:9004"},
+		6: {heart: "127.0.0.1:8005", repl: "127.0.0.1:9005"},
+		7: {heart: "127.0.0.1:8006", repl: "127.0.0.1:9006"},
 	}
 	return nm
 }
@@ -258,7 +264,6 @@ func createRaftServer(nodeId uint64, isLease, clear bool, groupNum int, raftConf
 		}
 		smMap[uint64(i)] = sm
 		stMap[uint64(i)] = st
-		subTimeMap[uint64(i)] = &subTime{minSubTime: math.MaxInt64, maxSubTime: 0, totalSubTime: 0, subCount: 0}
 	}
 	return &testServer{
 		nodeID:  nodeId,

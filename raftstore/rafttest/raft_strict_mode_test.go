@@ -315,7 +315,7 @@ func strictMode_filterMsgs_rollback_followerDown(t *testing.T, name string, msgF
 
 	// restart down servers
 	for _, downServer := range downServers {
-		_, servers = startServer(servers, downServer, w)
+		_, servers = startServer(peers, servers, downServer, w)
 	}
 	waitForApply(servers, 1, w)
 
@@ -391,7 +391,7 @@ func strictMode_filterMsgs_rollback_leaderDown(t *testing.T, name string, msgFil
 	printStatus(servers, w)
 
 	// restart leader
-	leadServer, servers = restartLeader(servers, w)
+	leadServer, servers = restartLeader(peers, servers, w)
 	time.Sleep(1 * time.Second)
 
 	for _, s := range servers {
@@ -405,7 +405,7 @@ func strictMode_filterMsgs_rollback_leaderDown(t *testing.T, name string, msgFil
 	assert.Equal(t, nil, err, "verify roll back data is inconsistent")
 
 	// start down servers
-	_, servers = startServer(servers, downServer, w)
+	_, servers = startServer(peers, servers, downServer, w)
 	waitForApply(servers, 1, w)
 
 	// check data and roll back
@@ -461,7 +461,7 @@ func TestStrictMode_LeaderDown(t *testing.T) {
 	assert.NotEqual(t, nil, err, "raft submit should be error")
 
 	// stable should submit new data
-	leadServer, servers = startServer(servers, downServer, w)
+	leadServer, servers = startServer(peers, servers, downServer, w)
 	_, err = leadServer.putData(1, startIndex, PutDataStep, w)
 	assert.Equal(t, nil, err, "raft submit failed")
 
@@ -503,7 +503,7 @@ func TestStrictMode_MemberChange(t *testing.T) {
 	}(leadServer, dataLen)
 
 	// add member
-	newServer := leadServer.addMember(4, raft.StrictMode, w, t)
+	newServer := leadServer.addMember(peers,4, raft.StrictMode, w, t)
 	servers = append(servers, newServer)
 	waitForApply(servers, 1, w)
 	printStatus(servers, w)

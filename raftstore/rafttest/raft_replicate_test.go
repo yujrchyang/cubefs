@@ -28,43 +28,68 @@ import (
 func TestReplicate(t *testing.T) {
 	tests := []RaftTestConfig{
 		{
-			name:     "leaderReplWithoutLease_default",
-			isLease:  false,
-			mode:     StandardMode,
-			testFunc: leaderRepl,
+			name:     	"leaderReplWithoutLease_default",
+			isLease:  	false,
+			mode:     	StandardMode,
+			testFunc: 	leaderRepl,
+			peers:		peers,
 		},
 		{
-			name:     "leaderReplWithLease_default",
-			isLease:  true,
-			mode:     StandardMode,
-			testFunc: leaderRepl,
+			name:     	"leaderReplWithLease_default",
+			isLease:  	true,
+			mode:     	StandardMode,
+			testFunc: 	leaderRepl,
+			peers:		peers,
 		},
 		{
-			name:     "followerRepl_default",
-			mode:     StandardMode,
-			testFunc: followerRepl,
+			name:     	"leaderReplWithoutLease_recorder",
+			isLease:  	false,
+			mode:     	StandardMode,
+			testFunc: 	leaderRepl,
+			peers:		recorderPeers,
 		},
 		{
-			name:     "followerRepl_strict",
-			mode:     StrictMode,
-			testFunc: followerRepl,
+			name:     	"leaderReplWithLease_recorder",
+			isLease:  	true,
+			mode:     	StandardMode,
+			testFunc: 	leaderRepl,
+			peers:		recorderPeers,
 		},
 		{
-			name:     "followerRepl_mix",
-			mode:     MixMode,
-			testFunc: followerRepl,
+			name:     	"followerRepl_default",
+			mode:     	StandardMode,
+			testFunc: 	followerRepl,
+			peers:		peers,
+		},
+		{
+			name:     	"followerRepl_strict",
+			mode:     	StrictMode,
+			testFunc: 	followerRepl,
+			peers:		peers,
+		},
+		{
+			name:     	"followerRepl_mix",
+			mode:     	MixMode,
+			testFunc: 	followerRepl,
+			peers:		peers,
+		},
+		{
+			name:     	"followerRepl_recorder",
+			mode:     	StandardMode,
+			testFunc: 	followerRepl,
+			peers:		recorderPeers,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.testFunc(t, tt.name, tt.isLease, tt.mode)
+			tt.testFunc(t, tt.name, tt.isLease, tt.mode, tt.peers)
 		})
 	}
 
 }
 
-func leaderRepl(t *testing.T, testName string, isLease bool, mode RaftMode) {
+func leaderRepl(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	var servers []*testServer
 	servers = initTestServer(peers, isLease, true, 1, mode)
 
@@ -107,13 +132,14 @@ func leaderRepl(t *testing.T, testName string, isLease bool, mode RaftMode) {
 	w.WriteString(fmt.Sprintf("End put data at(%v).\r\n", time.Now().Format(format_time)))
 
 	// add node
-	w.WriteString(fmt.Sprintf("[%s] Add new node \r\n", time.Now().Format(format_time)))
+	addNodeID := uint64(6)
+	w.WriteString(fmt.Sprintf("[%s] Add new node [%v]\r\n", time.Now().Format(format_time), addNodeID))
 	leader, term := leadServer.raft.LeaderTerm(1)
-	raftConfig := &raft.RaftConfig{Peers: peers, Leader: leader, Term: term, Mode: getConsistencyMode(mode, 4)}
-	newServer := createRaftServer(4, isLease, true, 1, raftConfig)
+	raftConfig := &raft.RaftConfig{Peers: peers, Leader: leader, Term: term, Mode: getConsistencyMode(mode, addNodeID)}
+	newServer := createRaftServer(addNodeID, isLease, true, 1, raftConfig)
 	// add node
-	resolver.addNode(4, 0)
-	leadServer.sm[1].AddNode(proto.Peer{ID: 4})
+	resolver.addNode(addNodeID, 0)
+	leadServer.sm[1].AddNode(proto.Peer{ID: addNodeID})
 	output("added node")
 	time.Sleep(time.Second)
 	servers = append(servers, newServer)
@@ -158,8 +184,8 @@ func leaderRepl(t *testing.T, testName string, isLease bool, mode RaftMode) {
 	}
 
 	time.Sleep(100 * time.Millisecond)
-	raftConfig = &raft.RaftConfig{Peers: append(peers, proto.Peer{ID: 4}), Leader: 0, Term: 10, Mode: getConsistencyMode(mode, 4)}
-	newServer = createRaftServer(4, isLease, false, 1, raftConfig)
+	raftConfig = &raft.RaftConfig{Peers: append(peers, proto.Peer{ID: addNodeID}), Leader: 0, Term: 10, Mode: getConsistencyMode(mode, addNodeID)}
+	newServer = createRaftServer(addNodeID, isLease, false, 1, raftConfig)
 	servers = append(servers, newServer)
 	w.WriteString(fmt.Sprintf("Waiting repl at(%v).\r\n", time.Now().Format(format_time)))
 	for {
@@ -179,10 +205,10 @@ func leaderRepl(t *testing.T, testName string, isLease bool, mode RaftMode) {
 	}
 	w.WriteString(fmt.Sprintf("End verify repl data at(%v).\r\n", time.Now().Format(format_time)))
 	printStatus(servers, w)
-	resolver.delNode(4)
+	resolver.delNode(addNodeID)
 }
 
-func followerRepl(t *testing.T, testName string, isLease bool, mode RaftMode) {
+func followerRepl(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, isLease, true, 1, mode)
 	f, w := getLogFile("", testName+".log")
 	defer func() {
@@ -202,11 +228,9 @@ func followerRepl(t *testing.T, testName string, isLease bool, mode RaftMode) {
 	for _, s := range servers {
 		if !s.raft.IsLeader(1) {
 			followServer = s
-			break
+			if err := followServer.sm[1].Put("err_test", "err_test", NoCheckLinear, NoCheckLinear); err == nil {
+				t.Fatal("follow submit data not return error.")
+			}
 		}
-	}
-
-	if err := followServer.sm[1].Put("err_test", "err_test", NoCheckLinear, NoCheckLinear); err == nil {
-		t.Fatal("follow submit data not return error.")
 	}
 }

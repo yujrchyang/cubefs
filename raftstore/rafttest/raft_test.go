@@ -6,6 +6,8 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"testing"
+
+	"github.com/tiglabs/raft/proto"
 )
 
 const (
@@ -22,7 +24,8 @@ type RaftTestConfig struct {
 	name     string
 	isLease  bool
 	mode     RaftMode
-	testFunc func(t *testing.T, testName string, isLease bool, mode RaftMode)
+	testFunc func(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer)
+	peers	 []proto.Peer
 }
 
 func init() {

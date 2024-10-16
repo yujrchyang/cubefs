@@ -4,6 +4,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tiglabs/raft/proto"
 )
 
 var (
@@ -15,26 +17,34 @@ var (
 func TestPutBigValue(t *testing.T) {
 	tests := []RaftTestConfig{
 		{
-			name: "putBigValue_default",
-			mode: StandardMode,
+			name: 	"putBigValue_default",
+			mode: 	StandardMode,
+			peers:	peers,
 		},
 		{
-			name: "putBigValue_strict",
-			mode: StrictMode,
+			name: 	"putBigValue_strict",
+			mode: 	StrictMode,
+			peers:	peers,
 		},
 		{
-			name: "putBigValue_mix",
-			mode: MixMode,
+			name: 	"putBigValue_mix",
+			mode: 	MixMode,
+			peers:	peers,
+		},
+		{
+			name: 	"putBigValue_recorder",
+			mode: 	StandardMode,
+			peers:	recorderPeers,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			putBigValue(t, tt.name, tt.mode)
+			putBigValue(t, tt.name, tt.mode, tt.peers)
 		})
 	}
 }
 
-func putBigValue(t *testing.T, testName string, mode RaftMode) {
+func putBigValue(t *testing.T, testName string, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, true, true, groupNum, mode)
 	f, w := getLogFile("", testName+".log")
 	time.Sleep(time.Second)

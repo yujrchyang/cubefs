@@ -175,20 +175,20 @@ func (leadServer *testServer) putDataParallel(raftId uint64, startIndex, keysize
 	return nil
 }
 
-func (leadServer *testServer) addMember(nodeId uint64, mode raft.ConsistencyMode, w *bufio.Writer, t *testing.T) (newServer *testServer) {
+func (leadServer *testServer) addMember(peers []proto.Peer, nodeId uint64, mode raft.ConsistencyMode, w *bufio.Writer, t *testing.T) (newServer *testServer) {
 	printLog(w, fmt.Sprintf("Add new node[%v]", nodeId))
 	leader, term := leadServer.raft.LeaderTerm(1)
-	raftConfig := &raft.RaftConfig{Peers: peers, Leader: leader, Term: term, Mode: mode}
-	newServer = createRaftServer(nodeId, true, true, 1, raftConfig)
 	// add node
 	resolver.addNode(nodeId, 0)
-	err := leadServer.sm[1].AddNode(proto.Peer{ID: nodeId})
+	addPeer := proto.Peer{ID: nodeId}
+	err := leadServer.sm[1].AddNode(addPeer)
 	if err != nil {
 		t.Fatalf("add member[%v] err: %v", nodeId, err)
 	}
+	raftConfig := &raft.RaftConfig{Peers: append(peers, addPeer), Leader: leader, Term: term, Mode: mode}
+	newServer = createRaftServer(nodeId, true, true, 1, raftConfig)
 	output("added node")
 	printLog(w, fmt.Sprintf("Add new node[%v] done", nodeId))
-	time.Sleep(time.Second)
 	return
 }
 
@@ -203,7 +203,37 @@ func (leadServer *testServer) deleteMember(server *testServer, w *bufio.Writer, 
 	resolver.delNode(server.nodeID)
 	printLog(w, fmt.Sprintf("Delete node[%v] done", server.nodeID))
 	output("deleted node")
-	time.Sleep(time.Second)
+	return
+}
+
+func (leadServer *testServer) addRecorder(peers []proto.Peer, nodeId uint64, w *bufio.Writer, t *testing.T) (newServer *testServer) {
+	printLog(w, fmt.Sprintf("Add new recorder[%v]", nodeId))
+	leader, term := leadServer.raft.LeaderTerm(1)
+	// add node
+	resolver.addNode(nodeId, 0)
+	addPeer := proto.Peer{ID: nodeId, Type: proto.PeerRecorder}
+	err := leadServer.sm[1].AddRecorder(addPeer)
+	if err != nil {
+		t.Fatalf("add recorder[%v] err: %v", nodeId, err)
+	}
+	raftConfig := &raft.RaftConfig{Peers: append(peers, addPeer), Leader: leader, Term: term}
+	newServer = createRaftServer(nodeId, true, true, 1, raftConfig)
+	output("added recorder")
+	printLog(w, fmt.Sprintf("Add new recorder[%v] done", nodeId))
+	return
+}
+
+func (leadServer *testServer) deleteRecorder(server *testServer, w *bufio.Writer, t *testing.T) {
+	printLog(w, fmt.Sprintf("Delete recorder[%v]", server.nodeID))
+	// delete node
+	err := leadServer.sm[1].RemoveRecorder(proto.Peer{ID: server.nodeID, Type: proto.PeerRecorder})
+	if err != nil {
+		t.Fatalf("delete recorder[%v] err: %v", server.nodeID, err)
+	}
+	server.raft.Stop()
+	resolver.delNode(server.nodeID)
+	printLog(w, fmt.Sprintf("Delete recorder[%v] done", server.nodeID))
+	output("deleted recorder")
 	return
 }
 
@@ -408,17 +438,17 @@ func restartAllServers(ts []*testServer, leader, term uint64, clear bool) []*tes
 	return ret
 }
 
-func restartLeader(servers []*testServer, w *bufio.Writer) (leaderServer *testServer, newServers []*testServer) {
+func restartLeader(peers []proto.Peer, servers []*testServer, w *bufio.Writer) (leaderServer *testServer, newServers []*testServer) {
 	output("stop and restart raft leader server")
 	printLog(w, "stop and restart raft leader server")
 	var downServer *testServer
 	downServer, _, newServers = stopLeader(servers, w, false)
 	time.Sleep(1 * time.Second)
-	leaderServer, newServers = startServer(newServers, downServer, w)
+	leaderServer, newServers = startServer(peers, newServers, downServer, w)
 	return
 }
 
-func startServer(servers []*testServer, newServer *testServer, w *bufio.Writer) (leaderServer *testServer, newServers []*testServer) {
+func startServer(peers []proto.Peer, servers []*testServer, newServer *testServer, w *bufio.Writer) (leaderServer *testServer, newServers []*testServer) {
 	output("start raft server: %v", newServer.nodeID)
 	raftConfig := &raft.RaftConfig{Peers: peers, Leader: 0, Term: 0, Mode: newServer.mode}
 	newServer = createRaftServer(newServer.nodeID, true, false, 1, raftConfig)

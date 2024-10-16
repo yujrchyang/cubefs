@@ -298,18 +298,6 @@ func (ms *memoryStatemachine) localConstructBigData(bitSize int, exeMin int, res
 
 }
 
-func computeTime(id uint64, startTime int64, endTime int64) {
-	callTime := endTime - startTime
-	if callTime < subTimeMap[id].minSubTime {
-		subTimeMap[id].minSubTime = callTime
-	}
-	if callTime > subTimeMap[id].maxSubTime {
-		subTimeMap[id].maxSubTime = callTime
-	}
-	subTimeMap[id].totalSubTime += uint64(callTime)
-	subTimeMap[id].subCount++
-}
-
 func (ms *memoryStatemachine) AddNode(peer proto.Peer) error {
 	resp := ms.raft.ChangeMember(ms.id, proto.ConfAddNode, peer, nil)
 	_, err := resp.Response()
@@ -321,6 +309,24 @@ func (ms *memoryStatemachine) AddNode(peer proto.Peer) error {
 
 func (ms *memoryStatemachine) RemoveNode(peer proto.Peer) error {
 	resp := ms.raft.ChangeMember(ms.id, proto.ConfRemoveNode, peer, nil)
+	_, err := resp.Response()
+	if err != nil {
+		return errors.New("RemoveNode error.")
+	}
+	return nil
+}
+
+func (ms *memoryStatemachine) AddRecorder(peer proto.Peer) error {
+	resp := ms.raft.ChangeMember(ms.id, proto.ConfAddRecorder, peer, nil)
+	_, err := resp.Response()
+	if err != nil {
+		return errors.New("AddNode error.")
+	}
+	return nil
+}
+
+func (ms *memoryStatemachine) RemoveRecorder(peer proto.Peer) error {
+	resp := ms.raft.ChangeMember(ms.id, proto.ConfRemoveRecorder, peer, nil)
 	_, err := resp.Response()
 	if err != nil {
 		return errors.New("RemoveNode error.")

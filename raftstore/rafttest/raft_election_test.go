@@ -26,60 +26,87 @@ import (
 func TestElection(t *testing.T) {
 	tests := []RaftTestConfig{
 		{
-			name:     "withoutLeaseAndDown_default",
-			mode:     StandardMode,
-			testFunc: withoutLeaseAndDown,
+			name:     	"withoutLeaseAndDown_default",
+			mode:     	StandardMode,
+			testFunc: 	withoutLeaseAndDown,
+			peers:		peers,
 		},
 		{
-			name:     "withoutLeaseAndDown_strict",
-			mode:     StrictMode,
-			testFunc: withoutLeaseAndDown,
+			name:     	"withoutLeaseAndDown_strict",
+			mode:     	StrictMode,
+			testFunc: 	withoutLeaseAndDown,
+			peers:		peers,
 		},
 		{
-			name:     "withoutLeaseAndDown_mix",
-			mode:     MixMode,
-			testFunc: withoutLeaseAndDown,
+			name:     	"withoutLeaseAndDown_mix",
+			mode:     	MixMode,
+			testFunc: 	withoutLeaseAndDown,
+			peers:		peers,
 		},
 		{
-			name:     "withLeaseAndDown_default",
-			mode:     StandardMode,
-			testFunc: withLeaseAndDown,
+			name:     	"withoutLeaseAndDown_recorder",
+			mode:     	StandardMode,
+			testFunc: 	withoutLeaseAndDown,
+			peers:		recorderPeers,
 		},
 		{
-			name:     "withLeaseAndDown_strict",
-			mode:     StrictMode,
-			testFunc: withLeaseAndDown,
+			name:     	"withLeaseAndDown_default",
+			mode:     	StandardMode,
+			testFunc: 	withLeaseAndDown,
+			peers:		peers,
 		},
 		{
-			name:     "withLeaseAndDown_mix",
-			mode:     MixMode,
-			testFunc: withLeaseAndDown,
+			name:     	"withLeaseAndDown_strict",
+			mode:     	StrictMode,
+			testFunc: 	withLeaseAndDown,
+			peers:		peers,
 		},
 		{
-			name:     "withPriorityAndDown_default",
-			mode:     StandardMode,
-			testFunc: withPriorityAndDown,
+			name:     	"withLeaseAndDown_mix",
+			mode:     	MixMode,
+			testFunc: 	withLeaseAndDown,
+			peers:		peers,
 		},
 		{
-			name:     "withPriorityAndDown_strict",
-			mode:     StrictMode,
-			testFunc: withPriorityAndDown,
+			name:     	"withLeaseAndDown_recorder",
+			mode:     	StandardMode,
+			testFunc: 	withLeaseAndDown,
+			peers:		recorderPeers,
 		},
 		{
-			name:     "withPriorityAndDown_mix",
-			mode:     MixMode,
-			testFunc: withPriorityAndDown,
+			name:     	"withPriorityAndDown_default",
+			mode:     	StandardMode,
+			testFunc: 	withPriorityAndDown,
+			peers:		peers,
+		},
+		{
+			name:     	"withPriorityAndDown_strict",
+			mode:     	StrictMode,
+			testFunc: 	withPriorityAndDown,
+			peers:		peers,
+		},
+		{
+			name:     	"withPriorityAndDown_mix",
+			mode:     	MixMode,
+			testFunc: 	withPriorityAndDown,
+			peers:		peers,
+		},
+		{
+			name:     	"withPriorityAndDown_recorder",
+			mode:     	StandardMode,
+			testFunc: 	withPriorityAndDown,
+			peers:		recorderPeers,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tt.testFunc(t, tt.name, tt.isLease, tt.mode)
+			tt.testFunc(t, tt.name, tt.isLease, tt.mode, tt.peers)
 		})
 	}
 }
 
-func withoutLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode) {
+func withoutLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, false, true, 1, mode)
 	f, w := getLogFile("", testName+".log")
 
@@ -197,7 +224,7 @@ func withoutLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftM
 
 }
 
-func withLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode) {
+func withLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
 	servers := initTestServer(peers, true, true, 1, mode)
 	f, w := getLogFile("", testName+".log")
 	defer func() {
@@ -332,8 +359,14 @@ func withLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode
 	printStatus(servers, w)
 }
 
-func withPriorityAndDown(t *testing.T, testName string, isLease bool, mode RaftMode) {
-	peers := []proto.Peer{{ID: 1, Priority: 1}, {ID: 2, Priority: 3}, {ID: 3, Priority: 2}}
+func withPriorityAndDown(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
+	peers[0].Priority = 1
+	peers[1].Priority = 3
+	peers[2].Priority = 2
+	if len(peers) == len(recorderPeers) {
+		peers[3].Priority = 2
+		peers[4].Priority = 2
+	}
 	servers := initTestServer(peers, false, true, 1, mode)
 	f, w := getLogFile("", testName+".log")
 	defer func() {
