@@ -376,6 +376,8 @@ type volValue struct {
 	RemoveDupReqEnable     bool
 	NotCacheNode           bool
 	Flock                  bool
+	ReadAheadMemMB		   int64
+	ReadAheadWindowMB	   int64
 
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
@@ -473,6 +475,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoveDupReqEnable:     vol.enableRemoveDupReq,
 		NotCacheNode:           vol.notCacheNode,
 		Flock:                  vol.flock,
+		ReadAheadMemMB:			vol.ReadAheadMemMB,
+		ReadAheadWindowMB: 		vol.ReadAheadWindowMB,
 
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 		MpSplitStep:              vol.MpSplitStep,

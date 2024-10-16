@@ -152,6 +152,8 @@ const (
 	mpSplitStepKey                      = "mpSplitStep"
 	inodeCountThresholdKey              = "inodeCountThreshold"
 	disableStatKey                      = "disable"
+	readAheadMemoryKey                  = "readAheadMemMB"
+	readAheadWindowKey                  = "readAheadWindowMB"
 )
 
 const (
@@ -284,6 +286,10 @@ const (
 	minBw                                                  = 500 * 1024 * 1024
 	minInodeCountThreshold                                 = 10000000
 	minDeleteMarkDelVolInterval                            = 60 * 60 * 2
+	defaultReadAheadMemMB								   = 0
+	defaultReadAheadWindowMB							   = 0
+	maxReadAheadMemMB									   = 8192
+	maxReadAheadWindowMB								   = 64
 )
 
 const (

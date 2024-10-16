@@ -9,7 +9,7 @@ import (
 )
 
 func TestWrapper_getDataPartitionFromMaster(t *testing.T) {
-	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal)
+	dataWrapper, err := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal, DefaultReadAheadMemMB, DefaultReadAheadWindowMB, ec.GetStreamer)
 	if err != nil {
 		t.Fatalf("NewDataPartitionWrapper failed, err %v", err)
 	}

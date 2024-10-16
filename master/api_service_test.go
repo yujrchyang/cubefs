@@ -241,7 +241,7 @@ func createDefaultMasterServerForTest() *Server {
 	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, true, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0}, 0,
-		0, false, 0, 0)
+		0, false, 0, 0, maxReadAheadMemMB, maxReadAheadWindowMB)
 	if err != nil {
 		panic(err)
 	}
@@ -724,6 +724,9 @@ func TestUpdateVol(t *testing.T) {
 	if !assert.Truef(t, vol.enableWriteCache, "expect enableWriteCache is true, but is %v", vol.enableWriteCache) {
 		return
 	}
+
+	assert.Equalf(t, int64(maxReadAheadMemMB), vol.ReadAheadMemMB, "volume read ahead memMB")
+	assert.Equalf(t, int64(maxReadAheadWindowMB), vol.ReadAheadWindowMB, "volume read ahead windowMB")
 }
 func buildAuthKey(owner string) string {
 	h := md5.New()
@@ -1840,6 +1843,8 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 		proto.IncreaseReplicaNum, proto.DefaultConvertMode, volumeSimpleInfo.DPConvertMode, volumeSimpleInfo.MPConvertMode)
 	assert.Equalf(t, newZoneName, volumeSimpleInfo.ZoneName, "vol:%v expect ZoneName is %v, but is %v", volName, newZoneName, volumeSimpleInfo.ZoneName)
 	assert.Equalf(t, int64(120), volumeSimpleInfo.ExtentCacheExpireSec, "vol:%v expect ExtentCacheExpireSec is 120, but is %v", volName, volumeSimpleInfo.ExtentCacheExpireSec)
+	assert.Equalf(t, int64(0), volumeSimpleInfo.ReadAheadMemMB, "volume read ahead memMB")
+	assert.Equalf(t, int64(0), volumeSimpleInfo.ReadAheadWindowMB, "volume read ahead windowMB")
 }
 
 func TestAddDataReplicaForCrossRegionVol(t *testing.T) {
@@ -4615,4 +4620,22 @@ func TestVolNetConnConfig(t *testing.T) {
 	}
 	commonVol.zoneName = oldZoneName
 	commonVol.ConnConfig = oldConnConfig
+}
+
+func TestVolSetReadAheadConfig(t *testing.T) {
+	vol, err := server.cluster.getVol(commonVolName)
+	assert.NoErrorf(t, err, "get volume err")
+	assert.NotNilf(t, vol, "get volume")
+	assert.Equalf(t, int64(maxReadAheadMemMB), vol.ReadAheadMemMB, "volume read ahead memMB")
+	assert.Equalf(t, int64(maxReadAheadWindowMB), vol.ReadAheadWindowMB, "volume read ahead windowMB")
+
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v&readAheadMemMB=%v&readAheadWindowMB=%v",
+		hostAddr, proto.AdminUpdateVol, vol.Name, buildAuthKey(vol.Owner), -1, -1)
+	process(reqURL, t)
+
+	vol, err = server.cluster.getVol(commonVolName)
+	assert.NoErrorf(t, err, "get volume err")
+	assert.NotNilf(t, vol, "get volume")
+	assert.Equalf(t, int64(-1), vol.ReadAheadMemMB, "volume read ahead memMB")
+	assert.Equalf(t, int64(-1), vol.ReadAheadWindowMB, "volume read ahead windowMB")
 }

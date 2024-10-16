@@ -30,6 +30,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"golang.org/x/time/rate"
@@ -118,6 +119,8 @@ type ExtentConfig struct {
 	MetaWrapper         *meta.MetaWrapper
 	StreamerSegCount    int64
 	ExtentClientType    ExtentClientType
+	ReadAheadMemMB		int64
+	ReadAheadWindowMB	int64
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -170,11 +173,11 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	client.stopC = make(chan struct{})
 
 	if dataState != nil {
-		client.dataWrapper = RebuildDataPartitionWrapper(config.Volume, config.Masters, dataState, config.ExtentClientType)
+		client.dataWrapper = RebuildDataPartitionWrapper(config.Volume, config.Masters, dataState, config.ExtentClientType, config.ReadAheadMemMB, config.ReadAheadWindowMB, client.GetStreamer)
 	} else {
 		limit := MaxMountRetryLimit
 	retry:
-		client.dataWrapper, err = NewDataPartitionWrapper(config.Volume, config.Masters, config.ExtentClientType)
+		client.dataWrapper, err = NewDataPartitionWrapper(config.Volume, config.Masters, config.ExtentClientType, config.ReadAheadMemMB, config.ReadAheadWindowMB, client.GetStreamer)
 		if err != nil {
 			if limit <= 0 {
 				return nil, errors.Trace(err, "Init data wrapper failed!")
@@ -358,6 +361,13 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 	if !s.initServer {
 		s.InitServer()
 	}
+
+	defer func() {
+		// 清理预读的缓存数据
+		if client.GetReadAheadController() != nil {
+			client.GetReadAheadController().EvictBlocksAtOffset(s, offset, len(data))
+		}
+	}()
 
 	if s.overWriteBuffer {
 		// overWriteReqMutex should be locked here to prevent invalid prepared requests
@@ -549,6 +559,12 @@ func (client *ExtentClient) Truncate(ctx context.Context, inode uint64, oldSize 
 	if !s.InitExtents(ctx) {
 		return proto.ErrGetExtentsFailed
 	}
+	defer func() {
+		// 清理预读的缓存数据
+		if client.GetReadAheadController() != nil {
+			client.GetReadAheadController().EvictBlocksFromOffset(s, size)
+		}
+	}()
 
 	err = s.IssueTruncRequest(ctx, size)
 	return
@@ -585,6 +601,11 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 			log.LogErrorf("Read: ino(%v) offset(%v) size(%v) err(%v)", inode, offset, size, err)
 		}
 	}()
+	if client.readRate > 0 {
+		tpObject := exporter.NewModuleTPUs("read_wait_us")
+		client.readLimiter.Wait(ctx)
+		tpObject.Set(nil)
+	}
 
 	s := client.GetStreamer(inode)
 	if s == nil {
@@ -603,6 +624,10 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	}
 
 	s.UpdateExpiredExtentCache(ctx, offset+uint64(size))
+
+	if readAheadSize, readAheadHole, readAheadErr := client.GetReadAheadController().ReadFromBlocks(s, data, offset, uint64(size)); readAheadSize == size && readAheadErr == nil {
+		return readAheadSize, readAheadHole, nil
+	}
 
 	for i := 0; i < maxReadRetryLimit; i++ {
 		read, hasHole, err = s.read(ctx, data, offset, size)
@@ -881,5 +906,19 @@ func (c *ExtentClient) UmpKeyPrefix() (prefix string) {
 	if prefix == "" {
 		prefix = c.dataWrapper.volName
 	}
+	return
+}
+
+func (c *ExtentClient) GetReadAheadController() *ReadAheadController {
+	return c.dataWrapper.readAheadController
+}
+
+func (c *ExtentClient) SetReadAheadConfig(memoryMB, windowMB int64) error {
+	return c.dataWrapper.updateReadAheadLocalConfig(memoryMB, windowMB)
+}
+
+func (c *ExtentClient) GetReadAheadConfig() (memMB, windowMB int64) {
+	memMB = c.GetReadAheadController().getMemoryMB()
+	windowMB = c.GetReadAheadController().getWindowMB()
 	return
 }

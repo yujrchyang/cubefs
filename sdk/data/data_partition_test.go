@@ -177,7 +177,7 @@ func TestExcludeDp(t *testing.T) {
 
 func TestDpLeaderAddressSerialization(t *testing.T) {
 	var dp *DataPartition
-	w, _ := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal)
+	w, _ := NewDataPartitionWrapper(ltptestVolume, ltptestMaster, Normal, DefaultReadAheadMemMB, DefaultReadAheadWindowMB, ec.GetStreamer)
 	w.partitions.Range(func(k, v interface{}) bool {
 		dp = v.(*DataPartition)
 		return false

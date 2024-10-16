@@ -743,12 +743,12 @@ func TestStreamer_RandWritePending(t *testing.T) {
 	rand.Seed(timestamp)
 	t.Log("time: ", timestamp)
 	for i := 0; i < 1024; i++ {
-		wOffset, wSize := randOffset()
+		wOffset, wSize := randOffset(128 * 1024 * 1024)
 		//t.Logf("write offset: %v size: %v\n", wOffset, wSize)
 		if err = writeLocalAndCFS(localFile, ec, inodeInfo.Inode, wOffset, wSize); err != nil {
 			panic(err)
 		}
-		rOffset, rSize := randOffset()
+		rOffset, rSize := randOffset(128 * 1024 * 1024)
 		//t.Logf("read offset: %v size: %v\n", rOffset, rSize)
 		if err = verifyLocalAndCFS(localFile, ec, inodeInfo.Inode, rOffset, rSize); err != nil {
 			log.LogFlush()
@@ -772,9 +772,9 @@ func TestStreamer_RandWritePending(t *testing.T) {
 	localFile.Close()
 }
 
-func randOffset() (off int64, size int) {
-	off = rand.Int63n(128 * 1024 * 1024)
-	size = rand.Intn(256)*1024 + 1
+func randOffset(fileSize int64) (off int64, size int) {
+	off = rand.Int63n(fileSize)
+	size = rand.Intn(256 * 1024)
 	return
 }
 
@@ -810,6 +810,15 @@ func verifyLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, offset i
 	if incorrectEnd != -1 {
 		return fmt.Errorf("read offset(%v) size(%v) cfs(%v %v) local(%v %v) incorrect(%v~%v)\n",
 			offset, size, n2, err2, n1, err1, incorrectBegin, incorrectEnd)
+	}
+	return nil
+}
+
+func truncateLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, truncateSize int64) error {
+	localF.Truncate(truncateSize)
+	err := ec.Truncate(context.Background(), inoID, 0, uint64(truncateSize))
+	if err != nil {
+		return fmt.Errorf("truncate file ino(%v) to size(%v) err(%v)", inoID, truncateSize, err)
 	}
 	return nil
 }

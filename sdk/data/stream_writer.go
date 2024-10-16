@@ -300,6 +300,7 @@ func (s *Streamer) server() {
 				s.streamerMap.Lock()
 				if s.idle >= streamWriterIdleTimeoutPeriod && len(s.request) == 0 {
 					delete(s.streamerMap.streamers, s.inode)
+					s.client.GetReadAheadController().ClearInodeBlocks(s)
 					if s.client.evictIcache != nil {
 						s.client.evictIcache(ctx, s.inode)
 					}
@@ -391,7 +392,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 	}
 	ctx = context.Background()
 	if s.client.writeRate > 0 {
-		tpObject := exporter.NewModuleTPUs("write_wait")
+		tpObject := exporter.NewModuleTPUs("write_wait_us")
 		s.client.writeLimiter.Wait(ctx)
 		tpObject.Set(nil)
 	}
@@ -1050,6 +1051,7 @@ func (s *Streamer) evict() error {
 		log.LogDebugf("evict: inode(%v)", s.inode)
 	}
 	delete(s.streamerMap.streamers, s.inode)
+	s.client.GetReadAheadController().ClearInodeBlocks(s)
 	return nil
 }
 

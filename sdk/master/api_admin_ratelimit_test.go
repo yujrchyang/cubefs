@@ -34,6 +34,7 @@ func TestSetClientReaddirOpRateLimit(t *testing.T) {
 		NetworkFlowRatio:            -1,
 		RateLimit:                   -1,
 		DataNodeDiskReservedRatio:   -1,
+		DeleteMarkDelVolInterval:	 -1,
 	}
 	err := testMc.AdminAPI().SetRateLimit(&info)
 	if err != nil {

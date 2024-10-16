@@ -140,6 +140,8 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		OnPutIcache:         s.ic.Put,
 		MetaWrapper:         s.mw,
 		StreamerSegCount:    opt.StreamerSegCount,
+		ReadAheadMemMB:		 opt.ReadAheadMemMB,
+		ReadAheadWindowMB: 	 opt.ReadAheadWindowMB,
 	}
 	if first_start {
 		s.ec, err = data.NewExtentClient(extentConfig, nil)
@@ -833,4 +835,51 @@ func (s *Super) GetConf(w http.ResponseWriter, r *http.Request) {
 	}{s.notCacheNode, s.Flock()}
 	str, _ := json.Marshal(conf)
 	w.Write(str)
+}
+
+func (s *Super) SetReadAheadConfig(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+	var (
+		memoryMB	int
+		windowMB 	int
+		err			error
+	)
+	if memoryStr := r.FormValue("memMB"); memoryStr != "" {
+		memoryMB, err = strconv.Atoi(memoryStr)
+		if err != nil {
+			w.Write([]byte(fmt.Sprintf("Invalid read ahead memoryMB(%v)\n", memoryStr)))
+			return
+		}
+	}
+	if windowStr := r.FormValue("windowMB"); windowStr != "" {
+		windowMB, err = strconv.Atoi(windowStr)
+		if err != nil {
+			w.Write([]byte(fmt.Sprintf("Invalid read ahead windowMB(%v)\n", windowStr)))
+			return
+		}
+	}
+	if memoryMB == 0 && windowMB == 0 {
+		w.Write([]byte("No changes.\n"))
+		return
+	}
+	if err = s.ec.SetReadAheadConfig(int64(memoryMB), int64(windowMB)); err != nil {
+		w.Write([]byte(fmt.Sprintf("set failed: %v\n", err.Error())))
+		return
+	}
+	newMemMB, newWindowMB := s.ec.GetReadAheadConfig()
+	w.Write([]byte(fmt.Sprintf("Set read ahead config: memory to (%v)MB, window to (%v)MB successfully\n", newMemMB, newWindowMB)))
+	return
+}
+
+func (s *Super) GetReadAheadConfig(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		w.Write([]byte(err.Error()))
+		return
+	}
+	memoryMB, windowMB := s.ec.GetReadAheadConfig()
+	w.Write([]byte(fmt.Sprintf("Read ahead memory is (%v)MB, window size is (%v)MB\n", memoryMB, windowMB)))
+	return
 }

@@ -142,6 +142,8 @@ type Vol struct {
 	DisableState               bool
 	updateTimeOfReplicaNum     int64
 	ConnConfig                 proto.ConnConfig
+	ReadAheadMemMB			   int64
+	ReadAheadWindowMB		   int64
 	sync.RWMutex
 }
 
@@ -150,7 +152,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	createTime, smartEnableTime int64, description, dpSelectorName, dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType,
 	dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
 	convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
-	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32, mpSplitStep, inodeCountThreshold uint64) (vol *Vol) {
+	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32, mpSplitStep, inodeCountThreshold uint64,
+	readAheadMemMB, readAheadWindowMB int64) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.ecDataPartitions = newEcDataPartitionCache(vol)
@@ -231,6 +234,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.ConnConfig = proto.ConnConfig{}
 	vol.MpSplitStep = mpSplitStep
 	vol.InodeCountThreshold = inodeCountThreshold
+	vol.ReadAheadMemMB = readAheadMemMB
+	vol.ReadAheadWindowMB = readAheadWindowMB
 	return
 }
 
@@ -272,7 +277,9 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.BatchDelInodeCnt,
 		vv.DelInodeInterval,
 		vv.MpSplitStep,
-		vv.InodeCountThreshold)
+		vv.InodeCountThreshold,
+		vv.ReadAheadMemMB,
+		vv.ReadAheadWindowMB)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -1436,6 +1443,8 @@ func (vol *Vol) backupConfig() *Vol {
 		BitMapSnapFrozenHour:       vol.BitMapSnapFrozenHour,
 		EnableCheckDeleteEK:        vol.EnableCheckDeleteEK,
 		updateTimeOfReplicaNum:     vol.updateTimeOfReplicaNum,
+		ReadAheadMemMB:				vol.ReadAheadMemMB,
+		ReadAheadWindowMB: 			vol.ReadAheadWindowMB,
 	}
 }
 
@@ -1497,6 +1506,8 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.InodeCountThreshold = backupVol.InodeCountThreshold
 	vol.BitMapSnapFrozenHour = backupVol.BitMapSnapFrozenHour
 	vol.EnableCheckDeleteEK = backupVol.EnableCheckDeleteEK
+	vol.ReadAheadMemMB = backupVol.ReadAheadMemMB
+	vol.ReadAheadWindowMB = backupVol.ReadAheadWindowMB
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

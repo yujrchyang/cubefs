@@ -1765,6 +1765,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		bitMapSnapFrozenHour int64
 		enableCheckDelEK     bool
+		readAheadMemMB		 int64
+		readAheadWindowMB	 int64
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1786,7 +1788,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if zoneName, capacity, storeMode, description, mpLayout, extentCacheExpireSec, umpCollectWay, umpKeyPrefix, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
+	if zoneName, capacity, storeMode, description, mpLayout, extentCacheExpireSec, umpCollectWay, umpKeyPrefix, readAheadMemMB, readAheadWindowMB, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1922,7 +1924,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, umpKeyPrefix, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
-		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK); err != nil {
+		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2019,13 +2021,15 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		bitMapAllocator      bool
 		mpSplitStep          uint64
 		inodeCountThreshold  uint64
+		readAheadMemMB		 int64
+		readAheadWindowMB	 int64
 	)
 
 	metrics := exporter.NewModuleTP(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
 		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
-		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, err = parseRequestToCreateVol(r); err != nil {
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2063,7 +2067,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
 		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval,
-		bitMapAllocator, mpSplitStep, inodeCountThreshold); err != nil {
+		bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2242,6 +2246,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EnableCheckDeleteEK:      vol.EnableCheckDeleteEK,
 		UpdateTimeOfReplicaNum:   vol.updateTimeOfReplicaNum,
 		DisableState:             vol.DisableState,
+		ReadAheadMemMB:			  vol.ReadAheadMemMB,
+		ReadAheadWindowMB: 		  vol.ReadAheadWindowMB,
 	}
 }
 
@@ -3548,7 +3554,8 @@ func parseRequestToSetVolConvertSt(r *http.Request) (name, authKey string, newSt
 }
 
 func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity, storeMode int, description string,
-	layout proto.MetaPartitionLayout, extentCacheExpireSec int64, umpCollectWay exporter.UMPCollectMethod, umpKeyPrefix string, err error) {
+	layout proto.MetaPartitionLayout, extentCacheExpireSec int64, umpCollectWay exporter.UMPCollectMethod, umpKeyPrefix string,
+	readAheadMemMB, readAheadWindowMB int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3610,6 +3617,12 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 		umpKeyPrefix = r.FormValue(proto.UmpKeyPrefixKey)
 	} else {
 		umpKeyPrefix = vol.UmpKeyPrefix
+	}
+	if readAheadMemMB, err = extractReadAheadMemMB(r, vol.ReadAheadMemMB); err != nil {
+		return
+	}
+	if readAheadWindowMB, err = extractReadAheadWindowMB(r, vol.ReadAheadWindowMB); err != nil {
+		return
 	}
 	return
 }
@@ -4172,7 +4185,8 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
-	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnableState bool, mpSplitStep, inodeCountThreshold uint64, err error) {
+	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnableState bool, mpSplitStep, inodeCountThreshold uint64,
+	readAheadMemMB, readAheadWindowMB int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -4390,6 +4404,12 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 			return
 		}
 	}
+	if readAheadMemMB, err = extractReadAheadMemMB(r, defaultReadAheadMemMB); err != nil {
+		return
+	}
+	if readAheadWindowMB, err = extractReadAheadWindowMB(r, defaultReadAheadWindowMB); err != nil {
+		return
+	}
 
 	return
 }
@@ -4408,6 +4428,38 @@ func extractVolWriteMutex(r *http.Request) bool {
 		volWriteMutex = false
 	}
 	return volWriteMutex
+}
+
+func extractReadAheadMemMB(r *http.Request, defaultReadAheadMemMB int64) (readAheadMemMB int64, err error) {
+	if readAheadMemStr := r.FormValue(readAheadMemoryKey); readAheadMemStr != "" {
+		if readAheadMemMB, err = strconv.ParseInt(readAheadMemStr, 10, 64); err != nil {
+			err = unmatchedKey(readAheadMemoryKey)
+			return
+		}
+		if readAheadMemMB > maxReadAheadMemMB {
+			err = fmt.Errorf("invalid read ahead memory (%v)MB, out of range [-1~%v]MB", readAheadMemMB, maxReadAheadMemMB)
+			return
+		}
+	} else {
+		readAheadMemMB = defaultReadAheadMemMB
+	}
+	return
+}
+
+func extractReadAheadWindowMB(r *http.Request, defaultReadAheadWindowMB int64) (readAheadWindowMB int64, err error) {
+	if readAheadWindowStr := r.FormValue(readAheadWindowKey); readAheadWindowStr != "" {
+		if readAheadWindowMB, err = strconv.ParseInt(readAheadWindowStr, 10, 64); err != nil {
+			err = unmatchedKey(readAheadWindowKey)
+			return
+		}
+		if readAheadWindowMB > maxReadAheadWindowMB {
+			err = fmt.Errorf("invalid read ahead window (%v)MB, out of range [-1~%v]MB", readAheadWindowMB, maxReadAheadWindowMB)
+			return
+		}
+	} else {
+		readAheadWindowMB = defaultReadAheadWindowMB
+	}
+	return
 }
 
 func parseRequestToCreateDataPartition(r *http.Request) (count int, name, designatedZoneName string, err error) {

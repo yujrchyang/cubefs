@@ -341,7 +341,9 @@ func (dp *DataPartition) LeaderRead(reqPacket *common.Packet, req *ExtentRequest
 	}
 
 	errMap[sc.currAddr] = err
-	log.LogDebugf("LeaderRead: send to addr(%v), reqPacket(%v)", sc.currAddr, reqPacket)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("LeaderRead: send to addr(%v), reqPacket(%v)", sc.currAddr, reqPacket)
+	}
 
 	if tryOther || (reply != nil && reply.ResultCode == proto.OpTryOtherAddr) {
 		hosts := sortByStatus(sc.dp, sc.currAddr)

@@ -145,7 +145,7 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 
 	testClient := new(ExtentClient)
 	testClient.useLastExtent = true
-	if testClient.dataWrapper, err = NewDataPartitionWrapper("test", []string{"127.0.0.1:9999"}, Normal); err != nil {
+	if testClient.dataWrapper, err = NewDataPartitionWrapper("test", []string{"127.0.0.1:9999"}, Normal, DefaultReadAheadMemMB, DefaultReadAheadWindowMB, testClient.GetStreamer); err != nil {
 		t.Errorf("prepare test falied, err(%v)", err)
 		t.FailNow()
 	}
