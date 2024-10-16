@@ -9,6 +9,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 	"github.com/robfig/cron"
 	"github.com/tiglabs/raft"
 	"os"
@@ -129,6 +130,9 @@ func (s *ChubaoFSMonitor) checkAvailableTinyExtents() {
 		if host.isReleaseCluster {
 			continue
 		}
+		if host.host != "cn.chubaofs.jd.local" {
+			continue
+		}
 		checkTinyExtentsByVol(host, s.checkAvailTinyVols)
 	}
 	log.LogInfof("checkAvailableTinyExtents end, cost [%v]", time.Since(dpCheckStartTime))
@@ -169,7 +173,6 @@ func checkTinyExtentsByVol(host *ClusterHost, vols []string) {
 		wg := sync.WaitGroup{}
 		wg.Add(32)
 		dpCh := make(chan *DataPartitionResponse, 1)
-		var brokenRw = new(atomic.Int32)
 		var recoverNum = new(atomic.Int32)
 		var checkFailedNum = new(atomic.Int32)
 		for i := 0; i < 32; i++ {
@@ -183,7 +186,7 @@ func checkTinyExtentsByVol(host *ClusterHost, vols []string) {
 						if dp == nil {
 							return
 						}
-						result := checkDataPartitionAvailTiny(vol, dp, brokenRw, recoverNum, checkFailedNum, mc)
+						result := checkDataPartitionAvailTiny(vol, dp, recoverNum, checkFailedNum, mc)
 						if len(result) == 0 {
 							continue
 						}
@@ -207,31 +210,25 @@ func checkTinyExtentsByVol(host *ClusterHost, vols []string) {
 
 		var brokenCount int
 		for _, element := range elements {
-			if element[1] == BrokenTinyMsg {
+			if element[BrokenTypeIndex] == BrokenTinyMsg || element[BrokenTypeIndex] == NoSpaceErrMsg {
 				brokenCount++
 			}
 		}
-		partitionStr := fmt.Sprintf("total[%v]rw[%v]ro[%v]broken[%v]broken_rw[%v]check_fail[%v]recover[%v]", len(volView.DataPartitions), volInfo.RwDpCnt,
-			len(volView.DataPartitions)-volInfo.RwDpCnt, len(elements)-1, brokenRw.Load(), checkFailedNum.Load(), recoverNum.Load())
+		partitionStr := fmt.Sprintf("totalDP[%v] readWrite[%v] readOnly[%v] brokenRWDP[%v] checkFailed[%v] recoverDP[%v]", len(volView.DataPartitions), volInfo.RwDpCnt,
+			len(volView.DataPartitions)-volInfo.RwDpCnt, len(elements)-1, checkFailedNum.Load(), recoverNum.Load())
 		summary := `Domain    : ` + host.host + `<br>` +
 			`Volume    : ` + vol + `<br>` +
 			`Partition : ` + partitionStr + `<br>`
 
-		// broken tiny extent over 100 or 60% warn by ump
 		warnMsg := fmt.Sprintf("Domain: %v Volume: %v BadPartitions: %v", host.host, vol, partitionStr)
-		if (volInfo.RwDpCnt > 0 && brokenCount*100/volInfo.RwDpCnt > 60) || brokenCount > 100 {
+		if (volInfo.RwDpCnt > 0 && brokenCount*100/volInfo.RwDpCnt > 70) || brokenCount > 200 {
 			checktool.WarnBySpecialUmpKey(UMPCFSNodeTinyExtentCheckKey, warnMsg)
-		} else {
-			log.LogWarnf(warnMsg)
-		}
-
-		// broken tiny extent over 20 or 20% warn by email
-		if (volInfo.RwDpCnt > 0 && brokenCount*100/volInfo.RwDpCnt > 20) || brokenCount > 20 {
 			err = multi_email.Email(fmt.Sprintf("AvailableTinyExtentCheck [Domain: %v, Volume: %v]", host.host, vol), summary, elements)
 			if err != nil {
 				log.LogErrorf("send email failed, err:%v", err)
 			}
 		} else {
+			log.LogWarnf(warnMsg)
 			persistBrokenData(host.host, vol, elements)
 		}
 	}
@@ -262,14 +259,16 @@ func persistBrokenData(domain string, vol string, elements [][]string) {
 	}
 }
 
+const BrokenTypeIndex = 1
 const (
 	DpInRecoverMsg     = "InRecover"
 	CheckTinyFailedMsg = "CheckExtentFailed"
 	BrokenTinyMsg      = "BrokenTinyExtent"
+	NoSpaceErrMsg      = "NoSpaceError"
 	InvalidExtentIDMsg = "InvalidExtentID"
 )
 
-func checkDataPartitionAvailTiny(vol string, dp *DataPartitionResponse, brokenRw, recoverNum, checkFailedNum *atomic.Int32, mc *master.MasterClient) []string {
+func checkDataPartitionAvailTiny(vol string, dp *DataPartitionResponse, recoverNum, checkFailedNum *atomic.Int32, mc *master.MasterClient) []string {
 	var (
 		err           error
 		primaryLeader string
@@ -277,6 +276,9 @@ func checkDataPartitionAvailTiny(vol string, dp *DataPartitionResponse, brokenRw
 		brokenType    string
 		tinyExtents   []*http_client.TinyExtentsInfo
 	)
+	if dp.Status == ReadOnly {
+		return []string{}
+	}
 	if len(dp.Hosts) < 1 {
 		return []string{}
 	}
@@ -297,7 +299,7 @@ func checkDataPartitionAvailTiny(vol string, dp *DataPartitionResponse, brokenRw
 	}
 	if dp.IsRecover {
 		recoverNum.Add(1)
-		result[1] = DpInRecoverMsg
+		result[BrokenTypeIndex] = DpInRecoverMsg
 		return result
 	}
 	dHost := fmt.Sprintf("%v:%v", strings.Split(primaryLeader, ":")[0], profPortMap[strings.Split(primaryLeader, ":")[1]])
@@ -306,20 +308,17 @@ func checkDataPartitionAvailTiny(vol string, dp *DataPartitionResponse, brokenRw
 	if err != nil {
 		log.LogErrorf("vol[%v] dp[%v] get tiny extents err:%v", vol, dp.PartitionID, err)
 		checkFailedNum.Add(1)
-		result[1] = CheckTinyFailedMsg
+		result[BrokenTypeIndex] = CheckTinyFailedMsg
 		return result
 	}
 	if good {
 		return []string{}
 	}
-	if dp.Status == ReadWrite {
-		brokenRw.Add(1)
-	}
 	return []string{
 		fmt.Sprintf("%v", dp.PartitionID),
 		brokenType,
 		fmt.Sprintf("%v", dp.ReplicaNum),
-		strings.Join(dp.Hosts, ","),
+		strings.Join(dp.Hosts, ";"),
 		dp.LeaderAddr,
 		fmt.Sprintf("%v", dp.Status),
 		fmt.Sprintf("%v", dp.IsRecover || DpInRecoverMsg == brokenType),
@@ -364,7 +363,7 @@ func retryCheckAvailTinyExtent(vol string, dataClient *http_client.DataClient, d
 			return true, "", nil, nil
 		}
 
-		if tinyExtents[0].AvailableCh == 0 {
+		if tinyExtents[0].AvailableCh < 10 {
 			partition, e := mc.AdminAPI().GetDataPartition(vol, dp.PartitionID)
 			if e != nil {
 				log.LogErrorf("get data partition failed, vol:%v, partition:%v, err:%v", vol, dp.PartitionID, err)
@@ -377,7 +376,20 @@ func retryCheckAvailTinyExtent(vol string, dataClient *http_client.DataClient, d
 						return false, DpInRecoverMsg, tinyExtents, nil
 					}
 				}
-				return false, BrokenTinyMsg, tinyExtents, nil
+			}
+			for _, replica := range partition.Replicas {
+				dHost := fmt.Sprintf("%v:%v", strings.Split(replica.Addr, ":")[0], profPortMap[strings.Split(replica.Addr, ":")[1]])
+				dClient := http_client.NewDataClient(dHost, false)
+				disks, errDisk := dClient.GetDisks()
+				if errDisk == nil {
+					for _, d := range disks.Disks {
+						if d.Path == replica.DiskPath {
+							if d.Available < unit.MB*32 || (d.Total > 0 && d.Used*1000/d.Total >= 999) {
+								return false, NoSpaceErrMsg, tinyExtents, nil
+							}
+						}
+					}
+				}
 			}
 		}
 		time.Sleep(time.Second)
