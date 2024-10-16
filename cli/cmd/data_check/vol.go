@@ -10,6 +10,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"sync"
+	"time"
 )
 
 var UmpWarnKey = "check_crc_server"
@@ -29,14 +30,20 @@ func (checkEngine *CheckEngine) checkVols() (err error) {
 	if err != nil {
 		return
 	}
-
+	var count int
 	for _, v := range checkVols {
 		if checkEngine.closed {
 			log.LogWarnf("check engine closed")
 			break
 		}
+		log.LogInfof("checkVols, currentVol[%v] total[%v] checked[%v] remain[%v]", v, len(checkVols), count, len(checkVols)-count)
 		checkEngine.currentVol = v
+		if !checkEngine.filterByZone() {
+			count++
+			return
+		}
 		checkEngine.checkVol()
+		count++
 	}
 	return
 }
@@ -76,6 +83,7 @@ func (checkEngine *CheckEngine) checkVol() {
 		wg     sync.WaitGroup
 		inodes []uint64
 		err    error
+		mps    []*proto.MetaPartitionView
 	)
 	defer func() {
 		if r := recover(); r != nil {
@@ -90,8 +98,8 @@ func (checkEngine *CheckEngine) checkVol() {
 			log.LogErrorf("CheckFail-Volume: %s, err:%v", checkEngine.currentVol, err)
 		}
 	}()
-	log.LogInfof("begin check, cluster:%s, vol:%s, path:%v\n", checkEngine.cluster, checkEngine.currentVol, checkEngine.path)
-	mps, err := checkEngine.mc.ClientAPI().GetMetaPartitions(checkEngine.currentVol)
+	log.LogInfof("begin check volume, cluster:%s, vol:%s, path:%v\n", checkEngine.cluster, checkEngine.currentVol, checkEngine.path)
+	mps, err = checkEngine.mc.ClientAPI().GetMetaPartitions(checkEngine.currentVol)
 	if err != nil {
 		return
 	}
@@ -131,6 +139,39 @@ func (checkEngine *CheckEngine) checkVol() {
 		}()
 	}
 	wg.Wait()
+}
+
+func (checkEngine *CheckEngine) filterByZone() bool {
+	var (
+		vv       *proto.SimpleVolView
+		err      error
+		zoneName string
+	)
+	if len(checkEngine.config.Filter.ZoneFilter) == 0 && len(checkEngine.config.Filter.ZoneExcludeFilter) == 0 {
+		return true
+	}
+	vv, err = checkEngine.mc.AdminAPI().GetVolumeSimpleInfo(checkEngine.currentVol)
+	time.Sleep(time.Second)
+	if err != nil {
+		log.LogErrorf("get volume[%v] simple info failed, err:%v", checkEngine.currentVol, err)
+		return true
+	}
+	log.LogInfof("volume[%v] zone[%v] zone filter[%v] zone exclude filter[%v]")
+	zoneName = vv.ZoneName
+	if zoneName == "" {
+		zoneName = "default"
+	}
+	if len(checkEngine.config.Filter.ZoneFilter) > 0 {
+		if !proto.IncludeString(zoneName, checkEngine.config.Filter.ZoneFilter) {
+			return false
+		}
+	}
+	if len(checkEngine.config.Filter.ZoneExcludeFilter) > 0 {
+		if proto.IncludeString(zoneName, checkEngine.config.Filter.ZoneExcludeFilter) {
+			return false
+		}
+	}
+	return true
 }
 
 func (checkEngine *CheckEngine) checkMp(mp uint64, mps []*proto.MetaPartitionView) {
