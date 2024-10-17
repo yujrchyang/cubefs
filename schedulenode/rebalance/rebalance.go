@@ -147,12 +147,14 @@ func (rw *ReBalanceWorker) getDataNodePProfPort(cluster string) (port string) {
 		return
 	}
 
+	return getDefaultDataNodePProfPort(cluster)
+}
+
+func getDefaultDataNodePProfPort(cluster string) (port string) {
 	switch cluster {
 	case SPARK, DBBAK, ELASTICDB, CFS_AMS_MCA, OCHAMA:
 		port = "6001"
-	case TEST:
-		port = "17031"
-	case TestES:
+	case TEST, TestES, TestDbBak:
 		port = "17031"
 	default:
 		port = "6001"

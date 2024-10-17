@@ -514,7 +514,6 @@ func loadDataNodeUsageRatio(cluster, host, zoneName string) (dataNodeInfo []*Nod
 			return nil, err
 		}
 		for _, nodeView := range cv.DataNodes {
-			// todo: status
 			zoneDataNodes = append(zoneDataNodes, nodeView.Addr)
 		}
 	} else {
@@ -536,7 +535,7 @@ func loadDataNodeUsageRatio(cluster, host, zoneName string) (dataNodeInfo []*Nod
 
 	var (
 		wg sync.WaitGroup
-		ch = make(chan struct{}, 10)
+		ch = make(chan struct{}, 200)
 		mu sync.Mutex
 	)
 	for _, dataNodeAddr := range zoneDataNodes {
@@ -547,32 +546,17 @@ func loadDataNodeUsageRatio(cluster, host, zoneName string) (dataNodeInfo []*Nod
 				<-ch
 				wg.Done()
 			}()
-			var usedRatio float64
-			if isRelease(cluster) {
-				node, errForGet := rc.AdminGetDataNode(dataNodeAddr)
-				if errForGet != nil {
-					log.LogErrorf("loadDataNodeUsageRatio getDataNode:%v err:%v", dataNodeAddr, errForGet)
-					return
-				}
-				// 创建任务前校验 先不遍历所有分片，先用节点阈值选点
-				usedRatio = node.Ratio
-			} else {
-				node, errForGet := mc.NodeAPI().GetDataNode(dataNodeAddr)
-				if errForGet != nil {
-					log.LogErrorf("loadDataNodeUsageRatio getDataNode:%v err:%v", dataNodeAddr, errForGet)
-					return
-				}
-				var used uint64
-				for _, dpReport := range node.DataPartitionReports {
-					diskInfo := node.DiskInfos[dpReport.DiskPath]
-					if dpReport.IsSFX && diskInfo.CompressionRatio != 0 {
-						used += dpReport.Used * 100 / uint64(diskInfo.CompressionRatio)
-					} else {
-						used += dpReport.Used
-					}
-				}
-				usedRatio = float64(used) / float64(node.Total)
+
+			dc := getDataHttpClient(dataNodeAddr, getDefaultDataNodePProfPort(cluster))
+			nodeStats, errForGet := dc.GetDatanodeStats()
+			if errForGet != nil {
+				log.LogErrorf("loadDataNodeUsageRatio getDataNode:%v err:%v", dataNodeAddr, errForGet)
+				return
 			}
+			if isRelease(cluster) {
+				nodeStats.PartitionReports = nodeStats.PartitionInfo
+			}
+			usedRatio := convertActualUsageRatio(nodeStats)
 
 			mu.Lock()
 			dataNodeInfo = append(dataNodeInfo, &NodeUsageInfo{

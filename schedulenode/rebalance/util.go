@@ -175,6 +175,7 @@ func getStatusStr(status Status) string {
 
 func (rc *releaseClient) AdminGetCluster() (cv *ClusterView, err error) {
 	req := rc.newAPIRequest(http.MethodGet, "/admin/getCluster")
+	req.AddParam("ts", strconv.FormatInt(time.Now().Unix(), 10))
 	body, err := rc.sendSimpleRequest(req)
 	if err != nil {
 		return nil, err
