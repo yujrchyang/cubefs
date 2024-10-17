@@ -220,10 +220,18 @@ func (rw *ReBalanceWorker) newZoneRebalanceCtrl(cluster, zoneName string, rType 
 	}
 
 	// RECORD_NOT_FOUND or restart
-	if rInfo, err = rw.insertRebalanceInfo(cluster, zoneName, rType, maxBatchCount,
-		highRatio, lowRatio, goalRatio, migrateLimitPerDisk, dstMetaNodeMaxPartitionCount, StatusRunning); err != nil {
-		return
+	if rInfo.ID > 0 && isRestart {
+		if rInfo, err = rw.updateRebalancedInfo(cluster, zoneName, rType, maxBatchCount,
+			highRatio, lowRatio, goalRatio, migrateLimitPerDisk, dstMetaNodeMaxPartitionCount, StatusRunning); err != nil {
+			return
+		}
+	} else {
+		if rInfo, err = rw.insertRebalanceInfo(cluster, zoneName, rType, maxBatchCount,
+			highRatio, lowRatio, goalRatio, migrateLimitPerDisk, dstMetaNodeMaxPartitionCount, StatusRunning); err != nil {
+			return
+		}
 	}
+
 	ctrl.SetCtrlTaskID(rInfo.ID)
 	ctrl.SetCreatedUpdatedAt(rInfo.CreatedAt, rInfo.UpdatedAt)
 	rw.reBalanceCtrlMap.Store(getRebalanceCtrlMapKey(cluster, rType, rInfo.ID), ctrl)

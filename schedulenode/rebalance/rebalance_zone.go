@@ -345,7 +345,6 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 				break
 			}
 		}
-		time.Sleep(time.Minute * 1)
 		srcNode.isFinished = true
 		log.LogInfof("doDataReBalance: taskID(%v) zone(%v) srcNode(%v) finished", zoneCtrl.Id, zoneCtrl.zoneName, srcNode.nodeInfo.Addr)
 	}
@@ -434,30 +433,23 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 	}
 
 	for _, srcMetaNode := range zoneCtrl.srcMetaNodes {
+		select {
+		case <-zoneCtrl.ctx.Done():
+			zoneCtrl.SetIsManualStop(true)
+			log.LogInfof("doMetaReBalance: stop: %v", zoneCtrl.String())
+			return
+		default:
+		}
+
 		err := srcMetaNode.updateSortedMetaPartitions()
 		if err != nil {
 			log.LogWarnf("doMetaReBalance: updateSortedMetaPartitions failed, err(%v)", err)
 			continue
 		}
-		for srcMetaNode.NeedReBalance(zoneCtrl.goalRatio) {
-			select {
-			case <-zoneCtrl.ctx.Done():
-				zoneCtrl.SetIsManualStop(true)
-				log.LogInfof("doMetaReBalance: stop: %v", zoneCtrl.String())
-				return
-			default:
-			}
-
-			inRecoveringMPMap, err := zoneCtrl.isInRecoveringMoreThanMaxBatchCount(zoneCtrl.clusterMaxBatchCount, zoneCtrl.rType)
-			if err != nil {
-				log.LogWarnf("doMetaReBalance err:%v", err.Error())
-				time.Sleep(defaultWaitClusterRecover)
-				continue
-			}
-			clusterMPCurrency := zoneCtrl.clusterMaxBatchCount - len(inRecoveringMPMap)
-			if err := srcMetaNode.doMigrate(clusterMPCurrency); err != nil {
+		needRebalance := srcMetaNode.NeedReBalance(zoneCtrl.goalRatio)
+		if needRebalance {
+			if err = srcMetaNode.doMigrate(); err != nil {
 				log.LogErrorf("doMetaReBalance: doMigrate failed, taskID(%v) node(%v) err(%v)", zoneCtrl.Id, srcMetaNode.nodeInfo.Addr, err)
-				break
 			}
 		}
 		srcMetaNode.isFinished = true
@@ -542,7 +534,7 @@ func (zoneCtrl *ZoneReBalanceController) getInRecoveringMapIgnoreMig(rType Rebal
 			}
 		}
 	} else {
-		clusterView, err := zoneCtrl.masterClient.AdminAPI().GetCluster()
+		clusterView, err := zoneCtrl.masterClient.AdminAPI().GetClusterNoCache(time.Now().Unix())
 		if err != nil {
 			return nil, err
 		}
