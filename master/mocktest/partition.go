@@ -19,4 +19,14 @@ type MockMetaPartition struct {
 	VolName     string
 	Members     []proto.Peer
 	Learners    []proto.Learner
+	Recorders	[]string
+}
+
+type MockMetaRecorder struct {
+	PartitionID uint64
+	Status      int8
+	VolName     string
+	Members     []proto.Peer
+	Learners    []proto.Learner
+	Recorders	[]string
 }

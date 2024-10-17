@@ -107,7 +107,7 @@ func (t *AdminTask) isLoadTask() bool {
 }
 
 func (t *AdminTask) isCreateTask() bool {
-	return t.OpCode == OpCreateDataPartition || t.OpCode == OpCreateMetaPartition
+	return t.OpCode == OpCreateDataPartition || t.OpCode == OpCreateMetaPartition || t.OpCode == OpCreateMetaRecorder
 }
 
 // IsHeartbeatTask returns if the task is a heartbeat task.

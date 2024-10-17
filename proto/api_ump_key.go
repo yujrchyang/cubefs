@@ -157,6 +157,8 @@ const (
 	HeartbeatTaskPbResponseUmpKey               = "heartbeatPb_response"
 	GetUnavailDataPartitionsUmpKey              = "get_unavail_dps"
 	AdminSetVolDisableStateUmpKey               = "vol_setDisableState"
+	AdminAddMetaRecorderUmpKey                  = "metaRecorder_add"
+	AdminDeleteMetaRecorderUmpKey               = "metaRecorder_delete"
 
 	// task running time ump key
 	CheckVolStatus                     = "task_check_vol_status"

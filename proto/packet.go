@@ -120,6 +120,7 @@ const (
 	OpMetaExtentsInsert      uint8 = 0x3B
 	OpMetaInodeGetV2         uint8 = 0x3C //new op code, old(get) compatible the old client
 	OpGetMetaNodeVersionInfo uint8 = 0x3D
+	OpMetaGetTruncateIndex   uint8 = 0x3E
 
 	// Operations: Master -> MetaNode
 	OpCreateMetaPartition             uint8 = 0x40
@@ -141,10 +142,17 @@ const (
 
 	OpAddVirtualMetaPartition          uint8 = 0x5A //添加虚拟mp的逻辑发生变化，防止master升级后使用旧的op code给metanode发送添加虚拟mp的请求
 	OpMetaGetExtentsNoModifyAccessTime uint8 = 0x5B
+	OpResetMetaRecorderRaftMember      uint8 = 0x5C
 
 	// Operations client-->datanode
 	OpRandomWriteV3     uint8 = 0x50
 	OpSyncRandomWriteV3 uint8 = 0x51
+
+	// Operations for raft recorder
+	OpAddMetaPartitionRaftRecorder    	uint8 = 0x52
+	OpRemoveMetaPartitionRaftRecorder 	uint8 = 0x53
+	OpCreateMetaRecorder 				uint8 = 0x54
+	OpDeleteMetaRecorder 				uint8 = 0x55
 
 	// Operations: Master -> DataNode
 	OpCreateDataPartition             uint8 = 0x60
@@ -518,6 +526,16 @@ func GetOpMsg(opcode uint8) (m string) {
 		m = "OpPromoteMetaPartitionRaftLearner"
 	case OpResetMetaPartitionRaftMember:
 		m = "OpResetMetaPartitionRaftMember"
+	case OpCreateMetaRecorder:
+		m = "OpCreateMetaRecorder"
+	case OpDeleteMetaRecorder:
+		m = "OpDeleteMetaRecorder"
+	case OpAddMetaPartitionRaftRecorder:
+		m = "OpAddMetaPartitionRaftRecorder"
+	case OpRemoveMetaPartitionRaftRecorder:
+		m = "OpRemoveMetaPartitionRaftRecorder"
+	case OpResetMetaRecorderRaftMember:
+		m = "OpResetMetaRecorderRaftMember"
 	case OpMetaPartitionTryToLeader:
 		m = "OpMetaPartitionTryToLeader"
 	case OpDataPartitionTryToLeader:
@@ -556,6 +574,8 @@ func GetOpMsg(opcode uint8) (m string) {
 		m = "OpSyncDataPartitionReplicas"
 	case OpMetaGetAppliedID:
 		m = "OpMetaGetAppliedID"
+	case OpMetaGetTruncateIndex:
+		m = "OpMetaGetTruncateIndex"
 	case OpRandomWriteV3:
 		m = "OpRandomWriteV3"
 	case OpFingerprint:

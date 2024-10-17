@@ -76,6 +76,7 @@ type MetaNodeInfo struct {
 	MetaPartitionCount        int
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
+	PersistenceMetaRecorders  []uint64
 	ToBeOffline               bool
 	ToBeMigrated              bool
 	ProfPort                  string
@@ -151,7 +152,9 @@ type MetaPartitionInfo struct {
 	MaxExistIno       uint64
 	VolName           string
 	Replicas          []*MetaReplicaInfo
+	RecordersInfo     []*MetaRecorderInfo
 	ReplicaNum        uint8
+	RecorderNum       uint8
 	LearnerNum        uint8
 	Status            int8
 	IsRecover         bool
@@ -159,7 +162,9 @@ type MetaPartitionInfo struct {
 	PersistenceHosts  []string //for dbbak cluster
 	Peers             []Peer
 	Learners          []Learner
+	Recorders		  []string
 	Zones             []string
+	RecorderZones	  []string
 	OfflinePeerID     uint64
 	MissNodes         map[string]int64
 	LoadResponse      []*MetaPartitionLoadResponse
@@ -205,6 +210,14 @@ type MetaReplicaInfo struct {
 	DentryCount uint64
 	IsLearner   bool
 	StoreMode   StoreMode
+	ApplyId     uint64
+	IsRecover   bool
+}
+
+type MetaRecorderInfo struct {
+	Addr        string
+	ReportTime  int64
+	Status      int8 // unavailable or readWrite
 	ApplyId     uint64
 	IsRecover   bool
 }

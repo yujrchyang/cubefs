@@ -37,6 +37,7 @@ type MockMetaServer struct {
 	ZoneName   string
 	mc         *master.MasterClient
 	partitions map[uint64]*MockMetaPartition // Key: metaRangeId, Val: metaPartition
+	recorders  map[uint64]*MockMetaRecorder // Key: metaRangeId, Val: metaPartition
 	sync.RWMutex
 	stopC        chan bool
 	newRegEnable bool
@@ -45,11 +46,13 @@ type MockMetaServer struct {
 
 func NewMockMetaServer(addr string, zoneName string, metaDataDir string) *MockMetaServer {
 	mms := &MockMetaServer{
-		TcpAddr: addr, partitions: make(map[uint64]*MockMetaPartition, 0),
-		ZoneName:    zoneName,
-		mc:          master.NewMasterClient([]string{hostAddr}, false),
-		stopC:       make(chan bool),
-		metaDataDir: path.Join(metaDataDir, "metanode_"+strings.Split(addr, ":")[1]),
+		TcpAddr: 		addr,
+		partitions: 	make(map[uint64]*MockMetaPartition, 0),
+		recorders: 		make(map[uint64]*MockMetaRecorder, 0),
+		ZoneName:		zoneName,
+		mc:          	master.NewMasterClient([]string{hostAddr}, false),
+		stopC:       	make(chan bool),
+		metaDataDir:	path.Join(metaDataDir, "metanode_"+strings.Split(addr, ":")[1]),
 	}
 	os.MkdirAll(mms.metaDataDir, 06555)
 	return mms
@@ -208,6 +211,16 @@ func (mms *MockMetaServer) serveConn(rc net.Conn) {
 		err = mms.handleResetMetaPartitionRaftMember(conn, req, adminTask)
 	case proto.OpMetaPartitionTryToLeader:
 		err = mms.handleTryToLeader(conn, req, adminTask)
+	case proto.OpCreateMetaRecorder:
+		err = mms.handleCreateMetaRecorder(conn, req, adminTask)
+	case proto.OpDeleteMetaRecorder:
+		err = mms.handleDeleteMetaRecorder(conn, req, adminTask)
+	case proto.OpAddMetaPartitionRaftRecorder:
+		err = mms.handleAddMetaPartitionRaftRecorder(conn, req, adminTask)
+	case proto.OpRemoveMetaPartitionRaftRecorder:
+		err = mms.handleRemoveMetaPartitionRaftRecorder(conn, req, adminTask)
+	case proto.OpResetMetaRecorderRaftMember:
+		err = mms.handleResetMetaRecorderRaftMember(conn, req, adminTask)
 	default:
 		fmt.Printf("unknown code [%v]\n", req.Opcode)
 	}
@@ -270,6 +283,7 @@ func (mms *MockMetaServer) handleCreateMetaPartition(conn net.Conn, p *proto.Pac
 		Cursor:      req.Start,
 		Members:     req.Members,
 		Learners:    req.Learners,
+		Recorders: 	 req.Recorders,
 	}
 	mms.Lock()
 	mms.partitions[req.PartitionID] = partition
@@ -433,4 +447,56 @@ func (mms *MockMetaServer) handleDecommissionMetaPartition(conn net.Conn, p *pro
 		Status:      proto.TaskSucceeds,
 	}
 	return mms.postResponseToMaster(adminTask, resp)
+}
+
+func (mms *MockMetaServer) handleCreateMetaRecorder(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	defer func() {
+		if err != nil {
+			responseAckErrToMaster(conn, p, err)
+		} else {
+			responseAckOKToMaster(conn, p, nil)
+		}
+	}()
+	// Marshal request body.
+	requestJson, err := json.Marshal(adminTask.Request)
+	if err != nil {
+		return
+	}
+	// Unmarshal request to entity
+	req := &proto.CreateMetaRecorderRequest{}
+	if err = json.Unmarshal(requestJson, req); err != nil {
+		return
+	}
+	// Create new  metaPartition.
+	recorder := &MockMetaRecorder{
+		PartitionID: req.PartitionID,
+		VolName:     req.VolName,
+		Members:     req.Members,
+		Learners:    req.Learners,
+		Recorders: 	 req.Recorders,
+	}
+	mms.Lock()
+	mms.recorders[req.PartitionID] = recorder
+	mms.Unlock()
+	return
+}
+
+func (mms *MockMetaServer) handleDeleteMetaRecorder(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mms *MockMetaServer) handleAddMetaPartitionRaftRecorder(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mms *MockMetaServer) handleRemoveMetaPartitionRaftRecorder(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
+}
+
+func (mms *MockMetaServer) handleResetMetaRecorderRaftMember(conn net.Conn, p *proto.Packet, adminTask *proto.AdminTask) (err error) {
+	responseAckOKToMaster(conn, p, nil)
+	return
 }

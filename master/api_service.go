@@ -804,6 +804,69 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(msg))
 }
 
+func (m *Server) addMetaRecorder(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		addr        string
+		mp          *MetaPartition
+		partitionID	uint64
+		err         error
+	)
+	metrics := exporter.NewModuleTP(proto.AdminAddMetaRecorderUmpKey)
+	defer func() { metrics.Set(err) }()
+	if partitionID, addr, err = parseRequestToAddMetaRecorder(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+
+	mp.offlineMutex.Lock()
+	defer mp.offlineMutex.Unlock()
+
+	if err = m.cluster.addMetaRecorder(mp, addr); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("meta partitionID[%v] add recorder [%v] successfully", partitionID, addr)
+	mp.IsRecover = true
+	mp.modifyTime = time.Now().Unix()
+	m.cluster.putBadMetaPartitions(addr, mp.PartitionID)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
+func (m *Server) deleteMetaRecorder(w http.ResponseWriter, r *http.Request) {
+	var (
+		msg         string
+		addr        string
+		mp          *MetaPartition
+		partitionID uint64
+		err         error
+	)
+
+	metrics := exporter.NewModuleTP(proto.AdminDeleteMetaRecorderUmpKey)
+	defer func() { metrics.Set(err) }()
+	if partitionID, addr, err = parseRequestToDeleteMetaRecorder(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if mp, err = m.cluster.getMetaPartitionByID(partitionID); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
+		return
+	}
+	mp.offlineMutex.Lock()
+	defer mp.offlineMutex.Unlock()
+	if err = m.cluster.deleteMetaRecorder(mp, addr, true, false); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	msg = fmt.Sprintf("meta partitionID: %v  delete recorder [%v] successfully", partitionID, addr)
+	sendOkReply(w, r, newSuccessHTTPReply(msg))
+}
+
 func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 	var (
 		msg             string
@@ -2155,6 +2218,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		MpReplicaNum:             vol.mpReplicaNum,
 		DpLearnerNum:             vol.dpLearnerNum,
 		MpLearnerNum:             vol.mpLearnerNum,
+		DpRecorderNum: 			  vol.dpRecorderNum,
+		MpRecorderNum: 			  vol.mpRecorderNum,
 		InodeCount:               volInodeCount,
 		DentryCount:              volDentryCount,
 		MaxMetaPartitionID:       maxPartitionID,
@@ -2939,7 +3004,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 		return
 	}
-	metaNode.PersistenceMetaPartitions = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
+	metaNode.PersistenceMetaPartitions, metaNode.PersistenceMetaRecorders = m.cluster.getAllMetaPartitionIDByMetaNode(nodeAddr)
 	metaNode.RLock()
 	metaNodeInfo = &proto.MetaNodeInfo{
 		ID:                        metaNode.ID,
@@ -2957,6 +3022,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
+		PersistenceMetaRecorders:  metaNode.PersistenceMetaRecorders,
 		ToBeOffline:               metaNode.ToBeOffline,
 		ToBeMigrated:              metaNode.ToBeMigrated,
 		ProfPort:                  metaNode.ProfPort,
@@ -3051,11 +3117,12 @@ func (m *Server) selectMetaReplaceNodeAddr(w http.ResponseWriter, r *http.Reques
 
 func (m *Server) resetMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		mp          *MetaPartition
-		partitionID uint64
-		rstMsg      string
-		panicHosts  []string
-		err         error
+		mp          	*MetaPartition
+		partitionID 	uint64
+		rstMsg      	string
+		panicHosts  	[]string
+		panicRecorders	[]string
+		err         	error
 	)
 	metrics := exporter.NewModuleTP(proto.AdminResetMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -3068,11 +3135,11 @@ func (m *Server) resetMetaPartition(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-	if panicHosts, err = m.getPanicHostsInMetaPartition(mp); err != nil {
+	if panicHosts, panicRecorders, err = m.getPanicHostsInMetaPartition(mp); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.resetMetaPartition(mp, panicHosts); err != nil {
+	if err = m.cluster.resetMetaPartition(mp, panicHosts, panicRecorders); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3080,22 +3147,32 @@ func (m *Server) resetMetaPartition(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-func (m *Server) getPanicHostsInMetaPartition(mp *MetaPartition) (panicHosts []string, err error) {
+func (m *Server) getPanicHostsInMetaPartition(mp *MetaPartition) (panicHosts, panicRecorders []string, err error) {
 	learnerHosts := mp.getLearnerHosts()
-	for _, host := range mp.Hosts {
-		if contains(learnerHosts, host) {
-			continue
+	getPanicAddrsFunc := func(addrs []string) (panicAddrs []string, err error) {
+		for _, addr := range addrs {
+			if contains(learnerHosts, addr) {
+				continue
+			}
+			var metaNode *MetaNode
+			if metaNode, err = m.cluster.metaNode(addr); err != nil {
+				err = proto.ErrMetaNodeNotExists
+				return
+			}
+			if !metaNode.IsActive {
+				panicAddrs = append(panicAddrs, addr)
+			}
 		}
-		var metaNode *MetaNode
-		if metaNode, err = m.cluster.metaNode(host); err != nil {
-			err = proto.ErrMetaNodeNotExists
-			return
-		}
-		if !metaNode.IsActive {
-			panicHosts = append(panicHosts, host)
-		}
+		return
 	}
-	if uint8(len(panicHosts)) <= mp.ReplicaNum/2 {
+	if panicHosts, err = getPanicAddrsFunc(mp.Hosts); err != nil {
+		return
+	}
+	if panicRecorders, err = getPanicAddrsFunc(mp.Recorders); err != nil {
+		return
+	}
+
+	if uint8(len(panicHosts)+len(panicRecorders)) <= (mp.ReplicaNum+mp.RecorderNum)/2 {
 		err = proto.ErrBadReplicaNoMoreThanHalf
 		return
 	}
@@ -3107,16 +3184,18 @@ func (m *Server) getPanicHostsInMetaPartition(mp *MetaPartition) (panicHosts []s
 }
 func (m *Server) manualResetMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		mp          *MetaPartition
-		partitionID uint64
-		rstMsg      string
-		nodeAddrs   string
-		panicHosts  []string
-		err         error
+		mp          	*MetaPartition
+		partitionID 	uint64
+		rstMsg      	string
+		nodeAddrs   	string
+		panicHosts  	[]string
+		panicRecorders	[]string
+		err         	error
 	)
 	metrics := exporter.NewModuleTP(proto.AdminManualResetMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
 	panicHosts = make([]string, 0)
+	panicRecorders = make([]string, 0)
 	if nodeAddrs, partitionID, err = parseRequestToManualResetMetaPartition(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -3133,7 +3212,7 @@ func (m *Server) manualResetMetaPartition(w http.ResponseWriter, r *http.Request
 			sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 			return
 		}
-		if !contains(mp.Hosts, node) {
+		if !mp.hasPeer(node) {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("host not exist in meta partition")))
 			return
 		}
@@ -3143,7 +3222,12 @@ func (m *Server) manualResetMetaPartition(w http.ResponseWriter, r *http.Request
 			panicHosts = append(panicHosts, host)
 		}
 	}
-	if err = m.cluster.resetMetaPartition(mp, panicHosts); err != nil {
+	for _, addr := range mp.Recorders {
+		if !contains(nodes, addr) {
+			panicRecorders = append(panicRecorders, addr)
+		}
+	}
+	if err = m.cluster.resetMetaPartition(mp, panicHosts, panicRecorders); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3212,12 +3296,13 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) resetCorruptMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		node           *MetaNode
-		addr           string
-		rstMsg         string
-		corruptMps     []*MetaPartition
-		panicHostsList [][]string
-		err            error
+		node           		*MetaNode
+		addr           		string
+		rstMsg         		string
+		corruptMps     		[]*MetaPartition
+		panicHostsList 		[][]string
+		panicRecordersList	[][]string
+		err            		error
 	)
 	metrics := exporter.NewModuleTP(proto.AdminResetCorruptMetaNodeUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -3235,11 +3320,11 @@ func (m *Server) resetCorruptMetaNode(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if corruptMps, panicHostsList, err = m.cluster.checkCorruptMetaNode(node); err != nil {
+	if corruptMps, panicHostsList, panicRecordersList, err = m.cluster.checkCorruptMetaNode(node); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 	}
 	for i, mp := range corruptMps {
-		if err = m.cluster.resetMetaPartition(mp, panicHostsList[i]); err != nil {
+		if err = m.cluster.resetMetaPartition(mp, panicHostsList[i], panicRecordersList[i]); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -4762,6 +4847,32 @@ func parseRequestToPromoteDataReplicaLearner(r *http.Request) (ID uint64, addr s
 	return extractDataPartitionIDAndAddr(r)
 }
 
+func parseRequestToAddMetaRecorder(r *http.Request) (ID uint64, addr string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ID, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+	if addr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	return
+}
+
+func parseRequestToDeleteMetaRecorder(r *http.Request) (ID uint64, addr string, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if ID, err = extractMetaPartitionID(r); err != nil {
+		return
+	}
+	if addr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	return
+}
+
 func extractDataPartitionIDAndAddr(r *http.Request) (ID uint64, addr string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -5539,6 +5650,9 @@ func getMetaPartitionView(mp *MetaPartition) (mpView *proto.MetaPartitionView) {
 	for _, host := range mp.Hosts {
 		mpView.Members = append(mpView.Members, host)
 	}
+	for _, recorder := range mp.Recorders {
+		mpView.Recorders = append(mpView.Recorders, recorder)
+	}
 	mpView.MaxInodeID = mp.MaxInodeID
 	mpView.InodeCount = mp.InodeCount
 	mpView.DentryCount = mp.DentryCount
@@ -5611,6 +5725,14 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				zones[idx] = metaNode.ZoneName
 			}
 		}
+		recorders := mp.Recorders
+		recorderZones := make([]string, len(recorders))
+		for idx, recorder := range recorders {
+			metaNode, err := m.cluster.metaNode(recorder)
+			if err == nil {
+				recorderZones[idx] = metaNode.ZoneName
+			}
+		}
 		memCnt := uint8(0)
 		rocksCnt := uint8(0)
 		for i := 0; i < len(replicas); i++ {
@@ -5635,6 +5757,16 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 				rocksCnt++
 			}
 		}
+		var recordersInfo = make([]*proto.MetaRecorderInfo, len(mp.RecordersInfo))
+		for i := 0; i < len(recordersInfo); i++ {
+			recordersInfo[i] = &proto.MetaRecorderInfo{
+				Addr:        mp.RecordersInfo[i].Addr,
+				ReportTime:  mp.RecordersInfo[i].ReportTime,
+				Status:      mp.RecordersInfo[i].Status,
+				ApplyId:     mp.RecordersInfo[i].ApplyId,
+				IsRecover:   mp.RecordersInfo[i].IsRecover,
+			}
+		}
 		var mpInfo = &proto.MetaPartitionInfo{
 			PartitionID:       partitionID,
 			Start:             mp.Start,
@@ -5645,14 +5777,18 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			DentryCount:       mp.DentryCount,
 			MaxExistIno:       mp.MaxExistIno,
 			Replicas:          replicas,
+			RecordersInfo: 	   recordersInfo,
 			ReplicaNum:        mp.ReplicaNum,
+			RecorderNum: 	   mp.RecorderNum,
 			LearnerNum:        mp.LearnerNum,
 			Status:            mp.Status,
 			IsRecover:         mp.IsRecover,
 			Hosts:             mp.Hosts,
 			Peers:             mp.Peers,
 			Learners:          mp.Learners,
+			Recorders:		   mp.Recorders,
 			Zones:             zones,
+			RecorderZones:     recorderZones,
 			OfflinePeerID:     mp.OfflinePeerID,
 			MissNodes:         mp.MissNodes,
 			LoadResponse:      mp.LoadResponse,

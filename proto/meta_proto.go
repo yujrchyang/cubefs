@@ -15,8 +15,29 @@
 package proto
 
 import (
+	"fmt"
 	"time"
 )
+
+type PeerType uint8
+
+const (
+	PeerNormal		PeerType = iota
+	PeerArbiter
+	PeerRecorder
+)
+
+func (t PeerType) String() string {
+	switch t {
+	case PeerNormal:
+		return "PeerNormal"
+	case PeerArbiter:
+		return "PeerArbiter"
+	case PeerRecorder:
+		return "PeerRecorder"
+	}
+	return "unknown"
+}
 
 // CreateNameSpaceRequest defines the request to create a name space.
 type CreateNameSpaceRequest struct {
@@ -31,8 +52,28 @@ type CreateNameSpaceResponse struct {
 
 // Peer defines the peer of the node id and address.
 type Peer struct {
-	ID   uint64 `json:"id"`
-	Addr string `json:"addr"`
+	ID   uint64 	`json:"id"`
+	Addr string 	`json:"addr"`
+	Type PeerType	`json:"type"`
+}
+
+func (p *Peer) String() string {
+	if p == nil {
+		return ""
+	}
+	return fmt.Sprintf("ID(%v)Addr(%v)Type(%v)", p.ID, p.Addr, p.Type)
+}
+
+func (p *Peer) IsNormal() bool {
+	return p.Type == PeerNormal
+}
+
+func (p *Peer) IsRecorder() bool {
+	return p.Type == PeerRecorder
+}
+
+func (p *Peer) IsEqual(comparePeer Peer) bool {
+	return p.ID == comparePeer.ID && p.Addr == comparePeer.Addr && p.Type == comparePeer.Type
 }
 
 // Learner defines the learner of the node id and address.
@@ -56,6 +97,7 @@ type CreateMetaPartitionRequest struct {
 	PartitionID  uint64
 	Members      []Peer
 	Learners     []Learner
+	Recorders	 []string
 	StoreMode    StoreMode
 	TrashDays    uint32
 	CreationType int
@@ -75,6 +117,14 @@ type MNMetaPartitionInfo struct {
 	Learners   []Learner `json:"learners"`
 	NodeId     uint64    `json:"nodeId"`
 	Cursor     uint64    `json:"cursor"`
+	RaftStatus *Status	 `json:"raft_status"`
+}
+
+type MNMetaRecorderInfo struct {
+	Peers      []Peer    `json:"peers"`
+	Learners   []Learner `json:"learners"`
+	NodeId     uint64    `json:"nodeId"`
+	RaftStatus *Status	 `json:"raft_status"`
 }
 
 type MetaDataCRCSumInfo struct {

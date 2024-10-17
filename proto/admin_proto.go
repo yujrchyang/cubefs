@@ -238,6 +238,10 @@ const (
 	AdminListFlashGroups           = "/flashGroup/list"
 	ClientFlashGroups              = "/client/flashGroups"
 
+	// Recorder API
+	AdminAddMetaRecorder	= "/metaRecorder/add"
+	AdminDeleteMetaRecorder	= "/metaRecorder/delete"
+
 	AdminSetClusterName = "/admin/setClusterName"
 
 	//graphql api for header
@@ -370,7 +374,7 @@ func (p CrossRegionHAType) String() string {
 }
 
 const (
-	DefaultCrossRegionHAType CrossRegionHAType = iota // 默认类型，表示主被复制中所有复制组成员必须全部成功才可判定为成功
+	DefaultCrossRegionHAType CrossRegionHAType = iota // 默认类型，表示主备复制中所有复制组成员必须全部成功才可判定为成功
 	CrossRegionHATypeQuorum                           // 表示主备复制中采用Quorum机制，复制组成员成功数量达到Quorum数值要求即可判定为成功
 )
 
@@ -811,7 +815,7 @@ type AddMetaPartitionRaftLearnerRequest struct {
 	AddLearner  Learner `json:"learner"`
 }
 
-// AddMetaPartitionRaftLearnerRequest defines the request of add raftLearner a meta partition.
+// PromoteMetaPartitionRaftLearnerRequest defines the request of add raftLearner a meta partition.
 type PromoteMetaPartitionRaftLearnerRequest struct {
 	PartitionId    uint64  `json:"pid"`
 	PromoteLearner Learner `json:"learner"`
@@ -829,6 +833,45 @@ type RemoveMetaPartitionRaftMemberRequest struct {
 type ResetMetaPartitionRaftMemberRequest struct {
 	PartitionId uint64
 	NewPeers    []Peer
+}
+
+// AddMetaPartitionRaftRecorderRequest defines the request of add raftMember a meta partition.
+type AddMetaPartitionRaftRecorderRequest struct {
+	PartitionId uint64
+	AddRecorder Peer
+}
+
+type RemoveMetaPartitionRaftRecorderRequest struct {
+	PartitionId     uint64
+	RemoveRecorder  Peer
+	ReserveResource bool
+	RaftOnly        bool
+}
+
+type ResetMetaRecorderRaftMemberRequest struct {
+	PartitionId uint64
+	NewPeers    []Peer
+}
+
+// CreateMetaRecorderRequest defines the request to create a meta partition.
+type CreateMetaRecorderRequest struct {
+	VolName      string
+	PartitionID  uint64
+	Members      []Peer
+	Learners     []Learner
+	Recorders	 []string
+}
+
+func (req *CreateMetaRecorderRequest) String() string {
+	if req == nil {
+		return ""
+	}
+	return fmt.Sprintf("Vol(%v)ID(%v)Peers(%v)Learners(%v)Recorders(%v)",
+		req.VolName, req.PartitionID, req.Members, req.Learners, req.Recorders)
+}
+
+type DeleteMetaRecorderRequest struct {
+	PartitionID uint64
 }
 
 // LoadDataPartitionRequest defines the request of loading a data partition.
@@ -955,12 +998,21 @@ type MetaPartitionReport struct {
 	DelInodesTotalSize uint64
 }
 
+type MetaRecorderReport struct {
+	PartitionID       uint64
+	VolName           string
+	ApplyId           uint64
+	Status			  int
+	IsRecover         bool
+}
+
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
 type MetaNodeHeartbeatResponse struct {
 	ZoneName             string
 	Total                uint64
 	Used                 uint64
 	MetaPartitionReports []*MetaPartitionReport
+	MetaRecorderReports  []*MetaRecorderReport
 	Status               uint8
 	ProfPort             string
 	Result               string
@@ -1134,6 +1186,7 @@ type MetaPartitionView struct {
 	IsRecover          bool
 	Members            []string
 	Learners           []string
+	Recorders		   []string
 	LeaderAddr         string
 	Status             int8
 	StoreMode          StoreMode
@@ -1220,6 +1273,8 @@ type SimpleVolView struct {
 	MpReplicaNum          uint8
 	DpLearnerNum          uint8
 	MpLearnerNum          uint8
+	DpRecorderNum         uint8
+	MpRecorderNum         uint8
 	InodeCount            uint64
 	DentryCount           uint64
 	MaxMetaPartitionID    uint64

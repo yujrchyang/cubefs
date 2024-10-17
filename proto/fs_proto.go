@@ -712,6 +712,11 @@ type GetAppliedIDRequest struct {
 	PartitionId uint64 `json:"pid"`
 }
 
+type GetTruncateIndexRequest struct {
+	VolName     string `json:"vol"`
+	PartitionId uint64 `json:"pid"`
+}
+
 type GetSnapshotCrcRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`

@@ -94,6 +94,16 @@ func (from *MetaPartitionReportPb) ConvertToView() *MetaPartitionReport {
 	}
 }
 
+func (from *MetaRecorderReportPb) ConvertToView() *MetaRecorderReport {
+	return &MetaRecorderReport{
+		PartitionID:	from.PartitionID,
+		VolName:        from.VolName,
+		ApplyId:        from.ApplyId,
+		IsRecover:      from.IsRecover,
+		Status: 		int(from.Status),
+	}
+}
+
 func (from *MetaNodeDiskInfoPb) ConvertToView() *MetaNodeDiskInfo {
 	return &MetaNodeDiskInfo{
 		Path:       from.Path,
@@ -117,6 +127,13 @@ func (from *MetaNodeHeartbeatResponsePb) ConvertToView() *MetaNodeHeartbeatRespo
 			}
 			return res
 		}(from.MetaPartitionReports),
+		MetaRecorderReports: func(reports []*MetaRecorderReportPb) []*MetaRecorderReport {
+			res := make([]*MetaRecorderReport, 0, len(reports))
+			for _, report := range reports {
+				res = append(res, report.ConvertToView())
+			}
+			return res
+		}(from.MetaRecorderReports),
 		Status:   uint8(from.Status),
 		ProfPort: from.ProfPort,
 		Result:   from.Result,

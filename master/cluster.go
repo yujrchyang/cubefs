@@ -844,6 +844,18 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 	return string(resp.Data), nil
 }
 
+func (c *Cluster) syncCreateMetaRecorderToMetaNode(addr string, mp *MetaPartition) (err error) {
+	task := mp.createTaskToCreateRecorder(addr)
+	var metaNode *MetaNode
+	if metaNode, err = c.metaNode(addr); err != nil {
+		return
+	}
+	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
+}
+
 func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
@@ -855,6 +867,56 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 	if _, err = metaNode.Sender.syncSendAdminTask(tasks[0]); err != nil {
 		return
 	}
+	return
+}
+
+func (c *Cluster) doCreateMetaPartition(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
+	if err = c.syncCreateMetaPartitionToMetaNode(host, mp, storeMode, trashDays); err != nil {
+		return
+	}
+	mp.Lock()
+	defer mp.Unlock()
+	if err = mp.afterCreation(host, c, storeMode); err != nil {
+		return
+	}
+	return
+}
+
+func (c *Cluster) doCreateMetaRecorder(addr string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
+	if err = c.syncCreateMetaRecorderToMetaNode(addr, mp); err != nil {
+		return
+	}
+	mp.Lock()
+	defer mp.Unlock()
+	if err = mp.createRecorderView(addr, c); err != nil {
+		return
+	}
+	return
+}
+
+func (c *Cluster) doDeleteMetaPartition(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
+	var mr *MetaReplica
+	mr, err = mp.getMetaReplica(host)
+	if err != nil {
+		return
+	}
+	task := mr.createTaskToDeleteReplica(mp.PartitionID)
+	tasks := make([]*proto.AdminTask, 0)
+	tasks = append(tasks, task)
+	c.addMetaNodeTasks(tasks)
+	return
+}
+
+func (c *Cluster) doDeleteMetaRecorder(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
+	var mr *MetaRecorder
+	mr, err = mp.getMetaRecorder(host)
+	if err != nil {
+		return
+	}
+	task := mr.createTaskToDeleteRecorder(mp.PartitionID)
+	tasks := make([]*proto.AdminTask, 0)
+	tasks = append(tasks, task)
+	c.addMetaNodeTasks(tasks)
 	return
 }
 
@@ -1160,11 +1222,8 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 	for _, vol := range safeVols {
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
-			for _, host := range mp.Hosts {
-				if host == addr {
-					partitions = append(partitions, mp)
-					break
-				}
+			if mp.hasPeer(addr) {
+				partitions = append(partitions, mp)
 			}
 		}
 		vol.mpsLock.RUnlock()
@@ -1190,7 +1249,7 @@ func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []u
 	return
 }
 
-func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []uint64) {
+func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs, recorderIDs []uint64) {
 	partitionIDs = make([]uint64, 0)
 	safeVols := c.allVols()
 	for _, vol := range safeVols {
@@ -1198,6 +1257,9 @@ func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs []u
 		for _, mp := range vol.MetaPartitions {
 			if contains(mp.Hosts, addr) {
 				partitionIDs = append(partitionIDs, mp.PartitionID)
+			}
+			if contains(mp.Recorders, addr) {
+				recorderIDs = append(recorderIDs, mp.PartitionID)
 			}
 		}
 		vol.mpsLock.RUnlock()
@@ -3011,6 +3073,8 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
 		mpLearnerNum            uint8
+		dpRecorderNum			uint8
+		mpRecorderNum			uint8
 	)
 	if size == 0 {
 		dataPartitionSize = unit.DefaultDataPartitionSize
@@ -3042,6 +3106,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 			goto errHandler
 		}
 	}
+	// todo set recorder num
 	if err = c.validZone(zoneName, dpReplicaNum, isSmart); err != nil {
 		goto errHandler
 	}
@@ -3049,7 +3114,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 		goto errHandler
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
-		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, dpWriteableThreshold,
+		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, dpRecorderNum, mpRecorderNum, dpWriteableThreshold,
 		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocatorEnable,
 		mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB); err != nil {
 		goto errHandler
@@ -3082,7 +3147,7 @@ errHandler:
 
 func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum,
 	trashDays int, dataNum, parityNum uint8, enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
-	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum uint8,
+	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum, dpRecorderNum, mpRecorderNum uint8,
 	dpWriteableThreshold float64, childFileMaxCnt uint32, storeMode proto.StoreMode, convertSt proto.VolConvertState,
 	mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
 	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64,
@@ -3121,7 +3186,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
 		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime,
-		smartEnableTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum,
+		smartEnableTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum, dpRecorderNum, mpRecorderNum,
 		dpWriteableThreshold, uint32(trashDays), childFileMaxCnt, storeMode, convertSt, mpLayout, smartRules, compactTag,
 		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB)
 	vol.EcDataNum = dataNum
@@ -3192,8 +3257,8 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 }
 
 // Choose the target hosts from the available zones and meta nodes.
-func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum int,
-	zoneName string, isStrict bool, dstStoreMode proto.StoreMode) (hosts []string, peers []proto.Peer, err error) {
+func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum, recorderNum int,
+	zoneName string, isStrict bool, dstStoreMode proto.StoreMode) (hosts []string, peers []proto.Peer, recorders []string, err error) {
 	var (
 		zones []*Zone
 	)
@@ -3202,21 +3267,23 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 	}
 	allocateZoneMap := make(map[*Zone][]string, 0)
 	hasAllocateNum := 0
+	hasAllocateRecorderNum := 0
 	excludeZones := make([]string, 0)
 	hosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
+	recorders = make([]string, 0)
 	if excludeHosts == nil {
 		excludeHosts = make([]string, 0)
 	}
 	if excludeZone != "" {
 		excludeZones = append(excludeZones, excludeZone)
 	}
-	if zones, err = c.t.allocZonesForMetaNode(c.Name, zoneName, replicaNum, excludeZones, isStrict, dstStoreMode); err != nil {
+	if zones, err = c.t.allocZonesForMetaNode(c.Name, zoneName, replicaNum, recorderNum, excludeZones, isStrict, dstStoreMode); err != nil {
 		return
 	}
 	zoneList := strings.Split(zoneName, ",")
 	if len(zones) == 1 && len(zoneList) == 1 {
-		if hosts, peers, err = zones[0].getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, replicaNum, dstStoreMode); err != nil {
+		if hosts, peers, recorders, err = zones[0].getAvailMetaNodeHosts(excludeNodeSets, excludeHosts, replicaNum, recorderNum, dstStoreMode); err != nil {
 			log.LogErrorf("action[chooseTargetMetaNodes],err[%v]", err)
 			return
 		}
@@ -3236,14 +3303,22 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 		localExcludeHosts := excludeHosts
 		for _, zone := range zones {
 			localExcludeHosts = append(localExcludeHosts, allocateZoneMap[zone]...)
-			selectedHosts, selectedPeers, e := zone.getAvailMetaNodeHosts(excludeNodeSets, localExcludeHosts, 1, dstStoreMode)
+			allocateRecorderNum := 0
+			if hasAllocateRecorderNum < recorderNum {
+				allocateRecorderNum = 1
+			}
+			selectedHosts, selectedPeers, selectedRecorders, e := zone.getAvailMetaNodeHosts(excludeNodeSets, localExcludeHosts, 1, allocateRecorderNum, dstStoreMode)
 			if e != nil {
-				return nil, nil, errors.NewError(e)
+				return nil, nil, nil, errors.NewError(e)
 			}
 			hosts = append(hosts, selectedHosts...)
 			peers = append(peers, selectedPeers...)
+			if len(selectedRecorders) > 0 {
+				recorders = append(recorders, selectedRecorders...)
+			}
 			allocateZoneMap[zone] = append(allocateZoneMap[zone], selectedHosts...)
 			hasAllocateNum = hasAllocateNum + 1
+			hasAllocateRecorderNum += allocateRecorderNum
 			if hasAllocateNum == replicaNum {
 				break
 			}
@@ -3251,9 +3326,12 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 	}
 	goto result
 result:
-	log.LogInfof("action[chooseTargetMetaHosts] replicaNum[%v],zoneName[%v],selectedZones[%v],hosts[%v]", replicaNum, zoneName, zones, hosts)
-	if len(hosts) != replicaNum {
-		return nil, nil, errors.Trace(proto.ErrNoMetaNodeToCreateMetaPartition, "hosts len[%v],replicaNum[%v]", len(hosts), replicaNum)
+	log.LogInfof("action[chooseTargetMetaHosts] replicaNum[%v],recorderNum[%v],zoneName[%v],selectedZones[%v],hosts[%v],peers[%v],recorders[%v]",
+		replicaNum, recorderNum, zoneName, zones, hosts, peers, recorders)
+	if len(hosts) != replicaNum || len(peers) != replicaNum + recorderNum || len(recorders) != recorderNum {
+		return nil, nil, nil,
+		errors.Trace(proto.ErrNoMetaNodeToCreateMetaPartition, "hosts len[%v], peers len[%v], recorders len[%v], replicaNum[%v], recorderNum[%v]",
+			len(hosts), len(peers), len(recorders), replicaNum, recorderNum)
 	}
 	return
 }
@@ -3343,7 +3421,7 @@ func (c *Cluster) chooseTargetMetaHostForDecommission(excludeZone string, mp *Me
 		err = fmt.Errorf("no candidate zones available")
 		return
 	}
-	hosts, peers, err = targetZone.getAvailMetaNodeHosts(nil, excludeHosts, 1, dstStoreMode)
+	hosts, peers, _, err = targetZone.getAvailMetaNodeHosts(nil, excludeHosts, 1, 0, dstStoreMode)
 	return
 }
 
@@ -4662,8 +4740,8 @@ func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, 
 		return
 	}
 	learners = make([]proto.Learner, 0)
-	masterRegionHosts, masterRegionPeers, err := c.chooseTargetMetaHosts("", nil, nil,
-		replicaNum, strings.Join(masterRegionZoneName, ","), true, dstStoreMode)
+	masterRegionHosts, masterRegionPeers, _, err := c.chooseTargetMetaHosts("", nil, nil,
+		replicaNum, 0, strings.Join(masterRegionZoneName, ","), true, dstStoreMode)
 	if err != nil {
 		err = fmt.Errorf("choose master region hosts failed, err:%v", err)
 		return
@@ -4675,8 +4753,8 @@ func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, 
 	if slaveReplicaNum <= 0 {
 		return
 	}
-	slaveRegionHosts, slaveRegionPeers, err := c.chooseTargetMetaHosts("", nil, nil,
-		slaveReplicaNum, strings.Join(slaveRegionZoneName, ","), true, dstStoreMode)
+	slaveRegionHosts, slaveRegionPeers, _, err := c.chooseTargetMetaHosts("", nil, nil,
+		slaveReplicaNum, 0, strings.Join(slaveRegionZoneName, ","), true, dstStoreMode)
 	if err != nil {
 		err = fmt.Errorf("choose slave region hosts failed, err:%v", err)
 		return
@@ -4814,7 +4892,7 @@ func (c *Cluster) chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(offlin
 			offlineReplicaRegionName, region.Name, region.RegionType)
 		return
 	}
-	if hosts, peers, err = c.chooseTargetMetaHosts("", excludeNodeSets, oldHosts, replicaNum, targetZoneNames, true, dstStoreMode); err != nil {
+	if hosts, peers, _, err = c.chooseTargetMetaHosts("", excludeNodeSets, oldHosts, replicaNum, 0, targetZoneNames, true, dstStoreMode); err != nil {
 		return
 	}
 	return
@@ -4991,7 +5069,7 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVol(mp *MetaPartition,
 			mp.PartitionID, vol.mpReplicaNum, masterRegionHosts)
 		return
 	}
-	if hosts, _, err = c.chooseTargetMetaHosts("", nil, mp.Hosts, 1, targetZoneNames, true, dstStoreMode); err != nil {
+	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZoneNames, true, dstStoreMode); err != nil {
 		return
 	}
 	addr = hosts[0]
@@ -5032,7 +5110,7 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp
 			mp.PartitionID, learnerReplicaNum, slaveRegionHosts)
 		return
 	}
-	if hosts, _, err = c.chooseTargetMetaHosts("", nil, mp.Hosts, 1, targetZoneNames, true, dstStoreMode); err != nil {
+	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZoneNames, true, dstStoreMode); err != nil {
 		return
 	}
 	addr = hosts[0]
