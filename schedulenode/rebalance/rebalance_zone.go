@@ -416,6 +416,23 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 		zoneCtrl.mutex.Unlock()
 	}()
 
+	// 更新源、目标节点(meta，data)
+	switch zoneCtrl.rType {
+	case RebalanceData:
+		zoneCtrl.separateDataNodesByRatio()
+		if len(zoneCtrl.dstDataNodes) == 0 || len(zoneCtrl.srcDataNodes) == 0 {
+			log.LogWarnf("no available nodes: len(dst)= %v, len(src)= %v", len(zoneCtrl.dstDataNodes), len(zoneCtrl.srcDataNodes))
+			return
+		}
+
+	case RebalanceMeta:
+		zoneCtrl.separateMetaNodesByRatio()
+		if len(zoneCtrl.dstMetaNodes) == 0 || len(zoneCtrl.srcMetaNodes) == 0 {
+			log.LogWarnf("no available nodes: len(dst)= %v, len(src)= %v", len(zoneCtrl.dstMetaNodes), len(zoneCtrl.srcMetaNodes))
+			return
+		}
+	}
+
 	for _, srcMetaNode := range zoneCtrl.srcMetaNodes {
 		err := srcMetaNode.updateSortedMetaPartitions()
 		if err != nil {
