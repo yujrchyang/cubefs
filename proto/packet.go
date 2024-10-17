@@ -275,6 +275,11 @@ const (
 )
 
 const (
+	NormalDataRead = 0
+	ForceDataRead  = 1
+)
+
+const (
 	NormalCreateMetaPartition         = 0
 	DecommissionedCreateMetaPartition = 1
 )
