@@ -279,3 +279,14 @@ func NewPacketToGetApplyID(ctx context.Context, mpID uint64) *Packet {
 	p.SetCtx(ctx)
 	return p
 }
+
+func NewPacketToGetTruncateIndex(ctx context.Context, mpID uint64) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpMetaGetTruncateIndex
+	p.ReqID = proto.GenerateRequestID()
+	p.Data, _ = json.Marshal(&proto.GetTruncateIndexRequest{PartitionId: mpID})
+	p.Size = uint32(len(p.Data))
+	p.SetCtx(ctx)
+	return p
+}

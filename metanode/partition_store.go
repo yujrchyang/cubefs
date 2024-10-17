@@ -82,6 +82,7 @@ func (mp *metaPartition) loadMetadata() (err error) {
 	mp.config.End = mConf.End
 	mp.config.Peers = mConf.Peers
 	mp.config.Learners = mConf.Learners
+	mp.config.Recorders = mConf.Recorders
 	mp.config.Cursor = mp.config.Start
 	mp.config.StoreMode = mConf.StoreMode
 	if mp.config.StoreMode < proto.StoreModeMem || mp.config.StoreMode > proto.StoreModeRocksDb {
@@ -652,11 +653,13 @@ func (mp *metaPartition) updateMetaConfByMetaConfSnap(newMetaConf *MetaPartition
 	oldCursor := atomic.LoadUint64(&mp.config.Cursor)
 	oldPeers := mp.config.Peers
 	oldLearner := mp.config.Learners
+	oldRecorders := mp.config.Recorders
 	atomic.StoreUint64(&mp.config.Start, newMetaConf.Start)
 	atomic.StoreUint64(&mp.config.End, newMetaConf.End)
 	atomic.StoreUint64(&mp.config.Cursor, newMetaConf.Cursor)
 	mp.config.Peers = newMetaConf.Peers
 	mp.config.Learners = newMetaConf.Learners
+	mp.config.Recorders = newMetaConf.Recorders
 	defer func() {
 		if err != nil {
 			atomic.StoreUint64(&mp.config.Start, oldStart)
@@ -664,6 +667,7 @@ func (mp *metaPartition) updateMetaConfByMetaConfSnap(newMetaConf *MetaPartition
 			atomic.StoreUint64(&mp.config.Cursor, oldCursor)
 			mp.config.Peers = oldPeers
 			mp.config.Learners = oldLearner
+			mp.config.Recorders = oldRecorders
 		}
 	}()
 	if err = mp.config.checkMeta(); err != nil {

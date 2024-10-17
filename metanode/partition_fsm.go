@@ -439,6 +439,18 @@ func (mp *metaPartition) ApplyMemberChange(confChange *raftproto.ConfChange, ind
 			return
 		}
 		updated, err = mp.confPromoteLearner(req, index)
+	case raftproto.ConfAddRecorder:
+		req := &proto.AddMetaPartitionRaftRecorderRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
+		updated, err = mp.confAddRecorder(req, index)
+	case raftproto.ConfRemoveRecorder:
+		req := &proto.RemoveMetaPartitionRaftRecorderRequest{}
+		if err = json.Unmarshal(confChange.Context, req); err != nil {
+			return
+		}
+		updated, err = mp.confRemoveRecorder(req, index)
 	}
 	if err != nil {
 		return
@@ -468,6 +480,7 @@ func (mp *metaPartition) GetRecoverNodeVersion(nodeID uint64) (metaNodeVersion *
 		recoverPeer = &mp.config.Peers[index]
 		break
 	}
+	// todo 优化：发给recorder的快照空实现
 
 	if recoverPeer == nil {
 		err = fmt.Errorf("can not find node[%v]", nodeID)

@@ -1158,11 +1158,10 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 	return
 }
 
-func (m *metadataManager) opResetMetaPartitionMember(conn net.Conn,
-	p *Packet, remoteAddr string) (err error) {
+func (m *metadataManager) opResetMetaPartitionMember(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	var (
-		reqData []byte
-		updated bool
+		reqData	[]byte
+		mp		MetaPartition
 	)
 	req := &proto.ResetMetaPartitionRaftMemberRequest{}
 	adminTask := &proto.AdminTask{
@@ -1176,7 +1175,7 @@ func (m *metadataManager) opResetMetaPartitionMember(conn net.Conn,
 		return err
 	}
 
-	mp, err := m.GetPartition(req.PartitionId)
+	mp, err = m.GetPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
@@ -1201,7 +1200,7 @@ func (m *metadataManager) opResetMetaPartitionMember(conn net.Conn,
 	}
 	var peers []raftProto.Peer
 	for _, peer := range req.NewPeers {
-		peers = append(peers, raftProto.Peer{ID: peer.ID})
+		peers = append(peers, raftProto.Peer{ID: peer.ID, Type: raftProto.PeerType(peer.Type)})
 	}
 	err = mp.ResetMember(peers, reqData)
 	if err != nil {
@@ -1209,20 +1208,226 @@ func (m *metadataManager) opResetMetaPartitionMember(conn net.Conn,
 		m.respondToClient(conn, p)
 		return err
 	}
-	updated, err = mp.ApplyResetMember(req)
+	mp.ApplyResetMember(req)
+	if err = mp.PersistMetadata(); err != nil {
+		log.LogErrorf("action[opResetMetaPartitionMember] err[%v].", err)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		err = m.respondToClient(conn, p)
+		return err
+	}
+	p.PacketOkReply()
+	err = m.respondToClient(conn, p)
+	return
+}
+
+func (m *metadataManager) opCreateMetaRecorder(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	defer func() {
+		var buf []byte
+		status := proto.OpOk
+		if err != nil {
+			status = proto.OpErr
+			buf = []byte(err.Error())
+		}
+		p.PacketErrorWithBody(status, buf)
+		m.respondToClient(conn, p)
+	}()
+	req := &proto.CreateMetaRecorderRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		err = errors.NewErrorf("[opCreateMetaRecorder]: Unmarshal AdminTask struct: %s", err.Error())
+		return
+	}
+	log.LogInfof("[opCreateMetaRecorder] [remoteAddr=%s]accept a from master message: %v", remoteAddr, adminTask)
+	// create a new meta recorder.
+	if err = m.createRecorder(req); err != nil {
+		err = errors.NewErrorf("[opCreateMetaRecorder]->%s; request message: %v", err.Error(), adminTask.Request)
+		return
+	}
+	log.LogInfof("%s [opCreateMetaRecorder] req:%v; resp: %v", remoteAddr, req, adminTask)
+	return
+}
+
+func (m *metadataManager) opExpiredMetaRecorder(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.DeleteMetaRecorderRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	var mr *metaRecorder
+	mr, err = m.GetRecorder(req.PartitionID)
+	if err != nil {
+		p.PacketOkReply()
+		m.respondToClient(conn, p)
+		return
+	}
+	mr.Recorder().ExpiredRaft()
+	m.expiredRecorder(mr.partitionID)
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+	log.LogInfof("%s [opDeleteMetaRecorder] req: %d - %v, resp: %v", remoteAddr, p.GetReqID(), req, err)
+	return
+}
+
+func (m *metadataManager) opAddMetaPartitionRaftRecorder(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	var (
+		reqData	[]byte
+		mp 		MetaPartition
+	)
+	req := &proto.AddMetaPartitionRaftRecorderRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	mp, err = m.getPartition(req.PartitionId)
+	if err != nil {
+		log.LogErrorf("get parititon has err by id:[%d] err:[%s]", req.PartitionId, err.Error())
+		p.PacketErrorWithBody(proto.OpTryOtherAddr, ([]byte)(proto.ErrMetaPartitionNotExists.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+
+	if mp.IsExistPeer(req.AddRecorder) {
+		p.PacketOkReply()
+		m.respondToClient(conn, p)
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p, req) {
+		return nil
+	}
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.NewErrorf("[opAddMetaPartitionRaftRecorder]: partitionID= %d, Marshal %s", req.PartitionId, err)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	if req.AddRecorder.ID == 0 {
+		err = errors.NewErrorf("[opAddMetaPartitionRaftRecorder]: partitionID= %d, Marshal %s",
+			req.PartitionId, fmt.Sprintf("unavali AddRecorderID %v", req.AddRecorder.ID))
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	_, err = mp.ChangeMember(raftProto.ConfAddRecorder, raftProto.Peer{ID: req.AddRecorder.ID, Type: raftProto.PeerType(req.AddRecorder.Type)}, reqData)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
 		return err
 	}
-	if updated {
-		if err = mp.PersistMetadata(); err != nil {
-			log.LogErrorf("action[opResetMetaPartitionMember] err[%v].", err)
-		}
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
+	return
+}
+
+func (m *metadataManager) opRemoveMetaPartitionRaftRecorder(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	var (
+		reqData	[]byte
+		mp		MetaPartition
+	)
+	req := &proto.RemoveMetaPartitionRaftRecorderRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
 	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	req.ReserveResource = adminTask.ReserveResource
+	mp, err = m.getPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		err = m.respondToClient(conn, p)
+		m.respondToClient(conn, p)
+		return err
+	}
+
+	if !req.RaftOnly && !mp.IsExistPeer(req.RemoveRecorder) {
+		p.PacketOkReply()
+		m.respondToClient(conn, p)
+		return
+	}
+
+	if !m.serveProxy(conn, mp, p, req) {
+		return nil
+	}
+	reqData, err = json.Marshal(req)
+	if err != nil {
+		err = errors.NewErrorf("[opRemoveMetaPartitionRaftRecorder]: partitionID= %d, Marshal %s", req.PartitionId, err)
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	if !req.RaftOnly {
+		if err = mp.CanRemoveRaftMember(req.RemoveRecorder); err != nil {
+			err = errors.NewErrorf("[opRemoveMetaPartitionRaftRecorder]: partitionID= %d, Marshal %s",
+				req.PartitionId, fmt.Sprintf("unavali RemovePeerID %v", req.RemoveRecorder.ID))
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			return
+		}
+	}
+	if req.RemoveRecorder.ID == 0 {
+		err = errors.NewErrorf("[opRemoveMetaPartitionRaftRecorder]: partitionID= %d, Marshal %s",
+			req.PartitionId, fmt.Sprintf("unavali RemovePeerID %v", req.RemoveRecorder.ID))
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return
+	}
+	_, err = mp.ChangeMember(raftProto.ConfRemoveRecorder,
+		raftProto.Peer{ID: req.RemoveRecorder.ID, Type: raftProto.PeerType(req.RemoveRecorder.Type)}, reqData)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	p.PacketOkReply()
+	m.respondToClient(conn, p)
+
+	return
+}
+
+func (m *metadataManager) opResetMetaRecorderRaftMember(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.ResetMetaRecorderRaftMemberRequest{}
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	var mr	*metaRecorder
+	if mr, err = m.GetRecorder(req.PartitionId); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		return err
+	}
+	if err = mr.ResetRaftMember(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
 		return err
 	}
 	p.PacketOkReply()
@@ -1676,6 +1881,31 @@ func (m *metadataManager) opGetAppliedID(conn net.Conn, p *Packet, remoteAddr st
 	m.respondToClient(conn, p)
 	log.LogDebugf("%s [opMetaGetAppliedID] req: %d - %v, req args: %v, resp: %v, body: %v",
 		remoteAddr, p.GetReqID(), req, string(p.Arg), p.GetResultMsg(), appliedID)
+	return
+}
+
+func (m *metadataManager) opGetTruncateIndex(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &GetTruncateIndexReq{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	truncateIndex := mp.GetTruncateIndex()
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, truncateIndex)
+	p.PacketOkWithBody(buf)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [opGetTruncateIndex] req: %d - %v, req args: %v, resp: %v, body: %v",
+		remoteAddr, p.GetReqID(), req, string(p.Arg), p.GetResultMsg(), truncateIndex)
 	return
 }
 
@@ -2190,6 +2420,19 @@ func (m *metadataManager) responseHeartbeatPb(adminTask *proto.AdminTask, remote
 
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 	}
+	m.walkRecorders(func(mr *metaRecorder) bool {
+		mr.UpdateStatus()
+		cfg := mr.Recorder().Config()
+		mrr := &proto.MetaRecorderReportPb{
+			PartitionID: cfg.PartitionID,
+			VolName:     cfg.VolName,
+			IsRecover: 	 mr.isRecover,
+			Status: 	 int32(mr.status),
+			ApplyId:     mr.Recorder().GetApplyID(),
+		}
+		resp.MetaRecorderReports = append(resp.MetaRecorderReports, mrr)
+		return true
+	})
 	resp.ZoneName = m.zoneName
 	resp.Status = proto.TaskSucceeds
 	resp.RocksDBDiskInfo = m.metaNode.getRocksDBDiskStatPb()
@@ -2281,6 +2524,19 @@ func (m *metadataManager) responseHeartbeat(adminTask *proto.AdminTask, remoteAd
 
 		resp.MetaPartitionReports = append(resp.MetaPartitionReports, mpr)
 	}
+	m.walkRecorders(func(mr *metaRecorder) bool {
+		mr.UpdateStatus()
+		cfg := mr.Recorder().Config()
+		mrr := &proto.MetaRecorderReport{
+			PartitionID: cfg.PartitionID,
+			VolName:     cfg.VolName,
+			IsRecover: 	 mr.isRecover,
+			Status: 	 int(mr.status),
+			ApplyId:     mr.Recorder().GetApplyID(),
+		}
+		resp.MetaRecorderReports = append(resp.MetaRecorderReports, mrr)
+		return true
+	})
 	resp.ZoneName = m.zoneName
 	resp.Status = proto.TaskSucceeds
 	resp.RocksDBDiskInfo = m.metaNode.getRocksDBDiskStat()

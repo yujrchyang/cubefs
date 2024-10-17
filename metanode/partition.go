@@ -82,6 +82,7 @@ type MetaPartitionConfig struct {
 	End                uint64                `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
 	Peers              []proto.Peer          `json:"peers"`    // Peers information of the raftStore
 	Learners           []proto.Learner       `json:"learners"` // Learners information of the raftStore
+	Recorders		   []string            	 `json:"recorders"`// Recorders information of the raftStore
 	TrashRemainingDays int32                 `json:"-"`
 	Cursor             uint64                `json:"-"` // Cursor ID of the inode that have been assigned
 	NodeId             uint64                `json:"-"`
@@ -290,6 +291,7 @@ type OpPartition interface {
 	HasAlivePeer() (bool, int)
 	GetCursor() uint64
 	GetAppliedID() uint64
+	GetTruncateIndex() uint64
 	GetBaseConfig() MetaPartitionConfig
 	ResponseLoadMetaPartition(p *Packet) (err error)
 	PersistMetadata() (err error)
@@ -297,7 +299,7 @@ type OpPartition interface {
 	ResetMember(peers []raftproto.Peer, context []byte) (err error)
 	RemoveMemberOnlyRaft(peerID uint64) (err error)
 	ResetMemberInter(peers []uint64) (err error)
-	ApplyResetMember(req *proto.ResetMetaPartitionRaftMemberRequest) (updated bool, err error)
+	ApplyResetMember(req *proto.ResetMetaPartitionRaftMemberRequest)
 	Reset() (err error)
 	Expired() error
 	UpdatePartition(ctx context.Context, req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
@@ -472,7 +474,8 @@ func (mp *metaPartition) startRaft() (err error) {
 		addr := strings.Split(peer.Addr, ":")[0]
 		rp := raftstore.PeerAddress{
 			Peer: raftproto.Peer{
-				ID: peer.ID,
+				ID: 	peer.ID,
+				Type: 	raftproto.PeerType(peer.Type),
 			},
 			Address:       addr,
 			HeartbeatPort: heartbeatPort,
@@ -820,6 +823,14 @@ func (mp *metaPartition) GetCursor() uint64 {
 // GetAppliedID returns applied ID of raft
 func (mp *metaPartition) GetAppliedID() uint64 {
 	return atomic.LoadUint64(&mp.applyID)
+}
+
+// GetTruncateIndex returns truncate index of raft
+func (mp *metaPartition) GetTruncateIndex() uint64 {
+	if mp.raftPartition != nil {
+		return mp.raftPartition.GetTruncateIndex()
+	}
+	return 0
 }
 
 // PersistMetadata is the wrapper of persistMetadata.
@@ -1314,7 +1325,6 @@ func (mp *metaPartition) RemoveMemberOnlyRaft(peerID uint64) (err error) {
 func (mp *metaPartition) ResetMemberInter(peerIDs []uint64) (err error) {
 	var (
 		reqData []byte
-		updated bool
 	)
 
 	leaderAddr, _ := mp.IsLeader()
@@ -1367,14 +1377,9 @@ func (mp *metaPartition) ResetMemberInter(peerIDs []uint64) (err error) {
 	if err != nil {
 		return err
 	}
-	updated, err = mp.ApplyResetMember(req)
-	if err != nil {
-		return err
-	}
-	if updated {
-		if err = mp.PersistMetadata(); err != nil {
-			log.LogErrorf("action[opResetMetaPartitionMember] err[%v].", err)
-		}
+	mp.ApplyResetMember(req)
+	if err = mp.PersistMetadata(); err != nil {
+		log.LogErrorf("action[opResetMetaPartitionMember] err[%v].", err)
 	}
 	return
 }
@@ -1417,7 +1422,7 @@ func (mp *metaPartition) DecommissionPartition(ctx context.Context, req []byte) 
 
 func (mp *metaPartition) IsExistPeer(peer proto.Peer) bool {
 	for _, hasExsitPeer := range mp.config.Peers {
-		if hasExsitPeer.Addr == peer.Addr && hasExsitPeer.ID == peer.ID {
+		if hasExsitPeer.IsEqual(peer) {
 			return true
 		}
 	}
@@ -1613,7 +1618,7 @@ func (mp *metaPartition) tryToGiveUpLeader() {
 	}
 
 	for _, peer := range mp.config.Peers {
-		if peer.ID == mp.config.NodeId {
+		if peer.ID == mp.config.NodeId || peer.IsRecorder() {
 			continue
 		}
 		if err := mp.sendTryToLeaderReqToFollower(peer.Addr); err != nil {

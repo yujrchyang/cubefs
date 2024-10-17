@@ -101,20 +101,27 @@ func (m *MetaNode) checkLocalPartitionMatchWithMaster() (err error) {
 		return
 	}
 
-	if len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
+	if len(metaNodeInfo.PersistenceMetaPartitions) == 0 && len(metaNodeInfo.PersistenceMetaRecorders) == 0 {
 		return
 	}
 
 	lackPartitions := make([]uint64, 0)
+	lackRecorders := make([]uint64, 0)
 	for _, partitionID := range metaNodeInfo.PersistenceMetaPartitions {
 		if _, err = m.metadataManager.GetPartition(partitionID); err != nil {
 			lackPartitions = append(lackPartitions, partitionID)
 		}
 	}
-	if len(lackPartitions) == 0 {
+	for _, recorderID := range metaNodeInfo.PersistenceMetaRecorders {
+		if _, err = m.metadataManager.GetRecorder(recorderID); err != nil {
+			lackRecorders = append(lackRecorders, recorderID)
+		}
+	}
+	if len(lackPartitions) == 0 && len(lackRecorders) == 0 {
 		return
 	}
-	err = fmt.Errorf("LackPartitions %v on metanode %v,metanode cannot start", lackPartitions, m.localAddr+":"+m.listen)
+	err = fmt.Errorf("LackPartitions [%v] and LackRecorders [%v] on metanode %v,metanode cannot start",
+		lackPartitions, lackRecorders, m.localAddr+":"+m.listen)
 	log.LogErrorf(err.Error())
 	return
 }

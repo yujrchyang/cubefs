@@ -22,7 +22,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"os"
 	"path"
-	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -142,8 +141,7 @@ func (mp *metaPartition) fsmUpdatePartition(end uint64) (status uint8, err error
 	return
 }
 
-func (mp *metaPartition) confAddNode(req *proto.
-AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
+func (mp *metaPartition) confAddNode(req *proto.AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 	var (
 		heartbeatPort int
 		replicaPort   int
@@ -152,14 +150,14 @@ AddMetaPartitionRaftMemberRequest, index uint64) (updated bool, err error) {
 		return
 	}
 
-	addPeer := false
+	hasPeer := false
 	for _, peer := range mp.config.Peers {
 		if peer.ID == req.AddPeer.ID {
-			addPeer = true
+			hasPeer = true
 			break
 		}
 	}
-	updated = !addPeer
+	updated = !hasPeer
 	if !updated {
 		return
 	}
@@ -219,65 +217,121 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 	return
 }
 
-func (mp *metaPartition) ApplyResetMember(req *proto.ResetMetaPartitionRaftMemberRequest) (updated bool, err error) {
+func (mp *metaPartition) confAddRecorder(req *proto.AddMetaPartitionRaftRecorderRequest, index uint64) (updated bool, err error) {
 	var (
-		newPeerIndexes    []int
-		newLearnerIndexes []int
-		newPeers          []proto.Peer
-		newLearners       []proto.Learner
+		heartbeatPort int
+		replicaPort   int
 	)
-	data, _ := json.Marshal(req)
-	updated = true
-	log.LogInfof("Start ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-		req.PartitionId, mp.config.NodeId, string(data))
-	if len(req.NewPeers) >= len(mp.config.Peers) {
-		log.LogErrorf("NoUpdate ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-			req.PartitionId, mp.config.NodeId, string(data))
+	if heartbeatPort, replicaPort, err = mp.getRaftPort(); err != nil {
 		return
 	}
-	for _, peer := range req.NewPeers {
-		flag := false
-		for index, p := range mp.config.Peers {
-			if peer.ID == p.ID {
-				flag = true
-				newPeerIndexes = append(newPeerIndexes, index)
-				break
-			}
-		}
-		if !flag {
-			updated = false
-			log.LogErrorf("ResetRaftNode must be old node, PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
-				req.PartitionId, mp.config.NodeId, string(data))
-			return
+
+	hasPeer, hasRecorder := false, false
+	for _, peer := range mp.config.Peers {
+		if peer.ID == req.AddRecorder.ID {
+			hasPeer = true
+			break
 		}
 	}
-	for _, peer := range req.NewPeers {
-		for index, l := range mp.config.Learners {
-			if peer.ID == l.ID {
-				newLearnerIndexes = append(newLearnerIndexes, index)
-				break
-			}
+	for _, recorder := range mp.config.Recorders {
+		if recorder == req.AddRecorder.Addr {
+			hasRecorder = true
+		}
+	}
+	updated = !hasPeer || !hasRecorder
+	if !updated {
+		return
+	}
+	if !hasPeer {
+		mp.config.Peers = append(mp.config.Peers, req.AddRecorder)
+	}
+	if !hasRecorder {
+		mp.config.Recorders = append(mp.config.Recorders, req.AddRecorder.Addr)
+	}
+	addr := strings.Split(req.AddRecorder.Addr, ":")[0]
+	mp.config.RaftStore.AddNodeWithPort(req.AddRecorder.ID, addr, heartbeatPort, replicaPort)
+	return
+}
+
+func (mp *metaPartition) confRemoveRecorder(req *proto.RemoveMetaPartitionRaftRecorderRequest, index uint64) (updated bool, err error) {
+	if mp.config.NodeId == req.RemoveRecorder.ID {
+		return false, fmt.Errorf("mismatched peer type")
+	}
+	peerIndex, recorderIndex := -1, -1
+	data, _ := json.Marshal(req)
+	log.LogInfof("Start RemoveRaftRecorder  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionId, mp.config.NodeId, string(data))
+	for i, peer := range mp.config.Peers {
+		if peer.ID == req.RemoveRecorder.ID {
+			updated = true
+			peerIndex = i
+			break
+		}
+	}
+	for i, recorder := range mp.config.Recorders {
+		if recorder == req.RemoveRecorder.Addr {
+			updated = true
+			recorderIndex = i
+			break
 		}
 	}
 	if !updated {
-		log.LogInfof("NoUpdate ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		log.LogInfof("NoUpdate RemoveRaftRecorder  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 			req.PartitionId, mp.config.NodeId, string(data))
 		return
 	}
-
-	newPeers = make([]proto.Peer, len(newPeerIndexes))
-	newLearners = make([]proto.Learner, len(newLearnerIndexes))
-	sort.Ints(newPeerIndexes)
-	for i, index := range newPeerIndexes {
-		newPeers[i] = mp.config.Peers[index]
+	if peerIndex != -1 {
+		mp.config.Peers = append(mp.config.Peers[:peerIndex], mp.config.Peers[peerIndex+1:]...)
 	}
+	if recorderIndex != -1 {
+		mp.config.Recorders = append(mp.config.Recorders[:recorderIndex], mp.config.Recorders[recorderIndex+1:]...)
+	}
+	log.LogInfof("Finish RemoveRaftRecorder  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionId, mp.config.NodeId, string(data))
+	return
+}
+
+func (mp *metaPartition) ApplyResetMember(req *proto.ResetMetaPartitionRaftMemberRequest) {
+	var (
+		newPeers          []proto.Peer
+		newLearners       []proto.Learner
+		newRecorders	  []string
+	)
+	data, _ := json.Marshal(req)
+	log.LogInfof("Start ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
+		req.PartitionId, mp.config.NodeId, string(data))
+
+	isNewPeer := func(peerID uint64) bool {
+		for _, peer := range req.NewPeers {
+			if peerID == peer.ID {
+				return true
+			}
+		}
+		return false
+	}
+
+	newPeers = make([]proto.Peer, len(req.NewPeers))
+	newLearners = make([]proto.Learner, 0, len(req.NewPeers))
+	newRecorders = make([]string, 0, len(req.NewPeers))
+	for _, p := range mp.config.Peers {
+		if isNewPeer(p.ID) {
+			newPeers = append(newPeers, p)
+		}
+	}
+	for _, l := range mp.config.Learners {
+		if isNewPeer(l.ID) {
+			newLearners = append(newLearners, l)
+		}
+	}
+	for _, peer := range newPeers {
+		if peer.IsRecorder() {
+			newRecorders = append(newRecorders, peer.Addr)
+		}
+	}
+
 	mp.config.Peers = newPeers
-
-	sort.Ints(newLearnerIndexes)
-	for i, index := range newLearnerIndexes {
-		newLearners[i] = mp.config.Learners[index]
-	}
 	mp.config.Learners = newLearners
+	mp.config.Recorders = newRecorders
 
 	log.LogInfof("Finish ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
@@ -423,7 +477,7 @@ func (mp *metaPartition) IsEquareCreateMetaPartitionRequst(request *proto.Create
 	}
 	for index, peer := range mp.config.Peers {
 		requestPeer := request.Members[index]
-		if requestPeer.ID != peer.ID || requestPeer.Addr != peer.Addr {
+		if !requestPeer.IsEqual(peer) {
 			return fmt.Errorf("exsit unavali Partition(%v) partitionHosts(%v) requestHosts(%v)", mp.config.PartitionId, mp.config.Peers, request.Members)
 		}
 	}
@@ -432,6 +486,9 @@ func (mp *metaPartition) IsEquareCreateMetaPartitionRequst(request *proto.Create
 	}
 	if len(mp.config.Learners) != len(request.Learners) {
 		return fmt.Errorf("exsit unavali Partition(%v) partitionLearners(%v) requestLearners(%v)", mp.config.PartitionId, mp.config.Learners, request.Learners)
+	}
+	if len(mp.config.Recorders) != len(request.Recorders) {
+		return fmt.Errorf("exsit unavali Partition(%v) partitionRecorders(%v) requestRecorders(%v)", mp.config.PartitionId, mp.config.Recorders, request.Recorders)
 	}
 
 	return
