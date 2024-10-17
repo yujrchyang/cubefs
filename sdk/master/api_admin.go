@@ -56,31 +56,6 @@ func (api *AdminAPI) GetCluster() (cv *proto.ClusterView, err error) {
 	}
 	return
 }
-func (api *AdminAPI) GetClusterNoCache(ts int64) (cv *proto.ClusterView, err error) {
-	var (
-		buf         []byte
-		contentType string
-	)
-	var request = newAPIRequest(http.MethodGet, proto.AdminGetCluster)
-	request.addHeader(proto.AcceptFormat, proto.ProtobufType)
-	request.addParam("ts", strconv.FormatInt(ts, 10))
-	if buf, contentType, err = api.mc.serveRequest(request); err != nil {
-		return
-	}
-	if contentType == proto.ProtobufType {
-		cvPb := &proto.ClusterViewPb{}
-		if err = pb.Unmarshal(buf, cvPb); err != nil {
-			return
-		}
-		cv = proto.ConvertClusterViewPb(cvPb)
-	} else {
-		cv = &proto.ClusterView{}
-		if err = json.Unmarshal(buf, &cv); err != nil {
-			return
-		}
-	}
-	return
-}
 
 func (api *AdminAPI) GetClientConf() (cf *proto.ClientClusterConf, err error) {
 	var buf []byte

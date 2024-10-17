@@ -21,6 +21,7 @@ const (
 	OCHAMA      = "nl_ochama"
 	TEST        = "delete_ek_test"
 	TestES      = "test-es-db"
+	TestDbBak   = "test-dbBack"
 )
 
 func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request) (int, interface{}, error) {
@@ -93,7 +94,7 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 		if er = checkRatio(highRatio, lowRatio, goalRatio); er != nil {
 			return http.StatusBadRequest, nil, er
 		}
-		_, err = rw.ReBalanceStart(cluster, zoneName, rType, highRatio, lowRatio, goalRatio, maxBatchCount, migrateLimitPerDisk,
+		_, err = rw.ZoneReBalanceStart(cluster, zoneName, rType, highRatio, lowRatio, goalRatio, maxBatchCount, migrateLimitPerDisk,
 			dstMetaNodePartitionMaxCount)
 		if err != nil {
 			return http.StatusInternalServerError, nil, err
@@ -107,7 +108,7 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 		if !isValid {
 			return http.StatusBadRequest, nil, fmt.Errorf("%v: %v", ErrInputNodesInvalid, commonNode)
 		}
-		_, err = rw.NodesReBalanceStart(cluster, rType, maxBatchCount, dstMetaNodePartitionMaxCount, srcNodeList, dstNodeList)
+		_, err = rw.NodesMigrateStart(cluster, rType, maxBatchCount, dstMetaNodePartitionMaxCount, srcNodeList, dstNodeList)
 		if err != nil {
 			return http.StatusInternalServerError, nil, err
 		}
@@ -412,9 +413,9 @@ func (rw *ReBalanceWorker) handleZoneUsageRatio(w http.ResponseWriter, req *http
 	var nodeInfo []*NodeUsageInfo
 	switch typeStr {
 	case "meta":
-		nodeInfo, err = loadMetaNodeUsageRatio(clusterHost, zoneName)
-	default:
-		nodeInfo, err = loadDataNodeUsageRatio(clusterHost, zoneName)
+		nodeInfo, err = loadMetaNodeUsageRatio(cluster, clusterHost, zoneName)
+	case "data":
+		nodeInfo, err = loadDataNodeUsageRatio(cluster, clusterHost, zoneName)
 	}
 	if err != nil {
 		buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -427,23 +428,37 @@ func (rw *ReBalanceWorker) handleZoneUsageRatio(w http.ResponseWriter, req *http
 	buildSuccessResp(w, nodeInfo)
 }
 
-func loadMetaNodeUsageRatio(clusterHost, zoneName string) (metaNodeInfo []*NodeUsageInfo, err error) {
-	mc := master.NewMasterClient([]string{clusterHost}, false)
-	topologyView, err := mc.AdminAPI().GetTopology()
-	if err != nil {
-		return
-	}
-	var zoneMetaNodes []string
-	for _, zone := range topologyView.Zones {
-		if zone.Name != zoneName {
-			continue
+func loadMetaNodeUsageRatio(cluster, clusterHost, zoneName string) (metaNodeInfo []*NodeUsageInfo, err error) {
+	var (
+		mc            = master.NewMasterClient([]string{clusterHost}, false)
+		rc            = newReleaseClient([]string{clusterHost}, cluster)
+		zoneMetaNodes []string
+	)
+	if isRelease(cluster) {
+		cv, err := rc.AdminGetCluster()
+		if err != nil {
+			return nil, err
 		}
-		for _, nodeSetView := range zone.NodeSet {
-			for _, metaNode := range nodeSetView.MetaNodes {
-				zoneMetaNodes = append(zoneMetaNodes, metaNode.Addr)
+		for _, nodeView := range cv.MetaNodes {
+			zoneMetaNodes = append(zoneMetaNodes, nodeView.Addr)
+		}
+	} else {
+		topologyView, err := mc.AdminAPI().GetTopology()
+		if err != nil {
+			return nil, err
+		}
+		for _, zone := range topologyView.Zones {
+			if zone.Name != zoneName {
+				continue
+			}
+			for _, nodeSetView := range zone.NodeSet {
+				for _, metaNode := range nodeSetView.MetaNodes {
+					zoneMetaNodes = append(zoneMetaNodes, metaNode.Addr)
+				}
 			}
 		}
 	}
+
 	var (
 		wg sync.WaitGroup
 		ch = make(chan struct{}, 10)
@@ -457,15 +472,28 @@ func loadMetaNodeUsageRatio(clusterHost, zoneName string) (metaNodeInfo []*NodeU
 				<-ch
 				wg.Done()
 			}()
-			node, errForGet := mc.NodeAPI().GetMetaNode(metaNodeAddr)
-			if errForGet != nil {
-				log.LogErrorf("handleZoneUsageRatio get dataNode:%v err:%v", metaNodeAddr, errForGet)
-				return
+			var usedRatio float64
+			if isRelease(cluster) {
+				node, errForGet := rc.AdminGetMetaNode(metaNodeAddr)
+				if errForGet != nil {
+					log.LogErrorf("loadMetaNodeUsageRatio getMetaNode:%v err:%v", metaNodeAddr, errForGet)
+					return
+				}
+				// 获取zone节点使用率详情，没必要遍历分片，只需要大致的使用率
+				usedRatio = node.Ratio
+			} else {
+				node, errForGet := mc.NodeAPI().GetMetaNode(metaNodeAddr)
+				if errForGet != nil {
+					log.LogErrorf("loadMetaNodeUsageRatio getMetaNode:%v err:%v", metaNodeAddr, errForGet)
+					return
+				}
+				usedRatio = node.Ratio
 			}
+
 			mu.Lock()
 			metaNodeInfo = append(metaNodeInfo, &NodeUsageInfo{
 				Addr:       metaNodeAddr,
-				UsageRatio: node.Ratio,
+				UsageRatio: usedRatio,
 			})
 			mu.Unlock()
 		}(metaNodeAddr)
@@ -474,23 +502,38 @@ func loadMetaNodeUsageRatio(clusterHost, zoneName string) (metaNodeInfo []*NodeU
 	return
 }
 
-func loadDataNodeUsageRatio(host, zoneName string) (dataNodeInfo []*NodeUsageInfo, err error) {
-	mc := master.NewMasterClient([]string{host}, false)
-	topologyView, err := mc.AdminAPI().GetTopology()
-	if err != nil {
-		return
-	}
-	var zoneDataNodes []string
-	for _, zone := range topologyView.Zones {
-		if zone.Name != zoneName {
-			continue
+func loadDataNodeUsageRatio(cluster, host, zoneName string) (dataNodeInfo []*NodeUsageInfo, err error) {
+	var (
+		mc            = master.NewMasterClient([]string{host}, false)
+		rc            = newReleaseClient([]string{host}, cluster)
+		zoneDataNodes []string
+	)
+	if isRelease(cluster) {
+		cv, err := rc.AdminGetCluster()
+		if err != nil {
+			return nil, err
 		}
-		for _, nodeSetView := range zone.NodeSet {
-			for _, dataNode := range nodeSetView.DataNodes {
-				zoneDataNodes = append(zoneDataNodes, dataNode.Addr)
+		for _, nodeView := range cv.DataNodes {
+			// todo: status
+			zoneDataNodes = append(zoneDataNodes, nodeView.Addr)
+		}
+	} else {
+		topologyView, err := mc.AdminAPI().GetTopology()
+		if err != nil {
+			return nil, err
+		}
+		for _, zone := range topologyView.Zones {
+			if zone.Name != zoneName {
+				continue
+			}
+			for _, nodeSetView := range zone.NodeSet {
+				for _, dataNode := range nodeSetView.DataNodes {
+					zoneDataNodes = append(zoneDataNodes, dataNode.Addr)
+				}
 			}
 		}
 	}
+
 	var (
 		wg sync.WaitGroup
 		ch = make(chan struct{}, 10)
@@ -504,16 +547,37 @@ func loadDataNodeUsageRatio(host, zoneName string) (dataNodeInfo []*NodeUsageInf
 				<-ch
 				wg.Done()
 			}()
-			node, errForGet := getDataNodeInfo(dataNodeAddr)
-			if errForGet != nil {
-				log.LogErrorf("handleZoneUsageRatio get dataNode:%v err:%v", dataNodeAddr, errForGet)
-				return
+			var usedRatio float64
+			if isRelease(cluster) {
+				node, errForGet := rc.AdminGetDataNode(dataNodeAddr)
+				if errForGet != nil {
+					log.LogErrorf("loadDataNodeUsageRatio getDataNode:%v err:%v", dataNodeAddr, errForGet)
+					return
+				}
+				// 创建任务前校验 先不遍历所有分片，先用节点阈值选点
+				usedRatio = node.Ratio
+			} else {
+				node, errForGet := mc.NodeAPI().GetDataNode(dataNodeAddr)
+				if errForGet != nil {
+					log.LogErrorf("loadDataNodeUsageRatio getDataNode:%v err:%v", dataNodeAddr, errForGet)
+					return
+				}
+				var used uint64
+				for _, dpReport := range node.DataPartitionReports {
+					diskInfo := node.DiskInfos[dpReport.DiskPath]
+					if dpReport.IsSFX && diskInfo.CompressionRatio != 0 {
+						used += dpReport.Used * 100 / uint64(diskInfo.CompressionRatio)
+					} else {
+						used += dpReport.Used
+					}
+				}
+				usedRatio = float64(used) / float64(node.Total)
 			}
-			convertActualUsageRatio(node)
+
 			mu.Lock()
 			dataNodeInfo = append(dataNodeInfo, &NodeUsageInfo{
 				Addr:       dataNodeAddr,
-				UsageRatio: node.UsageRatio,
+				UsageRatio: usedRatio,
 			})
 			mu.Unlock()
 		}(dataNodeAddr)

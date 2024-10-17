@@ -6,6 +6,20 @@ import (
 )
 
 const (
+	deleteWarnKey = "rebalance_two_replica_dp_wrong_status"
+)
+
+const (
+	defaultMinWritableDPNum             = 2
+	defaultClusterMaxBatchCount         = 50
+	defaultMigrateLimitPerDisk          = 10
+	defaultWaitClusterRecover           = time.Second * 30
+	defaultDstMetaNodePartitionMaxCount = 10000
+	defaultRefreshNodeInterval          = time.Minute * 2
+	defaultDeletedTaskInterval          = time.Minute * 10
+)
+
+const (
 	RBStart        = "/rebalance/start"
 	RBStop         = "/rebalance/stop"
 	RBStatus       = "/rebalance/status"
@@ -14,9 +28,6 @@ const (
 	RBResetControl = "/rebalance/resetControl"
 	RBList         = "/rebalance/list"
 	RBRecordsQuery = "/rebalance/queryRecords"
-)
-
-const (
 	ZoneUsageRatio = "/zone/UsageRatio"
 )
 
@@ -53,14 +64,6 @@ const (
 	StatusStop
 	StatusRunning
 	StatusTerminating
-)
-
-const (
-	defaultMinWritableDPNum             = 2
-	defaultClusterMaxBatchCount         = 50
-	defaultMigrateLimitPerDisk          = 10
-	defaultInterval                     = time.Minute * 5
-	defaultDstMetaNodePartitionMaxCount = 10000
 )
 
 const (
@@ -131,3 +134,14 @@ func ConvertRebalanceTaskTypeStr(rTypeStr string) (tType TaskType, err error) {
 	}
 	return
 }
+
+const (
+	FinishDeleteDefault = 0
+	FinishDeleteSuccess = 1
+	FinishDeleteFailed  = -1
+)
+
+const (
+	DeleteFlagForThreeReplica int = iota
+	DeleteFlagForTwoReplica
+)

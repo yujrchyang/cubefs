@@ -142,6 +142,7 @@ type DataNodeStats struct {
 	HttpPort            string
 	ZoneName            string
 	PartitionReports    []*PartitionReport
+	PartitionInfo       []*PartitionReport // for dbBack
 	Status              int
 	Result              string
 	BadDisks            []string

@@ -1,163 +1,87 @@
 package rebalance
 
 import (
-	"encoding/json"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/cmd/common"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/schedulenode/worker"
-	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/errors"
+	"github.com/cubefs/cubefs/sdk/http_client"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"gorm.io/gorm"
-	"net/http"
+	"gorm.io/gorm/utils"
+	"path"
+	"strconv"
 	"strings"
-	"sync"
+	"time"
 )
 
-type ClusterConfig struct {
-	ClusterName  string   `json:"clusterName"`
-	MasterAddrs  []string `json:"mastersAddr"`
-	MetaProfPort uint16   `json:"mnProfPort"`
-	DataProfPort uint16   `json:"dnProfPort"`
-	IsDBBack     bool     `json:"isDBBack"`
-}
+func (rw *ReBalanceWorker) startBackgroundTask() {
+	timer := time.NewTimer(defaultDeletedTaskInterval)
+	defer func() {
+		timer.Stop()
+	}()
+	for {
+		select {
+		case <-timer.C:
+			records, _ := rw.GetNeedDeleteReplicaDp(time.Now().Add(-defaultDeletedTaskInterval))
+			log.LogDebugf("background: len(needDeleteRecord)=%v", len(records))
+			for _, record := range records {
+				//todo: 并发
+				rw.processNeedDeleteReplicaDp(record)
+			}
+			rw.UpdateNeedDeleteReplicaDpRecords(records)
+			timer.Reset(defaultDeletedTaskInterval)
 
-type ReBalanceWorker struct {
-	worker.BaseWorker
-	mcwRWMutex       sync.RWMutex
-	reBalanceCtrlMap sync.Map
-	clusterConfigMap sync.Map
-	dbHandle         *gorm.DB
-}
-
-func NewReBalanceWorker() *ReBalanceWorker {
-	return &ReBalanceWorker{}
-}
-
-func (rw *ReBalanceWorker) Start(cfg *config.Config) (err error) {
-	return rw.Control.Start(rw, cfg, doStart)
-}
-
-func doStart(s common.Server, cfg *config.Config) (err error) {
-	rw, ok := s.(*ReBalanceWorker)
-	if !ok {
-		err = errors.New("Invalid Node Type")
-		return
-	}
-	rw.StopC = make(chan struct{}, 0)
-	rw.reBalanceCtrlMap = sync.Map{}
-	if err = rw.parseConfig(cfg); err != nil {
-		log.LogErrorf("[doStart] parse config info failed, error(%v)", err)
-		return
-	}
-
-	err = rw.OpenSql()
-	if err != nil {
-		return err
-	}
-	err = rw.loadInRunningRebalanced()
-	if err != nil {
-		return err
-	}
-
-	rw.registerHandler()
-	return nil
-}
-
-func (rw *ReBalanceWorker) Shutdown() {
-	rw.Control.Shutdown(rw, doShutdown)
-}
-
-func doShutdown(s common.Server) {
-	m, ok := s.(*ReBalanceWorker)
-	if !ok {
-		return
-	}
-	close(m.StopC)
-}
-
-func (rw *ReBalanceWorker) Sync() {
-	rw.Control.Sync()
-}
-
-func (rw *ReBalanceWorker) parseConfig(cfg *config.Config) (err error) {
-	err = rw.ParseBaseConfig(cfg)
-
-	clustersInfoData := cfg.GetJsonObjectSlice(config.ConfigKeyClusterInfo)
-	for _, clusterInfoData := range clustersInfoData {
-		clusterConf := new(ClusterConfig)
-		if err = json.Unmarshal(clusterInfoData, clusterConf); err != nil {
-			err = fmt.Errorf("parse cluster info failed:%v", err)
+		case <-rw.StopC:
+			log.LogInfo("stop startBackgroudTask")
 			return
 		}
-		rw.clusterConfigMap.Store(clusterConf.ClusterName, clusterConf)
-	}
-	return
-}
-
-func verifyCluster(cluster string) error {
-	switch cluster {
-	case SPARK, ELASTICDB, TEST, TestES:
-		return nil
-	default:
-		return fmt.Errorf("cluster:%v Not supported", cluster)
 	}
 }
 
-func (rw *ReBalanceWorker) getClusterHost(cluster string) (host string) {
-	clusterInfo, ok := rw.clusterConfigMap.Load(cluster)
-	if ok {
-		clusterConf := clusterInfo.(*ClusterConfig)
-		if len(clusterConf.MasterAddrs) > 0 {
-			host = clusterInfo.(*ClusterConfig).MasterAddrs[0]
+func (rw *ReBalanceWorker) processNeedDeleteReplicaDp(record *MigrateRecordTable) {
+	// 删除副本
+	var (
+		mc *master.MasterClient
+		rc *releaseClient
+	)
+	if isRelease(record.ClusterName) {
+		rc = newReleaseClient([]string{rw.getClusterHost(record.ClusterName)}, record.ClusterName)
+	} else {
+		mc = master.NewMasterClient([]string{rw.getClusterHost(record.ClusterName)}, false)
+	}
+
+	dp, err := getDataPartitionByClient(mc, rc, record.PartitionID, record.VolName)
+	if err != nil {
+		log.LogErrorf("processNeedDeleteReplicaDp: get dp failed, dpID(%v) err(%v)", record.PartitionID, err)
+		if err == ErrDataPartitionNotFound {
+			record.FinishDelete = FinishDeleteSuccess
+		}
+		return
+	}
+	if dp.IsRecover {
+		return
+	}
+
+	if len(dp.Replicas)-int(dp.ReplicaNum) < 1 {
+		errMsg := fmt.Sprintf("processNeedDeleteReplicaDp: wrong dp info, cluster(%v) dpID(%v) hosts(%v) src(%v) dst(%v) replicaNum(%v)",
+			record.ClusterName, record.PartitionID, dp.Hosts, record.SrcAddr, record.DstAddr, dp.ReplicaNum)
+		exporter.WarningBySpecialUMPKey(deleteWarnKey, errMsg)
+		log.LogError(errMsg)
+		return
+	}
+
+	if utils.Contains(dp.Hosts, record.SrcAddr) && utils.Contains(dp.Hosts, record.DstAddr) && dp.ReplicaNum == 2 {
+		err = deleteDataPartitionReplicaByClient(mc, rc, dp.PartitionID, record.SrcAddr)
+		if err != nil {
+			log.LogErrorf("processNeedDeleteReplicaDp: delete replica failed: dp(%v) addr(%v) err(%v)", dp.PartitionID, record.SrcAddr, err)
+			record.FinishDelete = FinishDeleteFailed // 只有删副本失败才是-1
 			return
 		}
 	}
 
-	switch cluster {
-	case SPARK:
-		host = "cn.chubaofs.jd.local"
-	case DBBAK:
-		host = "cn.chubaofs-seqwrite.jd.local"
-	case ELASTICDB:
-		host = "cn.elasticdb.jd.local"
-	case CFS_AMS_MCA:
-		host = "nl.chubaofs.jd.local"
-	case OCHAMA:
-		host = "nl.chubaofs.ochama.com"
-	case TEST:
-		host = "10.179.20.34:80"
-	case TestES:
-		host = "172.21.138.73:80"
-	}
-	return
-}
-
-func (rw *ReBalanceWorker) getDataNodePProfPort(cluster string) (port string) {
-	rw.clusterConfigMap.Range(func(key, value interface{}) bool {
-		clusterConfig := value.(*ClusterConfig)
-		if clusterConfig.ClusterName == cluster {
-			port = fmt.Sprintf("%v", clusterConfig.DataProfPort)
-			return false
-		}
-		return true
-	})
-	if port != "" {
-		return
-	}
-
-	switch cluster {
-	case SPARK, DBBAK, ELASTICDB, CFS_AMS_MCA, OCHAMA:
-		port = "6001"
-	case TEST:
-		port = "17031"
-	case TestES:
-		port = "17031"
-	default:
-		port = "6001"
-	}
-	return
+	// 更新record字段
+	record.FinishDelete = FinishDeleteSuccess
 }
 
 func (rw *ReBalanceWorker) loadInRunningRebalanced() (err error) {
@@ -185,7 +109,7 @@ func (rw *ReBalanceWorker) restartRunningTask(info *RebalancedInfoTable) (taskID
 
 	var ctrl *ZoneReBalanceController
 	if info.TaskType == ZoneAutoReBalance {
-		ctrl, err = rw.newZoneCtrl(info.Cluster, info.ZoneName, info.RType, info.MaxBatchCount, info.HighRatio, info.LowRatio, info.GoalRatio,
+		ctrl, err = rw.newZoneRebalanceCtrl(info.Cluster, info.ZoneName, info.RType, info.MaxBatchCount, info.HighRatio, info.LowRatio, info.GoalRatio,
 			info.MigrateLimitPerDisk, info.DstMetaNodePartitionMaxCount, isRestart)
 		if err != nil {
 			rw.stopRebalanced(ctrl.Id, false)
@@ -205,21 +129,372 @@ func (rw *ReBalanceWorker) restartRunningTask(info *RebalancedInfoTable) (taskID
 	return
 }
 
-func (rw *ReBalanceWorker) registerHandler() {
-	http.HandleFunc(proto.VersionPath, func(w http.ResponseWriter, _ *http.Request) {
-		version := proto.MakeVersion("rebalance")
-		marshal, _ := json.Marshal(version)
-		if _, err := w.Write(marshal); err != nil {
-			log.LogErrorf("write version has err:[%s]", err.Error())
+func (rw *ReBalanceWorker) NodesMigrateStart(cluster string, rType RebalanceType, maxBatchCount int, dstMetaNodePartitionMaxCount int,
+	srcNodes, dstNodes []string) (taskID uint64, err error) {
+
+	isRestart := false
+	ctrl, err := rw.newNodeMigrationCtrl(cluster, rType, maxBatchCount, dstMetaNodePartitionMaxCount, srcNodes, dstNodes, isRestart, 0)
+	if err != nil {
+		return
+	}
+	taskID = ctrl.Id
+
+	err = ctrl.ReBalanceStart()
+	return
+}
+
+func (rw *ReBalanceWorker) ZoneReBalanceStart(cluster, zoneName string, rType RebalanceType, highRatio, lowRatio, goalRatio float64,
+	maxBatchCount int, migrateLimitPerDisk, dstMetaNodePartitionMaxCount int) (taskID uint64, err error) {
+	isRestart := false
+
+	ctrl, err := rw.newZoneRebalanceCtrl(cluster, zoneName, rType, maxBatchCount, highRatio, lowRatio, goalRatio, migrateLimitPerDisk,
+		dstMetaNodePartitionMaxCount, isRestart)
+	if err != nil {
+		return
+	}
+	taskID = ctrl.Id
+	err = ctrl.ReBalanceStart()
+	return
+}
+
+// 节点的control，先校验再插表
+func (rw *ReBalanceWorker) newNodeMigrationCtrl(cluster string, rType RebalanceType, maxBatchCount int, dstMetaNodeMaxPartitionCount int,
+	srcNodeList, dstNodeList []string, isRestart bool, taskID uint64) (ctrl *ZoneReBalanceController, err error) {
+	srcNodes := strings.Join(srcNodeList, ",")
+	dstNodes := strings.Join(dstNodeList, ",")
+
+	ctrl = newNodeMigrateController(taskID, cluster, rType, srcNodeList, dstNodeList, rw)
+
+	var rInfo *RebalancedInfoTable
+	if taskID > 0 {
+		rInfo, err = rw.GetRebalancedInfoByID(taskID)
+		if err != nil {
+			return
 		}
+		rInfo, err = rw.updateRestartNodesRebalanceInfo(rInfo)
+		if err != nil {
+			log.LogWarnf("重启node迁移任务失败：%v", err)
+			return
+		}
+	}
+	if !isRestart {
+		rInfo, err = rw.createNodesRebalanceInfo(cluster, rType, maxBatchCount, dstMetaNodeMaxPartitionCount, srcNodes, dstNodes, StatusRunning)
+		if err != nil {
+			log.LogWarnf("node迁移任务创建失败：%v", err)
+			return
+		}
+	}
+	if maxBatchCount > 0 {
+		ctrl.SetClusterMaxBatchCount(maxBatchCount)
+	}
+	if dstMetaNodeMaxPartitionCount > 0 {
+		ctrl.SetDstMetaNodeMaxPartitionCount(dstMetaNodeMaxPartitionCount)
+	}
+	ctrl.SetCtrlTaskID(rInfo.ID)
+	ctrl.SetCreatedUpdatedAt(rInfo.CreatedAt, rInfo.UpdatedAt)
+	rw.reBalanceCtrlMap.Store(getRebalanceCtrlMapKey(cluster, rInfo.RType, rInfo.ID), ctrl)
+	return
+}
+
+func (rw *ReBalanceWorker) newZoneRebalanceCtrl(cluster, zoneName string, rType RebalanceType, maxBatchCount int,
+	highRatio, lowRatio, goalRatio float64, migrateLimitPerDisk, dstMetaNodeMaxPartitionCount int, isRestart bool) (ctrl *ZoneReBalanceController, err error) {
+
+	var rInfo *RebalancedInfoTable
+	rInfo, err = rw.GetRebalancedInfoByZone(cluster, zoneName, rType)
+	if err != nil && err.Error() != RECORD_NOT_FOUND {
+		return
+	}
+	if rInfo.ID > 0 && !isRestart {
+		return nil, fmt.Errorf("任务已存在：%v_%v_%v", cluster, zoneName, rInfo.ID)
+	}
+
+	ctrl = newZoneReBalanceController(rInfo.ID, cluster, zoneName, rType, highRatio, lowRatio, goalRatio, rw)
+	if maxBatchCount > 0 {
+		ctrl.SetClusterMaxBatchCount(maxBatchCount)
+	}
+	if migrateLimitPerDisk > 0 {
+		ctrl.SetMigrateLimitPerDisk(migrateLimitPerDisk)
+	}
+	if dstMetaNodeMaxPartitionCount > 0 {
+		ctrl.SetDstMetaNodeMaxPartitionCount(dstMetaNodeMaxPartitionCount)
+	}
+
+	// RECORD_NOT_FOUND or restart
+	if rInfo, err = rw.insertRebalanceInfo(cluster, zoneName, rType, maxBatchCount,
+		highRatio, lowRatio, goalRatio, migrateLimitPerDisk, dstMetaNodeMaxPartitionCount, StatusRunning); err != nil {
+		return
+	}
+	ctrl.SetCtrlTaskID(rInfo.ID)
+	ctrl.SetCreatedUpdatedAt(rInfo.CreatedAt, rInfo.UpdatedAt)
+	rw.reBalanceCtrlMap.Store(getRebalanceCtrlMapKey(cluster, rType, rInfo.ID), ctrl)
+	return
+}
+
+func (rw *ReBalanceWorker) ReSetControlParam(taskID uint64, goalRatio float64, maxBatchCount, migrateLimitPerDisk, dstMNPartitionMaxCount int) (err error) {
+	var (
+		rInfo *RebalancedInfoTable
+	)
+	if rInfo, err = rw.GetRebalancedInfoByID(taskID); err != nil {
+		return
+	}
+	if rInfo.TaskType == NodesMigrate {
+		return rw.resetNodeMigrateCtrl(rInfo, maxBatchCount, migrateLimitPerDisk, dstMNPartitionMaxCount)
+	}
+	if rInfo.TaskType == ZoneAutoReBalance {
+		return rw.resetZoneAutoRebalanceCtrl(rInfo, goalRatio, maxBatchCount, migrateLimitPerDisk, dstMNPartitionMaxCount)
+	}
+	return
+}
+
+func (rw *ReBalanceWorker) resetNodeMigrateCtrl(rInfo *RebalancedInfoTable, maxBatchCount, migrateLimitPerDisk, dstMNPartitionMaxCount int) (err error) {
+	var ctrl *ZoneReBalanceController
+	// 1.找control
+	// 2.修改表记录
+	// 3.修改control
+	if ctrl, err = rw.getRebalanceCtrl(getRebalanceCtrlMapKey(rInfo.Cluster, rInfo.RType, rInfo.ID)); err != nil {
+		return
+	}
+	if maxBatchCount <= 0 {
+		maxBatchCount = rInfo.MaxBatchCount
+	}
+	if migrateLimitPerDisk <= 0 {
+		migrateLimitPerDisk = rInfo.MigrateLimitPerDisk
+	}
+	if dstMNPartitionMaxCount <= 0 || dstMNPartitionMaxCount > defaultDstMetaNodePartitionMaxCount {
+		dstMNPartitionMaxCount = defaultDstMetaNodePartitionMaxCount
+	}
+	err = rw.updateNodesRebalanceInfo(rInfo.ID, maxBatchCount, migrateLimitPerDisk, dstMNPartitionMaxCount)
+	if err == nil {
+		ctrl.SetDstMetaNodeMaxPartitionCount(dstMNPartitionMaxCount)
+		ctrl.SetClusterMaxBatchCount(maxBatchCount)
+	}
+	return
+}
+
+func (rw *ReBalanceWorker) resetZoneAutoRebalanceCtrl(rInfo *RebalancedInfoTable, goalRatio float64, maxBatchCount, migrateLimitPerDisk, dstMNPartitionMaxCount int) (err error) {
+	var ctrl *ZoneReBalanceController
+	if ctrl, err = rw.getRebalanceCtrl(getRebalanceCtrlMapKey(rInfo.Cluster, rInfo.RType, rInfo.ID)); err != nil {
+		return
+	}
+	if goalRatio <= 0 {
+		goalRatio = rInfo.GoalRatio
+	}
+	if err = checkRatio(rInfo.HighRatio, rInfo.LowRatio, goalRatio); err != nil {
+		return err
+	}
+	if maxBatchCount <= 0 {
+		maxBatchCount = rInfo.MaxBatchCount
+	}
+	if migrateLimitPerDisk <= 0 {
+		migrateLimitPerDisk = rInfo.MigrateLimitPerDisk
+	}
+	if dstMNPartitionMaxCount <= 0 || dstMNPartitionMaxCount > defaultDstMetaNodePartitionMaxCount {
+		dstMNPartitionMaxCount = defaultDstMetaNodePartitionMaxCount
+	}
+	_, err = rw.updateRebalancedInfo(rInfo.Cluster, rInfo.ZoneName, rInfo.RType, maxBatchCount,
+		rInfo.HighRatio, rInfo.LowRatio, goalRatio, migrateLimitPerDisk, dstMNPartitionMaxCount, Status(rInfo.Status))
+	if err == nil {
+		ctrl.UpdateRatio(rInfo.HighRatio, rInfo.LowRatio, goalRatio)
+		ctrl.SetDstMetaNodeMaxPartitionCount(dstMNPartitionMaxCount)
+		ctrl.SetClusterMaxBatchCount(maxBatchCount)
+		ctrl.SetMigrateLimitPerDisk(migrateLimitPerDisk)
+	}
+	return err
+}
+
+func (rw *ReBalanceWorker) ReBalanceStop(taskId uint64) (err error) {
+	var (
+		rInfo *RebalancedInfoTable
+		ctrl  *ZoneReBalanceController
+	)
+	if rInfo, err = rw.GetRebalancedInfoByID(taskId); err != nil {
+		return
+	}
+	if ctrl, err = rw.getRebalanceCtrl(getRebalanceCtrlMapKey(rInfo.Cluster, rInfo.RType, rInfo.ID)); err != nil {
+		return
+	}
+	if err = rw.stopRebalanced(taskId, true); err != nil {
+		return
+	}
+	if err = ctrl.ReBalanceStop(); err != nil {
+		return
+	}
+	rw.reBalanceCtrlMap.Delete(getRebalanceCtrlMapKey(rInfo.Cluster, rInfo.RType, rInfo.ID))
+	return nil
+}
+
+func (rw *ReBalanceWorker) ReBalanceStatus(cluster string, rType RebalanceType, taskID uint64) (Status, error) {
+	ctrl, err := rw.getRebalanceCtrl(getRebalanceCtrlMapKey(cluster, rType, taskID))
+	if err != nil {
+		return -1, err
+	}
+	status := ctrl.Status()
+	return status, nil
+}
+
+func (rw *ReBalanceWorker) ResetZoneMap() {
+	rw.reBalanceCtrlMap.Range(func(key, value interface{}) bool {
+		ctrl := value.(*ZoneReBalanceController)
+		if ctrl.Status() == StatusStop {
+			rw.reBalanceCtrlMap.Delete(key)
+		}
+		return true
 	})
-	http.HandleFunc(RBStart, responseHandler(rw.handleStart))
-	http.HandleFunc(RBStop, responseHandler(rw.handleStop))
-	http.HandleFunc(RBStatus, responseHandler(rw.handleStatus))
-	http.HandleFunc(RBReset, responseHandler(rw.handleReset))
-	http.HandleFunc(RBInfo, responseHandler(rw.handleRebalancedInfo))
-	http.HandleFunc(RBResetControl, responseHandler(rw.handleReSetControlParam))
-	http.HandleFunc(RBList, pagingResponseHandler(rw.handleRebalancedList))
-	http.HandleFunc(ZoneUsageRatio, rw.handleZoneUsageRatio)
-	http.HandleFunc(RBRecordsQuery, pagingResponseHandler(rw.handleMigrateRecordsQuery))
+}
+
+// 1. 节点列表 2.每个节点的dp列表
+// 节点 和 count
+func (rw *ReBalanceWorker) getStoppedTaskStatus(rInfo *RebalancedInfoTable, status Status) (*RebalanceStatusInfo, error) {
+	result := &RebalanceStatusInfo{
+		Status: status,
+	}
+	srcNodeList, err := rw.GetSrcNodeInfoList(rInfo.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, srcNode := range srcNodeList {
+		srcNode.IsFinish = true
+	}
+	result.SrcNodesInfo = srcNodeList
+
+	dstNodeList, err := rw.GetDstNodeInfoList(rInfo.ID)
+	if err != nil {
+		return nil, err
+	}
+	for _, dstNode := range dstNodeList {
+		dstNode.IsFinish = true
+	}
+	result.DstNodesInfo = dstNodeList
+	return result, nil
+}
+
+func (rw *ReBalanceWorker) getRunningTaskStatus(rInfo *RebalancedInfoTable) (*RebalanceStatusInfo, error) {
+	ctrl, err := rw.getRebalanceCtrl(getRebalanceCtrlMapKey(rInfo.Cluster, rInfo.RType, rInfo.ID))
+	if err != nil {
+		return nil, err
+	}
+	result := &RebalanceStatusInfo{
+		SrcNodesInfo: make([]*RebalanceNodeInfo, 0),
+		DstNodesInfo: make([]*RebalanceNodeInfo, 0),
+		Status:       ctrl.Status(),
+	}
+	if rInfo.RType == RebalanceData {
+		for _, srcNode := range ctrl.srcDataNodes {
+			info := &RebalanceNodeInfo{
+				Addr:     srcNode.nodeInfo.Addr,
+				IsFinish: srcNode.isFinished,
+			}
+			if rInfo.TaskType == ZoneAutoReBalance {
+				info.TotalCount = len(srcNode.disks) * srcNode.migrateLimitPerDisk
+				info.MigratedCount = len(srcNode.migratedDp)
+			}
+			if rInfo.TaskType == NodesMigrate {
+				total := 0
+				for _, disk := range srcNode.disks {
+					total += len(disk.dpList)
+				}
+				info.TotalCount = total
+				info.MigratedCount = len(srcNode.migratedDp)
+			}
+			result.SrcNodesInfo = append(result.SrcNodesInfo, info)
+		}
+		for _, dstNode := range ctrl.dstDataNodes {
+			info := &RebalanceNodeInfo{
+				Addr: dstNode.Addr,
+			}
+			result.DstNodesInfo = append(result.DstNodesInfo, info)
+		}
+	}
+	if rInfo.RType == RebalanceMeta {
+		for _, srcNode := range ctrl.srcMetaNodes {
+			info := &RebalanceNodeInfo{
+				Addr:     srcNode.nodeInfo.Addr,
+				IsFinish: srcNode.isFinished,
+			}
+			if rInfo.TaskType == ZoneAutoReBalance {
+				info.MigratedCount = len(srcNode.alreadyMigrateFinishedPartitions)
+			}
+			if rInfo.TaskType == NodesMigrate {
+				info.TotalCount = len(srcNode.nodeInfo.PersistenceMetaPartitions)
+				info.MigratedCount = len(srcNode.alreadyMigrateFinishedPartitions)
+			}
+			result.SrcNodesInfo = append(result.SrcNodesInfo, info)
+		}
+		for _, dstNode := range ctrl.dstMetaNodes {
+			info := &RebalanceNodeInfo{
+				Addr: dstNode.Addr,
+			}
+			result.DstNodesInfo = append(result.DstNodesInfo, info)
+		}
+	}
+	return result, nil
+}
+
+func (rw *ReBalanceWorker) getRebalanceCtrl(findKey string) (*ZoneReBalanceController, error) {
+	if res, ok := rw.reBalanceCtrlMap.Load(findKey); !ok {
+		return nil, fmt.Errorf("get rebalance controller error with findKey:%v", findKey)
+	} else {
+		ctrl := res.(*ZoneReBalanceController)
+		return ctrl, nil
+	}
+}
+
+func getRebalanceCtrlMapKey(cluster string, module RebalanceType, taskID uint64) string {
+	return path.Join(cluster, module.String(), strconv.FormatUint(taskID, 10))
+}
+
+func (rw *ReBalanceWorker) doReleaseZone(cluster, zoneName string) error {
+	dataNodes, err := getZoneDataNodesByClusterName(cluster, zoneName)
+	if err != nil {
+		return err
+	}
+	for _, node := range dataNodes {
+		if err = rw.doReleaseDataNodePartitions(node, ""); err != nil {
+			log.LogErrorf("release dataNode error cluster: %v zone: %v dataNode %v %v", cluster, zoneName, node, err)
+		}
+	}
+	return nil
+}
+
+func (rw *ReBalanceWorker) doReleaseDataNodePartitions(dataNodeHttpAddr, timeLocation string) (err error) {
+	var (
+		data   []byte
+		reqURL string
+		key    string
+	)
+	if timeLocation == "" {
+		key = generateAuthKey()
+	} else {
+		key = generateAuthKeyWithTimeZone(timeLocation)
+	}
+	dataHttpClient := http_client.NewDataClient(dataNodeHttpAddr, false)
+	_, err = dataHttpClient.ReleasePartitions(key)
+	if err != nil {
+		return fmt.Errorf("url[%v],err %v resp[%v]", reqURL, err, string(data))
+	}
+	log.LogInfof("action[doReleaseDataNodePartitions] url[%v] resp[%v]", reqURL, string(data))
+	return
+}
+
+func generateAuthKey() string {
+	date := time.Now().Format("2006-01-02 15")
+	h := md5.New()
+	h.Write([]byte(date))
+	cipherStr := h.Sum(nil)
+	return hex.EncodeToString(cipherStr)
+}
+
+func generateAuthKeyWithTimeZone(timeLocation string) string {
+	var t time.Time
+	if timeLocation == "" {
+		t = time.Now()
+	} else {
+		l, _ := time.LoadLocation(timeLocation)
+		t = time.Now().In(l)
+	}
+	date := t.Format("2006-01-02 15")
+	h := md5.New()
+	h.Write([]byte(date))
+	cipherStr := h.Sum(nil)
+	return hex.EncodeToString(cipherStr)
 }

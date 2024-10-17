@@ -36,7 +36,7 @@ func TestInsertOrUpdateRebalancedInfo(t *testing.T) {
 	goalRatio := 0.6
 	migrateLimitPerDisk := 11
 	status := StatusRunning
-	rInfo, err := rw.insertOrUpdateRebalancedInfo(clusterHost, zoneName, RebalanceData, maxBatchCount, highRatio, lowRatio, goalRatio, migrateLimitPerDisk, defaultDstMetaNodePartitionMaxCount, status)
+	rInfo, err := rw.insertRebalanceInfo(clusterHost, zoneName, RebalanceData, maxBatchCount, highRatio, lowRatio, goalRatio, migrateLimitPerDisk, defaultDstMetaNodePartitionMaxCount, status)
 	if err != nil {
 		t.Fatalf("err:%v", err)
 	}

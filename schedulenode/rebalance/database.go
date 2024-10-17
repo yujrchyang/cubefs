@@ -2,6 +2,7 @@ package rebalance
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"strings"
@@ -40,7 +41,7 @@ const (
 )
 
 type MigrateRecordTable struct {
-	ID int `gorm:"column:id;"`
+	ID uint64 `gorm:"column:id;"`
 
 	ClusterName  string        `gorm:"column:cluster_name;"`
 	ZoneName     string        `gorm:"column:zone_name;"`
@@ -56,8 +57,10 @@ type MigrateRecordTable struct {
 	NewDiskUsage float64       `gorm:"column:new_disk_usage"`
 	TaskId       uint64        `gorm:"column:task_id;"`
 	TaskType     TaskType      `gorm:"column:task_type"`
-
-	CreatedAt time.Time `gorm:"column:created_at"`
+	NeedDelete   int           `gorm:"column:need_delete"`   // 1- 需要删除  0-不需要删除
+	FinishDelete int           `gorm:"column:finish_delete"` // 0-默认值 1-成功 -1-失败
+	CreatedAt    time.Time     `gorm:"column:created_at"`
+	UpdateAt     time.Time     `gorm:"column:update_at"`
 }
 
 func (MigrateRecordTable) TableName() string {
@@ -109,6 +112,92 @@ func (rw *ReBalanceWorker) GetMigrateRecordsByCond(cond map[string]interface{}, 
 		return total, nil, err
 	}
 	return
+}
+
+func (rw *ReBalanceWorker) GetPartitionMigCount(taskID, pid uint64) (count int, err error) {
+	records := make([]*MigrateRecordTable, 0)
+	err = rw.dbHandle.Table(MigrateRecordTable{}.TableName()).
+		Where("task_id = ? and partition_id = ?", taskID, pid).
+		Find(&records).Error
+	if err != nil {
+		return
+	}
+	return len(records), err
+}
+
+func (rw *ReBalanceWorker) GetNeedDeleteReplicaDp(createTime time.Time) ([]*MigrateRecordTable, error) {
+	records := make([]*MigrateRecordTable, 0)
+	err := rw.dbHandle.Table(MigrateRecordTable{}.TableName()).
+		Where("need_delete = ? and finish_delete != ? and created_at <= ?", DeleteFlagForTwoReplica, FinishDeleteSuccess, createTime).
+		Find(&records).Error
+	if err != nil {
+		log.LogErrorf("GetNeedDeleteReplicaDp failed: time(%v) err(%v)", createTime, err)
+	}
+	return records, err
+}
+
+func (rw *ReBalanceWorker) UpdateNeedDeleteReplicaDpRecords(records []*MigrateRecordTable) {
+	var (
+		failedList  []uint64
+		successList []uint64
+		defaultList []uint64
+		err         error
+	)
+	for _, record := range records {
+		switch record.FinishDelete {
+		case FinishDeleteDefault:
+			defaultList = append(defaultList, record.ID)
+		case FinishDeleteFailed:
+			failedList = append(failedList, record.ID)
+		case FinishDeleteSuccess:
+			successList = append(successList, record.ID)
+		}
+	}
+	if len(defaultList) > 0 {
+		for i := 0; i < 10; i++ {
+			err = rw.dbHandle.Table(MigrateRecordTable{}.TableName()).Where("id in ?", defaultList).
+				Updates(map[string]interface{}{
+					"finish_delete": FinishDeleteDefault,
+					"update_at":     time.Now(),
+				}).Error
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			log.LogErrorf("UpdateNeedDeleteReplicaDpRecords: defaultList failed: %v", defaultList)
+		}
+	}
+	if len(failedList) > 0 {
+		for i := 0; i < 10; i++ {
+			err = rw.dbHandle.Table(MigrateRecordTable{}.TableName()).Where("id in ?", failedList).
+				Updates(map[string]interface{}{
+					"finish_delete": FinishDeleteFailed,
+					"update_at":     time.Now(),
+				}).Error
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			log.LogErrorf("UpdateNeedDeleteReplicaDpRecords: failedList failed: %v", successList)
+		}
+	}
+	if len(successList) > 0 {
+		for i := 0; i < 10; i++ {
+			err = rw.dbHandle.Table(MigrateRecordTable{}.TableName()).Where("id in ?", successList).
+				Updates(map[string]interface{}{
+					"finish_delete": FinishDeleteSuccess,
+					"update_at":     time.Now(),
+				}).Error
+			if err == nil {
+				break
+			}
+		}
+		if err != nil {
+			log.LogErrorf("UpdateNeedDeleteReplicaDpRecords: successList failed: %v", successList)
+		}
+	}
 }
 
 // todo: 迁移任务 dst src存表
@@ -179,16 +268,39 @@ func (rw *ReBalanceWorker) UpdateRebalancedInfo(info *RebalancedInfoTable) (affe
 	return
 }
 
-func (rw *ReBalanceWorker) insertOrUpdateRebalancedInfo(cluster, zoneName string, rType RebalanceType, maxBatchCount int,
+func (rw *ReBalanceWorker) insertRebalanceInfo(cluster, zoneName string, rType RebalanceType, maxBatchCount int,
 	highRatio, lowRatio, goalRatio float64, migrateLimitPerDisk, dstMNPartitionMaxCount int, status Status) (rInfo *RebalancedInfoTable, err error) {
+	rInfo, err = rw.GetRebalancedInfoByZone(cluster, zoneName, rType)
+	if err != nil && err.Error() != RECORD_NOT_FOUND {
+		return nil, err
+	}
+	if rInfo.ID > 0 {
+		return nil, fmt.Errorf("已存在相同任务[%v]，请勿重复创建！", rInfo.ID)
+	}
+	rInfo = new(RebalancedInfoTable)
+	rInfo.Status = int(status)
+	rInfo.MaxBatchCount = maxBatchCount
+	rInfo.HighRatio = highRatio
+	rInfo.LowRatio = lowRatio
+	rInfo.GoalRatio = goalRatio
+	rInfo.MigrateLimitPerDisk = migrateLimitPerDisk
+	rInfo.RType = rType
+	rInfo.TaskType = ZoneAutoReBalance
+	rInfo.DstMetaNodePartitionMaxCount = dstMNPartitionMaxCount
+	rInfo.Cluster = cluster
+	rInfo.Host = rw.getClusterHost(cluster)
+	rInfo.ZoneName = zoneName
+	rInfo.CreatedAt = time.Now()
+	rInfo.UpdatedAt = rInfo.CreatedAt
+	err = rw.PutRebalancedInfoToDB(rInfo)
+	return
+}
 
+func (rw *ReBalanceWorker) updateRebalancedInfo(cluster, zoneName string, rType RebalanceType, maxBatchCount int,
+	highRatio, lowRatio, goalRatio float64, migrateLimitPerDisk, dstMNPartitionMaxCount int, status Status) (rInfo *RebalancedInfoTable, err error) {
 	rInfo, err = rw.GetRebalancedInfoByZone(cluster, zoneName, rType)
 	if err != nil {
-		if err.Error() != RECORD_NOT_FOUND {
-			return nil, err
-		} else {
-			rInfo = new(RebalancedInfoTable)
-		}
+		return nil, err
 	}
 	rInfo.Status = int(status)
 	rInfo.MaxBatchCount = maxBatchCount
@@ -199,17 +311,8 @@ func (rw *ReBalanceWorker) insertOrUpdateRebalancedInfo(cluster, zoneName string
 	rInfo.RType = rType
 	rInfo.TaskType = ZoneAutoReBalance
 	rInfo.DstMetaNodePartitionMaxCount = dstMNPartitionMaxCount
-	if rInfo.ID > 0 {
-		rInfo.UpdatedAt = time.Now()
-		_, err = rw.UpdateRebalancedInfo(rInfo)
-	} else {
-		rInfo.Cluster = cluster
-		rInfo.Host = rw.getClusterHost(cluster)
-		rInfo.ZoneName = zoneName
-		rInfo.CreatedAt = time.Now()
-		rInfo.UpdatedAt = rInfo.CreatedAt
-		err = rw.PutRebalancedInfoToDB(rInfo)
-	}
+	rInfo.UpdatedAt = time.Now()
+	_, err = rw.UpdateRebalancedInfo(rInfo)
 	return
 }
 

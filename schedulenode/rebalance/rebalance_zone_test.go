@@ -3,6 +3,7 @@ package rebalance
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"net/http"
@@ -44,7 +45,7 @@ func TestNodesReBalance(t *testing.T) {
 	srcNodeList := []string{"11.60.241.50:17310"}
 	dstNodeList := []string{"11.60.241.112:17310"}
 
-	ctrl := newNodeReBalanceController(1, "11.60.241.50:17010", RebalanceData, srcNodeList, dstNodeList, rw)
+	ctrl := newNodeMigrateController(1, "11.60.241.50:17010", RebalanceData, srcNodeList, dstNodeList, rw)
 	t.Run("test node migrate", func(t *testing.T) {
 		err = ctrl.ReBalanceStart()
 		if err != nil {
@@ -62,7 +63,7 @@ func printMigrate(info *MigrateRecordTable) error {
 
 func TestReBalanceZone(t *testing.T) {
 	rw := &ReBalanceWorker{}
-	ctrl := NewZoneReBalanceController(1, cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, rw)
+	ctrl := newZoneReBalanceController(1, cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, rw)
 
 	t.Run("test reBalance", func(t *testing.T) {
 		err := ctrl.ReBalanceStart()
@@ -74,7 +75,7 @@ func TestReBalanceZone(t *testing.T) {
 
 func TestReBalanceStart(t *testing.T) {
 	rw := ReBalanceWorker{}
-	taskID, err := rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
+	taskID, err := rw.ZoneReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,7 +96,7 @@ func TestReBalanceStart(t *testing.T) {
 
 func TestReBalanceStop(t *testing.T) {
 	rw := ReBalanceWorker{}
-	taskID, err := rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
+	taskID, err := rw.ZoneReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +122,7 @@ func TestReBalanceStop(t *testing.T) {
 
 func TestReBalanceReStart(t *testing.T) {
 	rw := ReBalanceWorker{}
-	taskID, err := rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
+	taskID, err := rw.ZoneReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,7 +144,7 @@ func TestReBalanceReStart(t *testing.T) {
 	}
 	fmt.Println("++++++++++++++++++++++++status++++++++++++++++++++++++")
 	fmt.Println(status)
-	taskID, err = rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
+	taskID, err = rw.ZoneReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,12 +165,12 @@ func TestReBalanceReStart(t *testing.T) {
 
 func TestReBalanceDupStart(t *testing.T) {
 	rw := ReBalanceWorker{}
-	taskID, err := rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
+	taskID, err := rw.ZoneReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
 	time.Sleep(5 * time.Second)
-	taskID, err = rw.ReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
+	taskID, err = rw.ZoneReBalanceStart(cluster, zoneName, RebalanceData, highRatio, lowRatio, goalRatio, 50, 10, defaultDstMetaNodePartitionMaxCount)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -196,4 +197,11 @@ func TestServer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func Test_GetDataNode(t *testing.T) {
+	dc := getDataHttpClient("11.127.110.5", "17031")
+	stats, err := dc.GetDatanodeStats()
+	assert.Nil(t, err)
+	fmt.Printf("nodeStatsInfo: %v", stats)
 }
