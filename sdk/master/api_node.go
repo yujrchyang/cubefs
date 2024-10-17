@@ -381,6 +381,23 @@ func (api *NodeAPI) MetaNodeGetPartition(addr string, id uint64) (node *proto.MN
 	return
 }
 
+func (api *NodeAPI) MetaNodeGetRecorder(addr string, id uint64) (node *proto.MNMetaRecorderInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, "/getRecorderById")
+	var buf []byte
+	nodeClient := NewNodeClient(fmt.Sprintf("%v:%v", addr, api.mc.MetaNodeProfPort), false, METANODE)
+	nodeClient.MetaNodeProfPort = api.mc.MetaNodeProfPort
+	request.addParam("pid", strconv.FormatUint(id, 10))
+	request.addHeader("isTimeOut", "false")
+	if buf, _, err = nodeClient.serveRequest(request); err != nil {
+		return
+	}
+	node = &proto.MNMetaRecorderInfo{}
+	if err = json.Unmarshal(buf, &node); err != nil {
+		return
+	}
+	return
+}
+
 func (api *NodeAPI) DataNodeValidateCRCReport(dpCrcInfo *proto.DataPartitionExtentCrcInfo) (err error) {
 	var encoded []byte
 	if encoded, err = json.Marshal(dpCrcInfo); err != nil {

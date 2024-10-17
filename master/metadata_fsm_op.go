@@ -210,13 +210,16 @@ type metaPartitionValue struct {
 	VolID          uint64
 	ReplicaNum     uint8
 	LearnerNum     uint8
+	RecorderNum    uint8
 	Status         int8
 	VolName        string
 	Hosts          string
 	OfflinePeerID  uint64
 	Peers          []bsProto.Peer
 	Learners       []bsProto.Learner
+	Recorders	   []string
 	PanicHosts     []string
+	PanicRecorders []string
 	IsRecover      bool
 	CreateTime     int64
 	PrePartitionID uint64
@@ -229,15 +232,18 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		End:            mp.End,
 		VolID:          mp.volID,
 		ReplicaNum:     mp.ReplicaNum,
+		RecorderNum:    mp.RecorderNum,
 		LearnerNum:     mp.LearnerNum,
 		Status:         mp.Status,
 		VolName:        mp.volName,
 		Hosts:          mp.hostsToString(),
 		Peers:          mp.Peers,
 		Learners:       mp.Learners,
+		Recorders: 		mp.Recorders,
 		OfflinePeerID:  mp.OfflinePeerID,
 		IsRecover:      mp.IsRecover,
 		PanicHosts:     mp.PanicHosts,
+		PanicRecorders: mp.PanicRecorders,
 		CreateTime:     mp.CreateTime,
 		PrePartitionID: mp.PrePartitionID,
 	}
@@ -301,6 +307,8 @@ type volValue struct {
 	DpReplicaNum          uint8
 	MpLearnerNum          uint8
 	DpLearnerNum          uint8
+	MpRecorderNum         uint8
+	DpRecorderNum         uint8
 	Status                uint8
 	DataPartitionSize     uint64
 	Capacity              uint64
@@ -432,6 +440,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		MinWritableDPNum:      vol.MinWritableDPNum,
 		DpLearnerNum:          vol.dpLearnerNum,
 		MpLearnerNum:          vol.mpLearnerNum,
+		DpRecorderNum:         vol.dpRecorderNum,
+		MpRecorderNum:         vol.mpRecorderNum,
 		DPConvertMode:         vol.DPConvertMode,
 		MPConvertMode:         vol.MPConvertMode,
 		TrashRemainingDays:    vol.trashRemainingDays,
@@ -1406,8 +1416,11 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 			continue
 		}
 		mp := c.buildMetaPartition(mpv, vol)
-		if mp.IsRecover && len(mp.PanicHosts) > 0 {
+		if mp.IsRecover && (len(mp.PanicHosts) > 0 || len(mp.PanicRecorders) > 0) {
 			for _, address := range mp.PanicHosts {
+				c.putBadMetaPartitions(address, mp.PartitionID)
+			}
+			for _, address := range mp.PanicRecorders {
 				c.putBadMetaPartitions(address, mp.PartitionID)
 			}
 		}
@@ -1421,14 +1434,16 @@ func (c *Cluster) loadMetaPartitions() (err error) {
 }
 
 func (c *Cluster) buildMetaPartition(mpv *metaPartitionValue, vol *Vol) *MetaPartition {
-	mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, mpv.LearnerNum, vol.Name, mpv.VolID)
+	mp := newMetaPartition(mpv.PartitionID, mpv.Start, mpv.End, vol.mpReplicaNum, mpv.LearnerNum, mpv.RecorderNum, vol.Name, mpv.VolID)
 	mp.setHosts(strings.Split(mpv.Hosts, underlineSeparator))
 	mp.setPeers(mpv.Peers)
 	mp.setLearners(mpv.Learners)
+	mp.setRecorders(mpv.Recorders)
 	mp.OfflinePeerID = mpv.OfflinePeerID
 	mp.IsRecover = mpv.IsRecover
 	mp.modifyTime = time.Now().Unix()
 	mp.PanicHosts = mpv.PanicHosts
+	mp.PanicRecorders = mpv.PanicRecorders
 	mp.CreateTime = mpv.CreateTime
 	mp.PrePartitionID = mpv.PrePartitionID
 	return mp

@@ -22,6 +22,7 @@ import (
 	"github.com/cubefs/cubefs/util/tokenmanager"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/tiglabs/raft"
+	"io/fs"
 	"io/ioutil"
 	"net"
 	_ "net/http/pprof"
@@ -55,6 +56,7 @@ type MetadataManager interface {
 	//CreatePartition(id string, start, end uint64, peers []proto.Peer) error
 	HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) error
 	GetPartition(id uint64) (MetaPartition, error)
+	GetRecorder(id uint64) (*metaRecorder, error)
 	Range(f func(i uint64, p MetaPartition) bool)
 	RangeMonitorData(deal func(data *statistics.MonitorData, volName, diskPath string, pid uint64))
 	StartPartition(id uint64) error
@@ -85,7 +87,8 @@ type metadataManager struct {
 	state                 uint32
 	mu                    sync.RWMutex
 	createMu              sync.RWMutex
-	partitions            map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
+	partitions            map[uint64]MetaPartition 	// Key: metaRangeId, Val: metaPartition
+	recorders             sync.Map 					// Key: metaRangeId, Val: metaRecorder
 	startFailedPartitions sync.Map
 	metaNode              *MetaNode
 	flDeleteBatchCount    atomic.Value
@@ -256,6 +259,16 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opPromoteMetaPartitionRaftLearner(conn, p, remoteAddr)
 	case proto.OpResetMetaPartitionRaftMember:
 		err = m.opResetMetaPartitionMember(conn, p, remoteAddr)
+	case proto.OpCreateMetaRecorder:
+		err = m.opCreateMetaRecorder(conn, p, remoteAddr)
+	case proto.OpDeleteMetaRecorder:
+		err = m.opExpiredMetaRecorder(conn, p, remoteAddr)
+	case proto.OpAddMetaPartitionRaftRecorder:
+		err = m.opAddMetaPartitionRaftRecorder(conn, p, remoteAddr)
+	case proto.OpRemoveMetaPartitionRaftRecorder:
+		err = m.opRemoveMetaPartitionRaftRecorder(conn, p, remoteAddr)
+	case proto.OpResetMetaRecorderRaftMember:
+		err = m.opResetMetaRecorderRaftMember(conn, p, remoteAddr)
 	case proto.OpMetaPartitionTryToLeader:
 		err = m.opMetaPartitionTryToLeader(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:
@@ -292,6 +305,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opGetMultipart(conn, p, remoteAddr)
 	case proto.OpMetaGetAppliedID:
 		err = m.opGetAppliedID(conn, p, remoteAddr)
+	case proto.OpMetaGetTruncateIndex:
+		err = m.opGetTruncateIndex(conn, p, remoteAddr)
 	case proto.OpGetMetaNodeVersionInfo:
 		err = m.opGetMetaNodeVersionInfo(conn, p, remoteAddr)
 	case proto.OpMetaGetCmpInode:
@@ -436,6 +451,11 @@ func (m *metadataManager) onStart() (err error) {
 	go m.syncMetaPartitionsRocksDBWalLogScheduler()
 	go m.cleanOldDeleteEKRecordFileSchedule()
 	err = m.startPartitions()
+	if err != nil {
+		log.LogError(err.Error())
+		return
+	}
+	err = m.startRecorders()
 	if err != nil {
 		log.LogError(err.Error())
 		return
@@ -590,8 +610,16 @@ func (m *metadataManager) onStop() {
 			return true
 		})
 	}
+	m.walkRecorders(func(mr *metaRecorder) bool {
+		wg.Add(1)
+		go func(recorder *metaRecorder) {
+			defer wg.Done()
+			recorder.Stop()
+		}(mr)
+		return true
+	})
 	wg.Wait()
-	log.LogErrorf("stop partitions cost:%v", time.Since(start))
+	log.LogErrorf("stop partitions and recorders cost:%v", time.Since(start))
 
 	close(m.stopC)
 	return
@@ -609,44 +637,16 @@ func (m *metadataManager) getPartition(id uint64) (mp MetaPartition, err error) 
 	return
 }
 
-func (m *metadataManager) loadPartitions() (err error) {
-	var metaNodeInfo *proto.MetaNodeInfo
-	for i := 0; i < 3; i++ {
-		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.metaNode.localAddr,
-			m.metaNode.listen)); err != nil {
-			log.LogErrorf("loadPartitions: get MetaNode info fail: err(%v)", err)
-			continue
-		}
-		break
-	}
-
+func (m *metadataManager) loadPartitions(metaNodeInfo *proto.MetaNodeInfo, fileInfoList []fs.FileInfo) {
 	if len(metaNodeInfo.PersistenceMetaPartitions) == 0 {
 		log.LogWarnf("loadPartitions: length of PersistenceMetaPartitions is 0, ExpiredPartition check without effect")
 	}
 
-	// Check metadataDir directory
-	fileInfo, err := os.Stat(m.rootDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			err = os.MkdirAll(m.rootDir, 0755)
-		} else {
-			return err
-		}
-	}
-	if !fileInfo.IsDir() {
-		err = errors.New("metadataDir must be directory")
-		return
-	}
-	// scan the data directory
-	fileInfoList, err := ioutil.ReadDir(m.rootDir)
-	if err != nil {
-		return err
-	}
 	var wg sync.WaitGroup
 	for _, fileInfo := range fileInfoList {
 		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), partitionPrefix) {
 
-			if isExpiredPartition(fileInfo.Name(), metaNodeInfo.PersistenceMetaPartitions) {
+			if isExpiredPartition(fileInfo.Name(), metaNodeInfo.PersistenceMetaPartitions, partitionPrefix) {
 				log.LogErrorf("loadPartitions: find expired partition[%s], rename it and you can delete him manually",
 					fileInfo.Name())
 				oldName := path.Join(m.rootDir, fileInfo.Name())
@@ -739,6 +739,31 @@ func (m *metadataManager) loadPartitions() (err error) {
 		}
 	}
 	wg.Wait()
+	return
+}
+
+func (m *metadataManager) loadRecorders(metaNodeInfo *proto.MetaNodeInfo, fileInfoList []fs.FileInfo) {
+	if len(metaNodeInfo.PersistenceMetaRecorders) == 0 {
+		log.LogWarnf("loadRecorders: length of PersistenceMetaRecorders is 0, ExpiredRecorder check without effect")
+	}
+
+	for _, fileInfo := range fileInfoList {
+		if fileInfo.IsDir() && strings.HasPrefix(fileInfo.Name(), RecorderPrefix) {
+			if m.isExpiredRecorder(fileInfo.Name(), metaNodeInfo.PersistenceMetaRecorders, RecorderPrefix) {
+				log.LogErrorf("loadRecorders: find expired recorder[%s], rename it and you can delete him manually",
+					fileInfo.Name())
+				m.expireRecorder(fileInfo.Name())
+				continue
+			}
+			mr, loadErr := m.loadRecorder(fileInfo.Name())
+			if loadErr != nil {
+				log.LogErrorf("loadRecorders partition: %s, error: %s", fileInfo.Name(), loadErr)
+				log.LogFlush()
+				panic(loadErr)
+			}
+			m.attachRecorder(mr.partitionID, mr)
+		}
+	}
 	return
 }
 
@@ -873,6 +898,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		Cursor:             request.Start,
 		Peers:              request.Members,
 		Learners:           request.Learners,
+		Recorders: 			request.Recorders,
 		RaftStore:          m.raftStore,
 		NodeId:             m.nodeId,
 		RootDir:            path.Join(m.rootDir, partitionPrefix+partitionId),
@@ -892,6 +918,10 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 	var oldMp MetaPartition
 	if oldMp, err = m.GetPartition(request.PartitionID); err == nil {
 		err = oldMp.IsEquareCreateMetaPartitionRequst(request)
+		return
+	}
+	if _, err = m.GetRecorder(request.PartitionID); err == nil {
+		err = fmt.Errorf("meta recorder exists")
 		return
 	}
 
@@ -1153,6 +1183,205 @@ func (m *metadataManager) expiredStartFailedPartition(mpID uint64) (err error) {
 	return
 }
 
+func (m *metadataManager) loadMetaInfo() (metaNodeInfo *proto.MetaNodeInfo, fileInfoList []fs.FileInfo, err error) {
+	for i := 0; i < 3; i++ {
+		if metaNodeInfo, err = masterClient.NodeAPI().GetMetaNode(fmt.Sprintf("%s:%s", m.metaNode.localAddr,
+			m.metaNode.listen)); err != nil {
+			log.LogErrorf("loadPartitions: get MetaNode info fail: err(%v)", err)
+			continue
+		}
+		break
+	}
+
+	// Check metadataDir directory
+	var fileInfo os.FileInfo
+	fileInfo, err = os.Stat(m.rootDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err = os.MkdirAll(m.rootDir, 0755)
+		} else {
+			return
+		}
+	}
+	if !fileInfo.IsDir() {
+		err = errors.New("metadataDir must be directory")
+		return
+	}
+	// scan the data directory
+	fileInfoList, err = ioutil.ReadDir(m.rootDir)
+	if err != nil {
+		return
+	}
+	return
+}
+
+func (m *metadataManager) loadRecorder(fileName string) (mr *metaRecorder, err error) {
+	var	id	uint64
+	recorderIdStr := fileName[len(RecorderPrefix):]
+	if id, err = strconv.ParseUint(recorderIdStr, 10, 64); err != nil {
+		return
+	}
+	var cfg *raftstore.RecorderConfig
+	if cfg, err = raftstore.LoadRecorderConfig(path.Join(m.rootDir, fileName), m.nodeId, m.raftStore); err != nil {
+		return
+	}
+	if id != cfg.PartitionID {
+		err = fmt.Errorf("mismatch recorder ID: dirName(%v) config(%v)", fileName, cfg)
+		return
+	}
+	if mr, err = NewMetaRecorder(cfg, m); err != nil {
+		return
+	}
+	return
+}
+
+func (m *metadataManager) startRecorders() error {
+	// todo 并行？测试一下性能
+	failCnt, successCnt := 0, 0
+	start := time.Now()
+	m.walkRecorders(func(mr *metaRecorder) bool {
+		if err := mr.start(); err != nil {
+			log.LogErrorf("recorder[%v] start failed: %v", mr.partitionID, err)
+			failCnt++
+		} else {
+			successCnt++
+		}
+		return true
+	})
+	if failCnt != 0 {
+		log.LogErrorf("start %d recorders failed", failCnt)
+		return fmt.Errorf("start %d recorders failed", failCnt)
+	}
+	log.LogInfof("start %d recorders cost :%v", successCnt, time.Since(start))
+	return nil
+}
+
+func (m *metadataManager) createRecorder(request *proto.CreateMetaRecorderRequest) (err error) {
+	m.createMu.Lock()
+	defer m.createMu.Unlock()
+
+	if _, ok := m.startFailedPartitions.Load(request.PartitionID); ok {
+		err = errors.NewErrorf("[createRecorder]->partition %v exist in startFailedPartitions", request.PartitionID)
+		return
+	}
+
+	if _, err = m.GetPartition(request.PartitionID); err == nil {
+		err = fmt.Errorf("meta partition exists")
+		return
+	}
+	if oldMr, getErr := m.GetRecorder(request.PartitionID); getErr == nil {
+		err = oldMr.IsEqualCreateMetaRecorderRequest(request)
+		return
+	}
+
+	var mr *metaRecorder
+	cfg := &raftstore.RecorderConfig{
+		VolName:        request.VolName,
+		PartitionID:	request.PartitionID,
+		Peers:          request.Members,
+		Learners:       request.Learners,
+		Recorders: 		request.Recorders,
+		NodeID:         m.nodeId,
+		RaftStore:      m.raftStore,
+	}
+	if mr, err = NewMetaRecorder(cfg, m); err != nil {
+		err = errors.NewErrorf("[newRecorder]->%s", err.Error())
+		return
+	}
+	if err = mr.persist(); err != nil {
+		err = errors.NewErrorf("[persistMetadata]->%s", err.Error())
+		return
+	}
+	if err = mr.start(); err != nil {
+		os.RemoveAll(mr.Recorder().MetaPath())
+		log.LogErrorf("start recorder %v fail: %v", request.PartitionID, err)
+		err = errors.NewErrorf("[startRecorder]->%s", err.Error())
+		return
+	}
+
+	m.attachRecorder(request.PartitionID, mr)
+	log.LogInfof("attach recorder %v success", request.PartitionID)
+
+	return
+}
+
+func (m *metadataManager) expiredRecorder(id uint64) (err error) {
+	var mr *metaRecorder
+	if mr, err = m.GetRecorder(id); err != nil {
+		return
+	}
+
+	if err = mr.Expired(); err != nil {
+		return
+	}
+	_ = m.detachRecorder(id)
+	return
+}
+
+func (m *metadataManager) GetRecorder(id uint64) (mr *metaRecorder, err error) {
+	value, ok := m.recorders.Load(id)
+	if ok {
+		mr = value.(*metaRecorder)
+		return
+	}
+	err = errors.New(fmt.Sprintf("unknown meta recorder: %d", id))
+	return
+}
+
+func (m *metadataManager) attachRecorder(id uint64, recorder *metaRecorder) {
+	m.recorders.Store(id, recorder)
+	return
+}
+
+func (m *metadataManager) detachRecorder(id uint64) (err error) {
+	_, loaded := m.recorders.LoadAndDelete(id)
+	if !loaded {
+		err = fmt.Errorf("unknown recorder: %d", id)
+		return
+	}
+	return
+}
+
+func (m *metadataManager) walkRecorders(visitor func(recorder *metaRecorder) bool) {
+	if visitor == nil {
+		return
+	}
+	m.recorders.Range(func(key, value interface{}) bool {
+		mr, ok := value.(*metaRecorder)
+		if !ok {
+			return true
+		}
+		if !visitor(mr) {
+			return false
+		}
+		return true
+	})
+}
+
+func (m *metadataManager) isExpiredRecorder(fileName string, partitions []uint64, recorderPrefix string) (expiredPartition bool) {
+	return isExpiredPartition(fileName, partitions, recorderPrefix)
+}
+
+func (m *metadataManager) expireRecorder(fileName string)  {
+	oldName := path.Join(m.rootDir, fileName)
+	newName := path.Join(m.rootDir, ExpiredRecorderPrefix+fileName+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+	if tempErr := os.Rename(oldName, newName); tempErr != nil {
+		log.LogErrorf("rename file has err:[%s]", tempErr.Error())
+	}
+	log.LogErrorf("find expired recorder[%s], rename raft file", fileName)
+	partitionId := fileName[len(RecorderPrefix):]
+	oldRaftName := path.Join(m.metaNode.raftDir, partitionId)
+	newRaftName := path.Join(m.metaNode.raftDir, ExpiredRecorderPrefix+partitionId+"_"+strconv.FormatInt(time.Now().Unix(), 10))
+	log.LogErrorf("loadRecorders: find expired try rename raft file [%s] -> [%s]", oldRaftName, newRaftName)
+	if _, tempErr := os.Stat(oldRaftName); tempErr != nil {
+		log.LogWarnf("stat file [%s] has err:[%s]", oldRaftName, tempErr.Error())
+	} else {
+		if tempErr := os.Rename(oldRaftName, newRaftName); tempErr != nil {
+			log.LogErrorf("rename file has err:[%s]", tempErr.Error())
+		}
+	}
+}
+
 // NewMetadataManager returns a new metadata manager.
 func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (MetadataManager, error) {
 	mm := &metadataManager{
@@ -1168,15 +1397,22 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 		tokenM:      tokenmanager.NewTokenManager(10),
 	}
 
-	if err := mm.loadPartitions(); err != nil {
+	var (
+		metaNodeInfo	*proto.MetaNodeInfo
+		fileInfoList	[]fs.FileInfo
+		err				error
+	)
+	if metaNodeInfo, fileInfoList, err = mm.loadMetaInfo(); err != nil {
 		return nil, err
 	}
+	mm.loadPartitions(metaNodeInfo, fileInfoList)
+	mm.loadRecorders(metaNodeInfo, fileInfoList)
 	return mm, nil
 }
 
 // isExpiredPartition return whether one partition is expired
 // if one partition does not exist in master, we decided that it is one expired partition
-func isExpiredPartition(fileName string, partitions []uint64) (expiredPartition bool) {
+func isExpiredPartition(fileName string, partitions []uint64, partitionPrefix string) (expiredPartition bool) {
 	if len(partitions) == 0 {
 		return true
 	}

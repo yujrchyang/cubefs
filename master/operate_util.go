@@ -237,6 +237,10 @@ func metaReplicaNotFound(addr string) (err error) {
 	return notFoundMsg(fmt.Sprintf("meta replica[%v]", addr))
 }
 
+func metaRecorderNotFound(addr string) (err error) {
+	return notFoundMsg(fmt.Sprintf("meta recorder[%v]", addr))
+}
+
 func dataPartitionNotFound(id uint64) (err error) {
 	return notFoundMsg(fmt.Sprintf("data partition[%v]", id))
 }

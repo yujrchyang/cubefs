@@ -27,6 +27,7 @@ services:
             - metanode2
             - metanode3
             - metanode4
+            - metanode5
             - datanode1
             - datanode2
             - datanode3
@@ -221,6 +222,31 @@ services:
         networks:
             extnetwork:
                 ipv4_address: 192.168.0.24
+
+    metanode5:
+        image: chubaofs/cfs-base:1.5
+        ports:
+            - "17210"
+            - "17220"
+            - "17230"
+            - "17240"
+            - 9500
+        volumes:
+            - ${DiskPath:-./docker_data}/metanode5/data:/cfs/data
+            - ./bin:/cfs/bin:ro
+            - ${DiskPath:-./docker_data}/metanode5/log:/cfs/log
+            - ${DiskPath:-./docker_data}/coverage:/cfs/coverage
+            - ./conf/metanode.json:/cfs/conf/metanode.json
+            - ./script/start_meta.sh:/cfs/script/start.sh
+            - ./conf/hosts:/etc/hosts:ro
+        command: /cfs/bin/cfs-server -f -c /cfs/conf/metanode.json -test.outputdir=/cfs/coverage/ -test.coverprofile=node_metanode5.cov
+        restart: on-failure
+        privileged: true
+        environment:
+            - TZ=Asia/Shanghai
+        networks:
+            extnetwork:
+                ipv4_address: 192.168.0.25
 
     datanode1:
         image: chubaofs/cfs-base:1.5

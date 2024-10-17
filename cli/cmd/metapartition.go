@@ -84,6 +84,7 @@ const (
 )
 
 func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
+	var optRaft bool
 	var cmd = &cobra.Command{
 		Use:   CliOpInfo + " [META PARTITION ID]",
 		Short: cmdMetaPartitionGetShort,
@@ -100,8 +101,31 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			stdout(formatMetaPartitionInfo(partition))
+			if optRaft {
+				stdout("\n")
+				stdout("RaftInfo :\n")
+				stdout(fmt.Sprintf("%v\n", metaPartitionRaftTableHeaderInfo))
+				for _, p := range partition.Peers {
+					if p.IsRecorder() {
+						var mnRecorder *proto.MNMetaRecorderInfo
+						if mnRecorder, err = client.NodeAPI().MetaNodeGetRecorder(strings.Split(p.Addr, ":")[0], partition.PartitionID); err != nil {
+							stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(nil, p)))
+							continue
+						}
+						stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(mnRecorder.RaftStatus, p)))
+					} else {
+						var mnPartition *proto.MNMetaPartitionInfo
+						if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(strings.Split(p.Addr, ":")[0], partition.PartitionID); err != nil {
+							stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(nil, p)))
+							continue
+						}
+						stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(mnPartition.RaftStatus, p)))
+					}
+				}
+			}
 		},
 	}
+	cmd.Flags().BoolVar(&optRaft, CliFlagRaft, false, "show raft peer detail info")
 	return cmd
 }
 

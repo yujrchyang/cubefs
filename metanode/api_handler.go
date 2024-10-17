@@ -142,6 +142,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getDataPartitionViewCache", m.getDataPartitionViewCache)
 	http.HandleFunc("/resetEKDelDelayDuration", m.resetEKDeleteDelayDuration)
 	http.HandleFunc("/createInodeForTest", m.createInodeForTest)
+
+	http.HandleFunc("/getRecorderById", m.getRecorderByIDHandler)
 	return
 }
 
@@ -3370,4 +3372,47 @@ func (m *MetaNode) createInodeForTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	return
+}
+
+
+func (m *MetaNode) getRecorderByIDHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getPartitionByIDHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	var (
+		mr	*metaRecorder
+	)
+	mr, err = m.metadataManager.GetRecorder(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+
+	msg := make(map[string]interface{})
+	msg["peers"] = mr.Recorder().GetPeers()
+	msg["learners"] = mr.Recorder().GetLearners()
+	msg["nodeId"] = mr.Recorder().NodeID()
+	msg["apply_id"] = mr.Recorder().GetApplyID()
+	msg["raft_status"] = m.raftStore.RaftStatus(pid)
+	raftPartition := mr.Recorder().RaftPartition()
+	if raftPartition != nil {
+		msg["raft_log_size"] = raftPartition.GetWALFileSize()
+		msg["raft_log_cap"] = raftPartition.GetWALFileCacheCapacity()
+	}
+	msg["status"] = mr.status
+	msg["now"] = time.Now()
+	resp.Data = msg
+	resp.Code = http.StatusOK
+	resp.Msg = http.StatusText(http.StatusOK)
 }

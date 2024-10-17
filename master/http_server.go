@@ -453,6 +453,14 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminDNStopMigrating).
 		HandlerFunc(m.DNStopMigrating)
 
+	// APIs for Recorder
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAddMetaRecorder).
+		HandlerFunc(m.addMetaRecorder)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminDeleteMetaRecorder).
+		HandlerFunc(m.deleteMetaRecorder)
+
 	// APIs for FlashNode
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.GetAllFlashNodes).

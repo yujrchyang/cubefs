@@ -62,7 +62,7 @@ ensure_node_writable() {
     for i in $(seq 1 300) ; do
         ${cli} ${node} list &> /tmp/cli_${node}_list;
         res=`cat /tmp/cli_${node}_list | grep "Yes" | grep "Active" | wc -l`
-        if [[ ${res} -eq 4 ]]; then
+        if [[ ${res} -eq $2 ]]; then
             echo -e "\033[32mdone\033[0m"
             return
         fi
@@ -569,8 +569,8 @@ run_bypass_client_test() {
 init_cli
 check_cluster
 create_cluster_user
-ensure_node_writable "metanode"
-ensure_node_writable "datanode"
+ensure_node_writable "metanode" 5
+ensure_node_writable "datanode" 4
 create_volume ; sleep 2
 add_data_partitions ; sleep 3
 show_cluster_info

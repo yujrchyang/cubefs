@@ -89,6 +89,8 @@ type (
 	// Client -> MetaNode
 	GetAppliedIDReq   = proto.GetAppliedIDRequest
 	GetSnapshotCrcReq = proto.GetSnapshotCrcRequest
+	// recorder -> replica
+	GetTruncateIndexReq	= proto.GetTruncateIndexRequest
 
 	// Client -> MetaNode lookup
 	LookupDeletedDentryReq = proto.LookupDeletedDentryRequest

@@ -40,11 +40,14 @@ type MetaNode struct {
 	ReportTime                  time.Time
 	metaPartitionInfos          []*proto.MetaPartitionReport
 	MetaPartitionCount          int
+	metaRecorderInfos           []*proto.MetaRecorderReport
+	MetaRecorderCount           int
 	NodeSetID                   uint64
 	sync.RWMutex                `graphql:"-"`
 	ToBeOffline                 bool
 	ToBeMigrated                bool
 	PersistenceMetaPartitions   []uint64
+	PersistenceMetaRecorders	[]uint64
 	ProfPort                    string
 	Version                     string
 	RocksdbDisks                []*proto.MetaNodeDiskInfo
@@ -183,6 +186,8 @@ func (metaNode *MetaNode) updateMetric(resp *proto.MetaNodeHeartbeatResponse, th
 	defer metaNode.Unlock()
 	metaNode.metaPartitionInfos = resp.MetaPartitionReports
 	metaNode.MetaPartitionCount = len(metaNode.metaPartitionInfos)
+	metaNode.metaRecorderInfos = resp.MetaRecorderReports
+	metaNode.MetaRecorderCount = len(metaNode.metaRecorderInfos)
 	metaNode.Total = resp.Total
 	metaNode.Used = resp.Used
 	if resp.Total == 0 {

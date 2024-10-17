@@ -26,7 +26,8 @@ func buildPanicVol() *Vol {
 	var createTime = time.Now().Unix() // record create time of this volume
 	vol := newVol(id, commonVol.Name, commonVol.Owner, testZone1+","+testZone2, commonVol.dataPartitionSize, commonVol.Capacity,
 		defaultReplicaNum, defaultReplicaNum, false, false, true,
-		true, false, false, false, false, createTime, createTime, "", "", "", 0, 0, 0, 0.0, 30,
+		true, false, false, false, false, createTime, createTime,
+		"", "", "", 0, 0, 0, 0,0,0.0, 30,
 		0, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0},
 		0, 0, 0, 0, 0, 0)
@@ -67,7 +68,7 @@ func TestPanicCheckMetaPartitions(t *testing.T) {
 	assert.NoError(t, err)
 	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
 	assert.NoError(t, err)
-	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.mpRecorderNum, vol.Name, vol.ID)
 	_ = vol.addMetaPartition(mp, c.Name)
 	mp = nil
 	c.doCheckMetaPartitions()
@@ -121,7 +122,7 @@ func TestPanicCheckMigratedMetaPartitionsRecovery(t *testing.T) {
 	assert.NoError(t, err)
 	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
 	assert.NoError(t, err)
-	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
+	mp := newMetaPartition(partitionID, 1, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.mpRecorderNum, vol.Name, vol.ID)
 	_ = vol.addMetaPartition(mp, c.Name)
 	c.MigratedMetaPartitionIds.Store(fmt.Sprintf("%v", mp.PartitionID), mp)
 	mp = nil
@@ -198,7 +199,7 @@ func TestPanicCheckBadMetaPartitionRecovery(t *testing.T) {
 	assert.NoError(t, err)
 	partitionID, err := server.cluster.idAlloc.allocateMetaPartitionID()
 	assert.NoError(t, err)
-	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
+	dp := newMetaPartition(partitionID, 0, defaultMaxMetaPartitionInodeID, vol.mpReplicaNum, vol.mpLearnerNum, vol.mpRecorderNum, vol.Name, vol.ID)
 	c.BadMetaPartitionIds.Store(fmt.Sprintf("%v", dp.PartitionID), dp)
 	c.doCheckMetaPartitionRecoveryProgress()
 }

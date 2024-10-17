@@ -117,7 +117,7 @@ func TestMetaNode_SelectNodeCase01(t *testing.T) {
 	gConfig = newClusterConfig()
 	ns := newNodeSet(1, 7, "test")
 	ns.metaNodes = mockMetaNodes()
-	newHosts, _, err := ns.getAvailMetaNodeHosts([]string{"192.168.0.7"}, 1, proto.StoreModeRocksDb)
+	newHosts, _, _, err := ns.getAvailMetaNodeHosts([]string{"192.168.0.7"}, 1, 0, proto.StoreModeRocksDb)
 	assertErrNilOtherwiseFailNow(t, err)
 	for _, host := range newHosts {
 		impossibleHosts := []string{"192.168.0.7", "192.168.0.4", "192.168.0.5"}
@@ -126,7 +126,7 @@ func TestMetaNode_SelectNodeCase01(t *testing.T) {
 		}
 	}
 
-	newHosts, _, err = ns.getAvailMetaNodeHosts([]string{"192.168.0.7"}, 1, proto.StoreModeRocksDb)
+	newHosts, _, _, err = ns.getAvailMetaNodeHosts([]string{"192.168.0.7"}, 1, 0, proto.StoreModeRocksDb)
 	assertErrNilOtherwiseFailNow(t, err)
 	for _, host := range newHosts {
 		impossibleHosts := []string{"192.168.0.7", "192.168.0.4", "192.168.0.5"}
@@ -151,7 +151,7 @@ func TestMetaNode_SelectNodeCase02(t *testing.T) {
 	}
 	ns.metaNodes.Store(metaNode.Addr, metaNode)
 
-	_, _, err := ns.getAvailMetaNodeHosts([]string{"192.168.0.7"}, 1, proto.StoreModeRocksDb)
+	_, _, _, err := ns.getAvailMetaNodeHosts([]string{"192.168.0.7"}, 1, 0, proto.StoreModeRocksDb)
 	if !assert.Error(t, err) {
 		t.FailNow()
 	}

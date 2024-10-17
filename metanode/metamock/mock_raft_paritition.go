@@ -97,6 +97,10 @@ func (m *MockPartition) Truncate(index uint64) {
 	return
 }
 
+func (m *MockPartition) GetTruncateIndex() (index uint64) {
+	panic("implement me")
+}
+
 func (m *MockPartition) TryToLeader(nodeID uint64) error {
 	panic("implement me")
 }

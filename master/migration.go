@@ -135,7 +135,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 			unrecoverMpIDs[key.(string)] = partitionID
 			return true
 		}
-		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.mpReplicaNum) {
+		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.mpReplicaNum) || len(partition.Recorders) < int(vol.mpRecorderNum) {
 			return true
 		}
 		dentryDiff = partition.getMinusOfDentryCount()

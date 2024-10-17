@@ -194,8 +194,8 @@ func getAvailCarryDataNodeTab(maxTotal uint64, excludeHosts []string, dataNodes 
 	return
 }
 
-func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selectType int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
-	if replicaNum == 0 {
+func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum, recorderNum int, selectType int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, recorders []string, err error) {
+	if replicaNum + recorderNum == 0 {
 		return
 	}
 	var (
@@ -205,6 +205,7 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	orderHosts := make([]string, 0)
 	newHosts = make([]string, 0)
 	peers = make([]proto.Peer, 0)
+	recorders = make([]string, 0)
 	switch selectType {
 	case selectDataNode:
 		maxTotalFunc = getDataNodeMaxTotal
@@ -213,7 +214,7 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 		maxTotalFunc = getMetaNodeMaxTotal
 		getCarryNodesFunc = getAllCarryMetaNodes
 	default:
-		return nil, nil, fmt.Errorf("invalid selectType[%v]", selectType)
+		return nil, nil, nil, fmt.Errorf("invalid selectType[%v]", selectType)
 	}
 	selectorLock.Lock()
 	defer selectorLock.Unlock()
@@ -223,12 +224,12 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 		return
 	}
 	weightedNodes, count := getCarryNodesFunc(maxTotal, excludeHosts, nodes, storeMode)
-	if len(weightedNodes) < replicaNum {
-		err = fmt.Errorf("action[getAvailHosts] no enough writable hosts,replicaNum:%v  MatchNodeCount:%v  ",
-			replicaNum, len(weightedNodes))
+	if len(weightedNodes) < replicaNum + recorderNum {
+		err = fmt.Errorf("action[getAvailHosts] no enough writable hosts,replicaNum:%v recorderNum:%v MatchNodeCount:%v  ",
+			replicaNum, recorderNum, len(weightedNodes))
 		return
 	}
-	weightedNodes.setNodeCarry(count, replicaNum, storeMode)
+	weightedNodes.setNodeCarry(count, replicaNum+recorderNum, storeMode)	// todo what is it?
 	sort.Sort(weightedNodes)
 
 	for i := 0; i < replicaNum; i++ {
@@ -238,6 +239,13 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr()}
 		peers = append(peers, peer)
 	}
+	for i := replicaNum; i < replicaNum + recorderNum; i++ {
+		node := weightedNodes[i].Ptr
+		node.SelectNodeForWrite(storeMode)
+		peer := proto.Peer{ID: node.GetID(), Addr: node.GetAddr(), Type: proto.PeerRecorder}
+		peers = append(peers, peer)
+		recorders = append(recorders, node.GetAddr())
+	}
 
 	if newHosts, err = reshuffleHosts(orderHosts); err != nil {
 		err = fmt.Errorf("action[getAvailHosts] err:%v  orderHosts is nil", err.Error())
@@ -246,6 +254,6 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum int, selec
 	return
 }
 
-func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, err error) {
-	return getAvailHosts(ns.metaNodes, excludeHosts, replicaNum, selectMetaNode, storeMode)
+func (ns *nodeSet) getAvailMetaNodeHosts(excludeHosts []string, replicaNum, recorderNum int, storeMode proto.StoreMode) (newHosts []string, peers []proto.Peer, recorders []string, err error) {
+	return getAvailHosts(ns.metaNodes, excludeHosts, replicaNum, recorderNum, selectMetaNode, storeMode)
 }

@@ -464,6 +464,12 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 		sb.WriteString(fmt.Sprintf("%v\n", formatMetaReplica("", learnerReplica, true)))
 	}
 	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("RecordersInfo : \n"))
+	sb.WriteString(fmt.Sprintf("%v\n", formatMetaRecorderTableHeader()))
+	for _, rInfo := range partition.RecordersInfo {
+		sb.WriteString(fmt.Sprintf("%v\n", formatMetaRecorder(rInfo)))
+	}
+	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Peers :\n"))
 	sb.WriteString(fmt.Sprintf("%v\n", formatPeerTableHeader()))
 	for _, peer := range partition.Peers {
@@ -483,6 +489,16 @@ func formatMetaPartitionInfo(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf("Zones :\n"))
 	for _, zone := range partition.Zones {
+		sb.WriteString(fmt.Sprintf("  [%v]", zone))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("Recorders :\n"))
+	for _, recorder := range partition.Recorders {
+		sb.WriteString(fmt.Sprintf("  [%v]", recorder))
+	}
+	sb.WriteString("\n")
+	sb.WriteString(fmt.Sprintf("RecorderZones :\n"))
+	for _, zone := range partition.RecorderZones {
 		sb.WriteString(fmt.Sprintf("  [%v]", zone))
 	}
 	sb.WriteString("\n")
@@ -711,13 +727,24 @@ func formatMetaReplica(indentation string, replica *proto.MetaReplicaInfo, rowTa
 	return sb.String()
 }
 
-var peerTableRowPattern = "%-6v    %-18v"
+var metaRecorderTableRowPattern = "%-20v    %-10v    %-10v    %-20v    %-12v"
+
+func formatMetaRecorderTableHeader() string {
+	return fmt.Sprintf(metaRecorderTableRowPattern, "ADDRESS", "APPLY ID", "STATUS", "REPORT TIME", "ISRECOVER")
+}
+
+func formatMetaRecorder(replica *proto.MetaRecorderInfo) string {
+	return fmt.Sprintf(metaRecorderTableRowPattern, replica.Addr, replica.ApplyId, formatMetaPartitionStatus(replica.Status),
+		formatTime(replica.ReportTime), replica.IsRecover)
+}
+
+var peerTableRowPattern = "%-6v    %-18v    %-10v"
 
 func formatPeerTableHeader() string {
-	return fmt.Sprintf(peerTableRowPattern, "ID", "PEER")
+	return fmt.Sprintf(peerTableRowPattern, "ID", "PEER", "TYPE")
 }
 func formatPeer(peer proto.Peer) string {
-	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr)
+	return fmt.Sprintf(peerTableRowPattern, peer.ID, peer.Addr, peer.Type)
 }
 
 var learnerTableRowPattern = "%-6v    %-18v    %-12v    %-6v"
@@ -790,6 +817,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
+	sb.WriteString(fmt.Sprintf("  Persist recorders   : %v\n", mn.PersistenceMetaRecorders))
 	return sb.String()
 }
 
@@ -1079,6 +1107,33 @@ func formatDataPartitionRaftTableInfo(dnView *proto.DNDataPartitionInfo, nodeId 
 	}
 	sb.WriteString(fmt.Sprintf(raftInfoTableHeader, nodeId, addr, isLeader, dnView.BaseExtentID, dnView.TinyDeleteRecordSize, dnView.RaftStatus.Commit, dnView.RaftStatus.Index, dnView.RaftStatus.Applied,
 		dnView.RaftStatus.Log.FirstIndex, dnView.RaftStatus.Log.LastIndex, dnView.RaftStatus.PendQueue, dnView.RaftStatus.State, dnView.RaftStatus.Stopped, dnView.RiskFixerStatus.Count, formatRaftPeers(dnView.RaftStatus.Peers)))
+	return sb.String()
+}
+
+var metaRaftInfoTableHeader = "%-6v  %-18v  %-15v  %-9v  %-10v  %-10v  %-10v  %-10v  %-10v  %-8v  %-16v  %-10v  %-v"
+var metaPartitionRaftTableHeaderInfo = fmt.Sprintf(metaRaftInfoTableHeader, "ID", "ADDRESS", "TYPE", "IS_LEADER", "COMMIT", "INDEX", "APPLIED", "LOG_FIRST", "LOG_LAST", "PEND_QUE", "STATE", "STOPED", "PEERS")
+
+func formatMetaRaftTableInfo(raftStatus *proto.Status, peer proto.Peer) string {
+	var sb = strings.Builder{}
+	if raftStatus == nil{
+		sb.WriteString(fmt.Sprintf(metaRaftInfoTableHeader, peer.ID, peer.Addr, peer.Type, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
+		return sb.String()
+	}
+	isLeader := raftStatus.Leader == raftStatus.NodeID
+	var formatRaftPeers = func(peers []uint64) string {
+		sort.SliceStable(peers, func(i, j int) bool {
+			return peers[i] < peers[j]
+		})
+		return strings.Join(func() []string {
+			ret := make([]string, 0, len(peers))
+			for _, peer := range peers {
+				ret = append(ret, strconv.FormatUint(peer, 10))
+			}
+			return ret
+		}(), ",")
+	}
+	sb.WriteString(fmt.Sprintf(metaRaftInfoTableHeader, peer.ID, peer.Addr, peer.Type, isLeader, raftStatus.Commit, raftStatus.Index, raftStatus.Applied,
+		raftStatus.Log.FirstIndex, raftStatus.Log.LastIndex, raftStatus.PendQueue, raftStatus.State, raftStatus.Stopped, formatRaftPeers(raftStatus.Peers)))
 	return sb.String()
 }
 

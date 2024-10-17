@@ -44,6 +44,8 @@ type Vol struct {
 	mpReplicaNum               uint8
 	dpLearnerNum               uint8
 	mpLearnerNum               uint8
+	dpRecorderNum			   uint8
+	mpRecorderNum			   uint8
 	Status                     uint8
 	mpMemUsageThreshold        float32
 	dataPartitionSize          uint64
@@ -150,7 +152,7 @@ type Vol struct {
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	createTime, smartEnableTime int64, description, dpSelectorName, dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType,
-	dpLearnerNum, mpLearnerNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
+	dpLearnerNum, mpLearnerNum, dpRecorderNum, mpRecorderNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
 	convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
 	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32, mpSplitStep, inodeCountThreshold uint64,
 	readAheadMemMB, readAheadWindowMB int64) (vol *Vol) {
@@ -204,6 +206,8 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.CrossRegionHAType = crossRegionHAType
 	vol.dpLearnerNum = dpLearnerNum
 	vol.mpLearnerNum = mpLearnerNum
+	vol.dpRecorderNum = dpRecorderNum
+	vol.mpRecorderNum = mpRecorderNum
 	vol.trashRemainingDays = trashDays
 	vol.convertState = convertSt
 	if defStoreMode == proto.StoreModeDef {
@@ -265,6 +269,8 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.CrossRegionHAType,
 		vv.DpLearnerNum,
 		vv.MpLearnerNum,
+		vv.DpRecorderNum,
+		vv.MpRecorderNum,
 		vv.DpWriteableThreshold,
 		vv.TrashRemainingDays,
 		vv.ChildFileMaxCnt,
@@ -1290,20 +1296,22 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		partitionID uint64
 		peers       []proto.Peer
 		learners    []proto.Learner
+		recorders	[]string
 		wg          sync.WaitGroup
 		storeMode   proto.StoreMode
 	)
 
 	learners = make([]proto.Learner, 0)
 	storeMode = vol.DefaultStoreMode
-	errChannel := make(chan error, vol.mpReplicaNum+vol.mpLearnerNum)
+	errChannel := make(chan error, vol.mpReplicaNum+vol.mpLearnerNum+vol.mpRecorderNum)
 	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 		if hosts, peers, learners, err = c.chooseTargetMetaHostsForCreateQuorumMetaPartition(int(vol.mpReplicaNum), int(vol.mpLearnerNum), vol.zoneName, storeMode); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts for cross region quorum vol,err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	} else {
-		if hosts, peers, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum), vol.zoneName, false, storeMode); err != nil {
+		if hosts, peers, recorders, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum),
+			int(vol.mpRecorderNum), vol.zoneName, false, storeMode); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
 			return nil, errors.NewError(err)
 		}
@@ -1314,46 +1322,34 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
 		return nil, errors.NewError(err)
 	}
-	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.mpLearnerNum, vol.Name, vol.ID)
+	mp = newMetaPartition(partitionID, start, end, vol.mpReplicaNum, vol.mpLearnerNum, vol.mpRecorderNum, vol.Name, vol.ID)
 	mp.setHosts(hosts)
 	mp.setPeers(peers)
+	mp.setRecorders(recorders)
 	mp.setLearners(learners)
-	for _, host := range hosts {
-		wg.Add(1)
-		go func(host string) {
-			defer func() {
-				wg.Done()
-			}()
-			if err = c.syncCreateMetaPartitionToMetaNode(host, mp, storeMode, vol.trashRemainingDays); err != nil {
-				errChannel <- err
-				return
-			}
-			mp.Lock()
-			defer mp.Unlock()
-			if err = mp.afterCreation(host, c, storeMode); err != nil {
-				errChannel <- err
-			}
-		}(host)
-	}
-	wg.Wait()
-	select {
-	case err = <-errChannel:
-		for _, host := range hosts {
+
+	parallelFunc := func(putErr bool, addrs []string, opFunc func(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error)) {
+		for _, addr := range addrs {
 			wg.Add(1)
-			go func(host string) {
+			go func(addr string) {
 				defer func() {
 					wg.Done()
 				}()
-				mr, err := mp.getMetaReplica(host)
-				if err != nil {
-					return
+				err = opFunc(addr, mp, storeMode, vol.trashRemainingDays)
+				if putErr && err != nil {
+					errChannel <- err
 				}
-				task := mr.createTaskToDeleteReplica(mp.PartitionID)
-				tasks := make([]*proto.AdminTask, 0)
-				tasks = append(tasks, task)
-				c.addMetaNodeTasks(tasks)
-			}(host)
+			}(addr)
 		}
+	}
+	parallelFunc(true, hosts, c.doCreateMetaPartition)
+	parallelFunc(true, recorders, c.doCreateMetaRecorder)
+	wg.Wait()
+
+	select {
+	case err = <-errChannel:
+		parallelFunc(false, hosts, c.doDeleteMetaPartition)
+		parallelFunc(false, recorders, c.doDeleteMetaRecorder)
 		wg.Wait()
 		return nil, errors.NewError(err)
 	default:

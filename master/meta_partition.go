@@ -68,8 +68,10 @@ type MetaPartition struct {
 	InodesTotalSize      uint64
 	DelInodesTotalSize   uint64
 	Replicas             []*MetaReplica
+	RecordersInfo        []*MetaRecorder
 	ReplicaNum           uint8
 	LearnerNum           uint8
+	RecorderNum			 uint8
 	Status               int8
 	IsRecover            bool
 	isOffline            bool
@@ -78,6 +80,7 @@ type MetaPartition struct {
 	Hosts                []string
 	Peers                []proto.Peer
 	Learners             []proto.Learner
+	Recorders       	 []string
 	MissNodes            map[string]int64 `graphql:"-"`
 	OfflinePeerID        uint64
 	modifyTime           int64
@@ -85,6 +88,7 @@ type MetaPartition struct {
 	CreateTime           int64
 	PrePartitionID       uint64
 	PanicHosts           []string //PanicHosts records the hosts discard by reset peer action.
+	PanicRecorders		 []string
 	LoadResponse         []*proto.MetaPartitionLoadResponse
 	offlineMutex         sync.RWMutex
 	sync.RWMutex
@@ -98,17 +102,21 @@ func newMetaReplica(start, end uint64, metaNode *MetaNode) (mr *MetaReplica) {
 	return
 }
 
-func newMetaPartition(partitionID, start, end uint64, replicaNum, learnerNum uint8, volName string, volID uint64) (mp *MetaPartition) {
+func newMetaPartition(partitionID, start, end uint64, replicaNum, learnerNum, recorderNum uint8, volName string, volID uint64) (mp *MetaPartition) {
 	mp = &MetaPartition{PartitionID: partitionID, Start: start, End: end, volName: volName, volID: volID}
 	mp.ReplicaNum = replicaNum
 	mp.LearnerNum = learnerNum
+	mp.RecorderNum = recorderNum
 	mp.Replicas = make([]*MetaReplica, 0)
+	mp.RecordersInfo = make([]*MetaRecorder, 0)
 	mp.Status = proto.Unavailable
 	mp.MissNodes = make(map[string]int64, 0)
 	mp.Peers = make([]proto.Peer, 0)
 	mp.Learners = make([]proto.Learner, 0)
 	mp.Hosts = make([]string, 0)
+	mp.Recorders = make([]string, 0)
 	mp.PanicHosts = make([]string, 0)
+	mp.PanicRecorders = make([]string, 0)
 	mp.LoadResponse = make([]*proto.MetaPartitionLoadResponse, 0)
 	return
 }
@@ -125,8 +133,16 @@ func (mp *MetaPartition) setHosts(hosts []string) {
 	mp.Hosts = hosts
 }
 
+func (mp *MetaPartition) setRecorders(recorders []string) {
+	mp.Recorders = recorders
+}
+
 func (mp *MetaPartition) hostsToString() (hosts string) {
 	return strings.Join(mp.Hosts, underlineSeparator)
+}
+
+func (mp *MetaPartition) recordersToString() (recorders string) {
+	return strings.Join(mp.Recorders, underlineSeparator)
 }
 
 func (mp *MetaPartition) addReplica(mr *MetaReplica) {
@@ -268,6 +284,16 @@ func (mp *MetaPartition) hosts() []string {
 	hosts := make([]string, len(mp.Hosts))
 	copy(hosts, mp.Hosts)
 	return hosts
+}
+
+func (mp *MetaPartition) hasPeer(addr string) (ok bool) {
+	for _, p := range mp.Peers {
+		if p.Addr == addr {
+			ok = true
+			break
+		}
+	}
+	return
 }
 
 func (mp *MetaPartition) getMetaReplica(addr string) (mr *MetaReplica, err error) {
@@ -431,22 +457,25 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.removeMissingReplica(metaNode.Addr)
 }
 
-func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum int) (err error) {
+func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum, recorderNum int) (err error) {
 	liveReplicas := mp.getLiveReplicas()
-	if len(liveReplicas) < int(mp.ReplicaNum/2+1) {
+	liveRecorders := mp.getLiveRecorders()
+	if len(liveReplicas) + len(liveRecorders) < int((mp.ReplicaNum+mp.RecorderNum)/2+1) {
 		err = proto.ErrNoEnoughReplica
 		return
 	}
 	liveAddrs := mp.getLiveReplicasAddr(liveReplicas)
-	if len(liveReplicas) == (replicaNum/2+1) && contains(liveAddrs, nodeAddr) {
-		err = fmt.Errorf("live replicas num will be less than majority after offline nodeAddr: %v", nodeAddr)
+	liveAddrs = append(liveAddrs, mp.getLiveRecordersAddr(liveRecorders)...)
+	if len(liveReplicas) + len(liveRecorders) == ((replicaNum+recorderNum)/2+1) && contains(liveAddrs, nodeAddr) {
+		err = fmt.Errorf("live replicas num will be less than majority after offline nodeAddr: %v, liveReplicasNum(%v), liveRecordersNum(%v)",
+			nodeAddr, len(liveReplicas), len(liveRecorders))
 		return
 	}
 	return
 }
 
 // Check if there is a replica missing or not.
-func (mp *MetaPartition) hasMissingOneReplica(offlineAddr string, replicaNum int) (err error) {
+func (mp *MetaPartition) hasMissingOneReplica(offlineAddr string, replicaNum, recorderNum int) (err error) {
 	learnerHosts := mp.getLearnerHosts()
 	curHostCount := len(mp.Hosts)
 	for _, host := range mp.Hosts {
@@ -468,7 +497,19 @@ func (mp *MetaPartition) hasMissingOneReplica(offlineAddr string, replicaNum int
 			curReplicaCount = curReplicaCount - 1
 		}
 	}
-	if curHostCount < replicaNum-1 || curReplicaCount < replicaNum-1 {
+	curRecorderCount := len(mp.Recorders)
+	for _, r := range mp.Recorders {
+		if r == offlineAddr {
+			curRecorderCount = curRecorderCount - 1
+		}
+	}
+	curRecorderInfoCount := len(mp.RecordersInfo)
+	for _, r := range mp.RecordersInfo {
+		if r.Addr == offlineAddr {
+			curRecorderInfoCount = curRecorderInfoCount - 1
+		}
+	}
+	if (curHostCount+curRecorderCount) < replicaNum+recorderNum-1 || (curReplicaCount+curRecorderInfoCount) < replicaNum+recorderNum-1 {
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", mp.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica
@@ -529,26 +570,30 @@ func (mp *MetaPartition) updateMetaPartitionReplicaEnd(c *Cluster) {
 	mp.addUpdateMetaReplicaTask(c)
 }
 
-func (mp *MetaPartition) persistToRocksDB(action, volName string, newHosts []string, newPeers []proto.Peer, newLearners []proto.Learner, c *Cluster) (err error) {
+func (mp *MetaPartition) persistToRocksDB(action, volName string, newHosts []string, newPeers []proto.Peer, newLearners []proto.Learner, newRecorders []string, c *Cluster) (err error) {
 	oldHosts := make([]string, len(mp.Hosts))
 	copy(oldHosts, mp.Hosts)
 	oldPeers := make([]proto.Peer, len(mp.Peers))
 	copy(oldPeers, mp.Peers)
 	oldLearners := make([]proto.Learner, len(mp.Learners))
 	copy(oldLearners, mp.Learners)
+	oldRecorders := make([]string, len(mp.Recorders))
+	copy(oldRecorders, mp.Recorders)
 	mp.Hosts = newHosts
 	mp.Peers = newPeers
 	mp.Learners = newLearners
+	mp.Recorders = newRecorders
 	if err = c.syncUpdateMetaPartition(mp); err != nil {
 		mp.Hosts = oldHosts
 		mp.Peers = oldPeers
 		mp.Learners = oldLearners
-		log.LogWarnf("action[%v_persist] failed,vol[%v] partitionID:%v  old hosts:%v new hosts:%v  oldPeers:%v newPeers:%v  oldLearners:%v newLearners:%v",
-			action, volName, mp.PartitionID, mp.Hosts, newHosts, mp.Peers, newPeers, mp.Learners, newLearners)
+		mp.Recorders = oldRecorders
+		log.LogWarnf("action[%v_persist] failed,vol[%v] partitionID:%v  old hosts:%v new hosts:%v  oldPeers:%v newPeers:%v  oldLearners:%v newLearners:%v  oldRecorders:%v newRecorders:%v",
+			action, volName, mp.PartitionID, mp.Hosts, newHosts, mp.Peers, newPeers, mp.Learners, newLearners, mp.Recorders, newRecorders)
 		return
 	}
-	log.LogWarnf("action[%v_persist] success,vol[%v] partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v  oldLearners:%v newLearners:%v",
-		action, volName, mp.PartitionID, oldHosts, mp.Hosts, oldPeers, mp.Peers, oldLearners, mp.Learners)
+	log.LogWarnf("action[%v_persist] success,vol[%v] partitionID:%v  old hosts:%v  new hosts:%v oldPeers:%v  newPeers:%v  oldLearners:%v newLearners:%v  oldRecorders:%v newRecorders:%v",
+		action, volName, mp.PartitionID, oldHosts, mp.Hosts, oldPeers, mp.Peers, oldLearners, mp.Learners, oldRecorders, mp.Recorders)
 	return
 }
 
@@ -650,6 +695,7 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 		Members:      peers,
 		VolName:      volName,
 		Learners:     mp.Learners,
+		Recorders: 	  mp.Recorders,
 		StoreMode:    storeMode,
 		TrashDays:    trashDays,
 		CreationType: proto.NormalCreateMetaPartition,
@@ -693,6 +739,7 @@ func (mp *MetaPartition) createTaskToCreateReplica(host string, storeMode proto.
 		Members:      mp.Peers,
 		VolName:      mp.volName,
 		Learners:     mp.Learners,
+		Recorders: 	  mp.Recorders,
 		StoreMode:    storeMode,
 		CreationType: proto.DecommissionedCreateMetaPartition,
 	}
@@ -729,6 +776,51 @@ func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (t 
 	}
 	req := &proto.RemoveMetaPartitionRaftMemberRequest{PartitionId: mp.PartitionID, RemovePeer: removePeer, RaftOnly: false}
 	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftMember, mr.Addr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToCreateRecorder(host string) (t *proto.AdminTask) {
+	req := &proto.CreateMetaRecorderRequest{
+		PartitionID:  mp.PartitionID,
+		Members:      mp.Peers,
+		VolName:      mp.volName,
+		Learners:     mp.Learners,
+		Recorders: 	  mp.Recorders,
+	}
+	t = proto.NewAdminTask(proto.OpCreateMetaRecorder, host, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToAddRaftRecorder(addRecorder proto.Peer, leaderAddr string) (t *proto.AdminTask, err error) {
+	req := &proto.AddMetaPartitionRaftRecorderRequest{PartitionId: mp.PartitionID, AddRecorder: addRecorder}
+	t = proto.NewAdminTask(proto.OpAddMetaPartitionRaftRecorder, leaderAddr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToRemoveRaftRecorder(removePeer proto.Peer) (t *proto.AdminTask, err error) {
+	mr, err := mp.getMetaReplicaLeader()
+	if err != nil {
+		return nil, errors.NewError(err)
+	}
+	req := &proto.RemoveMetaPartitionRaftRecorderRequest{PartitionId: mp.PartitionID, RemoveRecorder: removePeer, RaftOnly: false}
+	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftRecorder, mr.Addr, req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToRemoveRaftRecorderOnly(removePeer proto.Peer) (t *proto.AdminTask) {
+	req := &proto.RemoveMetaPartitionRaftRecorderRequest{PartitionId: mp.PartitionID, RemoveRecorder: removePeer, RaftOnly: true}
+	t = proto.NewAdminTask(proto.OpRemoveMetaPartitionRaftRecorder, "", req)
+	resetMetaPartitionTaskID(t, mp.PartitionID)
+	return
+}
+
+func (mp *MetaPartition) createTaskToResetRaftRecorderMembers(newPeers []proto.Peer, address string) (t *proto.AdminTask, err error) {
+	req := &proto.ResetMetaRecorderRaftMemberRequest{PartitionId: mp.PartitionID, NewPeers: newPeers}
+	t = proto.NewAdminTask(proto.OpResetMetaRecorderRaftMember, address, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
 	return
 }
@@ -1126,6 +1218,7 @@ func (mp *MetaPartition) getLiveZones(offlineAddr string) (zones []string) {
 }
 
 func (mp *MetaPartition) isLatestReplica(addr string) (ok bool) {
+	// todo recorder?
 	hostsLen := len(mp.Hosts)
 	if hostsLen <= 1 {
 		return
@@ -1243,7 +1336,7 @@ var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *Me
 	}
 	//if there is no replica in target zone, choose random nodeset in target zone
 	if addrInTargetZone == "" {
-		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(nil, mp.Hosts, 1, dstStoreMode); err != nil {
+		if targetHosts, _, _, err = targetZone.getAvailMetaNodeHosts(nil, mp.peerHosts(), 1, 0, dstStoreMode); err != nil {
 			return
 		}
 		if len(targetHosts) == 0 {
@@ -1262,10 +1355,10 @@ var getTargetAddressForRepairMetaZone = func(c *Cluster, nodeAddr string, mp *Me
 	if nodesetInTargetZone, err = targetZone.getNodeSet(targetNode.NodeSetID); err != nil {
 		return
 	}
-	if targetHosts, _, err = nodesetInTargetZone.getAvailMetaNodeHosts(mp.Hosts, 1, dstStoreMode); err != nil {
+	if targetHosts, _, _, err = nodesetInTargetZone.getAvailMetaNodeHosts(mp.peerHosts(), 1, 0, dstStoreMode); err != nil {
 		// select meta nodes from the other node set in same zone
 		excludeNodeSets = append(excludeNodeSets, nodesetInTargetZone.ID)
-		if targetHosts, _, err = targetZone.getAvailMetaNodeHosts(excludeNodeSets, mp.Hosts, 1, dstStoreMode); err != nil {
+		if targetHosts, _, _, err = targetZone.getAvailMetaNodeHosts(excludeNodeSets, mp.peerHosts(), 1, 0, dstStoreMode); err != nil {
 			return
 		}
 	}
@@ -1504,8 +1597,12 @@ func (mp *MetaPartition) allReplicaHasRecovered() bool {
 	mp.RLock()
 	defer mp.RUnlock()
 	replicaMap := make(map[string]*MetaReplica, 0)
+	recorderMap := make(map[string]*MetaRecorder, 0)
 	for _, mpReplica := range mp.Replicas {
 		replicaMap[mpReplica.Addr] = mpReplica
+	}
+	for _, mpRecorder := range mp.RecordersInfo {
+		recorderMap[mpRecorder.Addr] = mpRecorder
 	}
 	for _, host := range mp.Hosts {
 		replica, ok := replicaMap[host]
@@ -1516,5 +1613,100 @@ func (mp *MetaPartition) allReplicaHasRecovered() bool {
 			return false
 		}
 	}
+	for _, addr := range mp.Recorders {
+		rInfo, ok := recorderMap[addr]
+		if !ok {
+			return false
+		}
+		if rInfo.IsRecover {
+			return false
+		}
+	}
 	return true
+}
+
+func (mp *MetaPartition) createRecorderView(nodeAddr string, c *Cluster) (err error) {
+	var metaNode *MetaNode
+	metaNode, err = c.metaNode(nodeAddr)
+	if err != nil {
+		return err
+	}
+	mr := newMetaRecorder(metaNode)
+	mr.Status = proto.ReadWrite
+	mr.IsRecover = true
+	mp.addRecorder(mr)
+	mp.removeMissingReplica(mr.Addr)
+	return
+}
+
+func (mp *MetaPartition) addRecorder(mr *MetaRecorder) {
+	for _, m := range mp.RecordersInfo {
+		if m.Addr == mr.Addr {
+			return
+		}
+	}
+	mp.RecordersInfo = append(mp.RecordersInfo, mr)
+	return
+}
+
+func (mp *MetaPartition) getMetaRecorder(addr string) (mr *MetaRecorder, err error) {
+	for _, mr = range mp.RecordersInfo {
+		if mr.Addr == addr {
+			return
+		}
+	}
+	return nil, metaRecorderNotFound(addr)
+}
+
+func (mp *MetaPartition) removeRecorderByAddr(addr string) {
+	var newRecorders []*MetaRecorder
+	for _, m := range mp.RecordersInfo {
+		if m.Addr == addr {
+			continue
+		}
+		newRecorders = append(newRecorders, m)
+	}
+	mp.RecordersInfo = newRecorders
+	return
+}
+
+func (mp *MetaPartition) updateMetaRecorder(report *proto.MetaRecorderReport, metaNode *MetaNode) {
+	if !contains(mp.Recorders, metaNode.Addr) {
+		return
+	}
+	mp.Lock()
+	defer mp.Unlock()
+	mr, err := mp.getMetaRecorder(metaNode.Addr)
+	if err != nil {
+		mr = newMetaRecorder(metaNode)
+		mp.addRecorder(mr)
+	}
+	mr.updateMetric(report)
+	mp.removeMissingReplica(metaNode.Addr)
+}
+
+func (mp *MetaPartition) getLiveRecorders() (liveRecorders []*MetaRecorder) {
+	liveRecorders = make([]*MetaRecorder, 0)
+	for _, mr := range mp.RecordersInfo {
+		if mr.isActive() {
+			liveRecorders = append(liveRecorders, mr)
+		}
+	}
+	return
+}
+
+func (mp *MetaPartition) getLiveRecordersAddr(liveRecorders []*MetaRecorder) (addrs []string) {
+	addrs = make([]string, 0)
+	for _, mr := range liveRecorders {
+		addrs = append(addrs, mr.Addr)
+	}
+	return
+}
+
+func (mp *MetaPartition) peerHosts() []string {
+	peerHosts := make([]string, 0, len(mp.Peers))
+	for _, p := range mp.Peers {
+		peerHosts = append(peerHosts, p.Addr)
+	}
+	return peerHosts
 }
