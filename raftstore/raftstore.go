@@ -19,6 +19,7 @@ import (
 	"os"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tiglabs/raft"
@@ -39,6 +40,7 @@ type RaftStore interface {
 	IsSyncWALOnUnstable() (enabled bool)
 
 	RaftPath() string
+	RaftPort() (heartbeat, replica int, err error)
 }
 
 type raftStore struct {
@@ -60,6 +62,29 @@ func (s *raftStore) RaftPath() string {
 
 func (s *raftStore) RaftStatus(raftID uint64) (raftStatus *raft.Status) {
 	return s.raftServer.Status(raftID)
+}
+
+func (s *raftStore) RaftPort() (heartbeat, replica int, err error) {
+	raftConfig := s.RaftConfig()
+	heartbeatAddrSplits := strings.Split(raftConfig.HeartbeatAddr, ":")
+	replicaAddrSplits := strings.Split(raftConfig.ReplicateAddr, ":")
+	if len(heartbeatAddrSplits) != 2 {
+		err = fmt.Errorf("illegal heartbeat address")
+		return
+	}
+	if len(replicaAddrSplits) != 2 {
+		err = fmt.Errorf("illegal replica address")
+		return
+	}
+	heartbeat, err = strconv.Atoi(heartbeatAddrSplits[1])
+	if err != nil {
+		return
+	}
+	replica, err = strconv.Atoi(replicaAddrSplits[1])
+	if err != nil {
+		return
+	}
+	return
 }
 
 // AddNodeWithPort add a new node with the given port.

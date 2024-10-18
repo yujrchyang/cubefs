@@ -86,6 +86,8 @@ type Partition interface {
 	// Truncate raft log
 	Truncate(index uint64)
 
+	GetTruncateIndex() (index uint64)
+
 	TryToLeader(nodeID uint64) error
 
 	IsOfflinePeer() bool
@@ -254,6 +256,13 @@ func (p *partition) Truncate(index uint64) {
 	if p.raft != nil {
 		p.raft.Truncate(p.id, index)
 	}
+}
+
+func (p *partition) GetTruncateIndex() (index uint64) {
+	if p.ws != nil {
+		index = p.ws.TruncateIndex()
+	}
+	return
 }
 
 func (p *partition) FlushWAL(wait bool) (err error) {
