@@ -263,13 +263,6 @@ func (s *ChubaoFSMonitor) extractChubaoFSInfo(filePath string) (err error) {
 		return
 	}
 	fmt.Println("chubaoFSMasterNodes:", s.chubaoFSMasterNodes)
-
-	for _, host := range s.hosts {
-		if masterNodes, ok := s.chubaoFSMasterNodes[host.host]; ok {
-			host.masterNodes = masterNodes
-			fmt.Printf("domain: %v chubaoFSMasterNodes: %v\n", host.host, s.chubaoFSMasterNodes)
-		}
-	}
 	return
 }
 
@@ -421,6 +414,13 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		clusterHosts = append(clusterHosts, newClusterHost(host))
 	}
 	s.hosts = clusterHosts
+	for _, host := range s.hosts {
+		if masterNodes, ok := s.chubaoFSMasterNodes[host.host]; ok {
+			host.masterNodes = masterNodes
+			fmt.Printf("domain: %v chubaoFSMasterNodes: %v\n", host.host, s.chubaoFSMasterNodes)
+		}
+	}
+
 	s.updateMaxPendQueueAndMaxAppliedIDDiffCountByConfig(cfg)
 	interval := cfg.GetString(cfgKeyInterval)
 	if interval == "" {
