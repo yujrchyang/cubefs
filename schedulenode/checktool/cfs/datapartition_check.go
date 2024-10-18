@@ -130,7 +130,7 @@ func (s *ChubaoFSMonitor) checkAvailableTinyExtents() {
 		if host.isReleaseCluster {
 			continue
 		}
-		if host.host != "cn.chubaofs.jd.local" {
+		if host.host != "cn.chubaofs.jd.local" && host.host != "sparkchubaofs.jd.local" {
 			continue
 		}
 		checkTinyExtentsByVol(host, s.checkAvailTinyVols)
