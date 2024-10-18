@@ -84,9 +84,11 @@ const (
 	mms19Addr = "127.0.0.1:8119"
 	mms20Addr = "127.0.0.1:8120"
 
-	commonVolName = "commonVol"
-	quorumVolName = "quorumVol"
-	smartVolName  = "smartVol"
+	commonVolName 	= "commonVol"
+	quorumVolName 	= "quorumVol"
+	smartVolName  	= "smartVol"
+	recorderVolName	= "recorderVol"
+
 	testZone1     = "zone1"
 	testZone2     = "zone2"
 	testZone3     = "zone3"
@@ -137,6 +139,7 @@ const (
 var server = createDefaultMasterServerForTest()
 var commonVol *Vol
 var quorumVol *Vol
+var recorderVol *Vol
 var cfsUser *proto.UserInfo
 var mc = master.NewMasterClient([]string{"127.0.0.1:8080"}, false)
 var mtMap map[string]*mocktest.MockMetaServer
@@ -238,7 +241,7 @@ func createDefaultMasterServerForTest() *Server {
 	testServer.cluster.cfg.nodeSetCapacity = defaultNodeSetCapacity
 	time.Sleep(5 * time.Second)
 	testServer.cluster.doCheckAvailSpace()
-	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
+	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 0, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, true, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0}, 0,
 		0, false, 0, 0, maxReadAheadMemMB, maxReadAheadWindowMB)
@@ -252,6 +255,15 @@ func createDefaultMasterServerForTest() *Server {
 	commonVol = vol
 	if err = createUserWithPolicy(testServer); err != nil {
 		panic(err)
+	}
+
+	zoneName := fmt.Sprintf("%s,%s,%s", testZone1, testZone2, testZone3)
+	recorderVol, err = testServer.cluster.createVol(recorderVolName, "cfs", zoneName, "",3, 3, 3, 2, 120, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
+		false, false, false, false, false, false,false, false, 0, 0, defaultChildFileMaxCount,
+		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{}, 0,
+		0, false, 0, 0, 0, 0)
+	if err != nil {
+		panic(fmt.Sprintf("create recorder vol err: %v", err))
 	}
 
 	return testServer
@@ -4638,4 +4650,98 @@ func TestVolSetReadAheadConfig(t *testing.T) {
 	assert.NotNilf(t, vol, "get volume")
 	assert.Equalf(t, int64(-1), vol.ReadAheadMemMB, "volume read ahead memMB")
 	assert.Equalf(t, int64(-1), vol.ReadAheadWindowMB, "volume read ahead windowMB")
+}
+
+func TestRecorderVolInfo(t *testing.T)  {
+	var err error
+	recorderVol, err = server.cluster.getVol(recorderVolName)
+	assert.NoError(t, err, "get recorder type vol err")
+	assert.Equal(t, uint8(2), recorderVol.mpRecorderNum, "mpRecorderNum of vol")
+
+	assert.NotEqual(t, 0, len(recorderVol.MetaPartitions), "the num of mp")
+	for _, mp := range recorderVol.MetaPartitions {
+		assert.Equal(t, uint8(2), mp.RecorderNum, "recorderNum of mp")
+		assert.Equal(t, uint8(defaultReplicaNum), mp.ReplicaNum, "replicaNum of mp")
+		assert.Equal(t, 2, len(mp.RecordersInfo), "len(mp.RecordersInfo) of mp")
+		assert.Equal(t, defaultReplicaNum, len(mp.Replicas), "len(mp.Replicas) of mp")
+		assert.Equal(t, defaultReplicaNum, len(mp.Hosts), "len(mp.Replicas) of mp")
+		assert.Equal(t, 2, len(mp.Recorders), "len(mp.Replicas) of mp")
+		assert.Equal(t, defaultReplicaNum+2, len(mp.Peers), "len(mp.Peers) of mp")
+		checkRecorderPeers(t, mp.Peers, 2)
+	}
+}
+
+func TestMpRecorderOp(t *testing.T) {
+	var err error
+	recorderVol, err = server.cluster.getVol(recorderVolName)
+	assert.NoError(t, err, "get recorder type vol err")
+
+	// delete recorder
+	mps := make([]*MetaPartition, 0)
+	for _, mp := range recorderVol.MetaPartitions {
+		mps = append(mps, mp)
+	}
+	mp := mps[0]
+	opAddr := mp.Recorders[0]
+	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaRecorder, mp.PartitionID, opAddr)
+	process(reqURL, t)
+	assert.NotContainsf(t, mp.Recorders, opAddr, "recorders[%v] should not contain opAddr[%v]", mp.Recorders, opAddr)
+	assert.NotContainsf(t, mp.RecordersInfo, opAddr, "recordersInfo[%v] should not contain opAddr[%v]", mp.RecordersInfo, opAddr)
+	assert.NotContainsf(t, mp.peerHosts(), opAddr, "peerHosts[%v] should not contain opAddr[%v]", mp.peerHosts(), opAddr)
+	assert.Equal(t, false, mp.IsRecover, "mp should not recover")
+	assert.Equal(t, ReadWrite, mp.Status, "mp should be ReadWrite")
+	// add recorder
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaRecorder, mp.PartitionID, opAddr)
+	process(reqURL, t)
+	assert.Containsf(t, mp.Recorders, opAddr, "recorders[%v] should contain opAddr[%v]", mp.Recorders, opAddr)
+	assert.Containsf(t, mp.RecordersInfo, opAddr, "recordersInfo[%v] should contain opAddr[%v]", mp.RecordersInfo, opAddr)
+	assert.Containsf(t, mp.peerHosts(), opAddr, "peerHosts[%v] should contain opAddr[%v]", mp.peerHosts(), opAddr)
+	assert.Equal(t, true, mp.IsRecover, "mp should be recovering")
+	assert.Equal(t, ReadWrite, mp.Status, "mp should be ReadWrite")
+	_, ok := server.cluster.BadMetaPartitionIds.Load(mp.PartitionID)
+	assert.Truef(t, ok, "BadMetaPartitionIds should contain mp[%v]", mp.PartitionID)
+	// decommission recorder
+	mp = mps[1]
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v&destAddr=%v", hostAddr, proto.AdminDecommissionMetaPartition, mp.PartitionID, opAddr, mms11Addr)
+	process(reqURL, t)
+	assert.NotContainsf(t, mp.Recorders, opAddr, "recorders[%v] should not contain opAddr[%v]", mp.Recorders, opAddr)
+	assert.NotContainsf(t, mp.RecordersInfo, opAddr, "recordersInfo[%v] should not contain opAddr[%v]", mp.RecordersInfo, opAddr)
+	assert.NotContainsf(t, mp.peerHosts(), opAddr, "peerHosts[%v] should not contain opAddr[%v]", mp.peerHosts(), opAddr)
+	assert.Containsf(t, mp.Recorders, mms11Addr, "recorders[%v] should contain opAddr[%v]", mp.Recorders, mms11Addr)
+	assert.Containsf(t, mp.RecordersInfo, mms11Addr, "recordersInfo[%v] should contain opAddr[%v]", mp.RecordersInfo, mms11Addr)
+	assert.Containsf(t, mp.peerHosts(), mms11Addr, "peerHosts[%v] should contain opAddr[%v]", mp.peerHosts(), mms11Addr)
+	assert.Equal(t, true, mp.IsRecover, "mp should be recovering")
+	assert.Equal(t, ReadWrite, mp.Status, "mp should be ReadWrite")
+	_, ok = server.cluster.BadMetaPartitionIds.Load(mp.PartitionID)
+	assert.Truef(t, ok, "BadMetaPartitionIds should contain mp[%v]", mp.PartitionID)
+	// reset recorder
+	mp = mps[2]
+	resetHost := mp.Hosts[0]
+	resetRecorder := mp.Recorders[0]
+	resetAddr := fmt.Sprintf("%v,%v", resetHost, resetRecorder)
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminManualResetMetaPartition, mp.PartitionID, resetAddr)
+	process(reqURL, t)
+	assert.ElementsMatch(t, mp.Hosts, []string{resetHost}, "hosts after reset")
+	assert.ElementsMatch(t, mp.Recorders, []string{resetRecorder}, "recorders after reset")
+	assert.ElementsMatch(t, mp.peerHosts(), []string{resetHost, resetRecorder}, "peers after reset")
+	assert.Equal(t, true, mp.IsRecover, "mp should be recovering")
+	assert.Equal(t, ReadOnly, mp.Status, "mp should be ReadOnly")
+}
+
+func checkRecorderPeers(t *testing.T, peers []proto.Peer, expectedRecorderNum int)  {
+	peerRecorderNum, peerNormalNum := 0, 0
+	checkUniqueMap := make(map[string]bool)
+	for _, p := range peers {
+		_, ok := checkUniqueMap[p.Addr]
+		assert.Equal(t, false, ok, "check unique peer")
+		checkUniqueMap[p.Addr] = true
+
+		if p.IsRecorder() {
+			peerRecorderNum++
+		} else if p.IsNormal() {
+			peerNormalNum++
+		}
+	}
+	assert.Equal(t, defaultReplicaNum, peerNormalNum, "the num of normal peers")
+	assert.Equal(t, expectedRecorderNum, peerRecorderNum, "the num of recorder peers")
 }

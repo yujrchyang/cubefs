@@ -229,7 +229,7 @@ func getAvailHosts(nodes *sync.Map, excludeHosts []string, replicaNum, recorderN
 			replicaNum, recorderNum, len(weightedNodes))
 		return
 	}
-	weightedNodes.setNodeCarry(count, replicaNum+recorderNum, storeMode)	// todo what is it?
+	weightedNodes.setNodeCarry(count, replicaNum+recorderNum, storeMode)
 	sort.Sort(weightedNodes)
 
 	for i := 0; i < replicaNum; i++ {

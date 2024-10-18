@@ -112,11 +112,6 @@ func stepRecorder(r *raftFsm, m *proto.Message) {
 			nmsg.Index, nmsg.LogTerm = r.raftLog.lastIndexAndTerm()
 			nmsg.Commit = r.raftLog.committed
 			nmsg.SetCtx(m.Ctx())
-			// todo 确认条件（目前只处理了日志无冲突的情况，如何处理有冲突的情况？eg: 
-			//            C  |   R
-			// lastIndex 99' |  99  100
-			// term       5  |  4   6
-			//if nmsg.LogTerm > m.LogTerm || (nmsg.LogTerm == m.LogTerm && nmsg.Index > m.Index) {
 			r.send(nmsg)
 		} else {
 			if logger.IsEnableDebug() {

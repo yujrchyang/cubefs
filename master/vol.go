@@ -152,7 +152,7 @@ type Vol struct {
 func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum uint8,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	createTime, smartEnableTime int64, description, dpSelectorName, dpSelectorParm string, crossRegionHAType proto.CrossRegionHAType,
-	dpLearnerNum, mpLearnerNum, dpRecorderNum, mpRecorderNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
+	dpLearnerNum, mpLearnerNum, mpRecorderNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
 	convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
 	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32, mpSplitStep, inodeCountThreshold uint64,
 	readAheadMemMB, readAheadWindowMB int64) (vol *Vol) {
@@ -206,7 +206,6 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.CrossRegionHAType = crossRegionHAType
 	vol.dpLearnerNum = dpLearnerNum
 	vol.mpLearnerNum = mpLearnerNum
-	vol.dpRecorderNum = dpRecorderNum
 	vol.mpRecorderNum = mpRecorderNum
 	vol.trashRemainingDays = trashDays
 	vol.convertState = convertSt
@@ -269,7 +268,6 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.CrossRegionHAType,
 		vv.DpLearnerNum,
 		vv.MpLearnerNum,
-		vv.DpRecorderNum,
 		vv.MpRecorderNum,
 		vv.DpWriteableThreshold,
 		vv.TrashRemainingDays,

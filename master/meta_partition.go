@@ -286,14 +286,19 @@ func (mp *MetaPartition) hosts() []string {
 	return hosts
 }
 
-func (mp *MetaPartition) hasPeer(addr string) (ok bool) {
+func (mp *MetaPartition) hasPeer(addr string) bool {
 	for _, p := range mp.Peers {
 		if p.Addr == addr {
-			ok = true
-			break
+			return true
 		}
 	}
-	return
+	if contains(mp.Hosts, addr) {
+		return true
+	}
+	if contains(mp.Recorders, addr) {
+		return true
+	}
+	return false
 }
 
 func (mp *MetaPartition) getMetaReplica(addr string) (mr *MetaReplica, err error) {
@@ -1707,6 +1712,16 @@ func (mp *MetaPartition) peerHosts() []string {
 	peerHosts := make([]string, 0, len(mp.Peers))
 	for _, p := range mp.Peers {
 		peerHosts = append(peerHosts, p.Addr)
+	}
+	for _, host := range mp.Hosts {
+		if !contains(peerHosts, host) {
+			peerHosts = append(peerHosts, host)
+		}
+	}
+	for _, addr := range mp.Recorders {
+		if !contains(peerHosts, addr) {
+			peerHosts = append(peerHosts, addr)
+		}
 	}
 	return peerHosts
 }

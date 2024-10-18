@@ -2055,6 +2055,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		mpCount              int
 		dpReplicaNum         int
 		mpReplicaNum         int
+		mpRecorderNum		 int
 		capacity             int
 		vol                  *Vol
 		followerRead         bool
@@ -2090,7 +2091,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 
 	metrics := exporter.NewModuleTP(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
-	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
+	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
 		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
 		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -2104,6 +2105,12 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 
 	if !(mpReplicaNum == 3 || mpReplicaNum == 5) {
 		err = fmt.Errorf("mp replicaNum can only be 3 or 5,received mp replicaNum is[%v]", mpReplicaNum)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if !(mpRecorderNum == 0 || (mpRecorderNum == 2 && mpReplicaNum == 3)) {
+		err = fmt.Errorf("mp recorderNum can only be 0 or 2, received mp recorderNum is[%v], replicaNum is[%v]", mpRecorderNum, mpReplicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2127,7 +2134,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, size,
+	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
 		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval,
 		bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB); err != nil {
@@ -3212,7 +3219,7 @@ func (m *Server) manualResetMetaPartition(w http.ResponseWriter, r *http.Request
 			sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaNodeNotExists))
 			return
 		}
-		if !mp.hasPeer(node) {
+		if !contains(mp.Hosts, node) && !contains(mp.Recorders, node) {
 			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("host not exist in meta partition")))
 			return
 		}
@@ -4266,7 +4273,7 @@ func parseCheckDelEKEnableFlagToUpdateVol(r *http.Request, vol *Vol) (enableChec
 }
 
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
-	mpCount, dpReplicaNum, mpReplicaNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
+	mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
@@ -4299,6 +4306,13 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		mpReplicaNum = defaultReplicaNum
 	} else if mpReplicaNum, err = strconv.Atoi(replicaStr); err != nil {
 		err = unmatchedKey(mpReplicaNumKey)
+		return
+	}
+
+	if mpRecorderStr := r.FormValue(mpRecorderNumKey); mpRecorderStr == "" {
+		mpRecorderNum = defaultRecorderNum
+	} else if mpRecorderNum, err = strconv.Atoi(mpRecorderStr); err != nil {
+		err = unmatchedKey(mpRecorderNumKey)
 		return
 	}
 

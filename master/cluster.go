@@ -1222,7 +1222,7 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 	for _, vol := range safeVols {
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
-			if mp.hasPeer(addr) {
+			if contains(mp.Hosts, addr) || contains(mp.Recorders, addr) {
 				partitions = append(partitions, mp)
 			}
 		}
@@ -3063,7 +3063,7 @@ errHandler:
 
 // Create a new volume.
 // By default, we create 3 meta partitions and 10 data partitions during initialization.
-func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, size, capacity,
+func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size, capacity,
 	trashDays int, ecDataNum, ecParityNum uint8, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
 	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	childFileMaxCnt uint32, storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
@@ -3073,8 +3073,6 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
 		mpLearnerNum            uint8
-		dpRecorderNum			uint8
-		mpRecorderNum			uint8
 	)
 	if size == 0 {
 		dataPartitionSize = unit.DefaultDataPartitionSize
@@ -3114,7 +3112,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 		goto errHandler
 	}
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
-		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, dpRecorderNum, mpRecorderNum, dpWriteableThreshold,
+		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, uint8(mpRecorderNum), dpWriteableThreshold,
 		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocatorEnable,
 		mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB); err != nil {
 		goto errHandler
@@ -3147,7 +3145,7 @@ errHandler:
 
 func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize, capacity uint64, dpReplicaNum, mpReplicaNum,
 	trashDays int, dataNum, parityNum uint8, enableEc, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable,
-	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum, dpRecorderNum, mpRecorderNum uint8,
+	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpLearnerNum, mpLearnerNum, mpRecorderNum uint8,
 	dpWriteableThreshold float64, childFileMaxCnt uint32, storeMode proto.StoreMode, convertSt proto.VolConvertState,
 	mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
 	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64,
@@ -3186,7 +3184,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	}
 	vol = newVol(id, name, owner, zoneName, dpSize, capacity, uint8(dpReplicaNum), uint8(mpReplicaNum), followerRead,
 		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime,
-		smartEnableTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum, dpRecorderNum, mpRecorderNum,
+		smartEnableTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum, mpRecorderNum,
 		dpWriteableThreshold, uint32(trashDays), childFileMaxCnt, storeMode, convertSt, mpLayout, smartRules, compactTag,
 		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB)
 	vol.EcDataNum = dataNum

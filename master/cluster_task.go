@@ -325,7 +325,7 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 	mp.RLock()
 	defer mp.RUnlock()
 	var vol *Vol
-	if !mp.hasPeer(nodeAddr) {
+	if !contains(mp.Hosts, nodeAddr) && !contains(mp.Recorders, nodeAddr) {
 		err = fmt.Errorf("offline address:[%v] is not in meta partition peers:%v", nodeAddr, mp.Peers)
 		return
 	}

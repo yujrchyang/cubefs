@@ -305,6 +305,7 @@ type OpPartition interface {
 	UpdatePartition(ctx context.Context, req *UpdatePartitionReq, resp *UpdatePartitionResp) (err error)
 	DeleteRaft() error
 	ExpiredRaft() error
+	IsExistPeerID(peer proto.Peer) bool
 	IsExistPeer(peer proto.Peer) bool
 	IsExistLearner(learner proto.Learner) bool
 	TryToLeader(groupID uint64) error
@@ -1418,6 +1419,15 @@ func (mp *metaPartition) UpdatePartition(ctx context.Context, req *UpdatePartiti
 func (mp *metaPartition) DecommissionPartition(ctx context.Context, req []byte) (err error) {
 	_, err = mp.submit(ctx, opFSMDecommissionPartition, "", req, nil)
 	return
+}
+
+func (mp *metaPartition) IsExistPeerID(peer proto.Peer) bool {
+	for _, hasExsitPeer := range mp.config.Peers {
+		if hasExsitPeer.Addr == peer.Addr && hasExsitPeer.ID == peer.ID {
+			return true
+		}
+	}
+	return false
 }
 
 func (mp *metaPartition) IsExistPeer(peer proto.Peer) bool {

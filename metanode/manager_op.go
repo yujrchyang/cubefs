@@ -939,7 +939,13 @@ func (m *metadataManager) opAddMetaPartitionRaftMember(conn net.Conn,
 		return err
 	}
 
-	if mp.IsExistPeer(req.AddPeer) {
+	if mp.IsExistPeerID(req.AddPeer) {
+		if !mp.IsExistPeer(req.AddPeer) {
+			log.LogErrorf("[opAddMetaPartitionRaftMember]: partitionID= %d, has different type of peer", req.PartitionId)
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(proto.ErrMetaReplicaExists.Error()))
+			m.respondToClient(conn, p)
+			return err
+		}
 		p.PacketOkReply()
 		m.respondToClient(conn, p)
 		return
@@ -1303,7 +1309,13 @@ func (m *metadataManager) opAddMetaPartitionRaftRecorder(conn net.Conn, p *Packe
 		return err
 	}
 
-	if mp.IsExistPeer(req.AddRecorder) {
+	if mp.IsExistPeerID(req.AddRecorder) {
+		if !mp.IsExistPeer(req.AddRecorder) {
+			log.LogErrorf("[opAddMetaPartitionRaftRecorder]: partitionID= %d, has different type of peer", req.PartitionId)
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(proto.ErrMetaReplicaExists.Error()))
+			m.respondToClient(conn, p)
+			return err
+		}
 		p.PacketOkReply()
 		m.respondToClient(conn, p)
 		return

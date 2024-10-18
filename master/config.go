@@ -82,6 +82,7 @@ const (
 	defaultNodesLiveRatio                            float32 = 0.7
 	defaultMaxConnsPerHost                           int64   = 10000
 	defaultDelayMinutesReduceReplicaNum              int64   = 15
+	defaultRecorderNum                                       = 0
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)

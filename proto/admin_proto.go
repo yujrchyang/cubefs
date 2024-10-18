@@ -815,7 +815,7 @@ type AddMetaPartitionRaftLearnerRequest struct {
 	AddLearner  Learner `json:"learner"`
 }
 
-// PromoteMetaPartitionRaftLearnerRequest defines the request of add raftLearner a meta partition.
+// PromoteMetaPartitionRaftLearnerRequest defines the request of promote raftLearner to replica of  a meta partition.
 type PromoteMetaPartitionRaftLearnerRequest struct {
 	PartitionId    uint64  `json:"pid"`
 	PromoteLearner Learner `json:"learner"`
@@ -835,7 +835,7 @@ type ResetMetaPartitionRaftMemberRequest struct {
 	NewPeers    []Peer
 }
 
-// AddMetaPartitionRaftRecorderRequest defines the request of add raftMember a meta partition.
+// AddMetaPartitionRaftRecorderRequest defines the request of add raftRecorder a meta partition.
 type AddMetaPartitionRaftRecorderRequest struct {
 	PartitionId uint64
 	AddRecorder Peer
