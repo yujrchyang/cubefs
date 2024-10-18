@@ -26,6 +26,7 @@ const (
 	cloudOssUrlFormat = "https://%v/chubaofs_master_backup/%v/%v/masterbackup_%v_%v.tgz"
 	rocksDataPath     = "/tmp/rocksdata"
 	rocksdbPrefix     = "rocksdb"
+	dangerousPath     = "/export"
 )
 
 type CompareRocksMeta interface {
@@ -35,16 +36,14 @@ type CompareRocksMeta interface {
 func (s *ChubaoFSMonitor) checkMasterMetadata() {
 	for domain, masterAddrs := range s.chubaoFSMasterNodes {
 		if len(masterAddrs) < 2 {
-			log.LogErrorf("parameter master address must be more than 2, actual:%v", len(masterAddrs))
+			log.LogErrorf("domain[%v] parameter master address must be more than 2, actual:%v", domain, len(masterAddrs))
 			continue
 		}
 		cluster := getClusterName(domain)
 		if cluster == "unknown" {
-			log.LogErrorf("parameter cluster not found, domain:%v", domain)
+			log.LogErrorf("domain[%v] parameter cluster not found, domain:%v", domain, domain)
 			continue
 		}
-		os.RemoveAll(path.Join(rocksDataPath, cluster))
-		os.MkdirAll(path.Join(rocksDataPath, cluster), 0777)
 		executeCompare(masterAddrs, s.configMap[cfgKeyOssDomain], cluster, domain)
 	}
 }
@@ -107,51 +106,82 @@ func downloadRocksdbBackup(host, url, cluster string) (err error) {
 }
 
 func executeCompare(masterAddrs []string, ossDomain, cluster, domain string) {
+	executeDir := path.Join(rocksDataPath, cluster)
+	if strings.HasPrefix(executeDir, dangerousPath) {
+		log.LogWarnf("dangerous path:%v", executeDir)
+		return
+	}
+
+	err := os.RemoveAll(executeDir)
+	if err != nil {
+		log.LogErrorf("remove dir[%v] err:%v", rocksDataPath, err)
+		return
+	}
+	os.MkdirAll(executeDir, 0777)
+
 	rocksFilePaths := make([]string, 0)
 	lastBackupTime := time.Now().Add(-time.Minute * 10)
 	for _, host := range masterAddrs {
 		h := strings.Split(host, ":")[0]
 		url := parseCloudOssUrl(h, ossDomain, cluster, lastBackupTime)
-		err := downloadRocksdbBackup(h, url, cluster)
+		err = downloadRocksdbBackup(h, url, cluster)
 		if err != nil {
 			log.LogErrorf("download err:" + err.Error())
 			return
 		}
-		gzFilename := filepath.Join(rocksDataPath, cluster, h+".tgz")
-		unZipPath := filepath.Join(rocksDataPath, cluster, h)
+		gzFilename := filepath.Join(executeDir, h+".tgz")
+		unZipPath := filepath.Join(executeDir, h)
 		err = tar.UnTar(unZipPath, gzFilename)
 		if err != nil {
 			log.LogErrorf("extractPackage err:" + err.Error())
 			return
 		}
+		if strings.HasPrefix(gzFilename, dangerousPath) {
+			log.LogWarnf("dangerous path:%v", gzFilename)
+			return
+		}
 		os.Remove(gzFilename)
 		rocksDir := "export/App/chubaoio/master/rocksdbstore"
 		from := filepath.Join(unZipPath, rocksDir)
-		to := filepath.Join(rocksDataPath, cluster, rocksdbPrefix+h)
+		to := filepath.Join(executeDir, rocksdbPrefix+h)
+		if strings.HasPrefix(from, dangerousPath) || strings.HasPrefix(to, dangerousPath) || strings.HasPrefix(unZipPath, dangerousPath) {
+			log.LogWarnf("dangerous path:%v", from)
+			return
+		}
 		log.LogInfof("rename from:" + from + " to:" + to)
 		err = os.Rename(from, to)
 		os.RemoveAll(unZipPath)
 		rocksFilePaths = append(rocksFilePaths, to)
 	}
 
-	var err error
 	dbMap := make(map[string]*raftstore.RocksDBStore, 0)
 	for _, rPath := range rocksFilePaths {
 		var rs *raftstore.RocksDBStore
 		if rs, err = raftstore.NewRocksDBStore(rPath, lRUCacheSize, writeBufferSize); err != nil {
+			log.LogErrorf("new rocksdb[%v] error:%v", rPath, err)
 			return
 		}
 		dbMap[rPath] = rs
 	}
+	defer func() {
+		for _, db := range dbMap {
+			db.Close()
+		}
+	}()
+
 	tmpdir := os.TempDir()
-	fName := filepath.Join(tmpdir, fmt.Sprintf("metadata_diff_%v_%v", cluster, time.Now().Format("2006-01-02-15")))
+	fName := filepath.Join(tmpdir, fmt.Sprintf("metadata_diff_%v", cluster))
+	if strings.HasPrefix(fName, dangerousPath) {
+		log.LogWarnf("dangerous path:%v", fName)
+		return
+	}
+	os.Remove(fName)
 	resultFD, _ := os.OpenFile(fName, os.O_CREATE|os.O_RDWR, 0777)
 	diff := 0
 	defer func() {
 		resultFD.Close()
 		if diff == 0 {
 			log.LogInfof("cluster:%v check passed with no differences", cluster)
-			os.Remove(fName)
 		}
 	}()
 	var compare CompareRocksMeta
@@ -164,6 +194,10 @@ func executeCompare(masterAddrs []string, ossDomain, cluster, domain string) {
 	compare.RangeCompareKeys(rocksFilePaths, dbMap, cluster, UMPCFSMasterMetaCompareKey, func(s string) {
 		if s != "" {
 			diff++
+			// do not print too much to avoid disk full
+			if diff > 3000 {
+				return
+			}
 			resultFD.WriteString(fmt.Sprintf("cluster:%v bad:%v\n", cluster, s))
 		}
 	})

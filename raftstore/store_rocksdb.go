@@ -59,6 +59,11 @@ func (rs *RocksDBStore) Open(lruCacheSize, writeBufferSize int) error {
 
 }
 
+// Close closes the database
+func (rs *RocksDBStore) Close() {
+	rs.db.Close()
+}
+
 // Del deletes a key-value pair.
 func (rs *RocksDBStore) Del(key interface{}, isSync bool) (result interface{}, err error) {
 	ro := gorocksdb.NewDefaultReadOptions()

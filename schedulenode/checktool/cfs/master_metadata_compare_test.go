@@ -3,6 +3,7 @@ package cfs
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"net"
 	"net/http"
@@ -46,5 +47,7 @@ func TestCompareMeta(t *testing.T) {
 		},
 		"cn.elasticdb.jd.local": {},
 	}
+	checktool.DebugMod = true
+	monitor.checkMasterMetadata()
 	monitor.checkMasterMetadata()
 }
