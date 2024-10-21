@@ -130,7 +130,15 @@ type MDCOpenApi struct {
 
 // 使用建议 设置token以及对应指标（不同类型请求，指标不同）
 // 同一时间对多种labels进行查询，或者同一个label对多个时间段进行查询
-func NewMDCOpenApi(token string, metrics []string, siteType string) (mdcApi *MDCOpenApi) {
+func NewMDCOpenApi(token string, metrics []string, siteType string) *MDCOpenApi {
+	return newMDCOpenApi(token, metrics, siteType, 0)
+}
+
+func NewMDCOpenApiWithTimeout(token string, metrics []string, siteType string, timeout time.Duration) *MDCOpenApi {
+	return newMDCOpenApi(token, metrics, siteType, timeout)
+}
+
+func newMDCOpenApi(token string, metrics []string, siteType string, timeout time.Duration) (mdcApi *MDCOpenApi) {
 	mdcApi = new(MDCOpenApi)
 	mdcApi.token = token
 	mdcApi.metrics = metrics
@@ -143,6 +151,9 @@ func NewMDCOpenApi(token string, metrics []string, siteType string) (mdcApi *MDC
 		mdcApi.domain = "http://mlaas-gateway.jd.local"
 	}
 	mdcApi.httpSend = new(HttpSend)
+	if timeout > 0 {
+		mdcApi.httpSend.SetTimeout(timeout)
+	}
 	mdcApi.httpSend.SetHeader(map[string]string{"token": mdcApi.token, "Content-Type": "application/json"})
 	return
 }
