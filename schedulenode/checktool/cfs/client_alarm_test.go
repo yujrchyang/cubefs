@@ -18,4 +18,9 @@ func TestClientAlarm(t *testing.T) {
 	begin = time.Date(2024, 10, 15, 13, 17, 0, 0, time.Local).Unix()
 	alarmCount = m.clientAlarmImpl(umpKeySparkClientPrefix, begin, begin+600)
 	assert.Zero(t, alarmCount)
+
+	// network of ip is not available
+	begin = time.Date(2024, 10, 21, 07, 51, 0, 0, time.Local).Unix()
+	alarmCount = m.clientAlarmImpl(umpKeySparkClientPrefix, begin, begin+600)
+	assert.Zero(t, alarmCount)
 }

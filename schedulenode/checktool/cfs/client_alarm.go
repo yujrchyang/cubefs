@@ -1,9 +1,11 @@
 package cfs
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
+	"github.com/cubefs/cubefs/util/checktool/mdc"
 	"github.com/cubefs/cubefs/util/checktool/ump"
 	"github.com/cubefs/cubefs/util/exporter"
 )
@@ -36,10 +38,10 @@ func (s *ChubaoFSMonitor) clientAlarmImpl(prefix string, begin int64, end int64)
 		}
 		time.Sleep(time.Second)
 	}
-	if err != nil {
+	if err != nil || alarmRecords == nil {
 		return
 	}
-	ignoreContents := []string{"no such file or directory", "/readProcess/register", "timeout", "NotExistErr"}
+	ignoreContents := []string{"no such file or directory", "/readProcess/register", "timeout", "NotExistErr", "network is unreachable"}
 	for _, record := range alarmRecords.Records {
 		var ignore bool
 		for _, ignoreContent := range ignoreContents {
@@ -48,10 +50,59 @@ func (s *ChubaoFSMonitor) clientAlarmImpl(prefix string, begin int64, end int64)
 				break
 			}
 		}
-		if !ignore {
-			alarmCount++
-			exporter.WarningBySpecialUMPKey(prefix+umpKeyFatalSufix, record.Content)
+		if ignore {
+			continue
 		}
+		ipRes := strings.Split(record.Content, "报警主机")
+		if len(ipRes) > 1 {
+			ip := strings.Trim(ipRes[1], ":： ")
+			abnormal := isIpPingAbnormal(ip, record.AlarmTime-300*1000, record.AlarmTime+60*1000)
+			if abnormal {
+				continue
+			}
+			// put host first to avoid being truncated
+			record.Content = fmt.Sprintf("报警主机：%s，%s", ip, strings.Trim(ipRes[0], ",，"))
+		}
+		alarmCount++
+		exporter.WarningBySpecialUMPKey(prefix+umpKeyFatalSufix, record.Content)
 	}
 	return
+}
+
+func isIpPingAbnormal(ip string, begin int64, end int64) bool {
+	mdcApi := mdc.NewMDCOpenApiWithTimeout(mdc.MDCToken, []string{"min_ping"}, mdc.CnSiteType, 5*time.Second)
+	conditions := make([]map[string]interface{}, 0)
+	conditions = append(conditions, map[string]interface{}{"ip": ip})
+	var (
+		re  []*mdc.ResponseInfo
+		err error
+	)
+	for i := 0; i < 10; i++ {
+		re, err = mdcApi.Query(begin, end, conditions, 0)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return false
+	}
+	var isSeriesAbnormal = func(series []*mdc.PointNew) bool {
+		for _, singleData := range series {
+			if singleData != nil && singleData.Value == 1 {
+				return true
+			}
+		}
+		return false
+	}
+	for _, resp := range re {
+		if resp == nil {
+			continue
+		}
+		for _, metric := range resp.MetricResponseList {
+			if metric != nil && isSeriesAbnormal(metric.Series) {
+				return true
+			}
+		}
+	}
+	return false
 }
