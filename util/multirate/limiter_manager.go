@@ -26,7 +26,7 @@ const (
 	ZonePrefix = "zone:"
 	VolPrefix  = "vol:"
 
-	updateConfigInterval    = 5 * time.Minute
+	updateConfigInterval    = 1 * time.Minute
 	defaultNetworkFlowRatio = 90
 
 	speedFile    = "/sys/class/net/%v/speed"
