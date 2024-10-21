@@ -118,6 +118,8 @@ const (
 	cfgKeyExpiredMetaRemainDays            = "expiredMetaRemainDays"
 	cfgKeyXbpUsername                      = "xbpUsername"
 	cfgKeyOssDomain                        = "jcloudOssDomain"
+	cfgKeyHDDDiskOfflineInterval           = "hddDiskOfflineInterval"
+	cfgKeySSDDiskOfflineInterval           = "ssdDiskOfflineInterval"
 	cfgKeyEmail                            = "email"
 	cfgKeyEnable                           = "enable"
 )
@@ -136,6 +138,11 @@ type emailConfig struct {
 
 var configKeys = []string{
 	cfgKeyOssDomain,
+}
+
+var intKeys = []string{
+	cfgKeyHDDDiskOfflineInterval,
+	cfgKeySSDDiskOfflineInterval,
 }
 
 const (
@@ -173,7 +180,6 @@ type ChubaoFSMonitor struct {
 	chubaoFSMasterNodes                     map[string][]string
 	badDiskXBPTickets                       *sync.Map            //map[string]XBPTicketInfo
 	markDeleteVols                          map[string]time.Time // host#volName:lastWarnTime
-	offlineDataNodeMaxCountIn24Hour         int
 	offlineDiskMaxCountIn24Hour             int
 	offlineDiskMinDuration                  time.Duration
 	masterLbLastWarnInfo                    map[string]*MasterLBWarnInfo
@@ -215,6 +221,7 @@ type ChubaoFSMonitor struct {
 	xbpUsername                             string
 	checkRiskFix                            bool
 	configMap                               map[string]string
+	integerMap                              map[string]int64
 }
 
 func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
@@ -447,12 +454,15 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		return err
 	}
 
-	s.offlineDataNodeMaxCountIn24Hour, _ = strconv.Atoi(cfg.GetString(cfgKeyMaxOfflineDataNodes))
-	if s.offlineDataNodeMaxCountIn24Hour <= 0 {
-		s.offlineDataNodeMaxCountIn24Hour = 1
+	offlineDataNodeMaxCount, _ := strconv.Atoi(cfg.GetString(cfgKeyMaxOfflineDataNodes))
+	if offlineDataNodeMaxCount <= 0 {
+		offlineDataNodeMaxCount = 1
 	}
-	if s.offlineDataNodeMaxCountIn24Hour > defaultMaxOfflineDataNodes {
-		s.offlineDataNodeMaxCountIn24Hour = defaultMaxOfflineDataNodes
+	if offlineDataNodeMaxCount > defaultMaxOfflineDataNodes {
+		offlineDataNodeMaxCount = defaultMaxOfflineDataNodes
+	}
+	for _, host := range s.hosts {
+		host.offlineDataNodeTokenPool = newTokenPool(time.Hour*24, offlineDataNodeMaxCount)
 	}
 
 	s.offlineDiskMaxCountIn24Hour, _ = strconv.Atoi(cfg.GetString(cfgKeyMaxOfflineDisks))
@@ -534,11 +544,16 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		}
 		s.configMap[k] = cfg.GetString(k)
 	}
+
+	for _, k := range intKeys {
+		s.integerMap[k] = cfg.GetInt64(k)
+	}
+
 	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
-		",offlineDataNodeMaxCountIn24Hour[%v],offlineDiskMaxCountIn24Hour[%v],offlineDiskMinDuration[%v],  mpCheckInterval[%v], "+
+		",offlineDiskMaxCountIn24Hour[%v],offlineDiskMinDuration[%v],  mpCheckInterval[%v], "+
 		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v]\n",
 		s.usedRatio, s.availSpaceRatio, s.readWriteDpRatio, s.minReadWriteCount, s.hosts, s.scheduleInterval, s.clusterUsedRatio,
-		s.offlineDataNodeMaxCountIn24Hour, s.offlineDiskMaxCountIn24Hour, s.offlineDiskMinDuration, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval,
+		s.offlineDiskMaxCountIn24Hour, s.offlineDiskMinDuration, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval,
 		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD)
 	return
 }

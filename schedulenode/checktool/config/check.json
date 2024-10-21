@@ -68,5 +68,7 @@
       "mailUser": "test",
       "mailPwd": "******"
     }
-  }
+  },
+  "hddDiskOfflineInterval": "10",
+  "ssdDiskOfflineInterval": "5"
 }

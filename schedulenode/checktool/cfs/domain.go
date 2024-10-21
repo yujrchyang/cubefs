@@ -29,10 +29,9 @@ type ClusterHost struct {
 	lastTimeAlarmDP               time.Time
 	lastTimeAlarmClusterUsedRatio time.Time
 	lastTimeOfflineMetaNode       time.Time
-	lastTimeOfflineDataNode       time.Time
-	offlineDataNodesIn24Hour      map[string]time.Time
 	offlineFlashNodesIn24Hour     map[string]time.Time
-	inOfflineDiskDataNodes        map[string]time.Time
+	inOfflineDataNodes            map[string]time.Time
+	offlineDataNodeTokenPool      *TokenPool
 	offlineDisksIn24Hour          map[string]time.Time
 	offlineMetaNodesIn24Hour      map[string]time.Time
 	dataNodeBadDisk               map[string]time.Time
@@ -72,9 +71,8 @@ func newClusterHost(host string) *ClusterHost {
 		dataNodeBadDisk:           make(map[string]time.Time, 0),
 		offlineDisksIn24Hour:      make(map[string]time.Time, 0),
 		offlineMetaNodesIn24Hour:  make(map[string]time.Time, 0),
-		offlineDataNodesIn24Hour:  make(map[string]time.Time, 0),
 		offlineFlashNodesIn24Hour: make(map[string]time.Time, 0),
-		inOfflineDiskDataNodes:    make(map[string]time.Time, 0),
+		inOfflineDataNodes:        make(map[string]time.Time, 0),
 		badPartitionAppliedMap:    make(map[string]*PartitionApplied, 0),
 		badPartitionPendingMap:    make(map[string]map[string]*PartitionPending, 0),
 		inactiveNodesForCheckVol:  make(map[string]bool),
@@ -191,6 +189,7 @@ type DataNodeView struct {
 	ReportTime                time.Time
 	PersistenceDataPartitions []uint64
 	DataPartitionReports      []*proto.PartitionReport
+	DiskInfos                 map[string]*proto.DiskInfo
 }
 
 type FlashNodeView struct {
