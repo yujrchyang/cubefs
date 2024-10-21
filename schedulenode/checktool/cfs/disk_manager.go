@@ -140,7 +140,7 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 			newCheckedDataNodeBadDisk[dataNodeBadDiskKey] = time.Now()
 			if firstReportTime, ok := host.dataNodeBadDisk[dataNodeBadDiskKey]; ok {
 				newCheckedDataNodeBadDisk[dataNodeBadDiskKey] = firstReportTime
-				// 清理超过24小时的记录
+				// 1 - 清理超过24小时的磁盘下线记录
 				for key, t := range host.offlineDisksIn24Hour {
 					if time.Since(t) > 24*time.Hour {
 						delete(host.offlineDisksIn24Hour, key)
@@ -148,20 +148,25 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 				}
 				log.LogDebugf("host:%v,badDisk%v,badDisk:%v,firstReportTime:%v,len(host.offlineDisksIn24Hour):%v", host.host, badDiskOnNode.Addr,
 					badDisk, firstReportTime, len(host.offlineDisksIn24Hour))
+
+				// 2 - 执行下线
 				if time.Since(firstReportTime) > s.offlineDiskMinDuration && len(host.offlineDisksIn24Hour) < s.offlineDiskMaxCountIn24Hour {
 					log.LogDebugf("action[doCheckDataNodeDiskError] host[%s] Addr[%s] badDisk[%s]", host, badDiskOnNode.Addr, badDisk)
 					// 控制单块盘的下线间隔时间
 					lastOfflineThisDiskTime := host.offlineDisksIn24Hour[dataNodeBadDiskKey]
 					if time.Since(lastOfflineThisDiskTime) > time.Minute*10 {
-						offlineDataNodeDisk(host, badDiskOnNode.Addr, badDisk, true)
+						if canOffline(host) {
+							offlineDataNodeDisk(host, badDiskOnNode.Addr, badDisk, true)
+						}
 						host.offlineDisksIn24Hour[dataNodeBadDiskKey] = time.Now()
 					}
 				}
 			}
-			//24小时内自动下线的就不用发xbp, 超过24小时内自动下线阈值才发起XBP单子
+			// 3 - 超过最大自动下线阈值的，发XBP手动下线
 			if len(host.offlineDisksIn24Hour) < s.offlineDiskMaxCountIn24Hour {
 				continue
 			}
+			log.LogWarnf("action[doCheckDataNodeDiskError] offline in 24 hour[%v] reached max:%v, create xbp to offline manually", len(host.offlineDisksIn24Hour), s.offlineDiskMaxCountIn24Hour)
 			if host.isReleaseCluster {
 				url = fmt.Sprintf("http://%v/disk/offline?addr=%v&disk=%v&auto=true", host.host, badDiskOnNode.Addr, badDisk)
 			} else {
@@ -303,6 +308,11 @@ func doOfflineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) 
 		}
 	}
 	data, err := doRequest(reqURL, host.isReleaseCluster)
+	if err != nil && host.isReleaseCluster && strings.Contains(err.Error(), "no any datapartition") {
+		msg := fmt.Sprintf("action[offlineDataNodeDisk] reqURL[%v],data[%v]", reqURL, string(data))
+		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		return
+	}
 	if err != nil {
 		log.LogErrorf("action[offlineDataNodeDisk] occurred err,url[%v],err %v", reqURL, err)
 		return
@@ -313,18 +323,8 @@ func doOfflineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) 
 }
 
 func offlineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) {
-	badDPsCount, err := getBadPartitionIDsCount(host)
-	if err != nil {
-		log.LogWarn(fmt.Sprintf("action[offlineDataNodeDisk] getBadPartitionIDsCount host:%v err:%v", host, err))
-		return
-	}
-	if badDPsCount >= maxBadDataPartitionsCount {
-		log.LogWarn(fmt.Sprintf("action[offlineDataNodeDisk] host:%v badDPsCount:%v more than maxBadDataPartitionsCount:%v addr:%v, badDisk:%v",
-			host, badDPsCount, maxBadDataPartitionsCount, addr, badDisk))
-		return
-	}
-	log.LogDebug(fmt.Sprintf("action[offlineDataNodeDisk] host:%v badDPsCount:%v maxBadDataPartitionsCount:%v addr:%v, badDisk:%v force:%v",
-		host, badDPsCount, maxBadDataPartitionsCount, addr, badDisk, force))
+	log.LogDebug(fmt.Sprintf("action[offlineDataNodeDisk] host:%v maxBadDataPartitionsCount:%v badDisk:%v addr:%v force:%v",
+		host, maxBadDataPartitionsCount, addr, badDisk, force))
 	doOfflineDataNodeDisk(host, addr, badDisk, force)
 }
 

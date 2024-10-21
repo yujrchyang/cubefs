@@ -58,7 +58,7 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 				return
 			}
 			cv.checkMetaNodeAlive(host)
-			cv.checkDataNodeAlive(host, s)
+			cv.checkDataNodeAlive(host, s, time.Hour)
 			if s.checkFlashNode {
 				cv.checkFlashNodeAlive(host)
 			}
@@ -78,6 +78,12 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 	checkNodeWg.Wait()
 }
 
+// confirmCheckMetaNodeAlive
+// 1. 当master视图有非存活节点，则报警。
+// 2. Master节点升级中常会误报，因此当非存活节点超过5个，需进行二次确认以避免误报
+// 3. 同时为避免矫枉过正，当二次确认连续执行超过一定次数，则不再二次确认
+// 4. 当token中还有令牌，则进行二次确认，如果确认为误报，则令牌减1，直到token为0。token每间隔半小时重置一次
+// 5. token每间隔一定时间会重置
 func (cv *ClusterView) confirmCheckMetaNodeAlive(host *ClusterHost, enableWarn bool) (inactiveMetaNodes map[string]*DeadNode) {
 	confirmThreshold := 5
 	deadNodes := make([]MetaNodeView, 0)
@@ -384,6 +390,12 @@ func confirmMetaNodeActive(addr string, isDbback bool) (active bool) {
 	return true
 }
 
+// confirmCheckDataNodeAlive
+// 1. 当master视图有非存活节点，则报警。
+// 2. Master节点升级中常会误报，因此当非存活节点超过5个，需进行二次确认以避免误报
+// 3. 同时为避免矫枉过正，当二次确认连续执行超过一定次数，则不再二次确认
+// 4. 当token中还有令牌，则进行二次确认，如果确认为误报，则令牌减1，直到token为0。token每间隔半小时重置一次
+// 5. token每间隔一定时间会重置
 func (cv *ClusterView) confirmCheckDataNodeAlive(host *ClusterHost, enableWarn bool) (inactiveDataNodes map[string]*DeadNode) {
 	confirmThreshold := 5
 	inactiveDataNodes = make(map[string]*DeadNode, 0)
@@ -440,151 +452,237 @@ func (cv *ClusterView) confirmCheckDataNodeAlive(host *ClusterHost, enableWarn b
 	return
 }
 
-func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor) {
+// checkDataNodeAlive
+// autoOfflineThreshold - 一般不大于8小时
+func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor, autoOfflineThreshold time.Duration) {
 	inactiveDataNodes := cv.confirmCheckDataNodeAlive(host, true)
 	if len(inactiveDataNodes) == 0 {
 		return
 	}
-	nodeZoneMap, err := getNodeToZoneMap(host)
+	// 只自动处理单节点故障场景
+	if len(inactiveDataNodes) != 1 {
+		return
+	}
+	var dn *DeadNode
+	for _, deadNode := range inactiveDataNodes {
+		dn = deadNode
+		break
+	}
+
+	// 确认是否为物理机故障,如果故障恢复，应删除正在下线节点
+	if !isPhysicalMachineFailure(dn.Addr) {
+		return
+	}
+
+	// 确认故障持续时间是否达到下线阈值 - autoOfflineThreshold
+	dataNodeView, err := getDataNode(host, dn.Addr)
 	if err != nil {
-		log.LogErrorf("action[getNodeToZoneMap] host[%v] err[%v]", host.host, err)
+		log.LogErrorf("action[checkDataNodeAlive] host[%v] err[%v]", host.host, err)
+		return
 	}
-	if len(inactiveDataNodes) == 1 {
-		for _, dn := range inactiveDataNodes {
-			dataNodeView, err := getDataNode(host, dn.Addr)
-			if err != nil {
-				return
-			}
-			if time.Since(dataNodeView.ReportTime) > 30*time.Minute {
-				if isPhysicalMachineFailure(dn.Addr) {
-					log.LogErrorf("action[isPhysicalMachineFailure],addr[%v],err[%v]", dn.Addr, err)
-					//超过一定时间 尝试重启机器
-					if host.host == "cn.chubaofs.jd.local" {
-						//deprecated
-						if err1 := s.checkThenRestartNode(dn.Addr, host.host); err1 != nil {
-							log.LogErrorf("action[checkThenRestartNode] addr[%v] err1[%v]", dn.Addr, err1)
-						}
-					}
-					/* 不再发起节点下线xbp单子
-					var reqURL string
-					if host.isReleaseCluster {
-						reqURL = fmt.Sprintf("http://%v/dataNode/offline?addr=%v", host, deadNodes[0].Addr)
-					} else {
-						reqURL = fmt.Sprintf("http://%v/dataNode/decommission?addr=%v", host, deadNodes[0].Addr)
-					}
-					s.addDataNodeOfflineXBPTicket(deadNodes[0].Addr, reqURL, cv.Name, host.isReleaseCluster)
-					*/
-					// 清理超过24小时的记录
-					for key, t := range host.offlineDataNodesIn24Hour {
-						if time.Since(t) > 24*time.Hour {
-							delete(host.offlineDataNodesIn24Hour, key)
-						}
-					}
-					// 如果持续小于1个小时，不进行自动处理
-					if time.Since(dataNodeView.ReportTime) < time.Hour {
-						continue
-					}
-					// 判断24小时内下线的数目，符合要求则加入待执行下线磁盘的DataNode map
-					if len(host.offlineDataNodesIn24Hour) < s.offlineDataNodeMaxCountIn24Hour {
-						host.offlineDataNodesIn24Hour[dataNodeView.Addr] = time.Now()
-						log.LogDebugf("action[checkDataNodeAlive] offlineDataNodesIn24Hour:%v", host.offlineDataNodesIn24Hour)
-						if _, ok := host.inOfflineDiskDataNodes[dataNodeView.Addr]; !ok {
-							host.inOfflineDiskDataNodes[dataNodeView.Addr] = dataNodeView.ReportTime
-							log.LogDebugf("action[checkDataNodeAlive] inOfflineDiskDataNodes:%v", host.inOfflineDiskDataNodes)
-						}
-					}
-					// 对待下线DataNode执行下线磁盘操作
-					offlineBadDataNodeOneDisk(host)
-					zoneName := nodeZoneMap[dataNodeView.Addr]
-					if (isSSD(host.host, zoneName) && time.Since(dataNodeView.ReportTime) > time.Hour) ||
-						time.Since(dataNodeView.ReportTime) > 8*time.Hour {
-						if isSSD(host.host, zoneName) {
-							offlineDataNode(host, dataNodeView.Addr)
-							delete(host.inOfflineDiskDataNodes, dataNodeView.Addr)
-							delete(s.lastCheckStartTime, dataNodeView.Addr)
-							continue
-						}
-						if _, ok := host.inOfflineDiskDataNodes[dataNodeView.Addr]; ok {
-							// 如果超过8小时 直接执行节点下线
-							// 需要控制节点剩余DP数量，避免正在下线的DP数量过多
-							badDPsCount, err1 := getBadPartitionIDsCount(host)
-							if err1 != nil || badDPsCount > maxBadDataPartitionsCount {
-								log.LogWarn(fmt.Sprintf("action[checkDataNodeAlive] getBadPartitionIDsCount host:%v badDPsCount:%v err:%v", host, badDPsCount, err1))
-								continue
-							}
-							nodeView, err1 := getDataNode(host, dataNodeView.Addr)
-							if err1 != nil {
-								log.LogWarn(fmt.Sprintf("action[checkDataNodeAlive] getDataNode host:%v addr:%v err:%v", host, dataNodeView.Addr, err1))
-								continue
-							}
-							badDPsCount += len(nodeView.PersistenceDataPartitions)
-							if badDPsCount > maxBadDataPartitionsCount {
-								continue
-							}
-							offlineDataNode(host, dataNodeView.Addr)
-							delete(host.inOfflineDiskDataNodes, dataNodeView.Addr)
-							delete(s.lastCheckStartTime, dataNodeView.Addr)
-						}
-					}
-				}
-			}
+	if time.Since(dataNodeView.ReportTime) < autoOfflineThreshold {
+		return
+	}
+
+	// 判断24小时内下线数，符合要求则加入待执行下线磁盘的DataNode Map
+	if host.offlineDataNodeTokenPool.allow() {
+		if _, ok := host.inOfflineDataNodes[dataNodeView.Addr]; !ok {
+			host.inOfflineDataNodes[dataNodeView.Addr] = dataNodeView.ReportTime
+			log.LogDebugf("action[checkDataNodeAlive] inOfflineDataNodes:%v", host.inOfflineDataNodes)
 		}
+	} else {
+		log.LogWarnf("action[checkDataNodeAlive] offline in %v hour[%v] reached max:%v", len(host.inOfflineDataNodes), host.offlineDataNodeTokenPool.interval.Hours(), host.offlineDataNodeTokenPool.size)
 	}
+
+	// 变更时间：2024年10月21日
+	// 变更事项：对故障DataNode只下线磁盘，不再用node下线，改为disk下线
+	// 变更原因：ssd磁盘在宕机1小时后自动下线节点，导致修复暴涨，修复写造成了数据库集群网卡流入打满
+	offlineBadDataNodeByDisk(s, host, autoOfflineThreshold)
 	return
 }
 
-func offlineBadDataNodeOneDisk(host *ClusterHost) {
-	var diskPathsMap = map[int][]string{
-		0: {"/data0", "/data6"},
-		1: {"/data1", "/data7"},
-		2: {"/data2", "/data8"},
-		3: {"/data3", "/data9"},
-		4: {"/data4", "/data10"},
-		5: {"/data5", "/data11"},
+// canOffline
+// 避免正在下线的DP数量过多
+func canOffline(host *ClusterHost) bool {
+	badDPsCount, err := getBadPartitionIDsCount(host)
+	if err != nil || badDPsCount > maxBadDataPartitionsCount {
+		log.LogWarn(fmt.Sprintf("action[canOffline] can not offline, host:%v badDPsCount:%v err:%v", host, badDPsCount, err))
+		return false
 	}
-	var dbbakDiskPathsMap = map[int][]string{
-		0: {"/cfsd0", "/cfsd6"},
-		1: {"/cfsd1", "/cfsd7"},
-		2: {"/cfsd2", "/cfsd8"},
-		3: {"/cfsd3", "/cfsd9"},
-		4: {"/cfsd4", "/cfsd10"},
-		5: {"/cfsd5", "/cfsd11"},
-	}
-	for dataNodeAddr, lastOfflineDiskTime := range host.inOfflineDiskDataNodes {
-		if time.Since(lastOfflineDiskTime) > time.Minute*30 {
-			if !isPhysicalMachineFailure(dataNodeAddr) {
-				delete(host.inOfflineDiskDataNodes, dataNodeAddr)
-				continue
-			}
-			dataNodeView, err := getDataNode(host, dataNodeAddr)
-			if err != nil {
-				return
-			}
-			if time.Since(dataNodeView.ReportTime) < 5*time.Hour {
-				delete(host.inOfflineDiskDataNodes, dataNodeAddr)
-				continue
-			}
-			// 获取要被下线的磁盘地址 根据时间计算
-			offlineDiskIndex := int((time.Since(dataNodeView.ReportTime) - 5*time.Hour) / (30 * time.Minute))
-			diskPaths, ok := diskPathsMap[offlineDiskIndex%6]
-			if !ok {
-				continue
-			}
-			for _, diskPath := range diskPaths {
-				offlineDataNodeDisk(host, dataNodeAddr, diskPath, false)
-			}
-			if host.isReleaseCluster {
-				diskPaths, ok = dbbakDiskPathsMap[offlineDiskIndex%6]
-				if !ok {
-					continue
-				}
-				for _, diskPath := range diskPaths {
-					offlineDataNodeDisk(host, dataNodeAddr, diskPath, false)
-				}
-			}
-			host.inOfflineDiskDataNodes[dataNodeAddr] = time.Now()
+	return true
+}
+
+// offlineBadDatanodeByDisk
+// 每间隔一定时间检查一次，如果满足下线条件，则下线1块磁盘
+func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost, autoOfflineThreshold time.Duration) {
+	var (
+		diskOfflineInterval time.Duration
+		diskPaths           []string
+		nodeZoneMap         map[string]string
+		err                 error
+	)
+	if !host.isReleaseCluster {
+		nodeZoneMap, err = getNodeToZoneMap(host)
+		if err != nil {
+			log.LogErrorf("action[offlineBadDataNodeByDisk] Domain[%v] err[%v]", host.host, err)
+			return
 		}
 	}
+
+	for dataNodeAddr, lastOfflineDiskTime := range host.inOfflineDataNodes {
+		zoneName := nodeZoneMap[dataNodeAddr]
+		// 下线最小时间间隔，ssd - 5分钟，hdd - 10分钟
+		if isSSD(host.host, zoneName) {
+			if s.integerMap[cfgKeySSDDiskOfflineInterval] > 0 {
+				diskOfflineInterval = time.Duration(s.integerMap[cfgKeySSDDiskOfflineInterval]) * time.Minute
+			} else {
+				diskOfflineInterval = 5 * time.Minute
+			}
+		} else {
+			if s.integerMap[cfgKeyHDDDiskOfflineInterval] > 0 {
+				diskOfflineInterval = time.Duration(s.integerMap[cfgKeyHDDDiskOfflineInterval]) * time.Minute
+			} else {
+				diskOfflineInterval = 20 * time.Minute
+			}
+		}
+		if time.Since(lastOfflineDiskTime) < diskOfflineInterval {
+			continue
+		}
+		// 再次确认是否为物理机故障
+		if !isPhysicalMachineFailure(dataNodeAddr) {
+			delete(host.inOfflineDataNodes, dataNodeAddr)
+			continue
+		}
+
+		// 再次确认故障持续时间是否达到下线阈值 - autoOfflineThreshold
+		var dataNodeView *DataNodeView
+		dataNodeView, err = getDataNode(host, dataNodeAddr)
+		if err != nil {
+			log.LogErrorf("action[offlineBadDataNodeByDisk] Domain[%v] getDataNode failed, err:%v", host.host, err)
+			continue
+		}
+		dataNodeReportTime := dataNodeView.ReportTime
+		if time.Since(dataNodeReportTime) < autoOfflineThreshold {
+			delete(host.inOfflineDataNodes, dataNodeAddr)
+			continue
+		}
+
+		// 获取要被下线的磁盘地址 根据时间计算
+		offlineDiskIndex := int((time.Since(dataNodeReportTime) - autoOfflineThreshold) / diskOfflineInterval)
+
+		diskPaths = getDisks(host, dataNodeView)
+		diskPath := diskPaths[offlineDiskIndex%len(diskPaths)]
+
+		// 确认集群中正在下线dp的个数，判断是否可继续下线
+		if !canOffline(host) {
+			continue
+		}
+		offlineDataNodeDisk(host, dataNodeAddr, diskPath, false)
+		host.inOfflineDataNodes[dataNodeAddr] = time.Now()
+	}
+}
+
+func getDisks(host *ClusterHost, dataNodeView *DataNodeView) []string {
+	dbbakDiskPaths1 := []string{
+		0:  "/cfsd0",
+		1:  "/cfsd6",
+		2:  "/cfsd1",
+		3:  "/cfsd7",
+		4:  "/cfsd2",
+		5:  "/cfsd8",
+		6:  "/cfsd3",
+		7:  "/cfsd9",
+		8:  "/cfsd4",
+		9:  "/cfsd10",
+		10: "/cfsd5",
+		11: "/cfsd11",
+	}
+
+	dbbakDiskPaths2 := []string{
+		0:  "/data0",
+		1:  "/data12",
+		2:  "/data1",
+		3:  "/data13",
+		4:  "/data2",
+		5:  "/data14",
+		6:  "/data3",
+		7:  "/data15",
+		8:  "/data4",
+		9:  "/data16",
+		10: "/data5",
+		11: "/data17",
+		12: "/data6",
+		13: "/data18",
+		14: "/data7",
+		15: "/data19",
+		16: "/data8",
+		17: "/data20",
+		18: "/data9",
+		19: "/data21",
+		20: "/data10",
+		21: "/data22",
+		22: "/data11",
+	}
+
+	sparkDiskPaths := []string{
+		0:  "/data0",
+		1:  "/data8",
+		2:  "/data1",
+		3:  "/data9",
+		4:  "/data2",
+		5:  "/data10",
+		6:  "/data3",
+		7:  "/data11",
+		8:  "/data4",
+		9:  "/data12",
+		10: "/data5",
+		11: "/data13",
+		12: "/data6",
+		13: "/data14",
+		14: "/data7",
+		15: "/data15",
+	}
+	// 随机写集群, 从diskInfo获取实时磁盘列表
+	if !host.isReleaseCluster {
+		if len(dataNodeView.DiskInfos) == 0 {
+			return sparkDiskPaths
+		}
+		disks := make([]string, 0)
+		for disk := range dataNodeView.DiskInfos {
+			disks = append(disks, disk)
+		}
+		sort.Slice(disks, func(i, j int) bool {
+			return disks[i] < disks[j]
+		})
+		return disks
+	}
+
+	//顺序写集群
+	var diskPath string
+	var maxRetry = 10
+	for _, dpID := range dataNodeView.PersistenceDataPartitions {
+		maxRetry--
+		if maxRetry == 0 {
+			break
+		}
+		partition, err := cfs.GetDataPartition(host.host, dpID, host.isReleaseCluster)
+		if err != nil {
+			continue
+		}
+		for _, replica := range partition.Replicas {
+			if replica.Addr == dataNodeView.Addr && replica.DiskPath != "" {
+				diskPath = replica.DiskPath
+				break
+			}
+		}
+		if diskPath != "" {
+			break
+		}
+	}
+	if diskPath != "" && strings.Contains(diskPath, "data") {
+		return dbbakDiskPaths2
+	}
+	return dbbakDiskPaths1
 }
 
 func isPhysicalMachineFailure(addr string) (isPhysicalFailure bool) {
@@ -1340,7 +1438,7 @@ func (cv *ClusterView) checkMetaNodeDiskStatByMDCInfoFromSre(host *ClusterHost, 
 	}
 	/*select DISTINCT(ip) from tb_dashboard_mdc where origin='cfs' and (disk_path='/exportvolume' or disk_path='/export'
 	or disk_path='/nvme') and fs_usage_percent > 70 and time_stamp >= now()-interval 20 minute;*/
-	sqlStr := fmt.Sprintf(" select DISTINCT(ip) from `%s` where origin='cfs' and (disk_path='/exportvolume' or" +
+	sqlStr := fmt.Sprintf(" select DISTINCT(ip) from `%s` where origin='cfs' and (disk_path='/exportvolume' or"+
 		" disk_path='/export' or disk_path='/nvme') and fs_usage_percent > %v and time_stamp >= now()-interval 10 minute ",
 		DashboardMdc{}.TableName(), s.metaNodeExportDiskUsedRatio)
 	if err = s.sreDB.Raw(sqlStr).Scan(&dashboardMdcIps).Error; err != nil {

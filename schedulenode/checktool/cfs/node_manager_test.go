@@ -1,12 +1,15 @@
 package cfs
 
 import (
+	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
 	"os"
 	"path"
 	"testing"
+	"time"
 )
 
 func TestCheckNodeSet(t *testing.T) {
@@ -66,6 +69,75 @@ func initTestLog(module string) {
 }
 
 func TestCheckNodeAlive(t *testing.T) {
+	//t.Skipf("skip checkNodeAlive")
+	initTestLog("storagebot")
+	defer func() {
+		log.LogFlush()
+	}()
+	checktool.DebugMod = true
+	s := NewChubaoFSMonitor(context.Background())
+	t.Run("spark", func(t *testing.T) {
+		host := newClusterHost("test.chubaofs.jd.local")
+		host.isReleaseCluster = false
+		host.offlineDataNodeTokenPool = newTokenPool(time.Hour, 1)
+		for i := 0; i < 15; i++ {
+			cv, err := getCluster(host)
+			if err != nil {
+				return
+			}
+			cv.checkDataNodeAlive(host, s, time.Minute)
+			t.Logf("check datanode alive")
+			time.Sleep(time.Minute)
+		}
+	})
+
+	t.Run("dbbak", func(t *testing.T) {
+		host := newClusterHost("test.dbbak.jd.local")
+		host.isReleaseCluster = true
+		host.offlineDataNodeTokenPool = newTokenPool(time.Hour, 1)
+		for i := 0; i < 15; i++ {
+			cv, err := getCluster(host)
+			if err != nil {
+				return
+			}
+			cv.checkDataNodeAlive(host, s, time.Minute)
+			t.Logf("check datanode alive")
+			time.Sleep(time.Minute)
+		}
+	})
+}
+
+func TestGetDiskMap(t *testing.T) {
+	//t.Skipf("skip TestGetDiskMap")
+	initTestLog("storagebot")
+	defer func() {
+		log.LogFlush()
+	}()
+	t.Run("dbbak", func(t *testing.T) {
+		host := newClusterHost("dbbak.jd.local")
+		host.isReleaseCluster = true
+		dataNodeView, err := getDataNode(host, "1.1.1.1:6000")
+		if !assert.NoError(t, err) {
+			return
+		}
+		disks := getDisks(host, dataNodeView)
+		t.Logf("disks:%v", disks)
+	})
+
+	t.Run("spark", func(t *testing.T) {
+		host := newClusterHost("cn.chubaofs.jd.local")
+		host.isReleaseCluster = true
+		dataNodeView, err := getDataNode(host, "1.1.1.1:6000")
+		if !assert.NoError(t, err) {
+			return
+		}
+		disks := getDisks(host, dataNodeView)
+		t.Logf("disks:%v", disks)
+	})
+
+}
+
+func TestConfirmCheckNodeAlive(t *testing.T) {
 	initTestLog("storagebot")
 	defer func() {
 		log.LogFlush()

@@ -32,10 +32,13 @@ type DataPartition struct {
 }
 
 type DataReplica struct {
-	Addr      string
-	FileCount int
-	TotalSize uint64
-	UsedSize  uint64
+	Addr       string
+	Status     int
+	FileCount  int
+	ReportTime uint64
+	TotalSize  uint64
+	UsedSize   uint64
+	DiskPath   string
 }
 
 func (partition *DataPartition) getMaxUsed() (maxUsed uint64) {
