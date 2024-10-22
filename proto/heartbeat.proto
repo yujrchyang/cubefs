@@ -40,6 +40,13 @@ message DiskInfoPb {
     uint32 CompressionRatio = 9;
 }
 
+message RDMAConfPb {
+    string FWVersion = 1;
+    string DriverVersion = 2;
+    repeated string	Vendor = 3;
+    repeated string	SlaveName = 4;
+}
+
 message DataNodeHeartbeatResponsePb {
     uint64 Total = 1;
     uint64 Used  = 2;
@@ -57,6 +64,8 @@ message DataNodeHeartbeatResponsePb {
     map<string, DiskInfoPb> DiskInfos = 14;
     string Version = 15;
     MediumTypePb medium = 16;
+    bool IsBond = 17;
+    RDMAConfPb RDMAConf = 18;
 }
 
 message MetaPartitionReportPb {
@@ -108,7 +117,9 @@ message MetaNodeHeartbeatResponsePb {
     string Result = 7;
     repeated MetaNodeDiskInfoPb RocksDBDiskInfo = 8;
     string Version = 9;
-    repeated MetaRecorderReportPb MetaRecorderReports = 10;
+    bool IsBond = 10;
+    RDMAConfPb RDMAConf = 11;
+    repeated MetaRecorderReportPb MetaRecorderReports = 12;
 }
 
 message HeartBeatRequestPb {

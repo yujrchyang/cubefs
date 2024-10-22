@@ -255,8 +255,9 @@ message SimpleVolViewPb {
     string                    UmpKeyPrefix           = 100;
     int64                     ReadAheadMemMB         = 101;
     int64                     ReadAheadWindowMB      = 102;
-    uint32                    DpRecorderNum          = 103;
-    uint32                    MpRecorderNum          = 104;
+    bool                      RDMA                   = 103;
+    uint32                    DpRecorderNum          = 104;
+    uint32                    MpRecorderNum          = 105;
 }
 
 message NodeStatInfoPb {
@@ -358,4 +359,7 @@ message ClusterViewPb {
     bool                          DisableStrictVolZone                = 55;
     bool                          AutoUpdatePartitionReplicaNum       = 56;
     repeated NodeView             FlashNodes                          = 57[(gogoproto.nullable) = false];
+    bool                          RDMA                                = 58;
+    bool                          RDMASend                            = 59;
+    int64                         RDMAReConnDelayTime                 = 60;
 }
