@@ -59,7 +59,7 @@ func Test_EnableJdosKernelWriteBack(t *testing.T) {
 				"default", "0,0", "", 0, 0, 60, volInfo.CompactTag,
 				0, 0, 0, 0, 0, volInfo.UmpCollectWay, -1, -1, false,
 				"", false, false, 0, false, 0,
-				readConnTimeout, readConnTimeout, 0, 0, false, false, false)
+				readConnTimeout, readConnTimeout, 0, 0, false, false, false, 0, 0)
 			if err != nil {
 				t.Errorf("Test_EnableJdosKernelWriteBack update vol err: %v test(%v)", err, tt)
 				return

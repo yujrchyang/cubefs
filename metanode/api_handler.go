@@ -247,6 +247,8 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["cleanTrashItemMaxDurationEachTime"] = partition.getCleanTrashItemMaxDurationEachTime()
 	msg["cleanTrashItemMaxCountEachTime"] = partition.getCleanTrashItemMaxCountEachTime()
 	msg["enableRemoveDupReq"] = partition.removeDupClientReqEnableState()
+	msg["reqRecordMaxCount"] = partition.getReqRecordsReservedMaxCount()
+	msg["reqRecordReservedTimeMinute"] = partition.getReqRecordsReservedTime()
 	msg["truncateCountEveryTime"] = partition.GetTruncateEKCountEveryTime()
 	msg["child_file_max_count"] = partition.config.ChildFileMaxCount
 	msg["now"] = time.Now()
@@ -1078,7 +1080,7 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"cleanTrashItemMaxDurationEachTime": nodeInfo.CleanTrashItemMaxDurationEachTime,
 		"cleanTrashItemMaxCountEachTime":    nodeInfo.CleanTrashItemMaxCountEachTime,
 		"clientReqRecordsReserveCount":      reqRecordMaxCount.Load(),
-		"clientReqRecordsReserveMin":        reqRecordReserveMin.Load(),
+		"clientReqRecordsReserveMinute":     reqRecordReserveTime.Load(),
 		"dumpSnapConfCount":                 m.GetDumpSnapCount(),
 		"dumpSnapRunningCount":              m.GetDumpSnapRunningCount(),
 		"dumpSnapMpIDS":                     m.GetDumpSnapMPID(),

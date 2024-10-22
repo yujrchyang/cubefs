@@ -480,7 +480,8 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
 	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod, trashCleanDuration, trashCleanMaxCount int32,
 	enableBitMapAllocator bool, remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool,
-	remoteCacheTTL int64, enableRemoveDupReq bool, connTimeout, readConnTimeout, writeConnTimeout int64, truncateEKCount int, bitMapSnapFrozenHour int64, notCacheNode bool, flock bool, metaOut bool) (err error) {
+	remoteCacheTTL int64, enableRemoveDupReq bool, connTimeout, readConnTimeout, writeConnTimeout int64, truncateEKCount int,
+	bitMapSnapFrozenHour int64, notCacheNode bool, flock bool, metaOut bool, reqRecordReservedTime, reqRecordMaxCount int32) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -533,6 +534,12 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam(proto.NotCacheNodeKey, strconv.FormatBool(notCacheNode))
 	request.addParam(proto.FlockKey, strconv.FormatBool(flock))
 	request.addParam("metaOut", strconv.FormatBool(metaOut))
+	if reqRecordMaxCount >= 0 {
+		request.addParam(proto.ReqRecordMaxCountKey, strconv.FormatInt(int64(reqRecordMaxCount), 10))
+	}
+	if reqRecordReservedTime >= 0 {
+		request.addParam(proto.ReqRecordReservedTimeKey, strconv.FormatInt(int64(reqRecordReservedTime), 10))
+	}
 	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

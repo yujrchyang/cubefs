@@ -383,6 +383,8 @@ type volValue struct {
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
 	RemoveDupReqEnable     bool
+	ReqRecordReservedTime  int32
+	ReqRecordMaxCount      int32
 	NotCacheNode           bool
 	Flock                  bool
 	ReadAheadMemMB         int64
@@ -485,6 +487,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoteCacheAutoPrepare: vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:         vol.RemoteCacheTTL,
 		RemoveDupReqEnable:     vol.enableRemoveDupReq,
+		ReqRecordReservedTime:  vol.reqRecordReservedTime,
+		ReqRecordMaxCount:      vol.reqRecordMaxCount,
 		NotCacheNode:           vol.notCacheNode,
 		Flock:                  vol.flock,
 		ReadAheadMemMB:         vol.ReadAheadMemMB,

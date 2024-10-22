@@ -1910,6 +1910,28 @@ func (mp *metaPartition) removeDupClientReqEnableState() bool {
 	return false
 }
 
+func (mp *metaPartition) getReqRecordsReservedTime() (value int32) {
+	value = reqRecordReserveTime.Load()
+	volConf := mp.topoManager.GetVolConf(mp.config.VolName)
+	if volConf == nil || volConf.GetReqRecordsReservedTime() <= 0 {
+		return
+	}
+
+	value = volConf.GetReqRecordsReservedTime()
+	return
+}
+
+func (mp *metaPartition) getReqRecordsReservedMaxCount() (value int32) {
+	value = reqRecordMaxCount.Load()
+	volConf := mp.topoManager.GetVolConf(mp.config.VolName)
+	if volConf == nil || volConf.GetReqRecordsReservedMaxCount() <= 0 {
+		return
+	}
+
+	value = volConf.GetReqRecordsReservedMaxCount()
+	return
+}
+
 func (mp *metaPartition) getBitmapSnapFrozenDuration() (intervalDuration time.Duration) {
 	var interval int64
 	volConf := mp.topoManager.GetVolConf(mp.config.VolName)

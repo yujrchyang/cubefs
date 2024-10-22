@@ -20,10 +20,7 @@ func TestRequestRecords(t *testing.T) {
 		time.Sleep(time.Millisecond * 10)
 	}
 
-	reqRecordMaxCount.Store(500)
-	reqRecordReserveMin.Store(1)
-
-	timestamp := reqRecords.GetEvictTimestamp()
+	timestamp := reqRecords.GetEvictTimestamp(1, 500)
 	reqRecords.EvictByTime(timestamp)
 	if reqRecords.Count() > 500 {
 		t.Errorf("req record count error, expect:less than 500, actual:%v", reqRecords.Count())
@@ -87,9 +84,7 @@ func TestRequestRecords_Evict(t *testing.T) {
 		return tArr[i] < tArr[j]
 	})
 
-	reqRecordMaxCount.Store(500)
-	reqRecordReserveMin.Store(1)
-	evictTimestamp := reqRecords.GetEvictTimestamp()
+	evictTimestamp := reqRecords.GetEvictTimestamp(1, 500)
 	reqRecords.EvictByTime(evictTimestamp)
 
 	if reqRecords.Count() > 500 {
@@ -99,7 +94,7 @@ func TestRequestRecords_Evict(t *testing.T) {
 
 	time.Sleep(time.Minute)
 
-	evictTimestamp = reqRecords.GetEvictTimestamp()
+	evictTimestamp = reqRecords.GetEvictTimestamp(1, 500)
 	reqRecords.EvictByTime(evictTimestamp)
 
 	if reqRecords.Count() != 0 {

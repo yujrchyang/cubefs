@@ -13,6 +13,8 @@ type VolumeConfig struct {
 	cleanTrashItemMaxDurationEachTime int32
 	cleanTrashItemMaxCountEachTime    int32
 	enableRemoveDupReq                bool
+	reqRecordsReservedTime            int32 //unit:minute
+	reqRecordsMaxCount                int32
 	truncateEKCount                   int
 	bitmapSnapFrozenHour              int64
 	enableCheckDeleteEK               bool
@@ -58,6 +60,20 @@ func (conf *VolumeConfig) GetEnableRemoveDupReqFlag() bool {
 	defer conf.RUnlock()
 
 	return conf.enableRemoveDupReq
+}
+
+func (conf *VolumeConfig) GetReqRecordsReservedTime() int32 {
+	conf.RLock()
+	defer conf.RUnlock()
+
+	return conf.reqRecordsReservedTime
+}
+
+func (conf *VolumeConfig) GetReqRecordsReservedMaxCount() int32 {
+	conf.RLock()
+	defer conf.RUnlock()
+
+	return conf.reqRecordsMaxCount
 }
 
 func (conf *VolumeConfig) GetDelInodeInterval() uint32 {
@@ -118,4 +134,6 @@ func (conf *VolumeConfig) update(newConf *VolumeConfig) {
 	conf.truncateEKCount = newConf.truncateEKCount
 	conf.bitmapSnapFrozenHour = newConf.bitmapSnapFrozenHour
 	conf.enableCheckDeleteEK = newConf.enableCheckDeleteEK
+	conf.reqRecordsMaxCount = newConf.reqRecordsMaxCount
+	conf.reqRecordsReservedTime = newConf.reqRecordsReservedTime
 }

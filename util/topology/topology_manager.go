@@ -445,19 +445,21 @@ func (f *TopologyManager) updateVolumeConf() (err error) {
 			cleanTrashItemMaxDurationEachTime: volConf.CleanTrashMaxDurationEachTime,
 			cleanTrashItemMaxCountEachTime:    volConf.CleanTrashMaxCountEachTime,
 			enableRemoveDupReq:                volConf.EnableRemoveDupReq,
+			reqRecordsReservedTime:            volConf.ReqRecordsReservedTime,
+			reqRecordsMaxCount:                volConf.ReqRecordMaxCount,
 			truncateEKCount:                   volConf.TruncateEKCountEveryTime,
 			bitmapSnapFrozenHour:              volConf.BitMapSnapFrozenHour,
 			enableCheckDeleteEK:               volConf.EnableCheckDeleteEK,
 		})
 		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, "+
 			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v,"+
-			" enableRemoveDupReq:%v, batchInodeDelCnt: %v, delInodeInterval: %v, truncateEKCountEveryTime: %v," +
-			" bitmapSnapFrozenHour: %v, enableCheckDeleteEK: %v",
+			" enableRemoveDupReq:%v, reqRecordReservedTime: %vmin, reqRecordMaxCount: %v, batchInodeDelCnt: %v," +
+			" delInodeInterval: %v, truncateEKCountEveryTime: %v, bitmapSnapFrozenHour: %v, enableCheckDeleteEK: %v",
 			volConf.Name, volConf.TrashRemainingDays, volConf.ChildFileMaxCnt, volConf.TrashCleanInterval,
 			strconv.FormatBool(volConf.EnableBitMapAllocator), volConf.CleanTrashMaxDurationEachTime,
-			volConf.CleanTrashMaxCountEachTime, strconv.FormatBool(volConf.EnableRemoveDupReq), volConf.BatchInodeDelCnt,
-			volConf.DelInodeInterval, volConf.TruncateEKCountEveryTime, volConf.BitMapSnapFrozenHour,
-			strconv.FormatBool(volConf.EnableCheckDeleteEK))
+			volConf.CleanTrashMaxCountEachTime, strconv.FormatBool(volConf.EnableRemoveDupReq), volConf.ReqRecordsReservedTime,
+			volConf.ReqRecordMaxCount, volConf.BatchInodeDelCnt, volConf.DelInodeInterval, volConf.TruncateEKCountEveryTime,
+			volConf.BitMapSnapFrozenHour, strconv.FormatBool(volConf.EnableCheckDeleteEK))
 	}
 	return
 }

@@ -201,7 +201,9 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
 					continue
 				}
-				evictTimestamp := mp.reqRecords.GetEvictTimestamp()
+				reservedTime := mp.getReqRecordsReservedTime()
+				reservedMaxCount := mp.getReqRecordsReservedMaxCount()
+				evictTimestamp := mp.reqRecords.GetEvictTimestamp(reservedTime, reservedMaxCount)
 				evictTimestampBuff := make([]byte, 8)
 				binary.BigEndian.PutUint64(evictTimestampBuff, uint64(evictTimestamp))
 				if _, err := mp.submit(context.Background(), opFSMSyncEvictReqRecords, "", evictTimestampBuff, nil); err != nil {

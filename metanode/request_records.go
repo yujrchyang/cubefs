@@ -9,12 +9,12 @@ import (
 )
 
 const (
-	defaultRecordReservedMin  = 5
+	defaultRecordReservedTime = 5 //unit: minute
 	defaultReqRecordsMaxCount = 5000
 )
 
 var reqRecordMaxCount = atomic.NewInt32(defaultReqRecordsMaxCount)
-var reqRecordReserveMin = atomic.NewInt32(defaultRecordReservedMin)
+var reqRecordReserveTime = atomic.NewInt32(defaultRecordReservedTime)
 
 type RequestRecords struct {
 	reqTree *BTree
@@ -120,12 +120,12 @@ func (records *RequestRecords) Remove(req *RequestInfo) {
 	return
 }
 
-func (records *RequestRecords) GetEvictTimestamp() (evictTimestamp int64) {
+func (records *RequestRecords) GetEvictTimestamp(reqRecordsReservedTime, reqRecordsReservedMaxCount int32) (evictTimestamp int64) {
 	records.rwLock.RLock()
 	defer records.rwLock.RUnlock()
-	ttlTimestamp := time.Now().Add(-time.Minute * time.Duration(reqRecordReserveMin.Load())).UnixMilli()
+	ttlTimestamp := time.Now().Add(-time.Minute * time.Duration(reqRecordsReservedTime)).UnixMilli()
 	realCnt := records.reqList.Len()
-	expectCnt := int(reqRecordMaxCount.Load())
+	expectCnt := int(reqRecordsReservedMaxCount)
 	for element := records.reqList.Front(); realCnt > expectCnt && element != nil; element = element.Next() {
 		realCnt--
 		evictTimestamp = element.Value.(*RequestInfo).RequestTime

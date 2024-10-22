@@ -305,12 +305,12 @@ func (m *MetaNode) setRequestRecordsReservedCount(cnt int32) {
 	reqRecordMaxCount.Store(cnt)
 }
 
-func (m *MetaNode) setRequestRecordsReservedMin(min int32) {
-	if min == 0 || min == reqRecordReserveMin.Load() {
+func (m *MetaNode) setRequestRecordsReservedMin(minuteValue int32) {
+	if minuteValue == 0 || minuteValue == reqRecordReserveTime.Load() {
 		return
 	}
-	log.LogInfof("setRequestRecordsReservedMin, old min:%v, new min:%v", reqRecordReserveMin.Load(), min)
-	reqRecordReserveMin.Store(min)
+	log.LogInfof("setRequestRecordsReservedMin, old minute:%v, new minute:%v", reqRecordReserveTime.Load(), minuteValue)
+	reqRecordReserveTime.Store(minuteValue)
 }
 
 func (m *MetaNode) setRemoveDupReqFlag(enableState bool) {
