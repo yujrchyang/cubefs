@@ -259,6 +259,8 @@ message SimpleVolViewPb {
     uint32                    DpRecorderNum          = 104;
     uint32                    MpRecorderNum          = 105;
     bool                      MetaOut                = 106;
+    int32                     ReqRecordsReservedTime = 107;
+    int32                     ReqRecordsMaxCount     = 108;
 }
 
 message NodeStatInfoPb {

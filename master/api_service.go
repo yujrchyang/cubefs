@@ -1831,6 +1831,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		readAheadMemMB       int64
 		readAheadWindowMB    int64
 		MetaOut              bool
+
+		reqRecordReservedTime int32
+		reqRecordMaxCount     int32
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1987,13 +1990,23 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if reqRecordReservedTime, err = parseReqRecordReservedTimeToUpdateVol(r, vol); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	if reqRecordMaxCount, err = parseReqRecordMaxCountToUpdateVol(r, vol); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, umpKeyPrefix, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
-		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB, MetaOut); err != nil {
+		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB, MetaOut, reqRecordReservedTime, reqRecordMaxCount); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2313,6 +2326,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		RemoteCacheAutoPrepare:   vol.RemoteCacheAutoPrepare,
 		RemoteCacheTTL:           vol.RemoteCacheTTL,
 		EnableRemoveDupReq:       vol.enableRemoveDupReq,
+		ReqRecordReservedTime:    vol.reqRecordReservedTime,
+		ReqRecordMaxCount:        vol.reqRecordMaxCount,
 		NotCacheNode:             vol.notCacheNode,
 		Flock:                    vol.flock,
 		ConnConfig:               vvConnConfig,
@@ -4284,6 +4299,60 @@ func parseCheckDelEKEnableFlagToUpdateVol(r *http.Request, vol *Vol) (enableChec
 	return
 }
 
+func parseReqRecordReservedTimeToUpdateVol(r *http.Request, vol *Vol) (reservedTime int32, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+
+	reservedTimeStr := r.FormValue(proto.ReqRecordReservedTimeKey)
+	if reservedTimeStr == "" {
+		reservedTime = vol.reqRecordReservedTime
+		return
+	}
+
+	var value int64
+	value, err = strconv.ParseInt(reservedTimeStr, 10, 64)
+	if err != nil {
+		return
+	}
+
+	if value < 0 {
+		err = fmt.Errorf("%s invalid value: %v", proto.ReqRecordReservedTimeKey, value)
+		return
+	}
+
+	reservedTime = int32(value)
+	return
+}
+
+func parseReqRecordMaxCountToUpdateVol(r *http.Request, vol *Vol) (maxCount int32, err error) {
+	err = r.ParseForm()
+	if err != nil {
+		return
+	}
+
+	maxCountStr := r.FormValue(proto.ReqRecordMaxCountKey)
+	if maxCountStr == "" {
+		maxCount = vol.reqRecordMaxCount
+		return
+	}
+
+	var value int64
+	value, err = strconv.ParseInt(maxCountStr, 10, 64)
+	if err != nil {
+		return
+	}
+
+	if value < 0 {
+		err = fmt.Errorf("%s invalid value: %v", proto.ReqRecordMaxCountKey, value)
+		return
+	}
+
+	maxCount = int32(value)
+	return
+}
+
 func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, description string,
 	mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size, capacity, storeMode, trashDays int, dataNum uint8, parityNum uint8, enableEc,
 	followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache bool,
@@ -5927,6 +5996,8 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				volInfo.FileTotalSize = stat.FileTotalSize
 				volInfo.TrashUsedSize = stat.TrashUsedSize
 				volInfo.EnableCheckDeleteEK = vol.EnableCheckDeleteEK
+				volInfo.ReqRecordMaxCount = vol.reqRecordMaxCount
+				volInfo.ReqRecordsReservedTime = vol.reqRecordReservedTime
 				volsInfo = append(volsInfo, volInfo)
 			}
 		}

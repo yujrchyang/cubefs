@@ -42,6 +42,8 @@ func (c *Cluster) updateVolInfoResponseCache() (body []byte, err error) {
 		volInfo.FileTotalSize = stat.FileTotalSize
 		volInfo.TrashUsedSize = stat.TrashUsedSize
 		volInfo.EnableCheckDeleteEK = vol.EnableCheckDeleteEK
+		volInfo.ReqRecordsReservedTime = vol.reqRecordReservedTime
+		volInfo.ReqRecordMaxCount = vol.reqRecordMaxCount
 		volsInfo = append(volsInfo, volInfo)
 	}
 	reply := newSuccessHTTPReply(volsInfo)

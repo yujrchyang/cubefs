@@ -998,9 +998,7 @@ func TestMetaPartition_EvictReqRecords(t *testing.T) {
 		return
 	}
 
-	reqRecordReserveMin.Store(1)
-	reqRecordMaxCount.Store(2000)
-	evictTimestamp := mp.reqRecords.GetEvictTimestamp()
+	evictTimestamp := mp.reqRecords.GetEvictTimestamp(1, 2000)
 
 	dbWriteHandle, err = mp.db.CreateBatchHandler()
 	if err != nil {

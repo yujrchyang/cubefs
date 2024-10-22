@@ -848,11 +848,15 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			}
 			err = client.AdminAPI().UpdateVolume(vv.Name, vv.Capacity, int(vv.DpReplicaNum), int(vv.MpReplicaNum), int(vv.TrashRemainingDays),
 				int(vv.DefaultStoreMode), vv.FollowerRead, vv.VolWriteMutexEnable, vv.NearRead, vv.Authenticate, vv.EnableToken, vv.AutoRepair,
-				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","), uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
-				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
+				vv.ForceROW, vv.IsSmart, vv.EnableWriteCache, calcAuthKey(vv.Owner), vv.ZoneName, optLayout, strings.Join(smartRules, ","),
+				uint8(vv.OSSBucketPolicy), uint8(vv.CrossRegionHAType), vv.ExtentCacheExpireSec, vv.CompactTag,
+				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt,
+				vv.DelInodeInterval, vv.UmpCollectWay,
 				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator,
 				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL,
-				vv.EnableRemoveDupReq, vv.ConnConfig.ConnectTimeoutNs, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode, vv.Flock, vv.MetaOut)
+				vv.EnableRemoveDupReq, vv.ConnConfig.ConnectTimeoutNs, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs,
+				vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode, vv.Flock, vv.MetaOut, vv.ReqRecordMaxCount,
+				vv.ReqRecordReservedTime)
 			if err != nil {
 				return
 			}

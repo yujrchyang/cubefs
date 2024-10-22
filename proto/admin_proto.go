@@ -321,6 +321,8 @@ const (
 	EnableVolCheckDelEK              = "enableVolCheckDelEK"
 	DisableClusterCheckDelEK         = "disableClusterCheckDelEK"
 	UmpKeyPrefixKey                  = "umpKeyPrefix"
+	ReqRecordReservedTimeKey         = "volReqRecordReservedTime"
+	ReqRecordMaxCountKey             = "volReqRecordMaxCount"
 
 	IDsKey     = "ids"
 	MetaOutKey = "metaOut"
@@ -1360,6 +1362,8 @@ type SimpleVolView struct {
 	RemoteCacheAutoPrepare bool
 	RemoteCacheTTL         int64
 	EnableRemoveDupReq     bool
+	ReqRecordReservedTime  int32
+	ReqRecordMaxCount      int32
 	EnableCheckDeleteEK    bool
 	NotCacheNode           bool
 	Flock                  bool
@@ -1406,6 +1410,8 @@ type VolInfo struct {
 	DelInodeInterval              uint32
 	EnableBitMapAllocator         bool
 	EnableRemoveDupReq            bool
+	ReqRecordsReservedTime        int32
+	ReqRecordMaxCount             int32
 	CleanTrashMaxDurationEachTime int32
 	CleanTrashMaxCountEachTime    int32
 	TruncateEKCountEveryTime      int

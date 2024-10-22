@@ -2875,7 +2875,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
 	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
 	enableRemoveDupReq bool, notCacheNode bool, flock bool, truncateEKCountEveryTime int, mpSplitStep, inodeCountThreshold uint64,
-	bitMapSnapFrozenHour int64, enableCheckDelEK bool, readAheadMemMB, readAheadWindowMB int64, metaOut bool) (err error) {
+	bitMapSnapFrozenHour int64, enableCheckDelEK bool, readAheadMemMB, readAheadWindowMB int64, metaOut bool, reqReservedTime, reqRecordMaxCount int32) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3045,6 +3045,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.ReadAheadMemMB = readAheadMemMB
 	vol.ReadAheadWindowMB = readAheadWindowMB
 	vol.MetaOut = metaOut
+	vol.reqRecordReservedTime = reqReservedTime
+	vol.reqRecordMaxCount = reqRecordMaxCount
 	if err = c.syncUpdateVol(vol); err != nil {
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
