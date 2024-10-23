@@ -58,7 +58,7 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 				return
 			}
 			cv.checkMetaNodeAlive(host)
-			cv.checkDataNodeAlive(host, s, time.Hour)
+			cv.checkDataNodeAlive(host, s)
 			if s.checkFlashNode {
 				cv.checkFlashNodeAlive(host)
 			}
@@ -454,7 +454,12 @@ func (cv *ClusterView) confirmCheckDataNodeAlive(host *ClusterHost, enableWarn b
 
 // checkDataNodeAlive
 // autoOfflineThreshold - 一般不大于8小时
-func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor, autoOfflineThreshold time.Duration) {
+func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor) {
+	var (
+		nodeZoneMap map[string]string
+		zoneName    string
+		err         error
+	)
 	inactiveDataNodes := cv.confirmCheckDataNodeAlive(host, true)
 	if len(inactiveDataNodes) == 0 {
 		return
@@ -474,30 +479,41 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor,
 		return
 	}
 
+	if !host.isReleaseCluster {
+		nodeZoneMap, err = getNodeToZoneMap(host)
+		if err != nil {
+			log.LogErrorf("action[checkDataNodeAlive] Domain[%v] err[%v]", host.host, err)
+			return
+		}
+		zoneName = nodeZoneMap[dn.Addr]
+	}
+
 	// 确认故障持续时间是否达到下线阈值 - autoOfflineThreshold
 	dataNodeView, err := getDataNode(host, dn.Addr)
 	if err != nil {
 		log.LogErrorf("action[checkDataNodeAlive] host[%v] err[%v]", host.host, err)
 		return
 	}
-	if time.Since(dataNodeView.ReportTime) < autoOfflineThreshold {
+	offlineThreshold := getOfflineThreshold(s, host.host, zoneName)
+	log.LogInfof("action[checkDataNodeAlive] host[%v] addr[%v] zone[%v] inOfflineDataNodes[%v] autoOfflineThreshold[%v] offline pool size[%v]", host.host, dn.Addr, zoneName, len(host.inOfflineDataNodes), offlineThreshold, host.offlineDataNodeTokenPool.getSize())
+	if time.Since(dataNodeView.ReportTime) < offlineThreshold {
 		return
 	}
 
-	// 判断24小时内下线数，符合要求则加入待执行下线磁盘的DataNode Map
-	if host.offlineDataNodeTokenPool.allow() {
-		if _, ok := host.inOfflineDataNodes[dataNodeView.Addr]; !ok {
+	// 符合24小时内下线限制，并且且为新ip，则加入待下线DataNode Map
+	if _, ok := host.inOfflineDataNodes[dataNodeView.Addr]; !ok {
+		if len(host.inOfflineDataNodes) < host.offlineDataNodeTokenPool.getSize() && host.offlineDataNodeTokenPool.allow() {
 			host.inOfflineDataNodes[dataNodeView.Addr] = dataNodeView.ReportTime
-			log.LogDebugf("action[checkDataNodeAlive] inOfflineDataNodes:%v", host.inOfflineDataNodes)
+			log.LogDebugf("action[checkDataNodeAlive] inOfflineDataNodes:%v %v", len(host.inOfflineDataNodes), host.inOfflineDataNodes)
+		} else {
+			log.LogWarnf("action[checkDataNodeAlive] offline nodes[%v] in %v minutes reached max[%v]", len(host.inOfflineDataNodes), host.offlineDataNodeTokenPool.interval.Minutes(), host.offlineDataNodeTokenPool.getSize())
 		}
-	} else {
-		log.LogWarnf("action[checkDataNodeAlive] offline in %v hour[%v] reached max:%v", len(host.inOfflineDataNodes), host.offlineDataNodeTokenPool.interval.Hours(), host.offlineDataNodeTokenPool.size)
 	}
 
 	// 变更时间：2024年10月21日
 	// 变更事项：对故障DataNode只下线磁盘，不再用node下线，改为disk下线
 	// 变更原因：ssd磁盘在宕机1小时后自动下线节点，导致修复暴涨，修复写造成了数据库集群网卡流入打满
-	offlineBadDataNodeByDisk(s, host, autoOfflineThreshold)
+	offlineBadDataNodeByDisk(s, host)
 	return
 }
 
@@ -514,12 +530,13 @@ func canOffline(host *ClusterHost) bool {
 
 // offlineBadDatanodeByDisk
 // 每间隔一定时间检查一次，如果满足下线条件，则下线1块磁盘
-func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost, autoOfflineThreshold time.Duration) {
+func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 	var (
-		diskOfflineInterval time.Duration
-		diskPaths           []string
-		nodeZoneMap         map[string]string
-		err                 error
+		diskOfflineInterval  time.Duration
+		diskPaths            []string
+		nodeZoneMap          map[string]string
+		autoOfflineThreshold time.Duration
+		err                  error
 	)
 	// mysql集群禁止自动下线，先电话通知，手动下线，等下线方案成熟后再改为自动下线
 	if host.host == "cn.elasticdb.jd.local" {
@@ -549,6 +566,8 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost, autoOffline
 				diskOfflineInterval = 20 * time.Minute
 			}
 		}
+		autoOfflineThreshold = getOfflineThreshold(s, host.host, zoneName)
+		log.LogInfof("action[offlineBadDataNodeByDisk] host[%v] addr[%v] zone[%v] diskOfflineInterval[%v] autoOfflineThreshold[%v]", host.host, dataNodeAddr, zoneName, diskOfflineInterval, autoOfflineThreshold)
 		if time.Since(lastOfflineDiskTime) < diskOfflineInterval {
 			continue
 		}
@@ -584,6 +603,23 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost, autoOffline
 		offlineDataNodeDisk(host, dataNodeAddr, diskPath, false)
 		host.inOfflineDataNodes[dataNodeAddr] = time.Now()
 	}
+}
+
+func getOfflineThreshold(s *ChubaoFSMonitor, host string, zone string) (autoOfflineThreshold time.Duration) {
+	if isSSD(host, zone) {
+		if s.integerMap[cfgKeySSDDiskOfflineThreshold] > 0 {
+			autoOfflineThreshold = time.Duration(s.integerMap[cfgKeySSDDiskOfflineThreshold]) * time.Minute
+		} else {
+			autoOfflineThreshold = 60 * time.Minute
+		}
+	} else {
+		if s.integerMap[cfgKeyHDDDiskOfflineThreshold] > 0 {
+			autoOfflineThreshold = time.Duration(s.integerMap[cfgKeyHDDDiskOfflineThreshold]) * time.Minute
+		} else {
+			autoOfflineThreshold = 300 * time.Minute
+		}
+	}
+	return
 }
 
 func getDisks(host *ClusterHost, dataNodeView *DataNodeView) []string {
@@ -1442,7 +1478,7 @@ func (cv *ClusterView) checkMetaNodeDiskStatByMDCInfoFromSre(host *ClusterHost, 
 	}
 	/*select DISTINCT(ip) from tb_dashboard_mdc where origin='cfs' and (disk_path='/exportvolume' or disk_path='/export'
 	or disk_path='/nvme') and fs_usage_percent > 70 and time_stamp >= now()-interval 20 minute;*/
-	sqlStr := fmt.Sprintf(" select DISTINCT(ip) from `%s` where origin='cfs' and (disk_path='/exportvolume' or" +
+	sqlStr := fmt.Sprintf(" select DISTINCT(ip) from `%s` where origin='cfs' and (disk_path='/exportvolume' or"+
 		" disk_path='/export' or disk_path='/nvme') and fs_usage_percent > %v and time_stamp >= now()-interval 10 minute ",
 		DashboardMdc{}.TableName(), s.metaNodeExportDiskUsedRatio)
 	if err = s.sreDB.Raw(sqlStr).Scan(&dashboardMdcIps).Error; err != nil {
