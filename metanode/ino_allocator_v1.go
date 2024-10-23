@@ -35,8 +35,8 @@ type inoAllocatorV1 struct {
 	Status     int8             `json:"status"`
 	Version    uint64           `json:"version"`
 	BitsSnap   bitmap.U64BitMap `json:"-"`
-	FreezeTime int64            `json:"-"`
-	ActiveTime int64            `json:"-"`
+	FreezeTime int64            `json:"freezeTime"`
+	ActiveTime int64            `json:"activeTime"`
 }
 
 func (allocator *inoAllocatorV1) String() string {
