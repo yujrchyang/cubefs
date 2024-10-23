@@ -69,6 +69,8 @@
       "mailPwd": "******"
     }
   },
-  "hddDiskOfflineInterval": "10",
-  "ssdDiskOfflineInterval": "5"
+  "hddDiskOfflineInterval": 20,
+  "ssdDiskOfflineInterval": 5,
+  "hddDiskOfflineThreshold": 300,
+  "ssdDiskOfflineThreshold": 60
 }

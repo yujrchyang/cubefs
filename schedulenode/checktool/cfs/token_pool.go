@@ -43,3 +43,7 @@ func (td *TokenPool) allow() bool {
 		return false
 	}
 }
+
+func (td *TokenPool) getSize() int {
+	return td.size
+}

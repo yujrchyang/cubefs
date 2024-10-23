@@ -121,6 +121,8 @@ const (
 	cfgKeyOssDomain                        = "jcloudOssDomain"
 	cfgKeyHDDDiskOfflineInterval           = "hddDiskOfflineInterval"
 	cfgKeySSDDiskOfflineInterval           = "ssdDiskOfflineInterval"
+	cfgKeyHDDDiskOfflineThreshold          = "hddDiskOfflineThreshold"
+	cfgKeySSDDiskOfflineThreshold          = "ssdDiskOfflineThreshold"
 	cfgKeyEmail                            = "email"
 	cfgKeyEnable                           = "enable"
 )
@@ -144,6 +146,8 @@ var configKeys = []string{
 var intKeys = []string{
 	cfgKeyHDDDiskOfflineInterval,
 	cfgKeySSDDiskOfflineInterval,
+	cfgKeyHDDDiskOfflineThreshold,
+	cfgKeySSDDiskOfflineThreshold,
 }
 
 const (
@@ -237,6 +241,7 @@ func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
 		lastCheckStartTime:              make(map[string]time.Time),
 		clusterConfigCheck:              new(ClusterConfigCheck),
 		configMap:                       make(map[string]string, 0),
+		integerMap:                      make(map[string]int64, 0),
 		ctx:                             ctx,
 	}
 }

@@ -76,16 +76,19 @@ func TestCheckNodeAlive(t *testing.T) {
 	}()
 	checktool.DebugMod = true
 	s := NewChubaoFSMonitor(context.Background())
+	s.integerMap[cfgKeyHDDDiskOfflineThreshold] = 10
+	s.integerMap[cfgKeySSDDiskOfflineThreshold] = 10
+
 	t.Run("spark", func(t *testing.T) {
 		host := newClusterHost("test.chubaofs.jd.local")
 		host.isReleaseCluster = false
 		host.offlineDataNodeTokenPool = newTokenPool(time.Hour, 1)
-		for i := 0; i < 15; i++ {
+		for i := 0; i < 20; i++ {
 			cv, err := getCluster(host)
 			if err != nil {
 				return
 			}
-			cv.checkDataNodeAlive(host, s, time.Minute)
+			cv.checkDataNodeAlive(host, s)
 			t.Logf("check datanode alive")
 			time.Sleep(time.Minute)
 		}
@@ -95,12 +98,12 @@ func TestCheckNodeAlive(t *testing.T) {
 		host := newClusterHost("test.dbbak.jd.local")
 		host.isReleaseCluster = true
 		host.offlineDataNodeTokenPool = newTokenPool(time.Hour, 1)
-		for i := 0; i < 15; i++ {
+		for i := 0; i < 20; i++ {
 			cv, err := getCluster(host)
 			if err != nil {
 				return
 			}
-			cv.checkDataNodeAlive(host, s, time.Minute)
+			cv.checkDataNodeAlive(host, s)
 			t.Logf("check datanode alive")
 			time.Sleep(time.Minute)
 		}
