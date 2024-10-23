@@ -30,6 +30,9 @@ func (td *TokenPool) allow() bool {
 	case <-td.ch:
 		go func() {
 			timer := time.NewTimer(td.interval)
+			defer func() {
+				timer.Stop()
+			}()
 			select {
 			case <-timer.C:
 				td.ch <- struct{}{}
