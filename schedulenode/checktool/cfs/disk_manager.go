@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/common/xbp"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"strings"
 	"sync"
@@ -72,6 +73,13 @@ func (s *ChubaoFSMonitor) doCheckUnavailableDataPartition(dps map[uint64]map[str
 		return
 	}
 	maxOfflineCount := maxBadDataPartitionsCount - badDPsCount
+	// mysql集群禁止自动下线，先电话通知，手动下线，等下线方案成熟后再改为自动下线
+	if host.host == "cn.elasticdb.jd.local" {
+		if len(dps) > 0 {
+			exporter.WarningBySpecialUMPKey(UMPCFSMysqlBadDiskKey, fmt.Sprintf("Domain[%v] occurred bad disk, bad partitions[%v]", host.host, len(dps)))
+		}
+		return
+	}
 	for dpID, badReplicas := range dps {
 		for addr, badReplica := range badReplicas {
 			if maxOfflineCount <= 0 {
@@ -155,9 +163,12 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 					// 控制单块盘的下线间隔时间
 					lastOfflineThisDiskTime := host.offlineDisksIn24Hour[dataNodeBadDiskKey]
 					if time.Since(lastOfflineThisDiskTime) > time.Minute*10 {
-						if canOffline(host) {
-							offlineDataNodeDisk(host, badDiskOnNode.Addr, badDisk, true)
-						}
+						if host.host == "cn.elasticdb.jd.local" {
+							exporter.WarningBySpecialUMPKey(UMPCFSMysqlBadDiskKey, fmt.Sprintf("Domain[%v] occurred bad disk, addr[%v] disk[%v]", host.host, badDiskOnNode.Addr, badDisk))
+						} else {
+							if canOffline(host) {
+								offlineDataNodeDisk(host, badDiskOnNode.Addr, badDisk, true)
+							}						}
 						host.offlineDisksIn24Hour[dataNodeBadDiskKey] = time.Now()
 					}
 				}
