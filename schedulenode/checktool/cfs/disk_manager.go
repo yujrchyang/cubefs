@@ -18,20 +18,6 @@ const (
 	badDiskCountToAlarm = 5
 )
 
-func (s *ChubaoFSMonitor) scheduleToCheckDiskError() {
-	s.checkDiskError()
-	for {
-		t := time.NewTimer(time.Duration(s.scheduleInterval) * time.Second)
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-t.C:
-			s.checkDiskError()
-			s.checkUnavailableDataPartition()
-		}
-	}
-}
-
 func (s *ChubaoFSMonitor) checkUnavailableDataPartition() {
 	var wg sync.WaitGroup
 	for _, host := range s.hosts {
@@ -230,6 +216,7 @@ func badDiskIsEmpty(host *ClusterHost, addr, badDisk string) bool {
 			return false
 		}
 	}
+	// todo 这个操作有点重
 	for _, pid := range dn.PersistenceDataPartitions {
 		if _, ok := reportDps[pid]; ok {
 			continue
@@ -384,6 +371,8 @@ func getUnavailableDataPartitions(host *ClusterHost) (unavailableDps map[uint64]
 		return
 	}
 	err = json.Unmarshal(data, &unavailableDps)
-	log.LogErrorf("getUnavailableDataPartitions from %v failed ,data:%v,err:%v", host, string(data), err)
+	if err != nil {
+		log.LogErrorf("getUnavailableDataPartitions from %v failed ,data:%v,err:%v", host, string(data), err)
+	}
 	return
 }

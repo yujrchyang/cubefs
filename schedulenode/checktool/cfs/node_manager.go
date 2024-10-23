@@ -1127,7 +1127,7 @@ func (cv *ClusterView) checkMetaNodeRaftLogBackupAlive(host *ClusterHost) {
 		ipPort := strings.Split(metaNode.Addr, ":")
 		isNeedAlarm, err := doCheckMetaNodeRaftLogBackupStat(ipPort[0], port)
 		if err != nil {
-			log.LogWarnf("action[checkMetaNodeRaftLogBackupAlive] host[%v] addr[%v] doCheckMetaNodeDiskStat err[%v]", host, metaNode.Addr, err)
+			log.LogDebugf("action[checkMetaNodeRaftLogBackupAlive] host[%v] addr[%v] doCheckMetaNodeDiskStat err[%v]", host, metaNode.Addr, err)
 		}
 		if isNeedAlarm {
 			raftLogBackupWarnMetaNodes = append(raftLogBackupWarnMetaNodes, metaNode.Addr)
@@ -1136,7 +1136,7 @@ func (cv *ClusterView) checkMetaNodeRaftLogBackupAlive(host *ClusterHost) {
 	if len(raftLogBackupWarnMetaNodes) == 0 {
 		return
 	}
-	msg := fmt.Sprintf("checkMetaNodeRaftLogBackupAlive: host[%v], fault count[%v] fault ips[%v]", host.host, len(raftLogBackupWarnMetaNodes), raftLogBackupWarnMetaNodes)
+	msg := fmt.Sprintf("checkMetaNodeRaftLogBackupAlive: host[%v], fault count[%v]", host.host, len(raftLogBackupWarnMetaNodes))
 	checktool.WarnBySpecialUmpKey(UMPCFSRaftlogBackWarnKey, msg)
 }
 
