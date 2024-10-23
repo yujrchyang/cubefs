@@ -42,6 +42,7 @@ type raftDeleteCmdApplyHandler func(cmd *RaftCmd) (err error)
 
 // MetadataFsm represents the finite state machine of a metadata partition
 type MetadataFsm struct {
+	s                     *Server
 	store                 *raftstore.RocksDBStore
 	rs                    *raft.RaftServer
 	applied               uint64
@@ -53,8 +54,9 @@ type MetadataFsm struct {
 	deleteCmdApplyHandler raftDeleteCmdApplyHandler
 }
 
-func newMetadataFsm(store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *MetadataFsm) {
+func newMetadataFsm(s *Server, store *raftstore.RocksDBStore, retainsLog uint64, rs *raft.RaftServer) (fsm *MetadataFsm) {
 	fsm = new(MetadataFsm)
+	fsm.s = s
 	fsm.store = store
 	fsm.rs = rs
 	fsm.retainLogs = retainsLog
@@ -166,6 +168,11 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {
 		log.LogWarnf("action[Apply],truncate raft log,retainLogs[%v],index[%v]", mf.retainLogs, mf.applied)
 		mf.rs.Truncate(GroupID, mf.applied)
+	}
+
+	//only master leader send message
+	if mf.s.cluster.IsLeader() && mf.s.cluster.cfg.MqProducerState {
+		mf.s.mqProducer.SendMessage(cmd, index)
 	}
 	return
 }

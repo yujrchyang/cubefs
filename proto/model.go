@@ -287,6 +287,7 @@ type ClusterView struct {
 	ClientReqRemoveDupFlag              bool
 	BandwidthLimit                      uint64
 	NodesLiveRatioThreshold             float32
+	MqProducerState                     bool
 }
 
 type ClusterStatInfo struct {

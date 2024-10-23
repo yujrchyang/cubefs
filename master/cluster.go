@@ -5635,6 +5635,7 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		AutoUpdatePartitionReplicaNum:       c.cfg.AutoUpdatePartitionReplicaNum,
 		BandwidthLimit:                      c.cfg.BandwidthRateLimit,
 		NodesLiveRatioThreshold:             c.cfg.NodesLiveRatio,
+		MqProducerState:                     c.cfg.MqProducerState,
 	}
 
 	vols := c.allVolNames()
@@ -6189,5 +6190,17 @@ func (c *Cluster) setVolDisableState(name, authKey string, disableState bool) (e
 		return err
 	}
 	log.LogInfof("[setVolDisableState] set volume %v disable state to %v success", name, disableState)
+	return
+}
+
+func (c *Cluster) setMqProducerState(state bool) (err error) {
+	oldValue := c.cfg.MqProducerState
+	c.cfg.MqProducerState = state
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMqProducerState] err[%v]", err)
+		c.cfg.MqProducerState = oldValue
+		err = proto.ErrPersistenceByRaft
+		return
+	}
 	return
 }

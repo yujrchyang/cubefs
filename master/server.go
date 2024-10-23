@@ -50,6 +50,9 @@ const (
 	cfgElectionTick    = "electionTick"
 	SecretKey          = "masterServiceKey"
 	cfgMaxConnsPerHost = "maxConnsPerHost"
+	CfgKeyMQTopic      = "mqTopic"
+	CfgKeyMQAddress    = "mqAddr"
+	CfgKeyMQAppName    = "mqAppName"
 )
 
 var (
@@ -86,6 +89,7 @@ type Server struct {
 	leaderChangeChan     chan *LeaderTermInfo
 	apiListener          net.Listener
 	bandwidthRateLimiter *rate.Limiter
+	mqProducer           *MetadataMQProducer
 }
 
 // NewServer creates a new server
@@ -145,6 +149,9 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 
 	m.cluster.scheduleTask()
+	if err = m.initMetadataMqProducer(cfg); err != nil {
+		return
+	}
 	if err = m.startHTTPService(); err != nil {
 		return
 	}
@@ -301,7 +308,7 @@ func (m *Server) createRaftServer() (err error) {
 	return
 }
 func (m *Server) initFsm() {
-	m.fsm = newMetadataFsm(m.rocksDBStore, m.retainLogs, m.raftStore.RaftServer())
+	m.fsm = newMetadataFsm(m, m.rocksDBStore, m.retainLogs, m.raftStore.RaftServer())
 	m.fsm.registerLeaderChangeHandler(m.handleLeaderChange)
 	m.fsm.registerPeerChangeHandler(m.handlePeerChange)
 
