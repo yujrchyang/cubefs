@@ -258,6 +258,7 @@ message SimpleVolViewPb {
     bool                      RDMA                   = 103;
     uint32                    DpRecorderNum          = 104;
     uint32                    MpRecorderNum          = 105;
+    bool                      MetaOut                = 106;
 }
 
 message NodeStatInfoPb {

@@ -84,24 +84,24 @@ const (
 	mms19Addr = "127.0.0.1:8119"
 	mms20Addr = "127.0.0.1:8120"
 
-	commonVolName 	= "commonVol"
-	quorumVolName 	= "quorumVol"
-	smartVolName  	= "smartVol"
-	recorderVolName	= "recorderVol"
+	commonVolName   = "commonVol"
+	quorumVolName   = "quorumVol"
+	smartVolName    = "smartVol"
+	recorderVolName = "recorderVol"
 
-	testZone1     = "zone1"
-	testZone2     = "zone2"
-	testZone3     = "zone3"
-	testZone4     = "zone4"
-	testZone5     = "zone5"
-	testZone6     = "zone6"
-	testZone7     = "zone7"
-	testZone8     = "zone8"
-	testZone9     = "zone9"
-	testRegion1   = "masterRegion1"
-	testRegion2   = "masterRegion2"
-	testRegion3   = "slaveRegion3"
-	testRegion4   = "slaveRegion4"
+	testZone1   = "zone1"
+	testZone2   = "zone2"
+	testZone3   = "zone3"
+	testZone4   = "zone4"
+	testZone5   = "zone5"
+	testZone6   = "zone6"
+	testZone7   = "zone7"
+	testZone8   = "zone8"
+	testZone9   = "zone9"
+	testRegion1 = "masterRegion1"
+	testRegion2 = "masterRegion2"
+	testRegion3 = "slaveRegion3"
+	testRegion4 = "slaveRegion4"
 
 	testUserID     = "testUser"
 	ak             = "0123456789123456"
@@ -244,7 +244,7 @@ func createDefaultMasterServerForTest() *Server {
 	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 0, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, true, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0}, 0,
-		0, false, 0, 0, maxReadAheadMemMB, maxReadAheadWindowMB)
+		0, false, 0, 0, maxReadAheadMemMB, maxReadAheadWindowMB, false)
 	if err != nil {
 		panic(err)
 	}
@@ -258,10 +258,10 @@ func createDefaultMasterServerForTest() *Server {
 	}
 
 	zoneName := fmt.Sprintf("%s,%s,%s", testZone1, testZone2, testZone3)
-	recorderVol, err = testServer.cluster.createVol(recorderVolName, "cfs", zoneName, "",3, 3, 3, 2, 120, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
-		false, false, false, false, false, false,false, false, 0, 0, defaultChildFileMaxCount,
+	recorderVol, err = testServer.cluster.createVol(recorderVolName, "cfs", zoneName, "", 3, 3, 3, 2, 120, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
+		false, false, false, false, false, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{}, 0,
-		0, false, 0, 0, 0, 0)
+		0, false, 0, 0, 0, 0, false)
 	if err != nil {
 		panic(fmt.Sprintf("create recorder vol err: %v", err))
 	}
@@ -1826,7 +1826,8 @@ func TestCreateVolForUpdateToCrossRegionVol(t *testing.T) {
 	process(reqURL, t)
 	// create a normal vol
 	err := mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, 1,
-		false, false, false, true, false, false, zoneName, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		false, false, false, true, false, false, zoneName, "0,0", "", 0, "default",
+		defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	assert.NoErrorf(t, err, "CreateVolume err:%v", err)
 }
 
@@ -1836,7 +1837,7 @@ func TestUpdateVolToCrossRegionVol(t *testing.T) {
 	// update to cross region vol
 	err := mc.AdminAPI().UpdateVolume(volName, 200, 5, 0, 0, 1, false, false, false, false, false, false,
 		true, false, false, buildAuthKey("cfs"), newZoneName, "0,0", "", 0, 1, 120, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
-		"", false, false, 0, false, 0, readConntimeout, readConntimeout, 0, 0, false, false)
+		"", false, false, 0, false, 0, readConntimeout, readConntimeout, 0, 0, false, false, false)
 	if !assert.NoErrorf(t, err, "UpdateVolume err:%v", err) {
 		return
 	}
@@ -2418,7 +2419,8 @@ func TestSmartVolRules(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		false, false, false, true, true, false, testZone2, "", testSmartRules,
+		0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
 		return
 	}
@@ -2523,7 +2525,8 @@ func TestGetTargetAddressForDataPartitionSmartTransferForOneZone(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 3, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0,
+		"default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -2596,7 +2599,8 @@ func TestGetTargetAddressForDataPartitionSmartCase1(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0,
+		"default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		return
@@ -2676,7 +2680,8 @@ func TestGetTargetAddressForDataPartitionSmartCase2(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0,
+		"default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -2768,7 +2773,7 @@ func TestGetTargetAddressForDataPartitionSmartCase3(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -2855,7 +2860,8 @@ func TestGetTargetAddressForDataPartitionSmartCase4(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		fmt.Sprintf("%v,%v", testZone1, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum,
+		false, 0, 0, 0, false, false)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -2958,7 +2964,8 @@ func TestGetTargetAddressForDataPartitionSmartCase5(t *testing.T) {
 
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v", testZone2, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		fmt.Sprintf("%v,%v", testZone2, testZone3), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum,
+		false, 0, 0, 0, false, false)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -3130,7 +3137,8 @@ func TestGetTargetAddressForDataPartitionSmartCase6(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v,%v", testZone1, testZone3, testZone7), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		fmt.Sprintf("%v,%v,%v", testZone1, testZone3, testZone7), "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum,
+		false, 0, 0, 0, false, false)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -3289,7 +3297,8 @@ func TestGetTargetAddressForDataPartitionSmartCase7(t *testing.T) {
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 5, 3, 0, int(proto.StoreModeMem),
 		false, false, false, true, true, false,
-		fmt.Sprintf("%v,%v,%v", testZone1, testZone9, testZone3), "", testSmartRules, 1, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		fmt.Sprintf("%v,%v,%v", testZone1, testZone9, testZone3), "", testSmartRules, 1, "default", defaultEcDataNum, defaultEcParityNum,
+		false, 0, 0, 0, false, false)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -3353,7 +3362,8 @@ func TestFreezeDataPartition(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0,
+		"default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	assertErrNilOtherwiseFailNow(t, err)
 	dps, err := mc.ClientAPI().GetDataPartitions(volName, nil)
 	assertErrNilOtherwiseFailNow(t, err)
@@ -4023,7 +4033,7 @@ func updateVolCacheConfig(volName, remoteCacheBoostPath string, remoteCacheBoost
 		0,
 		0,
 		false,
-		false)
+		false, false)
 	if err != nil {
 		return
 	}
@@ -4090,7 +4100,8 @@ func TestGetHddDataPartitions(t *testing.T) {
 
 	defer log.LogFlush()
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 3, 3, 0, int(proto.StoreModeMem),
-		false, false, false, true, true, false, testZone2, "", testSmartRules, 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		false, false, false, true, true, false, testZone2, "", testSmartRules, 0,
+		"default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	if err != nil {
 		t.Errorf("CreateVolume err:%v", err)
 		t.FailNow()
@@ -4174,7 +4185,8 @@ func TestNewTwoDpReplicaZone(t *testing.T) {
 		err     error
 	)
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
-		false, false, false, true, false, false, testZone2, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		false, false, false, true, false, false, testZone2, "0,0", "",
+		0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
 		return
 	}
@@ -4194,7 +4206,8 @@ func TestDecommissionTwoDpReplicaZone(t *testing.T) {
 		err     error
 	)
 	err = mc.AdminAPI().CreateVolume(volName, "cfs", 3, 120, 200, 2, 3, 0, 1,
-		false, false, false, true, false, false, testZone2, "0,0", "", 0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false)
+		false, false, false, true, false, false, testZone2, "0,0", "",
+		0, "default", defaultEcDataNum, defaultEcParityNum, false, 0, 0, 0, false, false)
 	if !assert.NoErrorf(t, err, "CreateVolume err:%v", err) {
 		return
 	}
@@ -4652,7 +4665,7 @@ func TestVolSetReadAheadConfig(t *testing.T) {
 	assert.Equalf(t, int64(-1), vol.ReadAheadWindowMB, "volume read ahead windowMB")
 }
 
-func TestRecorderVolInfo(t *testing.T)  {
+func TestRecorderVolInfo(t *testing.T) {
 	var err error
 	recorderVol, err = server.cluster.getVol(recorderVolName)
 	assert.NoError(t, err, "get recorder type vol err")
@@ -4728,7 +4741,7 @@ func TestMpRecorderOp(t *testing.T) {
 	assert.Equal(t, ReadOnly, mp.Status, "mp should be ReadOnly")
 }
 
-func checkRecorderPeers(t *testing.T, peers []proto.Peer, expectedRecorderNum int)  {
+func checkRecorderPeers(t *testing.T, peers []proto.Peer, expectedRecorderNum int) {
 	peerRecorderNum, peerNormalNum := 0, 0
 	checkUniqueMap := make(map[string]bool)
 	for _, p := range peers {

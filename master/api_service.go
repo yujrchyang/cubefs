@@ -809,7 +809,7 @@ func (m *Server) addMetaRecorder(w http.ResponseWriter, r *http.Request) {
 		msg         string
 		addr        string
 		mp          *MetaPartition
-		partitionID	uint64
+		partitionID uint64
 		err         error
 	)
 	metrics := exporter.NewModuleTP(proto.AdminAddMetaRecorderUmpKey)
@@ -1828,8 +1828,9 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		bitMapSnapFrozenHour int64
 		enableCheckDelEK     bool
-		readAheadMemMB		 int64
-		readAheadWindowMB	 int64
+		readAheadMemMB       int64
+		readAheadWindowMB    int64
+		MetaOut              bool
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1980,6 +1981,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	MetaOut, err = parseMetaOutToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
@@ -1987,7 +1993,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, umpKeyPrefix, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
-		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB); err != nil {
+		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB, MetaOut); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2055,7 +2061,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		mpCount              int
 		dpReplicaNum         int
 		mpReplicaNum         int
-		mpRecorderNum		 int
+		mpRecorderNum        int
 		capacity             int
 		vol                  *Vol
 		followerRead         bool
@@ -2085,15 +2091,16 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		bitMapAllocator      bool
 		mpSplitStep          uint64
 		inodeCountThreshold  uint64
-		readAheadMemMB		 int64
-		readAheadWindowMB	 int64
+		readAheadMemMB       int64
+		readAheadWindowMB    int64
+		metaOut              bool
 	)
 
 	metrics := exporter.NewModuleTP(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
 		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
-		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, err = parseRequestToCreateVol(r); err != nil {
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2137,7 +2144,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
 		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval,
-		bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB); err != nil {
+		bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2225,8 +2232,8 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		MpReplicaNum:             vol.mpReplicaNum,
 		DpLearnerNum:             vol.dpLearnerNum,
 		MpLearnerNum:             vol.mpLearnerNum,
-		DpRecorderNum: 			  vol.dpRecorderNum,
-		MpRecorderNum: 			  vol.mpRecorderNum,
+		DpRecorderNum:            vol.dpRecorderNum,
+		MpRecorderNum:            vol.mpRecorderNum,
 		InodeCount:               volInodeCount,
 		DentryCount:              volDentryCount,
 		MaxMetaPartitionID:       maxPartitionID,
@@ -2318,8 +2325,9 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		EnableCheckDeleteEK:      vol.EnableCheckDeleteEK,
 		UpdateTimeOfReplicaNum:   vol.updateTimeOfReplicaNum,
 		DisableState:             vol.DisableState,
-		ReadAheadMemMB:			  vol.ReadAheadMemMB,
-		ReadAheadWindowMB: 		  vol.ReadAheadWindowMB,
+		ReadAheadMemMB:           vol.ReadAheadMemMB,
+		ReadAheadWindowMB:        vol.ReadAheadWindowMB,
+		MetaOut:                  vol.MetaOut,
 	}
 }
 
@@ -3124,12 +3132,12 @@ func (m *Server) selectMetaReplaceNodeAddr(w http.ResponseWriter, r *http.Reques
 
 func (m *Server) resetMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		mp          	*MetaPartition
-		partitionID 	uint64
-		rstMsg      	string
-		panicHosts  	[]string
-		panicRecorders	[]string
-		err         	error
+		mp             *MetaPartition
+		partitionID    uint64
+		rstMsg         string
+		panicHosts     []string
+		panicRecorders []string
+		err            error
 	)
 	metrics := exporter.NewModuleTP(proto.AdminResetMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -3191,13 +3199,13 @@ func (m *Server) getPanicHostsInMetaPartition(mp *MetaPartition) (panicHosts, pa
 }
 func (m *Server) manualResetMetaPartition(w http.ResponseWriter, r *http.Request) {
 	var (
-		mp          	*MetaPartition
-		partitionID 	uint64
-		rstMsg      	string
-		nodeAddrs   	string
-		panicHosts  	[]string
-		panicRecorders	[]string
-		err         	error
+		mp             *MetaPartition
+		partitionID    uint64
+		rstMsg         string
+		nodeAddrs      string
+		panicHosts     []string
+		panicRecorders []string
+		err            error
 	)
 	metrics := exporter.NewModuleTP(proto.AdminManualResetMetaPartitionUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -3303,13 +3311,13 @@ func (m *Server) decommissionMetaNode(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) resetCorruptMetaNode(w http.ResponseWriter, r *http.Request) {
 	var (
-		node           		*MetaNode
-		addr           		string
-		rstMsg         		string
-		corruptMps     		[]*MetaPartition
-		panicHostsList 		[][]string
-		panicRecordersList	[][]string
-		err            		error
+		node               *MetaNode
+		addr               string
+		rstMsg             string
+		corruptMps         []*MetaPartition
+		panicHostsList     [][]string
+		panicRecordersList [][]string
+		err                error
 	)
 	metrics := exporter.NewModuleTP(proto.AdminResetCorruptMetaNodeUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -4278,7 +4286,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
 	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnableState bool, mpSplitStep, inodeCountThreshold uint64,
-	readAheadMemMB, readAheadWindowMB int64, err error) {
+	readAheadMemMB, readAheadWindowMB int64, metaOut bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -4509,7 +4517,15 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	if readAheadWindowMB, err = extractReadAheadWindowMB(r, defaultReadAheadWindowMB); err != nil {
 		return
 	}
-
+	metaOutStr := r.FormValue(proto.MetaOutKey)
+	if metaOutStr == "" {
+		metaOut = false
+	} else {
+		metaOut, err = strconv.ParseBool(metaOutStr)
+		if err != nil {
+			return
+		}
+	}
 	return
 }
 
@@ -5786,11 +5802,11 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 		var recordersInfo = make([]*proto.MetaRecorderInfo, len(mp.RecordersInfo))
 		for i := 0; i < len(recordersInfo); i++ {
 			recordersInfo[i] = &proto.MetaRecorderInfo{
-				Addr:        mp.RecordersInfo[i].Addr,
-				ReportTime:  mp.RecordersInfo[i].ReportTime,
-				Status:      mp.RecordersInfo[i].Status,
-				ApplyId:     mp.RecordersInfo[i].ApplyId,
-				IsRecover:   mp.RecordersInfo[i].IsRecover,
+				Addr:       mp.RecordersInfo[i].Addr,
+				ReportTime: mp.RecordersInfo[i].ReportTime,
+				Status:     mp.RecordersInfo[i].Status,
+				ApplyId:    mp.RecordersInfo[i].ApplyId,
+				IsRecover:  mp.RecordersInfo[i].IsRecover,
 			}
 		}
 		var mpInfo = &proto.MetaPartitionInfo{
@@ -5803,16 +5819,16 @@ func (m *Server) getMetaPartition(w http.ResponseWriter, r *http.Request) {
 			DentryCount:       mp.DentryCount,
 			MaxExistIno:       mp.MaxExistIno,
 			Replicas:          replicas,
-			RecordersInfo: 	   recordersInfo,
+			RecordersInfo:     recordersInfo,
 			ReplicaNum:        mp.ReplicaNum,
-			RecorderNum: 	   mp.RecorderNum,
+			RecorderNum:       mp.RecorderNum,
 			LearnerNum:        mp.LearnerNum,
 			Status:            mp.Status,
 			IsRecover:         mp.IsRecover,
 			Hosts:             mp.Hosts,
 			Peers:             mp.Peers,
 			Learners:          mp.Learners,
-			Recorders:		   mp.Recorders,
+			Recorders:         mp.Recorders,
 			Zones:             zones,
 			RecorderZones:     recorderZones,
 			OfflinePeerID:     mp.OfflinePeerID,
@@ -7419,6 +7435,22 @@ func parseAndExtractFlashNode(r *http.Request) (nodeAddr string, state bool, err
 		return
 	}
 	state, err = strconv.ParseBool(r.FormValue(stateKey))
+	return
+}
+
+func parseMetaOutToUpdateVol(r *http.Request, vol *Vol) (metaOut bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	metaOutStr := r.FormValue(proto.MetaOutKey)
+	if metaOutStr == "" {
+		metaOut = vol.MetaOut
+	} else {
+		metaOut, err = strconv.ParseBool(metaOutStr)
+		if err != nil {
+			return
+		}
+	}
 	return
 }
 

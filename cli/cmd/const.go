@@ -142,6 +142,7 @@ const (
 	CliFlagTruncateEKCount        = "truncateEKCount"
 	CliFlagNotCacheNode           = "notCacheNode"
 	CliFlagFlock                  = "flock"
+	CliFlagMetaOut                = "metaOut"
 
 	CliFlagBitMapSnapFrozenHour = "bitMapSnapFrozenHour"
 

@@ -480,7 +480,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	extentCacheExpireSec int64, compactTag string, hostDelayInterval int64, follReadHostWeight int, trashCleanInterVal uint64,
 	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod, trashCleanDuration, trashCleanMaxCount int32,
 	enableBitMapAllocator bool, remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool,
-	remoteCacheTTL int64, enableRemoveDupReq bool, connTimeout, readConnTimeout, writeConnTimeout int64, truncateEKCount int, bitMapSnapFrozenHour int64, notCacheNode bool, flock bool) (err error) {
+	remoteCacheTTL int64, enableRemoveDupReq bool, connTimeout, readConnTimeout, writeConnTimeout int64, truncateEKCount int, bitMapSnapFrozenHour int64, notCacheNode bool, flock bool, metaOut bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -532,6 +532,7 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	request.addParam(proto.BitMapSnapFrozenHour, strconv.FormatInt(bitMapSnapFrozenHour, 10))
 	request.addParam(proto.NotCacheNodeKey, strconv.FormatBool(notCacheNode))
 	request.addParam(proto.FlockKey, strconv.FormatBool(flock))
+	request.addParam("metaOut", strconv.FormatBool(metaOut))
 	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}
@@ -576,7 +577,7 @@ func (api *AdminAPI) SetVolumeConvertTaskState(volName, authKey string, st int) 
 func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, capacity uint64, replicas, mpReplicas, trashDays, storeMode int,
 	followerRead, autoRepair, volWriteMutex, forceROW, isSmart, enableWriteCache bool, zoneName, mpLayout, smartRules string,
 	crossRegionHAType uint8, compactTag string, ecDataNum, ecParityNum uint8, ecEnable bool, hostDelayInterval int64,
-	batchDelInodeCnt, delInodeInterval uint64, bitMapAllocatorEnable bool) (err error) {
+	batchDelInodeCnt, delInodeInterval uint64, bitMapAllocatorEnable bool, metaOut bool) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
@@ -606,6 +607,7 @@ func (api *AdminAPI) CreateVolume(volName, owner string, mpCount int, dpSize, ca
 	request.addParam("batchDelInodeCnt", strconv.Itoa(int(batchDelInodeCnt)))
 	request.addParam("delInodeInterval", strconv.Itoa(int(delInodeInterval)))
 	request.addParam(proto.EnableBitMapAllocatorKey, strconv.FormatBool(bitMapAllocatorEnable))
+	request.addParam("metaOut", strconv.FormatBool(metaOut))
 	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
 	}

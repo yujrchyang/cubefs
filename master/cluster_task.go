@@ -186,8 +186,8 @@ errHandler:
 
 func (c *Cluster) decommissionMetaReplica(mp *MetaPartition, crossRegionHAType proto.CrossRegionHAType, nodeAddr, addAddr string, strictMode bool, dstStoreMode proto.StoreMode) (isLearner bool, err error) {
 	var (
-		pmConfig    *proto.PromoteConfig
-		regionType  proto.RegionType
+		pmConfig   *proto.PromoteConfig
+		regionType proto.RegionType
 	)
 	if isLearner, pmConfig, err = c.deleteMetaReplica(mp, nodeAddr, false, strictMode); err != nil {
 		return
@@ -346,7 +346,7 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 			return
 		}
 	}
-	if mp.IsRecover && !mp.isLatestReplica(nodeAddr) {	// todo recorder引起的recover
+	if mp.IsRecover && !mp.isLatestReplica(nodeAddr) { // todo recorder引起的recover
 		err = fmt.Errorf("vol[%v],meta partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, mp.PartitionID, nodeAddr)
 		return
 	}
@@ -618,8 +618,8 @@ func (c *Cluster) forceRemoveMetaRaftPeers(mp *MetaPartition, panicHosts, panicR
 
 func (c *Cluster) removeMetaPartitionPanicHosts(mp *MetaPartition, newPeers []proto.Peer, panicHosts []string) {
 	var (
-		metaNode 	*MetaNode
-		err 		error
+		metaNode *MetaNode
+		err      error
 	)
 	for _, addr := range panicHosts {
 		newMetaPartitions := make([]uint64, 0)
@@ -644,8 +644,8 @@ func (c *Cluster) removeMetaPartitionPanicHosts(mp *MetaPartition, newPeers []pr
 
 func (c *Cluster) removeMetaPartitionPanicRecorders(mp *MetaPartition, newPeers []proto.Peer, panicRecorders []string) {
 	var (
-		metaNode 	*MetaNode
-		err 		error
+		metaNode *MetaNode
+		err      error
 	)
 	for _, addr := range panicRecorders {
 		newMetaPartitions := make([]uint64, 0)
@@ -670,8 +670,8 @@ func (c *Cluster) removeMetaPartitionPanicRecorders(mp *MetaPartition, newPeers 
 
 func (c *Cluster) resetMetaPartitionRaftMember(mp *MetaPartition, newPeers []proto.Peer, peer proto.Peer) (err error) {
 	var (
-		metaNode	*MetaNode
-		task		*proto.AdminTask
+		metaNode *MetaNode
+		task     *proto.AdminTask
 	)
 	if metaNode, err = c.metaNode(peer.Addr); err != nil {
 		return
@@ -1093,8 +1093,8 @@ func (c *Cluster) removeMetaPartitionRaftRecorder(partition *MetaPartition, remo
 		}
 	}()
 	var (
-		mr	*MetaReplica
-		t	*proto.AdminTask
+		mr *MetaReplica
+		t  *proto.AdminTask
 	)
 	if err = c.updateMetaPartitionOfflinePeerIDWithLock(partition, removePeer.ID); err != nil {
 		return
@@ -1252,7 +1252,7 @@ func (c *Cluster) buildPromoteMetaPartitionRaftLearnerTaskAndSyncSend(mp *MetaPa
 }
 
 func (c *Cluster) addMetaPartitionRaftMember(partition *MetaPartition, addPeer proto.Peer,
-	createTaskFunc func(proto.Peer, string) (*proto.AdminTask, error) ) (err error) {
+	createTaskFunc func(proto.Peer, string) (*proto.AdminTask, error)) (err error) {
 
 	var (
 		candidateAddrs []string
@@ -1815,9 +1815,6 @@ func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.PartitionRepor
 		if vr.VolName != "" {
 			vol, err := c.getVol(vr.VolName)
 			if err != nil {
-				if dp, err1 := c.getDataPartitionByID(vr.PartitionID); err1 == nil {
-					dp.updateMetric(vr, dataNode, c)
-				}
 				continue
 			}
 			if vol.isRealDelete(c.cfg.DeleteMarkDelVolInterval) {
@@ -1827,6 +1824,8 @@ func (c *Cluster) updateDataNode(dataNode *DataNode, dps []*proto.PartitionRepor
 				dp.updateMetric(vr, dataNode, c)
 			}
 		} else {
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyNodeHeartbeat], fmt.Sprintf("action[handleDataNodeHeartbeatResp] cluster[%v] node[%v] not pass the name of volume in heartbeat message",
+				c.Name, dataNode.Addr))
 			if dp, err := c.getDataPartitionByID(vr.PartitionID); err == nil {
 				dp.updateMetric(vr, dataNode, c)
 			}

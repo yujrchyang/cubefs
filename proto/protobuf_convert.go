@@ -83,7 +83,7 @@ func ConvertMetaPartitionViews(metaPartitions []*MetaPartitionView) *MetaPartiti
 			IsRecover:   metaPartition.IsRecover,
 			Members:     metaPartition.Members,
 			Learners:    metaPartition.Learners,
-			Recorders: 	 metaPartition.Recorders,
+			Recorders:   metaPartition.Recorders,
 			LeaderAddr:  metaPartition.LeaderAddr,
 			Status:      int32(metaPartition.Status),
 			StoreMode:   uint32(metaPartition.StoreMode),
@@ -109,7 +109,7 @@ func ConvertMetaPartitionViewsPb(metaPartitions *MetaPartitionViewsPb) []*MetaPa
 			IsRecover:   metaPartition.IsRecover,
 			Members:     make([]string, 0),
 			Learners:    make([]string, 0),
-			Recorders:	 make([]string, 0),
+			Recorders:   make([]string, 0),
 			LeaderAddr:  metaPartition.LeaderAddr,
 			Status:      int8(metaPartition.Status),
 			StoreMode:   StoreMode(metaPartition.StoreMode),
@@ -261,8 +261,8 @@ func ConvertSimpleVolViewPb(vv *SimpleVolViewPb) *SimpleVolView {
 		MpReplicaNum:             uint8(vv.MpReplicaNum),
 		DpLearnerNum:             uint8(vv.DpLearnerNum),
 		MpLearnerNum:             uint8(vv.MpLearnerNum),
-		DpRecorderNum: 			  uint8(vv.DpRecorderNum),
-		MpRecorderNum: 			  uint8(vv.MpRecorderNum),
+		DpRecorderNum:            uint8(vv.DpRecorderNum),
+		MpRecorderNum:            uint8(vv.MpRecorderNum),
 		InodeCount:               vv.InodeCount,
 		DentryCount:              vv.DentryCount,
 		MaxMetaPartitionID:       vv.MaxMetaPartitionID,
@@ -355,8 +355,9 @@ func ConvertSimpleVolViewPb(vv *SimpleVolViewPb) *SimpleVolView {
 		FileTotalSize:            vv.FileTotalSize,
 		TrashUsedSize:            vv.TrashUsedSize,
 		EnableCheckDeleteEK:      vv.EnableCheckDeleteEK,
-		ReadAheadMemMB:			  vv.ReadAheadMemMB,
-		ReadAheadWindowMB:		  vv.ReadAheadWindowMB,
+		ReadAheadMemMB:           vv.ReadAheadMemMB,
+		ReadAheadWindowMB:        vv.ReadAheadWindowMB,
+		MetaOut:                  vv.MetaOut,
 	}
 	if vv.SmartRules != nil {
 		simpleVolView.SmartRules = vv.SmartRules
@@ -374,8 +375,8 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		MpReplicaNum:           uint32(vv.MpReplicaNum),
 		DpLearnerNum:           uint32(vv.DpLearnerNum),
 		MpLearnerNum:           uint32(vv.MpLearnerNum),
-		DpRecorderNum: 			uint32(vv.DpRecorderNum),
-		MpRecorderNum: 			uint32(vv.MpRecorderNum),
+		DpRecorderNum:          uint32(vv.DpRecorderNum),
+		MpRecorderNum:          uint32(vv.MpRecorderNum),
 		InodeCount:             vv.InodeCount,
 		DentryCount:            vv.DentryCount,
 		MaxMetaPartitionID:     vv.MaxMetaPartitionID,
@@ -468,8 +469,9 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		EnableCheckDeleteEK:    vv.EnableCheckDeleteEK,
 		NotCacheNode:           vv.NotCacheNode,
 		Flock:                  vv.Flock,
-		ReadAheadMemMB:			vv.ReadAheadMemMB,
-		ReadAheadWindowMB:		vv.ReadAheadWindowMB,
+		ReadAheadMemMB:         vv.ReadAheadMemMB,
+		ReadAheadWindowMB:      vv.ReadAheadWindowMB,
+		MetaOut:                vv.MetaOut,
 	}
 }
 

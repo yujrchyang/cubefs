@@ -207,6 +207,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	var optBatchDelInodeCnt uint64
 	var optDelInodeInterval uint64
 	var optEnableBitMapAllocator bool
+	var optMetaOut bool
 	var cmd = &cobra.Command{
 		Use:   cmdVolCreateUse,
 		Short: cmdVolCreateShort,
@@ -261,6 +262,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 				stdout("  BatchDelInodeCnt    : %v\n", optBatchDelInodeCnt)
 				stdout("  DelInodeInterval    : %v\n", optDelInodeInterval)
 				stdout("  BitMapAllocator     : %v\n", formatEnabledDisabled(optEnableBitMapAllocator))
+				stdout("  MetaOut             : %v\n", formatEnabledDisabled(optMetaOut))
 				stdout("\nConfirm (yes/no)[yes]: ")
 				var userConfirm string
 				_, _ = fmt.Scanln(&userConfirm)
@@ -273,7 +275,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 			err = client.AdminAPI().CreateVolume(volumeName, userID, optMPCount, optDPSize, optCapacity, optReplicas,
 				optMpReplicas, optTrashDays, optStoreMode, optFollowerRead, optAutoRepair, optVolWriteMutex, optForceROW, optIsSmart, optEnableWriteCache,
 				optZoneName, optLayout, strings.Join(smartRules, ","), optCrossRegionHAType, formatEnabledDisabled(optCompactTag), optEcDataNum,
-				optEcParityNum, optEcEnable, optFolReadDelayInterval, optBatchDelInodeCnt, optDelInodeInterval, optEnableBitMapAllocator)
+				optEcParityNum, optEcEnable, optFolReadDelayInterval, optBatchDelInodeCnt, optDelInodeInterval, optEnableBitMapAllocator, false)
 			if err != nil {
 				errout("Create volume failed case:\n%v\n", err)
 			}
@@ -308,6 +310,7 @@ func newVolCreateCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Uint64Var(&optBatchDelInodeCnt, CliOpVolBatchDelInodeCnt, 0, "Specify batch del inode cnt [default :0 use meta node default 128]")
 	cmd.Flags().Uint64Var(&optDelInodeInterval, CliOpVolDelInodeInterval, 0, "Specify del inodes interval  [Unit: ms, default 0]")
 	cmd.Flags().BoolVar(&optEnableBitMapAllocator, CliFlagBitMapAllocatorSt, false, "bit map allocator enable state")
+	cmd.Flags().BoolVar(&optMetaOut, CliFlagMetaOut, false, "whether have meta data")
 	return cmd
 }
 
@@ -849,7 +852,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.DpFolReadDelayConfig.DelaySummaryInterval, vv.FolReadHostWeight, vv.TrashCleanInterval, vv.BatchDelInodeCnt, vv.DelInodeInterval, vv.UmpCollectWay,
 				vv.TrashCleanDuration, vv.TrashCleanMaxCount, vv.EnableBitMapAllocator,
 				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL,
-				vv.EnableRemoveDupReq, vv.ConnConfig.ConnectTimeoutNs, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode, vv.Flock)
+				vv.EnableRemoveDupReq, vv.ConnConfig.ConnectTimeoutNs, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode, vv.Flock, vv.MetaOut)
 			if err != nil {
 				return
 			}

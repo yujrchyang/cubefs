@@ -353,6 +353,9 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	defer partition.Unlock()
 	dpr.PartitionID = partition.PartitionID
 	dpr.Status = partition.Status
+	if partition.isOffline || partition.isRecover || (partition.ReplicaNum != 1 && len(partition.Hosts) <= 1) {
+		dpr.Status = proto.ReadOnly
+	}
 	dpr.TransferStatus = partition.TransferStatus
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
@@ -363,13 +366,10 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.CreateTime = partition.createTime
 	dpr.Total = partition.total
 	dpr.Used = partition.used
-	for _, replica := range partition.Replicas {
-		if replica.MType == proto.MediumSSDName {
-			dpr.MediumType = proto.MediumSSDName
-			break
-		}
-	}
-	if len(dpr.MediumType) == 0 {
+	//mtype used the value of the first replica
+	if len(partition.Replicas) >= 1 {
+		dpr.MediumType = partition.Replicas[0].MType
+	} else {
 		dpr.MediumType = proto.MediumHDDName
 	}
 	dpr.EcMigrateStatus = partition.EcMigrateStatus
@@ -825,6 +825,10 @@ func (partition *DataPartition) ToProto(c *Cluster) *proto.DataPartitionInfo {
 		if err == nil {
 			zones[idx] = dataNode.ZoneName
 		}
+	}
+
+	if partition.isOffline || partition.isRecover || (partition.ReplicaNum != 1 && len(partition.Hosts) <= 1) {
+		partition.Status = proto.ReadOnly
 	}
 	return &proto.DataPartitionInfo{
 		PartitionID:             partition.PartitionID,
