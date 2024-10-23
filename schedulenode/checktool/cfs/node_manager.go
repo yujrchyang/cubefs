@@ -521,6 +521,10 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost, autoOffline
 		nodeZoneMap         map[string]string
 		err                 error
 	)
+	// mysql集群禁止自动下线，先电话通知，手动下线，等下线方案成熟后再改为自动下线
+	if host.host == "cn.elasticdb.jd.local" {
+		return
+	}
 	if !host.isReleaseCluster {
 		nodeZoneMap, err = getNodeToZoneMap(host)
 		if err != nil {
@@ -1438,7 +1442,7 @@ func (cv *ClusterView) checkMetaNodeDiskStatByMDCInfoFromSre(host *ClusterHost, 
 	}
 	/*select DISTINCT(ip) from tb_dashboard_mdc where origin='cfs' and (disk_path='/exportvolume' or disk_path='/export'
 	or disk_path='/nvme') and fs_usage_percent > 70 and time_stamp >= now()-interval 20 minute;*/
-	sqlStr := fmt.Sprintf(" select DISTINCT(ip) from `%s` where origin='cfs' and (disk_path='/exportvolume' or"+
+	sqlStr := fmt.Sprintf(" select DISTINCT(ip) from `%s` where origin='cfs' and (disk_path='/exportvolume' or" +
 		" disk_path='/export' or disk_path='/nvme') and fs_usage_percent > %v and time_stamp >= now()-interval 10 minute ",
 		DashboardMdc{}.TableName(), s.metaNodeExportDiskUsedRatio)
 	if err = s.sreDB.Raw(sqlStr).Scan(&dashboardMdcIps).Error; err != nil {

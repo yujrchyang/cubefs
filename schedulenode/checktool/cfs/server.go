@@ -47,6 +47,7 @@ const (
 	UMPCFSNodeSetNumKey                  = checktool.UmpKeyStorageBotPrefix + "cfs.nodeset.num"
 	UMPCFSNodeTinyExtentCheckKey         = checktool.UmpKeyStorageBotPrefix + "cfs.tiny.extent.check"
 	UMPCFSCoreVolWarnKey                 = checktool.UmpKeyStorageBotPrefix + "cfs.core.vol"
+	UMPCFSMysqlBadDiskKey                = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.bad.disk"
 
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024
