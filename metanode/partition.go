@@ -1176,10 +1176,10 @@ func (mp *metaPartition) freezeBitmapAllocator() {
 
 	curTime := time.Now()
 	frozenTimeDuration := mp.getBitmapSnapFrozenDuration()
-	freeTime := curTime.Unix()
+	freezeTime := curTime.Unix()
 	activeTime := curTime.Add(frozenTimeDuration).Unix()
 	data := make([]byte, 16)
-	binary.BigEndian.PutUint64(data[:8], uint64(freeTime))
+	binary.BigEndian.PutUint64(data[:8], uint64(freezeTime))
 	binary.BigEndian.PutUint64(data[8:], uint64(activeTime))
 	if _, err = mp.submit(context.Background(), opFSMFreezeBitmapAllocator, "", data, nil); err != nil {
 		log.LogErrorf("freezeBitmapAllocator partitionID(%v) submit raft cmd failed:%v", mp.config.PartitionId, err)
