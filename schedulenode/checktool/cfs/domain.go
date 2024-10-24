@@ -59,6 +59,13 @@ type ClusterHost struct {
 	tokenLock                     sync.RWMutex
 	tokenMap                      map[string]int
 	warningTick                   map[string]int64
+	metaPartitionHolder           *MetaPartitionHolder
+}
+
+type MetaPartitionHolder struct {
+	badMetaMap        map[uint64]int
+	badMetaMapLock    sync.RWMutex
+	badMetaCheckCount int
 }
 
 func newClusterHost(host string) *ClusterHost {
@@ -79,6 +86,9 @@ func newClusterHost(host string) *ClusterHost {
 		nodeMemInfo:               make(map[string]float64),
 		tokenMap:                  make(map[string]int),
 		lastCleanExpiredMetaTime:  time.Now(),
+		metaPartitionHolder: &MetaPartitionHolder{
+			badMetaMap: make(map[uint64]int, 0),
+		},
 	}
 	ch.isReleaseCluster = isReleaseCluster(host)
 	ch.initTokenMap()

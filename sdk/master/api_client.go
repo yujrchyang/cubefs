@@ -151,6 +151,24 @@ func (api *ClientAPI) GetMetaPartition(partitionID uint64, volName string) (part
 	return
 }
 
+func (api *ClientAPI) GetMetaPartitionDbbak(partitionID uint64, volName string) (partition *proto.MetaPartitionInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.ClientMetaPartition)
+	request.addParam("id", strconv.FormatUint(partitionID, 10))
+	request.addParam("name", volName)
+	var data []byte
+	if data, _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	partition = &proto.MetaPartitionInfo{}
+	if err = json.Unmarshal(data, partition); err != nil {
+		return
+	}
+	if proto.IsDbBack {
+		partition.Hosts = partition.PersistenceHosts
+	}
+	return
+}
+
 func (api *ClientAPI) GetMetaPartitions(volName string) ([]*proto.MetaPartitionView, error) {
 	if proto.IsDbBack {
 		if vv, err := api.GetVolumeWithoutAuthKey(volName); err != nil {

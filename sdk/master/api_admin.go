@@ -1565,3 +1565,13 @@ func (api *AdminAPI) SetNodeSetCapacity(capacity int) (result string, err error)
 	}
 	return string(data), nil
 }
+
+func (api *AdminAPI) GetUnavailablePartitions() (unavailableDps map[uint64]map[string]string, err error) {
+	var buf []byte
+	var req = newAPIRequest(http.MethodGet, proto.AdminGetUnavailDataPartitions)
+	if buf, _, err = api.mc.serveRequest(req); err != nil {
+		return
+	}
+	err = json.Unmarshal(buf, &unavailableDps)
+	return
+}
