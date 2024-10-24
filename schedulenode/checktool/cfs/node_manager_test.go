@@ -62,6 +62,7 @@ func TestCheckNodeSet(t *testing.T) {
 }
 
 func initTestLog(module string) {
+	checktool.DebugMod = true
 	logdir := path.Join(os.TempDir(), fmt.Sprintf("test_%v", module))
 	os.RemoveAll(logdir)
 	os.MkdirAll(logdir, 0666)
@@ -74,7 +75,6 @@ func TestCheckNodeAlive(t *testing.T) {
 	defer func() {
 		log.LogFlush()
 	}()
-	checktool.DebugMod = true
 	s := NewChubaoFSMonitor(context.Background())
 	s.integerMap[cfgKeyHDDDiskOfflineThreshold] = 10
 	s.integerMap[cfgKeySSDDiskOfflineThreshold] = 10

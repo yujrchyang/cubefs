@@ -1,7 +1,6 @@
 package cfs
 
 import (
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"testing"
 )
@@ -50,6 +49,5 @@ func TestCheckCoreVol(t *testing.T) {
 			},
 		},
 	}
-	checktool.DebugMod = true
 	checkCoreVols(ch)
 }
