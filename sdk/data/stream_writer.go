@@ -150,11 +150,8 @@ func (s *Streamer) IssueWriteRequest(ctx context.Context, offset uint64, data []
 	request.done = make(chan struct{}, 1)
 	request.isROW = false
 	request.ctx = ctx
-	//tracer.SetTag("request.channel.len", len(s.request))
 	s.request <- request
 	s.writeLock.Unlock()
-
-	//tracer.Finish()
 
 	<-request.done
 	atomic.AddInt32(&s.writeOp, -1)
@@ -282,7 +279,7 @@ func (s *Streamer) server() {
 	for {
 		select {
 		case request := <-s.request:
-			s.handleRequest(ctx, request)
+			s.handleRequest(request)
 			s.idle = 0
 			s.traversed = 0
 		case <-s.done:
@@ -354,7 +351,7 @@ func (s *Streamer) abortRequest(request interface{}) {
 	}
 }
 
-func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
+func (s *Streamer) handleRequest(request interface{}) {
 	switch request := request.(type) {
 	case *OpenRequest:
 		s.open()
@@ -388,9 +385,8 @@ func (s *Streamer) handleRequest(ctx context.Context, request interface{}) {
 
 func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size int, direct bool) (total int, isROW bool, err error) {
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Streamer write enter: ino(%v) offset(%v) size(%v)", s.inode, offset, size)
+		log.LogDebugf("Streamer write enter: ctx(%v) ino(%v) offset(%v) size(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size)
 	}
-	ctx = context.Background()
 	if s.client.writeRate > 0 {
 		tpObject := exporter.NewModuleTPUs("write_wait_us")
 		s.client.writeLimiter.Wait(ctx)
@@ -445,7 +441,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 				writeSize, err = s.doWrite(ctx, req.Data, req.FileOffset, req.Size, direct)
 			}
 			if err != nil {
-				log.LogWarnf("Streamer write: ino(%v) err(%v)", s.inode, err)
+				log.LogWarnf("Streamer write: ctx(%v) ino(%v) err(%v)", ctx.Value(proto.ContextReq), s.inode, err)
 				break
 			}
 			if rowFlag {
@@ -462,7 +458,7 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 		}
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Streamer write exit: ino(%v) offset(%v) size(%v) done total(%v) err(%v)", s.inode, offset, size, total, err)
+		log.LogDebugf("Streamer write exit: ctx(%v) ino(%v) offset(%v) size(%v) done total(%v) err(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size, total, err)
 	}
 	return
 }
@@ -477,26 +473,26 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 	for {
 		tryCount++
 		if tryCount%100 == 0 {
-			log.LogWarnf("doOverWriteOrROW failed: try (%v)th times, ino(%v) req(%v)", tryCount, s.inode, req)
+			log.LogWarnf("doOverWriteOrROW failed: try (%v)th times, ctx(%v) ino(%v) req(%v)", tryCount, ctx.Value((proto.ContextReq)), s.inode, req)
 		}
 		if s.enableOverwrite() && req.ExtentKey != nil {
 			if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
 				break
 			}
-			log.LogWarnf("doOverWrite failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
+			log.LogWarnf("doOverWrite failed: ctx(%v) ino(%v) err(%v) req(%v)", ctx.Value(proto.ContextReq), s.inode, err, req)
 		}
 		if writeSize, err = s.doROW(ctx, req, direct); err == nil {
 			isROW = true
 			break
 		}
-		log.LogWarnf("doOverWriteOrROW failed: ino(%v) err(%v) req(%v)", s.inode, err, req)
+		log.LogWarnf("doOverWriteOrROW failed: ctx(%v) ino(%v) err(%v) req(%v)", ctx.Value(proto.ContextReq), s.inode, err, req)
 		if err == syscall.ENOENT {
 			break
 		}
-		errmsg = fmt.Sprintf("doOverWriteOrROW err(%v) inode(%v) req(%v) try count(%v)", err, s.inode, req, tryCount)
+		errmsg = fmt.Sprintf("doOverWriteOrROW err(%v) ctx(%v) inode(%v) req(%v) try count(%v)", err, ctx.Value(proto.ContextReq), s.inode, req, tryCount)
 		common.HandleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
 		if time.Since(start) > StreamRetryTimeout {
-			log.LogWarnf("doOverWriteOrROW failed: retry timeout ino(%v) err(%v) req(%v)", s.inode, err, req)
+			log.LogWarnf("doOverWriteOrROW timeout: ctx(%v) ino(%v) err(%v) req(%v)", ctx.Value(proto.ContextReq), s.inode, err, req)
 			break
 		}
 		time.Sleep(1 * time.Second)
@@ -665,7 +661,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 	defer func() {
 		tpObject.Set(err)
 		if err != nil {
-			log.LogWarnf("doROW: total %v, oriReq %v, err %v", total, oriReq, err)
+			log.LogWarnf("doROW failed: ctx(%v) ino(%v) oriReq(%v) total(%v) err(%v)", ctx.Value(proto.ContextReq), s.inode, oriReq, total, err)
 		}
 	}()
 
@@ -698,7 +694,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("doROW: inode %v, total %v, oriReq %v, newEK %v", s.inode, total, oriReq, newEK)
+		log.LogDebugf("doROW: ctx(%v) ino(%v) oriReq(%v) total(%v) newEK(%v)", ctx.Value(proto.ContextReq), s.inode, oriReq, total, newEK)
 	}
 
 	if s.enableCacheAutoPrepare() {
@@ -810,7 +806,7 @@ func (s *Streamer) doWrite(ctx context.Context, data []byte, offset uint64, size
 	}
 
 	if err != nil || ek == nil {
-		log.LogWarnf("doWrite error: ino(%v) offset(%v) size(%v) err(%v) ek(%v)", s.inode, offset, size, err, ek)
+		log.LogWarnf("doWrite error: ctx(%v) ino(%v) offset(%v) size(%v) err(%v) ek(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size, err, ek)
 		return
 	}
 
@@ -889,7 +885,7 @@ func (s *Streamer) flush(ctx context.Context, flushPendingPacket bool) (err erro
 		}
 		err = eh.flush(ctx)
 		if err != nil {
-			log.LogWarnf("Streamer flush failed: eh(%v)", eh)
+			log.LogWarnf("Streamer flush failed: ctx(%v) eh(%v)", ctx.Value(proto.ContextReq), eh)
 			return
 		}
 		eh.stream.dirtylist.Remove(element)

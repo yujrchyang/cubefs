@@ -348,7 +348,6 @@ func (dp *DataPartition) LeaderRead(reqPacket *common.Packet, req *ExtentRequest
 	if tryOther || (reply != nil && reply.ResultCode == proto.OpTryOtherAddr) {
 		hosts := sortByStatus(sc.dp, sc.currAddr)
 		for _, addr := range hosts {
-			log.LogWarnf("LeaderRead: try addr(%v) reqPacket(%v)", addr, reqPacket)
 			sc.currAddr = addr
 			readBytes, reply, tryOther, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
 			if err == nil {
@@ -359,12 +358,12 @@ func (dp *DataPartition) LeaderRead(reqPacket *common.Packet, req *ExtentRequest
 			if !tryOther && (reply != nil && reply.ResultCode != proto.OpTryOtherAddr) {
 				break
 			}
-			log.LogWarnf("LeaderRead: try addr(%v) failed! err(%v) reqPacket(%v)", addr, err, reqPacket)
+			log.LogWarnf("LeaderRead: addr(%v) failed, ctx(%v) reqPacket(%v) err(%v)", addr, reqPacket.Ctx().Value(proto.ContextReq), reqPacket, err)
 		}
 	}
 
-	log.LogWarnf("LeaderRead exit: err(%v), reqPacket(%v)", err, reqPacket)
-	err = errors.New(fmt.Sprintf("LeaderRead: failed, errMap(%v), sc(%v) reqPacket(%v)", errMap, sc, reqPacket))
+	err = fmt.Errorf("%v", errMap)
+	log.LogWarnf("LeaderRead failed: ctx(%v) reqPacket(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), reqPacket, err)
 	return
 }
 
@@ -383,23 +382,22 @@ func (dp *DataPartition) FollowerRead(reqPacket *common.Packet, req *ExtentReque
 	for i := 0; i < StreamSendReadMaxRetry; i++ {
 		hosts := sortByStatus(sc.dp, sc.currAddr)
 		for _, addr := range hosts {
-			log.LogWarnf("FollowerRead: try addr(%v) reqPacket(%v)", addr, reqPacket)
 			sc.currAddr = addr
 			readBytes, _, _, err = dp.sendReadCmdToDataPartition(sc, reqPacket, req)
 			if err == nil {
 				return
 			}
 			errMap[addr] = err
-			log.LogWarnf("FollowerRead: try addr(%v) failed! reqPacket(%v) err(%v)", addr, reqPacket, err)
+			log.LogWarnf("FollowerRead: addr(%v) failed, ctx(%v) reqPacket(%v) err(%v)", addr, reqPacket.Ctx().Value(proto.ContextReq), reqPacket, err)
 		}
 		if time.Since(startTime) > StreamSendTimeout {
-			log.LogWarnf("FollowerRead: retry timeout req(%v) time(%v)", reqPacket, time.Since(startTime))
+			log.LogWarnf("FollowerRead: retry timeout, ctx(%v) req(%v) time(%v)", reqPacket.Ctx().Value(proto.ContextReq), reqPacket, time.Since(startTime))
 			break
 		}
-		log.LogWarnf("FollowerRead: errMap(%v), reqPacket(%v), try the next round", errMap, reqPacket)
+		log.LogWarnf("FollowerRead: hosts failed, ctx(%v) reqPacket(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), reqPacket, errMap)
 		time.Sleep(StreamSendSleepInterval)
 	}
-	err = errors.New(fmt.Sprintf("FollowerRead: failed %v times, errMap(%v), reqPacket(%v)", StreamSendReadMaxRetry, errMap, reqPacket))
+	err = fmt.Errorf("%v", errMap)
 	return
 }
 
@@ -413,7 +411,7 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *comm
 
 	for i := 0; i < StreamReadConsistenceRetry; i++ {
 		errMap = make(map[string]error)
-		targetHosts, isErr = dp.chooseMaxAppliedDp(reqPacket.Ctx(), sc.dp.PartitionID, sc.dp.Hosts, reqPacket)
+		targetHosts, isErr = dp.chooseMaxAppliedDp(reqPacket.Ctx(), sc.dp.PartitionID, sc.dp.Hosts)
 		// try all hosts with same applied ID
 		if !isErr && len(targetHosts) > 0 {
 			// need to read data with no leader
@@ -425,12 +423,12 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *comm
 					return
 				}
 				errMap[addr] = err
-				log.LogWarnf("readConsistentFromHosts: err(%v), addr(%v), try next host", err, addr)
+				log.LogWarnf("readConsistentFromHosts: ctx(%v) err(%v), addr(%v), try next host", reqPacket.Ctx().Value(proto.ContextReq), err, addr)
 			}
 		}
-		log.LogWarnf("readConsistentFromHost failed, try next round: sc(%v) reqPacket(%v) isErr(%v) targetHosts(%v) errMap(%v)", sc, reqPacket, isErr, targetHosts, errMap)
+		log.LogWarnf("readConsistentFromHost failed, try next round: ctx(%v) sc(%v) reqPacket(%v) isErr(%v) targetHosts(%v) errMap(%v)", reqPacket.Ctx(), sc, reqPacket, isErr, targetHosts, errMap)
 		if time.Since(start) > StreamReadConsistenceTimeout {
-			log.LogWarnf("readConsistentFromHost failed: retry timeout sc(%v) reqPacket(%v) time(%v)", sc, reqPacket, time.Since(start))
+			log.LogWarnf("readConsistentFromHost failed: retry timeout ctx(%v) sc(%v) reqPacket(%v) time(%v)", reqPacket.Ctx(), sc, reqPacket, time.Since(start))
 			break
 		}
 	}
@@ -440,7 +438,7 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *comm
 
 func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *common.Packet, req *ExtentRequest) (readBytes int, reply *common.Packet, tryOther bool, err error) {
 	if sc.currAddr == "" {
-		err = errors.New(fmt.Sprintf("sendReadCmdToDataPartition: failed, current address is null, reqPacket(%v)", reqPacket))
+		err = fmt.Errorf("empty address")
 		tryOther = true
 		return
 	}
@@ -456,14 +454,14 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *c
 	}()
 	if conn, err = sc.sendToDataPartition(reqPacket); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
-		log.LogWarnf("sendReadCmdToDataPartition: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, reqPacket, err)
+		log.LogWarnf("sendReadCmdToDataPartition: send failed, ctx(%v) addr(%v) reqPacket(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), sc.currAddr, reqPacket, err)
 		tryOther = true
 		return
 	}
 	if readBytes, reply, tryOther, err = sc.getReadReply(conn, reqPacket, req); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
 		dp.checkAddrNotExist(sc.currAddr, reply)
-		log.LogWarnf("sendReadCmdToDataPartition: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, reqPacket, err)
+		log.LogWarnf("sendReadCmdToDataPartition: getReply failed, ctx(%v) addr(%v) reqPacket(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), sc.currAddr, reqPacket, err)
 		return
 	}
 	dp.RecordFollowerRead(reqPacket.SendT, sc.currAddr)
@@ -479,7 +477,7 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 	}
 
 	if err == nil && reply.ResultCode != proto.OpTryOtherAddr {
-		err = errors.New(fmt.Sprintf("OverWrite failed: sc(%v) resultCode(%v) reqPacket(%v)", sc, reply.GetResultMsg(), req))
+		err = fmt.Errorf("resultCode(%v)", reply.GetResultMsg())
 		return
 	}
 
@@ -488,7 +486,6 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 	for i := 0; i < StreamSendOverWriteMaxRetry; i++ {
 		hosts := sortByStatus(dp, sc.currAddr)
 		for _, addr := range hosts {
-			log.LogWarnf("OverWrite: try addr(%v) reqPacket(%v)", addr, req)
 			sc.currAddr = addr
 			err = dp.OverWriteToDataPartitionLeader(sc, req, reply)
 			if err == nil && reply.ResultCode == proto.OpOk {
@@ -496,46 +493,52 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 				return
 			}
 			if err == nil && reply.ResultCode != proto.OpTryOtherAddr {
-				err = errors.New(fmt.Sprintf("OverWrite failed: sc(%v) errMap(%v) resultCode(%v) reqPacket(%v)", sc, errMap, reply.GetResultMsg(), req))
+				err = fmt.Errorf("resultCode(%v)", reply.GetResultMsg())
 				return
 			}
 			if err == nil {
 				err = errors.New(reply.GetResultMsg())
 			}
 			errMap[addr] = err
-			log.LogWarnf("OverWrite: try addr(%v) failed! err(%v) reqPacket(%v) ", addr, err, req)
+			log.LogWarnf("OverWrite: addr(%v) failed, ctx(%v) reqPacket(%v) err(%v)", req.Ctx().Value(proto.ContextReq), addr, req, err)
 		}
 		if time.Since(startTime) > StreamSendOverWriteTimeout {
-			log.LogWarnf("OverWrite: retry timeout req(%v) time(%v)", req, time.Since(startTime))
+			log.LogWarnf("OverWrite: retry timeout, ctx(%v) req(%v) time(%v)", req.Ctx().Value(proto.ContextReq), req, time.Since(startTime))
 			break
 		}
-		log.LogWarnf("OverWrite: errMap(%v), reqPacket(%v), try the next round", errMap, req)
+		log.LogWarnf("OverWrite: hosts failed, ctx(%v) reqPacket(%v) err(%v)", req.Ctx().Value(proto.ContextReq), req, errMap)
 		//time.Sleep(StreamSendSleepInterval)
 	}
-
-	return errors.New(fmt.Sprintf("OverWrite failed: errMap(%v) sc(%v) reqPacket(%v)", errMap, sc, req))
+	err = fmt.Errorf("%v", errMap)
+	return
 }
 
 func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *common.Packet, reply *common.Packet) (err error) {
 	metric := exporter.NewModuleTPUs(req.GetOpMsg())
-	var conn *net.TCPConn
+	var (
+		conn   *net.TCPConn
+		errmsg string
+	)
 	defer func() {
 		StreamConnPool.PutConnectWithErr(conn, err)
 		metric.Set(err)
+		if err != nil {
+			log.LogWarnf("OverWriteToDataPartitionLeader: %v, ctx(%v) addr(%v) reqPacket(%v) err(%v)", errmsg, req.Ctx().Value(proto.ContextReq), sc.currAddr, req, err)
+		}
 	}()
 	if conn, err = sc.sendToDataPartition(req); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
-		log.LogWarnf("OverWriteToDataPartitionLeader: send to curr addr failed, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		errmsg = "send failed"
 		return
 	}
 	if err = reply.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
-		log.LogWarnf("OverWriteToDataPartitionLeader: getReply error and RETURN, addr(%v) reqPacket(%v) err(%v)", sc.currAddr, req, err)
+		errmsg = "getReply failed"
 		return
 	}
 	if !reply.IsValidWriteReply(req) || reply.CRC != req.CRC {
-		err = fmt.Errorf("mismatch packet")
-		log.LogWarnf("OverWriteToDataPartitionLeader: err(%v) req(%v) reply(%v)", err, req, reply)
+		errmsg = "mismatch packet"
+		err = fmt.Errorf("mismatch packet reply(%v)", reply)
 		return
 	}
 	dp.checkAddrNotExist(sc.currAddr, reply)

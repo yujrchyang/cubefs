@@ -24,7 +24,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/sdk/flash"
-	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/net/context"
@@ -73,8 +72,8 @@ type Streamer struct {
 	initLock   sync.RWMutex
 	initServer bool
 
-	readAheadBlocks  sync.Map // startFileOffset -> *ReadAheadBlock
-	readAheadLock	 sync.RWMutex
+	readAheadBlocks sync.Map // startFileOffset -> *ReadAheadBlock
+	readAheadLock   sync.RWMutex
 }
 
 // NewStreamer returns a new streamer.
@@ -155,7 +154,6 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 		cacheReadRequests []*flash.CacheReadRequest
 		fileSize          uint64
 	)
-	ctx = context.Background()
 
 	requests, fileSize = s.extents.PrepareRequests(offset, size, data)
 	for _, req := range requests {
@@ -175,7 +173,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 		requests = revisedRequests
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Stream read: ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", s.inode, offset, size, requests, fileSize)
+		log.LogDebugf("Stream read: ctx(%v) ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size, requests, fileSize)
 	}
 	if offset >= fileSize {
 		return 0, false, io.EOF
@@ -200,12 +198,12 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 				return read, hasHole, ioErr
 			}
 		}
-		log.LogWarnf("Stream read: readFromRemoteCache failed: ino(%v) offset(%v) size(%v), err(%v)", s.inode, offset, size, err)
+		log.LogWarnf("Stream readFromRemoteCache failed: ctx(%v) ino(%v) offset(%v) size(%v) err(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size, err)
 	}
 
 	var read int
 	if read, err = s.readFromDataNode(ctx, requests, offset, uint64(size)); err != nil {
-		log.LogWarnf("Stream read: readFromDataNode err, ino(%v), userExpectOffset(%v) userExpectSize(%v) requests(%v) err(%v)", s.inode, offset, size, requests, err)
+		log.LogWarnf("Stream readFromDataNode failed: ctx(%v) ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) err(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size, requests, err)
 	} else {
 		total += read
 		err = ioErr
@@ -316,7 +314,7 @@ func (s *Streamer) RefCount() int {
 	return s.refcnt
 }
 
-func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string, reqPacket *common.Packet) (targetHosts []string, isErr bool) {
+func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string) (targetHosts []string, isErr bool) {
 	isErr = false
 	appliedIDslice := make(map[string]uint64, len(hosts))
 	errSlice := make(map[string]error)
@@ -328,7 +326,7 @@ func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hos
 	for _, host := range hosts {
 		wg.Add(1)
 		go func(curAddr string) {
-			appliedID, err := dp.getDpAppliedID(ctx, pid, curAddr, reqPacket)
+			appliedID, err := dp.getDpAppliedID(ctx, pid, curAddr)
 			ok := false
 			lock.Lock()
 			if err != nil {
@@ -338,55 +336,62 @@ func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hos
 				ok = true
 			}
 			lock.Unlock()
-			log.LogDebugf("chooseMaxAppliedDp: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, pid)
+			log.LogDebugf("chooseMaxAppliedDp: get apply id(%v) ok(%v) from host(%v), pid(%v)", appliedID, ok, curAddr, pid)
 			wg.Done()
 		}(host)
 	}
 	wg.Wait()
 	if len(errSlice) >= (len(hosts)+1)/2 {
 		isErr = true
-		log.LogWarnf("chooseMaxAppliedDp err: reqPacket[%v] dp[%v], hosts[%v], appliedID[%v], errMap[%v]", reqPacket, pid, hosts, appliedIDslice, errSlice)
+		log.LogWarnf("chooseMaxAppliedDp err: ctx(%v) dp(%v), hosts(%v), appliedID(%v), errMap(%v)", ctx.Value(proto.ContextReq), pid, hosts, appliedIDslice, errSlice)
 		return
 	}
 	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice)
-	log.LogDebugf("chooseMaxAppliedDp: get max apply id[%v] from hosts[%v], pid[%v], reqPacket[%v]", maxAppliedID, targetHosts, pid, reqPacket)
+	log.LogDebugf("chooseMaxAppliedDp: get max apply id(%v) from hosts(%v), ctx(%v) pid(%v)", maxAppliedID, targetHosts, ctx.Value(proto.ContextReq), pid)
 	return
 }
 
-func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr string, orgPacket *common.Packet) (appliedID uint64, err error) {
-	var conn *net.TCPConn
+func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr string) (appliedID uint64, err error) {
+	var (
+		conn   *net.TCPConn
+		errmsg string
+	)
+	defer func() {
+		if err != nil {
+			log.LogWarnf("getDpAppliedID: %v, ctx(%v) pid(%v) addr(%v) err(%v)", errmsg, ctx.Value(proto.ContextReq), pid, addr, err)
+		}
+	}()
 	if conn, err = StreamConnPool.GetConnect(addr); err != nil {
-		log.LogWarnf("getDpAppliedID: failed to create connection, orgPacket(%v) pid(%v) dpHost(%v) err(%v)", orgPacket, pid, addr, err)
+		errmsg = "failed to create connection"
 		return
 	}
-
 	defer func() {
 		StreamConnPool.PutConnectWithErr(conn, err)
 	}()
 
 	reqPacket := common.NewPacketToGetDpAppliedID(ctx, pid)
 	if err = reqPacket.WriteToConnNs(conn, dp.ClientWrapper.connConfig.WriteTimeoutNs); err != nil {
-		log.LogWarnf("getDpAppliedID: failed to WriteToConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", reqPacket, addr, orgPacket, err)
+		errmsg = "failed to WriteToConn"
 		return
 	}
 	replyPacket := new(common.Packet)
 	if err = replyPacket.ReadFromConnNs(conn, dp.ClientWrapper.connConfig.ReadTimeoutNs); err != nil {
-		log.LogWarnf("getDpAppliedID: failed to ReadFromConn, packet(%v) dpHost(%v) orgPacket(%v) err(%v)", reqPacket, addr, orgPacket, err)
+		errmsg = "failed to ReadFromConn"
 		return
 	}
 	if replyPacket.ReqID != reqPacket.ReqID {
-		err = fmt.Errorf("mismatch packet")
-		log.LogWarnf("getDpAppliedID: err(%v) req(%v) reply(%v) dpHost(%v) orgPacket(%v)", err, reqPacket, replyPacket, addr, orgPacket)
+		errmsg = "mismatch packet"
+		err = fmt.Errorf("mismatch packet reqPacket(%v) replyPacket(%v)", reqPacket, replyPacket)
 		return
 	}
 	if replyPacket.ResultCode != proto.OpOk {
-		log.LogWarnf("getDpAppliedID: packet(%v) result code isn't ok(%v) from host(%v) orgPacket(%v)", reqPacket, replyPacket.ResultCode, addr, orgPacket)
-		err = errors.NewErrorf("getDpAppliedID error: addr(%v) resultCode(%v) is not ok", addr, replyPacket.ResultCode)
+		errmsg = "resultCode is not ok"
+		err = fmt.Errorf("resultCode of replyPacket(%v) is not ok", replyPacket)
 		return
 	}
 
 	appliedID = binary.BigEndian.Uint64(replyPacket.Data)
-	return appliedID, nil
+	return
 }
 
 func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string, maxID uint64) {

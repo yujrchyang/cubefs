@@ -1130,13 +1130,14 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		ino   uint64
 		err   error
 		start time.Time
+		ctx   context.Context = context.WithValue(context.Background(), proto.ContextReq, proto.GenerateRequestID())
 	)
 	defer func() {
 		r := recover()
 		if r == nil && re >= 0 && !log.IsDebugEnabled() {
 			return
 		}
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, fd, path, ino, re, err)
+		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), fd, path, ino, re, err)
 		if r != nil || re < 0 {
 			var stack string
 			if r != nil {
@@ -1185,7 +1186,7 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		tpObject2.Set(nil)
 	}()
 
-	if err = c.flush(nil, f.ino); err != nil {
+	if err = c.flush(ctx, f.ino); err != nil {
 		return statusEIO
 	}
 	return statusOK
@@ -3114,13 +3115,14 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		err    error
 		offset uint64
 		start  time.Time
+		ctx    context.Context = context.WithValue(context.Background(), proto.ContextReq, proto.GenerateRequestID())
 	)
 	defer func() {
 		r := recover()
 		if r == nil && re >= 0 && !log.IsDebugEnabled() {
 			return
 		}
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, re, err)
+		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), fd, path, ino, size, offset, re, err)
 		if r != nil || re < 0 {
 			var stack string
 			if r != nil {
@@ -3178,14 +3180,14 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 	if off < 0 {
 		offset = f.pos
 	}
-	n, hasHole, err := c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
+	n, hasHole, err := c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
 	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
 	}
 	if n < int(size) || hasHole {
-		c.flush(nil, f.ino)
+		c.flush(ctx, f.ino)
 		c.ec.RefreshExtentsCache(nil, f.ino)
-		n, _, err = c.ec.Read(nil, f.ino, buffer, offset, len(buffer))
+		n, _, err = c.ec.Read(ctx, f.ino, buffer, offset, len(buffer))
 	}
 	if err != nil && err != io.EOF {
 		return C.ssize_t(statusEIO)
@@ -3260,6 +3262,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		offset  uint64
 		flagBuf bytes.Buffer
 		start   time.Time
+		ctx     context.Context = context.WithValue(context.Background(), proto.ContextReq, proto.GenerateRequestID())
 	)
 	defer func() {
 		var fileSize uint64 = 0
@@ -3270,7 +3273,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		if r == nil && re == C.ssize_t(size) && !log.IsDebugEnabled() {
 			return
 		}
-		msg := fmt.Sprintf("id(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
+		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
 		if r != nil || re < 0 {
 			var stack string
 			if r != nil {
@@ -3353,13 +3356,13 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		offset = f.pos
 	}
 
-	n, isROW, err := c.ec.Write(nil, f.ino, offset, buffer, false)
+	n, isROW, err := c.ec.Write(ctx, f.ino, offset, buffer, false)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
 
 	if flush {
-		if err = c.flush(nil, f.ino); err != nil {
+		if err = c.flush(ctx, f.ino); err != nil {
 			return C.ssize_t(statusEIO)
 		}
 	}
@@ -3393,13 +3396,14 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 		err    error
 		offset uint64
 		start  time.Time
+		ctx    context.Context = context.WithValue(context.Background(), proto.ContextReq, proto.GenerateRequestID())
 	)
 	defer func() {
 		r := recover()
 		if r == nil && re == C.ssize_t(size) && !log.IsDebugEnabled() {
 			return
 		}
-		msg := fmt.Sprintf("id(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, ino, size, offset, re, err)
+		msg := fmt.Sprintf("id(%v) ctx(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), ino, size, offset, re, err)
 		if r != nil || re < 0 {
 			var stack string
 			if r != nil {
@@ -3446,7 +3450,7 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 
 	// off >= 0 stands for pwrite
 	offset = uint64(off)
-	n, isROW, err := c.ec.Write(nil, uint64(ino), offset, buffer, false)
+	n, isROW, err := c.ec.Write(ctx, uint64(ino), offset, buffer, false)
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -3455,7 +3459,7 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 		c.broadcastAllReadProcess(uint64(ino))
 	}
 
-	info := c.inodeCache.Get(nil, uint64(ino))
+	info := c.inodeCache.Get(ctx, uint64(ino))
 	if info != nil && info.Size < (uint64(off)+uint64(n)) {
 		info.Size = uint64(off) + uint64(n)
 		c.inodeCache.Put(info)
