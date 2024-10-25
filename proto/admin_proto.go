@@ -1763,3 +1763,9 @@ const (
 	JsonType     = "application/json"
 	ProtobufType = "application/x-protobuf"
 )
+
+type ContextKey int
+
+const (
+	ContextReq ContextKey = iota
+)

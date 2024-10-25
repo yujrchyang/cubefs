@@ -129,7 +129,7 @@ func (f *Node) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("TRACE Open: ino(%v) req(%v) resp(%v) (%v)", ino, req, resp, time.Since(start))
+		log.LogDebugf("TRACE Open: ctx(%v) ino(%v) req(%v) resp(%v) (%v)", ctx.Value(proto.ContextReq), ino, req, resp, time.Since(start))
 	}
 	return f, nil
 }
@@ -146,7 +146,7 @@ func (f *Node) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 	ino := f.inode
 	if log.IsDebugEnabled() {
-		log.LogDebugf("TRACE Release enter: ino(%v) req(%v)", ino, req)
+		log.LogDebugf("TRACE Release enter: ctx(%v) ino(%v) req(%v)", ctx.Value(proto.ContextReq), ino, req)
 	}
 
 	start := time.Now()
@@ -155,7 +155,7 @@ func (f *Node) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 
 	err = Sup.ec.CloseStream(ctx, ino)
 	if err != nil {
-		log.LogErrorf("Release: close writer failed, ino(%v) req(%v) err(%v)", ino, req, err)
+		log.LogErrorf("Release: close writer failed, ctx(%v), ino(%v) req(%v) err(%v)", ctx.Value(proto.ContextReq), ino, req, err)
 		return fuse.EIO
 	}
 
@@ -164,7 +164,7 @@ func (f *Node) Release(ctx context.Context, req *fuse.ReleaseRequest) (err error
 	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("TRACE Release: ino(%v) req(%v) (%v)", ino, req, time.Since(start))
+		log.LogDebugf("TRACE Release: ctx(%v) ino(%v) req(%v) (%v)", ctx.Value(proto.ContextReq), ino, req, time.Since(start))
 	}
 	return nil
 }
@@ -188,14 +188,14 @@ func (f *Node) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("TRACE Read enter: ino(%v) offset(%v) reqsize(%v) req(%v)", f.inode, req.Offset, req.Size, req)
+		log.LogDebugf("TRACE Read enter: ctx(%v) ino(%v) offset(%v) reqsize(%v) req(%v)", ctx.Value(proto.ContextReq), f.inode, req.Offset, req.Size, req)
 	}
 
 	start := time.Now()
 
 	size, _, err := Sup.ec.Read(ctx, f.inode, resp.Data[fuse.OutHeaderSize:(fuse.OutHeaderSize+req.Size)], uint64(req.Offset), req.Size)
 	if err != nil && err != io.EOF {
-		msg := fmt.Sprintf("Read: ino(%v) req(%v) err(%v) size(%v)", f.inode, req, err, size)
+		msg := fmt.Sprintf("Read: ctx(%v) ino(%v) req(%v) err(%v) size(%v)", ctx.Value(proto.ContextReq), f.inode, req, err, size)
 		Sup.handleErrorWithGetInode("Read", msg, f.inode)
 		return fuse.EIO
 	}
@@ -210,11 +210,11 @@ func (f *Node) Read(ctx context.Context, req *fuse.ReadRequest, resp *fuse.ReadR
 		resp.ActualSize = uint64(size + fuse.OutHeaderSize)
 	} else if size <= 0 {
 		resp.ActualSize = uint64(fuse.OutHeaderSize)
-		log.LogWarnf("Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", f.inode, req.Offset, req.Size, req, size)
+		log.LogWarnf("Read: ctx(%v) ino(%v) offset(%v) reqsize(%v) req(%v) size(%v)", ctx.Value(proto.ContextReq), f.inode, req.Offset, req.Size, req, size)
 	}
 
 	if log.IsDebugEnabled() {
-		log.LogDebugf("TRACE Read: ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)", f.inode, req.Offset, req.Size, req, size, time.Since(start))
+		log.LogDebugf("TRACE Read: ctx(%v) ino(%v) offset(%v) reqsize(%v) req(%v) size(%v) (%v)", ctx.Value(proto.ContextReq), f.inode, req.Offset, req.Size, req, size, time.Since(start))
 	}
 	return nil
 }
@@ -247,7 +247,7 @@ func (f *Node) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	reqlen := len(req.Data)
 	filesize, _ = f.fileSize(ctx, ino)
 
-	log.LogDebugf("TRACE Write enter: ino(%v) offset(%v) len(%v) filesize(%v) flags(%v) fileflags(%v) req(%v)", ino, req.Offset, reqlen, filesize, req.Flags, req.FileFlags, req)
+	log.LogDebugf("TRACE Write enter: ctx(%v) ino(%v) offset(%v) len(%v) filesize(%v) flags(%v) fileflags(%v) req(%v)", ctx.Value(proto.ContextReq), ino, req.Offset, reqlen, filesize, req.Flags, req.FileFlags, req)
 
 	if !proto.IsDbBack && req.Offset > int64(filesize) && reqlen == 1 && req.Data[0] == 0 {
 		// workaround: posix_fallocate would write 1 byte if fallocate is not supported.
@@ -273,26 +273,26 @@ func (f *Node) Write(ctx context.Context, req *fuse.WriteRequest, resp *fuse.Wri
 	}
 	size, _, err := Sup.ec.Write(ctx, ino, offset, req.Data, enSyncWrite)
 	if err != nil {
-		msg := fmt.Sprintf("Write: ino(%v) offset(%v) len(%v) err(%v)", ino, req.Offset, reqlen, err)
+		msg := fmt.Sprintf("Write: ctx(%v) ino(%v) offset(%v) len(%v) err(%v)", ctx.Value(proto.ContextReq), ino, req.Offset, reqlen, err)
 		Sup.handleErrorWithGetInode("Write", msg, ino)
 		return fuse.EIO
 	}
 
 	resp.Size = size
 	if size != reqlen {
-		log.LogErrorf("Write: ino(%v) offset(%v) len(%v) size(%v)", ino, req.Offset, reqlen, size)
+		log.LogErrorf("Write: ctx(%v) ino(%v) offset(%v) len(%v) size(%v)", ctx.Value(proto.ContextReq), ino, req.Offset, reqlen, size)
 	}
 
 	if waitForFlush {
 		if err = Sup.ec.Flush(ctx, ino); err != nil {
-			msg := fmt.Sprintf("Write: failed to wait for flush, ino(%v) offset(%v) len(%v) err(%v) req(%v)", ino, req.Offset, reqlen, err, req)
+			msg := fmt.Sprintf("Write: flush failed, ctx(%v) ino(%v) offset(%v) len(%v) err(%v) req(%v)", ctx.Value(proto.ContextReq), ino, req.Offset, reqlen, err, req)
 			Sup.handleErrorWithGetInode("Wrtie", msg, ino)
 			return fuse.EIO
 		}
 	}
 
-	log.LogDebugf("TRACE Write: ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v)",
-		ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, time.Since(start))
+	log.LogDebugf("TRACE Write: ctx(%v) ino(%v) offset(%v) len(%v) flags(%v) fileflags(%v) req(%v) (%v)",
+		ctx.Value(proto.ContextReq), ino, req.Offset, reqlen, req.Flags, req.FileFlags, req, time.Since(start))
 	return nil
 }
 
@@ -336,7 +336,7 @@ func (f *Node) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 		tpObject1.Set(err)
 	}()
 
-	log.LogDebugf("TRACE Fsync enter: ino(%v)", f.inode)
+	log.LogDebugf("TRACE Fsync enter: ctx(%v) ino(%v)", ctx.Value(proto.ContextReq), f.inode)
 	start := time.Now()
 
 	err = Sup.ec.Flush(ctx, f.inode)
@@ -346,7 +346,7 @@ func (f *Node) Fsync(ctx context.Context, req *fuse.FsyncRequest) (err error) {
 		return fuse.EIO
 	}
 
-	log.LogDebugf("TRACE Fsync: ino(%v) (%v)", f.inode, time.Since(start))
+	log.LogDebugf("TRACE Fsync: ctx(%v) ino(%v) (%v)", ctx.Value(proto.ContextReq), f.inode, time.Since(start))
 	return nil
 }
 

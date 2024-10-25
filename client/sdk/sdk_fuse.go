@@ -89,8 +89,8 @@ const (
 	ControlClearCache = "/clearCache"
 	ControlGetConf    = "/conf/get"
 
-	ControlReadAheadSet	= "/readAhead/set"
-	ControlReadAheadGet	= "/readAhead/get"
+	ControlReadAheadSet = "/readAhead/set"
+	ControlReadAheadGet = "/readAhead/get"
 
 	Role = "Client"
 )
@@ -302,7 +302,14 @@ func StartClient(configFile string, fuseFd *os.File, clientStateBytes []byte) (e
 		if !first_start {
 			fuseState = clientState.FuseState
 		}
-		gClient.fuseServer = fs.New(fsConn, &fs.Config{Debug: log.LogDebugSingle, NotCacheNode: cfs.Sup.NotCacheNode()})
+		config := &fs.Config{
+			Debug: log.LogDebugSingle,
+			WithContext: func(ctx context.Context, req fuse.Request) context.Context {
+				return context.WithValue(ctx, proto.ContextReq, proto.GenerateRequestID())
+			},
+			NotCacheNode: cfs.Sup.NotCacheNode(),
+		}
+		gClient.fuseServer = fs.New(fsConn, config)
 		if fuseState, err = gClient.fuseServer.Serve(gClient.super, fuseState); err != nil {
 			log.LogFlush()
 			syslog.Printf("fs Serve returns err(%v)", err)

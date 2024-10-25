@@ -15,7 +15,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/net/context"
 )
 
 type HTTPReply struct {
@@ -335,7 +334,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 	sysStat := fInfo.Sys().(*syscall.Stat_t)
 	streamMap := ec.streamerConcurrentMap.GetMapSegment(sysStat.Ino)
 	streamer := NewStreamer(ec, sysStat.Ino, streamMap, false)
-	if _, _, eks, err := mw.GetExtents(context.Background(), sysStat.Ino); err != nil {
+	if _, _, eks, err := mw.GetExtents(ctx, sysStat.Ino); err != nil {
 		t.Fatalf("GetExtents filed: err(%v) inode(%v)", err, sysStat.Ino)
 	} else {
 		for _, ek = range eks {
@@ -355,7 +354,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 	}
 	data := make([]byte, size)
 	req := NewExtentRequest(fileOffset, size, data, 0, uint64(size), &ek)
-	reqPacket := common.NewReadPacket(context.Background(), &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, true)
+	reqPacket := common.NewReadPacket(ctx, &ek, int(ek.ExtentOffset), req.Size, streamer.inode, req.FileOffset, true)
 	// read from three replicas, check if same
 	readMap := make(map[string]string)
 	for _, addr := range host {
@@ -383,7 +382,6 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 	ec.OpenStream(info.Inode, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
-	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length)
 	_, _, err = streamer.write(ctx, data, 0, length, false)
@@ -420,7 +418,6 @@ func TestHandler_Recover(t *testing.T) {
 	ec.OpenStream(info.Inode, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
-	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
 	_, _, err = streamer.write(ctx, data, 0, length, false)
@@ -460,7 +457,6 @@ func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
 	ec.OpenStream(info.Inode, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
-	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length)
 	_, _, err = streamer.write(ctx, data, 0, length, false)
@@ -487,7 +483,6 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 	ec.OpenStream(info.Inode, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
-	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
 	_, _, err = streamer.write(ctx, data, 0, length*2, false)
@@ -514,7 +509,6 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	ec.OpenStream(info.Inode, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
-	ctx := context.Background()
 	length := 1024
 	data := make([]byte, length*2)
 	_, _, err = streamer.write(ctx, data, 0, length*2, false)
@@ -545,26 +539,26 @@ func TestStreamer_InitServer(t *testing.T) {
 		readSize, writeSize int
 		hasHole             bool
 	)
-	writeSize, _, err = ec.Write(context.Background(), inodeID, 0, []byte("11111"), false)
+	writeSize, _, err = ec.Write(ctx, inodeID, 0, []byte("11111"), false)
 	assert.Equal(t, nil, err, "write streamer")
 	assert.NotEqual(t, 0, writeSize, "write size")
-	err = ec.Flush(context.Background(), inodeID)
+	err = ec.Flush(ctx, inodeID)
 	assert.Equal(t, nil, err, "flush streamer")
-	readSize, hasHole, err = ec.Read(context.Background(), inodeID, make([]byte, writeSize), 0, writeSize)
+	readSize, hasHole, err = ec.Read(ctx, inodeID, make([]byte, writeSize), 0, writeSize)
 	assert.Equal(t, nil, err, "read streamer")
 	assert.Equal(t, writeSize, readSize, "read file size")
 	assert.Equal(t, false, hasHole, "hole of file")
 
 	err = ec.OpenStream(inodeID, false)
 	assert.Equal(t, nil, err, "open streamer again")
-	err = ec.Truncate(context.Background(), inodeID, uint64(writeSize), 0)
+	err = ec.Truncate(ctx, inodeID, uint64(writeSize), 0)
 	assert.Equal(t, nil, err, "truncate streamer")
 
-	err = ec.CloseStream(context.Background(), inodeID)
+	err = ec.CloseStream(ctx, inodeID)
 	assert.Equal(t, nil, err, "close streamer")
-	err = ec.CloseStream(context.Background(), inodeID)
+	err = ec.CloseStream(ctx, inodeID)
 	assert.Equal(t, nil, err, "close streamer again")
-	err = ec.EvictStream(context.Background(), inodeID)
+	err = ec.EvictStream(ctx, inodeID)
 	assert.Equal(t, nil, err, "evict streamer")
 }
 
@@ -589,18 +583,18 @@ func TestStreamer_NotInitServer(t *testing.T) {
 		readSize int
 		hasHole  bool
 	)
-	readSize, hasHole, err = ec.Read(context.Background(), inodeID, make([]byte, fileSize), 0, int(fileSize))
+	readSize, hasHole, err = ec.Read(ctx, inodeID, make([]byte, fileSize), 0, int(fileSize))
 	assert.Equal(t, nil, err, "read streamer")
 	assert.Equal(t, int(fileSize), readSize, "read file size")
 	assert.Equal(t, false, hasHole, "hole of file")
 
-	err = ec.CloseStream(context.Background(), inodeID)
+	err = ec.CloseStream(ctx, inodeID)
 	assert.Equal(t, nil, err, "close streamer")
-	err = ec.EvictStream(context.Background(), inodeID)
+	err = ec.EvictStream(ctx, inodeID)
 	assert.NotEqual(t, nil, err, "evict streamer whose reference is not 0")
 
-	err = ec.MustCloseStream(context.Background(), inodeID)
+	err = ec.MustCloseStream(ctx, inodeID)
 	assert.Equal(t, nil, err, "must close streamer")
-	err = ec.EvictStream(context.Background(), inodeID)
+	err = ec.EvictStream(ctx, inodeID)
 	assert.Equal(t, nil, err, "evict not existed streamer")
 }
