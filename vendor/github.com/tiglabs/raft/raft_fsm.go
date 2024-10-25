@@ -179,7 +179,7 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 	isRecorder := false
 	for _, p := range raftConfig.Peers {
 		r.replicas[p.ID] = newReplica(p, 0)
-		if p.ID == config.NodeID && p.Type == proto.PeerRecorder {
+		if p.ID == config.NodeID && p.IsRecorder() {
 			isRecorder = true
 		}
 	}
@@ -207,8 +207,8 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 		}
 	}
 
-	logger.Info("newRaftFsm[%v] init with [commit: %d, applied: %d, firstindex: %d, lastindex: %d, consistencyMode: %v, startCommit: %d]",
-		r.id, raftlog.committed, raftConfig.Applied, raftlog.firstIndex(), raftlog.lastIndex(), r.consistencyMode, r.startCommit)
+	logger.Info("newRaftFsm[%v] isRecorder[%v] init with [commit: %d, applied: %d, firstindex: %d, lastindex: %d, consistencyMode: %v, startCommit: %d]",
+		r.id, isRecorder, raftlog.committed, raftConfig.Applied, raftlog.firstIndex(), raftlog.lastIndex(), r.consistencyMode, r.startCommit)
 
 	if raftConfig.Applied > 0 {
 		lasti := raftlog.lastIndex()
@@ -230,7 +230,7 @@ func newRaftFsm(config *Config, raftConfig *RaftConfig) (*raftFsm, error) {
 	if err := r.recoverCommit(); err != nil {
 		return nil, err
 	}
-	if raftConfig.Leader == config.NodeID {
+	if raftConfig.Leader == config.NodeID && !isRecorder {
 		if raftConfig.Term != 0 && r.term <= raftConfig.Term && !r.replicas[config.NodeID].isLearner {
 			r.term = raftConfig.Term
 			r.state = stateLeader
@@ -320,7 +320,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 		lead := m.From
 		if m.Type == proto.ReqMsgVote {
 			lead = NoLeader
-			inLease := r.config.LeaseCheck && r.state == stateFollower && r.leader != NoLeader
+			inLease := r.config.LeaseCheck && (r.state == stateFollower || r.state == stateRecorder) && r.leader != NoLeader
 			if r.leader != m.From && inLease && !m.ForceVote {
 				if logger.IsEnableWarn() {
 					logger.Warn("raft[%v] [logterm: %d, index: %d, vote: %v] ignored vote from %v [logterm: %d, index: %d] at term %d: lease is not expired.",
@@ -693,7 +693,7 @@ func (r *raftFsm) handleGetApplyIndex(m *proto.Message) {
 	//nmsg.Index = firstIndex - 1
 	r.send(nmsg)
 	if logger.IsEnableDebug() {
-		logger.Debug("ID[%v] raft[%v] send applied index[%v] to ID[%v]", r.config.NodeID, r.id, nmsg.Index, nmsg.To)
+		//logger.Debug("ID[%v] raft[%v] send applied index[%v] to ID[%v]", r.config.NodeID, r.id, nmsg.Index, nmsg.To)
 	}
 	proto.ReturnMessage(m)
 }

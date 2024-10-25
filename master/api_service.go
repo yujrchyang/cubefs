@@ -806,15 +806,18 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) addMetaRecorder(w http.ResponseWriter, r *http.Request) {
 	var (
-		msg         string
-		addr        string
-		mp          *MetaPartition
-		partitionID uint64
-		err         error
+		msg         			string
+		addr        			string
+		autoAddr				bool
+		mp          			*MetaPartition
+		partitionID 			uint64
+		volRecorderNum			int
+		increaseMPRecorderNum	bool
+		err         			error
 	)
 	metrics := exporter.NewModuleTP(proto.AdminAddMetaRecorderUmpKey)
 	defer func() { metrics.Set(err) }()
-	if partitionID, addr, err = parseRequestToAddMetaRecorder(r); err != nil {
+	if partitionID, addr, autoAddr, err = parseRequestToAddMetaRecorder(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -822,11 +825,25 @@ func (m *Server) addMetaRecorder(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
+	if autoAddr {
+		addr, volRecorderNum, err = m.cluster.chooseTargetMetaNodeForAddRecorder(mp)
+		if err != nil {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("mp[%v] add recorder failed: %v", mp.PartitionID, err)))
+			return
+		}
+		increaseMPRecorderNum = true
+	}
 
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
 
-	if err = m.cluster.addMetaRecorder(mp, addr); err != nil {
+	if autoAddr {
+		if err = mp.canAddRecorder(volRecorderNum); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(fmt.Errorf("mp[%v] can not add recorder: %v", mp.PartitionID, err)))
+			return
+		}
+	}
+	if err = m.cluster.addMetaRecorder(mp, addr, uint8(volRecorderNum), increaseMPRecorderNum); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -1778,6 +1795,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		capacity             int
 		replicaNum           int
 		mpReplicaNum         int
+		mpRecorderNum		 int
 		followerRead         bool
 		nearRead             bool
 		forceROW             bool
@@ -1852,7 +1870,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 		return
 	}
-	if zoneName, capacity, storeMode, description, mpLayout, extentCacheExpireSec, umpCollectWay, umpKeyPrefix, readAheadMemMB, readAheadWindowMB, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
+	if zoneName, capacity, storeMode, description, mpLayout, extentCacheExpireSec, umpCollectWay, umpKeyPrefix, readAheadMemMB, readAheadWindowMB, mpRecorderNum, err = parseDefaultInfoToUpdateVol(r, vol); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -1861,6 +1879,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 	}
 	if mpReplicaNum == 0 {
 		mpReplicaNum = int(vol.mpReplicaNum)
+	}
+	if !(mpRecorderNum == 0 || (mpRecorderNum == 2 && mpReplicaNum == 3)) {
+		err = fmt.Errorf("for mpRecorderNum larger than 0, can only create mode of (3 replica + 2 recorder), received recorderNum is[%v], replicaNum is[%v]", mpRecorderNum, mpReplicaNum)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
 	}
 	if followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, enableWriteCache,
 		enableBitMapAllocator, enableRemoveDupReq, notCacheNode, flock, err = parseBoolFieldToUpdateVol(r, vol); err != nil {
@@ -1987,7 +2010,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum),
+	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum), uint8(mpRecorderNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
@@ -2117,7 +2140,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !(mpRecorderNum == 0 || (mpRecorderNum == 2 && mpReplicaNum == 3)) {
-		err = fmt.Errorf("mp recorderNum can only be 0 or 2, received mp recorderNum is[%v], replicaNum is[%v]", mpRecorderNum, mpReplicaNum)
+		err = fmt.Errorf("for mpRecorderNum larger than 0, can only create mode of (3 replica + 2 recorder), received recorderNum is[%v], replicaNum is[%v]", mpRecorderNum, mpReplicaNum)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -3655,7 +3678,7 @@ func parseRequestToSetVolConvertSt(r *http.Request) (name, authKey string, newSt
 
 func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, capacity, storeMode int, description string,
 	layout proto.MetaPartitionLayout, extentCacheExpireSec int64, umpCollectWay exporter.UMPCollectMethod, umpKeyPrefix string,
-	readAheadMemMB, readAheadWindowMB int64, err error) {
+	readAheadMemMB, readAheadWindowMB int64, mpRecorderNum int, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3722,6 +3745,9 @@ func parseDefaultInfoToUpdateVol(r *http.Request, vol *Vol) (zoneName string, ca
 		return
 	}
 	if readAheadWindowMB, err = extractReadAheadWindowMB(r, vol.ReadAheadWindowMB); err != nil {
+		return
+	}
+	if mpRecorderNum, err = extractMPRecorderNum(r, int(vol.mpRecorderNum)); err != nil {
 		return
 	}
 	return
@@ -4317,10 +4343,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		return
 	}
 
-	if mpRecorderStr := r.FormValue(mpRecorderNumKey); mpRecorderStr == "" {
-		mpRecorderNum = defaultRecorderNum
-	} else if mpRecorderNum, err = strconv.Atoi(mpRecorderStr); err != nil {
-		err = unmatchedKey(mpRecorderNumKey)
+	if mpRecorderNum, err = extractMPRecorderNum(r, defaultRecorderNum); err != nil {
 		return
 	}
 
@@ -4525,6 +4548,16 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		if err != nil {
 			return
 		}
+	}
+	return
+}
+
+func extractMPRecorderNum(r *http.Request, defaultValue int) (mpRecorderNum int, err error) {
+	if mpRecorderStr := r.FormValue(mpRecorderNumKey); mpRecorderStr == "" {
+		mpRecorderNum = defaultValue
+	} else if mpRecorderNum, err = strconv.Atoi(mpRecorderStr); err != nil {
+		err = unmatchedKey(mpRecorderNumKey)
+		return
 	}
 	return
 }
@@ -4877,14 +4910,31 @@ func parseRequestToPromoteDataReplicaLearner(r *http.Request) (ID uint64, addr s
 	return extractDataPartitionIDAndAddr(r)
 }
 
-func parseRequestToAddMetaRecorder(r *http.Request) (ID uint64, addr string, err error) {
+func parseRequestToAddMetaRecorder(r *http.Request) (ID uint64, addr string, autoAddr bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	if ID, err = extractMetaPartitionID(r); err != nil {
 		return
 	}
-	if addr, err = extractNodeAddr(r); err != nil {
+	addr, _ = extractNodeAddr(r)
+	if autoAddr, err = extractAutoAddr(r); err != nil {
+		return
+	}
+	if !autoAddr && addr == "" {
+		err = fmt.Errorf("missing 'addr' for autoAddr(%v)", autoAddr)
+		return
+	}
+	return
+}
+
+func extractAutoAddr(r *http.Request) (autoAddr bool, err error) {
+	var value string
+	if value = r.FormValue(autoAddrKey); value == "" {
+		autoAddr = false
+		return
+	}
+	if autoAddr, err = strconv.ParseBool(value); err != nil {
 		return
 	}
 	return

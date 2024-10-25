@@ -55,15 +55,15 @@ func (mr *MetaRecorder) updateMetric(mgr *proto.MetaRecorderReport) {
 	mr.ReportTime = time.Now().Unix()
 }
 
-func (mr *MetaRecorder) isActive() (active bool) {
+func (mr *MetaRecorder) isActive(partitionID uint64) (active bool) {
 	active = mr.metaNode.IsActive && time.Now().Unix()-mr.ReportTime < defaultMetaPartitionTimeOutSec
 	if time.Now().Unix()-mr.createTime > defaultMetaReplicaCheckStatusSec {
 		active = active && mr.Status != proto.Unavailable
 	}
 
 	if !active {
-		log.LogInfof("metaNode.IsActive:%v mr.Status:%v diffReportTime:%v",
-			mr.metaNode.IsActive, mr.Status, time.Now().Unix()-mr.ReportTime)
+		log.LogInfof("mp[%v] metaNode.IsActive:%v mr.Status:%v diffReportTime:%v",
+			partitionID, mr.metaNode.IsActive, mr.Status, time.Now().Unix()-mr.ReportTime)
 	}
 
 	return

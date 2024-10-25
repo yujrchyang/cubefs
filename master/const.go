@@ -46,6 +46,7 @@ const (
 	replicaNumKey                       = "replicaNum"
 	mpReplicaNumKey                     = "mpReplicaNum"
 	mpRecorderNumKey                    = "mpRecorderNum"
+	autoAddrKey                    		= "autoAddr"
 	dpHostDelayIntervalKey              = "hostDelayInterval"
 	dpFollReadHostWeightKey             = "follReadHostWeight"
 	followerReadKey                     = "followerRead"

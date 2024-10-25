@@ -515,13 +515,18 @@ func (mp *metaPartition) GetRecoverNodeVersion(nodeID uint64) (metaNodeVersion *
 }
 
 // Snapshot returns the snapshot of the current meta partition.
-func (mp *metaPartition) Snapshot(recoverNode uint64) (snap raftproto.Snapshot, err error) {
+func (mp *metaPartition) Snapshot(recoverNode uint64, isRecorder bool) (snap raftproto.Snapshot, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("mp(%v) gen snapshot failed:%v", mp.config.PartitionId, err)
 			log.LogFlush()
 		}
 	}()
+	if isRecorder && mp.IsRecorder(recoverNode) {
+		snapIndex := mp.GetTruncateIndex()
+		log.LogInfof("Snapshot: mp[%v] get recover recorder node[%v], snapshotIndex[%v]", mp.config.PartitionId, recoverNode, snapIndex)
+		return newRecorderItemIterator(snapIndex)
+	}
 	var (
 		version *MetaNodeVersion
 		snapV   SnapshotVersion

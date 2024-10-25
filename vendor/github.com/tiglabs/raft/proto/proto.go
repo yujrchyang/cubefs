@@ -46,10 +46,10 @@ const (
 	LeaseMsgTimeout
 	ReqCheckQuorum
 	RespCheckQuorum
-	ReqCompleteEntry
-	RespCompleteEntry
-	ReqMsgGetApplyIndex
-	RespMsgGetApplyIndex
+	ReqCompleteEntry		// candidate -> recorder
+	RespCompleteEntry		// recorder -> candidate
+	ReqMsgGetApplyIndex		// recorder -> peers
+	RespMsgGetApplyIndex	// peers -> recorder
 )
 
 const (
@@ -103,6 +103,10 @@ type Peer struct {
 	Priority uint16
 	ID       uint64 // NodeID
 	PeerID   uint64 // Replica ID, unique over all raft groups and all replicas in the same group
+}
+
+func (p *Peer) IsRecorder() bool {
+	return p.Type == PeerRecorder
 }
 
 type Learner struct {
@@ -371,7 +375,8 @@ func (cc *ConfChange) String() string {
 
 func (m *Message) IsResponseMsg() bool {
 	return m.Type == RespMsgAppend || m.Type == RespMsgHeartBeat || m.Type == RespMsgVote ||
-		m.Type == RespMsgElectAck || m.Type == RespMsgSnapShot || m.Type == RespCheckQuorum
+		m.Type == RespMsgElectAck || m.Type == RespMsgSnapShot || m.Type == RespCheckQuorum ||
+		m.Type == RespCompleteEntry || m.Type == RespMsgGetApplyIndex
 }
 
 func (m *Message) IsElectionMsg() bool {

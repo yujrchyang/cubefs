@@ -2865,7 +2865,7 @@ errHandler:
 	return
 }
 
-func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum uint8,
+func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacity uint64, replicaNum, mpReplicaNum, mpRecorderNum uint8,
 	followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache bool,
 	dpSelectorName, dpSelectorParm string,
 	ossBucketPolicy proto.BucketAccessPolicy, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
@@ -2994,6 +2994,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.mpReplicaNum = mpReplicaNum
 		vol.MPConvertMode = proto.DefaultConvertMode
 	}
+	vol.mpRecorderNum = mpRecorderNum
 
 	if remainingDays > maxTrashRemainingDays {
 		remainingDays = maxTrashRemainingDays
@@ -3394,7 +3395,7 @@ func (c *Cluster) chooseTargetMetaHostForDecommission(excludeZone string, mp *Me
 	}
 	if len(zoneList) > 1 {
 		var curZonesMap map[string]uint8
-		if curZonesMap, err = mp.getMetaZoneMap(c); err != nil {
+		if curZonesMap, err = mp.getMetaZoneMapByHosts(c, mp.Hosts); err != nil {
 			return
 		}
 		//avoid change from 2 zones to 1 zone after decommission
@@ -5108,6 +5109,58 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp
 		return
 	}
 	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZoneNames, true, dstStoreMode); err != nil {
+		return
+	}
+	addr = hosts[0]
+	return
+}
+
+func (c *Cluster) chooseTargetMetaNodeForAddRecorder(mp *MetaPartition) (addr string, expectRecorderNum int, err error) {
+	hosts := make([]string, 0)
+	var (
+		vol				*Vol
+		zoneCountMap	map[string]uint8
+		targetZone		string
+	)
+	vol, err = c.getVol(mp.volName)
+	if err != nil {
+		return
+	}
+	if vol.mpRecorderNum == 0 {
+		err = fmt.Errorf("can only auto add recorder for vol which mpRecorderNum is larger than 0, cur(%v)", vol.mpRecorderNum)
+		return
+	}
+	expectRecorderNum = int(vol.mpRecorderNum)
+	if err = mp.canAddRecorder(expectRecorderNum); err != nil {
+		return
+	}
+
+	volZones := strings.Split(vol.zoneName, commaSeparator)
+	if len(volZones) == 0 {
+		err = fmt.Errorf("vol(%v) missing zone", vol.Name)
+		return
+	}
+	if len(volZones) == 1 {
+		targetZone = volZones[0]
+	} else {
+		peerHosts := mp.peerHosts()
+		if zoneCountMap, err = mp.getMetaZoneMapByHosts(c, peerHosts); err != nil {
+			return
+		}
+		minCount := len(peerHosts)
+		for _, zoneName := range volZones {
+			zoneCount := zoneCountMap[zoneName]
+			if int(zoneCount) < minCount {
+				targetZone = zoneName
+				minCount = int(zoneCount)
+			}
+		}
+		if targetZone == "" {
+			targetZone = volZones[0]
+		}
+	}
+
+	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZone, true, vol.DefaultStoreMode); err != nil {
 		return
 	}
 	addr = hosts[0]

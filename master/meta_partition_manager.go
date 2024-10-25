@@ -134,7 +134,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			return true
 		}
 		_, normalReplicaCount = partition.getMinusOfMaxInodeID()
-		if int(vol.mpReplicaNum) <= normalReplicaCount && int(vol.mpRecorderNum) <= len(partition.Recorders) && partition.allReplicaHasRecovered() {
+		if int(vol.mpReplicaNum) <= normalReplicaCount && int(partition.RecorderNum) <= len(partition.Recorders) && partition.allReplicaHasRecovered() {
 			partition.RLock()
 			partition.IsRecover = false
 			c.syncUpdateMetaPartition(partition)

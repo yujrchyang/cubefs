@@ -211,7 +211,7 @@ func (r *raftFsm) needToCompleteEntry(ctx context.Context) bool {
 			logger.Debug("ID[%v] raft[%v] needToCompleteEntry from ID[%v] in voters[%v]", r.config.NodeID, r.id, maxId, r.votes)
 		}
 		pr, ok := r.replicas[maxId]
-		if ok && pr.peer.Type == proto.PeerRecorder {
+		if ok && pr.peer.IsRecorder() {
 			r.needCompleteEntryTo = maxLastIndex
 			nmsg := proto.GetMessage()
 			nmsg.Type = proto.ReqCompleteEntry

@@ -39,7 +39,7 @@ var raftTestCasesForRecorder = map[string]raftTestRules{
 		ci  100	 100  50   50   100
 		ai	100	 100  50   50   100
 		*/
-		name: F2_complete_1,
+		name: F1_complete_1,
 		msgFilter: func(msg *proto.Message) bool {
 			if msg.Type == proto.ReqMsgAppend && (msg.To == 3 || msg.To == 4) && msg.Index > 50 {
 				return true

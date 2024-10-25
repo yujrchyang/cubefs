@@ -10,7 +10,6 @@ import (
 )
 
 func (r *raftFsm) becomeRecorder(ctx context.Context, term, lead uint64) {
-	// todo
 	//if r.maybeChangeState(UnstableState) && logger.IsEnableDebug() {
 	//	logger.Debug("raft[%v] change rist state to %v cause become recorder", r.id, UnstableState)
 	//}
@@ -98,8 +97,13 @@ func stepRecorder(r *raftFsm, m *proto.Message) {
 		if pr, ok := r.replicas[r.config.NodeID]; ok {
 			lpri = pr.peer.Priority
 		}
-		// todo m.Index >= r.startCommit 是否需要判断？
-		if (!r.config.LeaseCheck || r.leader == NoLeader) && (r.vote == NoLeader || r.vote == m.From) && r.raftLog.isUpToDateForRecorder(m.Index, m.LogTerm, fpri, lpri) {
+		//  logTerm	|	F1	|	F2	|	F3	|	R1	|	R2
+		//		4	|		|	99	|		|	99	|
+		//		5	|		|		|	99'	|		|	99'
+		//		6	|		|	100	|		|	100	|
+		// 假设以上场景 F1和F2 宕机，需要 R1和R2 给 F3 投票，此时不能采用正常的投票判断条件(isUpToDate)，而需要比较激进的：只要本轮没投过票给其它节点，就可以投给当前节点
+		// 但该策略有可能导致在正常无宕机的情况下，扰乱投票秩序，造成非必要的日志补全消息，需要上线后观察是否有影响
+		if (!r.config.LeaseCheck || r.leader == NoLeader) && (r.vote == NoLeader || r.vote == m.From) && (fpri >= lpri) {
 			r.electionElapsed = 0
 			if logger.IsEnableDebug() {
 				logger.Debug("ID[%v] raft[%v] [logterm: %d, index: %d, vote: %v startCommit: %d] voted for %v [logterm: %d, index: %d] at term %d.",
@@ -179,9 +183,9 @@ func (r *raftFsm) bcastGetApplyIndex(truncateIndex uint64) {
 		m := proto.GetMessage()
 		m.Type = proto.ReqMsgGetApplyIndex
 		m.To = id
-		if logger.IsEnableDebug() {
-			logger.Debug("ID[%v] raft[%v] check ApplyIndex from[%v] for truncate index[%v]", r.config.NodeID, r.id, id, truncateIndex)
-		}
+		//if logger.IsEnableDebug() {
+		//	logger.Debug("ID[%v] raft[%v] check ApplyIndex from[%v] for truncate index[%v]", r.config.NodeID, r.id, id, truncateIndex)
+		//}
 		r.send(m)
 	}
 }

@@ -58,7 +58,7 @@ func TestRaft(t *testing.T) {
 
 func snapshotTest(t *testing.T) {
 	var err error
-	mdSnapshot, err := server.cluster.fsm.Snapshot(0)
+	mdSnapshot, err := server.cluster.fsm.Snapshot(0, false)
 	if !assert.NoError(t, err) {
 		return
 	}
@@ -99,7 +99,7 @@ func TestSnapshotWithClusterName(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?%s=%s",
 		hostAddr, proto.AdminSetClusterName, proto.ClusterNameKey, server.clusterName)
 	processWithError(reqURL, t)
-	mdSnapshot, err := server.cluster.fsm.Snapshot(0)
+	mdSnapshot, err := server.cluster.fsm.Snapshot(0, false)
 	if !assert.NoError(t, err) {
 		return
 	}

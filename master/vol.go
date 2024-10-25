@@ -682,7 +682,7 @@ func (vol *Vol) checkMetaPartitions(c *Cluster, ctx context.Context) (writableMp
 	}
 	allowAdjustMpStatus := vol.InodeCountThreshold > 0 && notArrivedThresholdWritableMpCount >= int(vol.MinWritableMPNum)
 	for _, mp := range mps {
-		doSplit = mp.checkStatus(true, int(vol.mpReplicaNum), maxPartitionID, vol, allowAdjustMpStatus)
+		doSplit = mp.checkStatus(true, int(vol.mpReplicaNum), int(mp.RecorderNum), maxPartitionID, vol, allowAdjustMpStatus)
 		if doSplit && mp.MaxInodeID != 0 {
 			nextStart := mp.calculateEnd(vol.MpSplitStep)
 			if err = vol.splitMetaPartition(c, mp, nextStart, ctx); err != nil {
@@ -693,10 +693,12 @@ func (vol *Vol) checkMetaPartitions(c *Cluster, ctx context.Context) (writableMp
 
 		mp.checkLeader()
 		mp.checkReplicaNum(c, vol.Name, vol.mpReplicaNum)
+		mp.checkRecorderNum(c, vol.Name, vol.mpRecorderNum)
 
 		mp.checkMaxMpEnd(c, maxPartitionID)
 		mp.reportMissingReplicas(c.Name, c.leaderInfo.addr, defaultMetaPartitionTimeOutSec, defaultIntervalToAlarmMissingMetaPartition)
 		mp.replicaCreationTasks(c, vol.Name)
+		mp.checkRecordersInfo(c, vol.Name, defaultIntervalToAlarmMissingMetaPartition)
 		if mp.Status == proto.ReadWrite {
 			writableMpCount++
 		}
@@ -1327,6 +1329,13 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	mp.setPeers(peers)
 	mp.setRecorders(recorders)
 	mp.setLearners(learners)
+	if len(recorders) > 0 {
+		err = mp.sortPeersByAddrs(append(hosts, recorders...))
+		if err != nil {
+			log.LogErrorf("action[doCreateMetaPartition] sortPeersByAddrs err[%v]", err)
+			return nil, errors.NewError(err)
+		}
+	}
 
 	parallelFunc := func(putErr bool, addrs []string, opFunc func(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error)) {
 		for _, addr := range addrs {
@@ -1401,6 +1410,7 @@ func (vol *Vol) backupConfig() *Vol {
 		OSSBucketPolicy:            vol.OSSBucketPolicy,
 		trashRemainingDays:         vol.trashRemainingDays,
 		mpLearnerNum:               vol.mpLearnerNum,
+		mpRecorderNum: 				vol.mpRecorderNum,
 		CrossRegionHAType:          vol.CrossRegionHAType,
 		DPConvertMode:              vol.DPConvertMode,
 		MPConvertMode:              vol.MPConvertMode,
@@ -1468,6 +1478,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.trashRemainingDays = backupVol.trashRemainingDays
 	vol.OSSBucketPolicy = backupVol.OSSBucketPolicy
 	vol.mpLearnerNum = backupVol.mpLearnerNum
+	vol.mpRecorderNum = backupVol.mpRecorderNum
 	vol.CrossRegionHAType = backupVol.CrossRegionHAType
 	vol.DPConvertMode = backupVol.DPConvertMode
 	vol.MPConvertMode = backupVol.MPConvertMode

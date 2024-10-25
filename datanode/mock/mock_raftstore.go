@@ -68,6 +68,10 @@ func (m mockRaftPartition) CommittedIndex() uint64 {
 func (m mockRaftPartition) Truncate(index uint64) {
 }
 
+func (m mockRaftPartition) GetTruncateIndex() uint64 {
+	return 0
+}
+
 func (m mockRaftPartition) TryToLeader(nodeID uint64) error {
 	return nil
 }

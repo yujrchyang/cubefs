@@ -219,7 +219,7 @@ func (c *Cluster) decommissionMetaRecorder(mp *MetaPartition, nodeAddr, addAddr 
 	if err = c.deleteMetaRecorder(mp, nodeAddr, false, strictMode); err != nil {
 		return
 	}
-	if err = c.addMetaRecorder(mp, addAddr); err != nil {
+	if err = c.addMetaRecorder(mp, addAddr, mp.RecorderNum, false); err != nil {
 		return
 	}
 	mp.IsRecover = true
@@ -326,18 +326,18 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 	defer mp.RUnlock()
 	var vol *Vol
 	if !contains(mp.Hosts, nodeAddr) && !contains(mp.Recorders, nodeAddr) {
-		err = fmt.Errorf("offline address:[%v] is not in meta partition peers:%v", nodeAddr, mp.Peers)
+		err = fmt.Errorf("offline address:[%v] is not in meta partition hosts:%v or recorders:%v", nodeAddr, mp.Hosts, mp.Recorders)
 		return
 	}
 
 	if vol, err = c.getVol(mp.volName); err != nil {
 		return
 	}
-	if err = mp.canBeOffline(nodeAddr, int(vol.mpReplicaNum), int(vol.mpRecorderNum)); err != nil {
+	if err = mp.hasMajorityLiveReplicas(nodeAddr, int(vol.mpReplicaNum), int(mp.RecorderNum)); err != nil {
 		return
 	}
 
-	if err = mp.hasMissingOneReplica(nodeAddr, int(vol.mpReplicaNum), int(vol.mpRecorderNum)); err != nil {
+	if err = mp.hasMissingOneReplica(nodeAddr, int(vol.mpReplicaNum), int(mp.RecorderNum)); err != nil {
 		return
 	}
 
@@ -599,6 +599,10 @@ func (c *Cluster) forceRemoveMetaRaftPeers(mp *MetaPartition, panicHosts, panicR
 		return
 	}
 	mp.RUnlock()
+	if len(newHostsPeers) == 0 {
+		err = proto.ErrNoLiveReplicas
+		return
+	}
 	// Only after reset peers succeed in remote metanode, the meta data can be updated
 	newPeers := make([]proto.Peer, 0, len(newHostsPeers)+len(newRecordersPeers))
 	newPeers = append(newPeers, newHostsPeers...)
@@ -718,6 +722,10 @@ func (c *Cluster) deleteMetaReplica(partition *MetaPartition, addr string, valid
 			log.LogErrorf("action[deleteMetaReplica],vol[%v],data partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 		}
 	}()
+	if !partition.hasHost(addr) {
+		err = fmt.Errorf("offline address:[%v] is not in meta partition hosts:%v", addr, partition.Hosts)
+		return
+	}
 	if validate {
 		if err = c.validateDecommissionMetaPartition(partition, addr); err != nil {
 			return
@@ -1024,7 +1032,7 @@ func (c *Cluster) promoteMetaReplicaLearner(partition *MetaPartition, addr strin
 	return
 }
 
-func (c *Cluster) addMetaRecorder(partition *MetaPartition, addr string) (err error) {
+func (c *Cluster) addMetaRecorder(partition *MetaPartition, addr string, volRecorderNum uint8, increaseMPRecorderNum bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addMetaRecorder], vol[%v], meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
@@ -1049,7 +1057,19 @@ func (c *Cluster) addMetaRecorder(partition *MetaPartition, addr string) (err er
 	newPeers = append(partition.Peers, addPeer)
 	newRecorders := make([]string, 0, len(partition.Recorders)+1)
 	newRecorders = append(partition.Recorders, addr)
+	oldRecorderNum := partition.RecorderNum
+	isRecorderNumChanged := false
+	if increaseMPRecorderNum {
+		newRecorderNum := uint8(len(newRecorders))
+		if newRecorderNum > partition.RecorderNum && newRecorderNum <= volRecorderNum {
+			isRecorderNumChanged = true
+			partition.RecorderNum = newRecorderNum
+		}
+	}
 	if err = partition.persistToRocksDB("addMetaRecorder", partition.volName, partition.Hosts, newPeers, partition.Learners, newRecorders, c); err != nil {
+		if isRecorderNumChanged {
+			partition.RecorderNum = oldRecorderNum
+		}
 		return
 	}
 	if err = c.syncCreateMetaRecorderToMetaNode(addPeer.Addr, partition); err != nil {
@@ -1067,6 +1087,10 @@ func (c *Cluster) deleteMetaRecorder(partition *MetaPartition, addr string, vali
 			log.LogErrorf("action[deleteMetaRecorder],vol[%v], meta partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
 		}
 	}()
+	if !partition.hasRecorder(addr) {
+		err = fmt.Errorf("offline address:[%v] is not in meta partition recorders:%v", addr, partition.Recorders)
+		return
+	}
 	if validate {
 		if err = c.validateDecommissionMetaPartition(partition, addr); err != nil {
 			return

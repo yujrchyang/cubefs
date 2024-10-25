@@ -83,10 +83,12 @@ const (
 	mms18Addr = "127.0.0.1:8118"
 	mms19Addr = "127.0.0.1:8119"
 	mms20Addr = "127.0.0.1:8120"
+	mms21Addr = "127.0.0.1:8121"
 
 	commonVolName   = "commonVol"
 	quorumVolName   = "quorumVol"
 	smartVolName    = "smartVol"
+
 	recorderVolName = "recorderVol"
 
 	testZone1   = "zone1"
@@ -204,6 +206,7 @@ func createDefaultMasterServerForTest() *Server {
 	mtMap[mms13Addr] = addMetaServer(mms13Addr, testZone6)
 	mtMap[mms14Addr] = addMetaServer(mms14Addr, testZone9)
 	mtMap[mms15Addr] = addMetaServer(mms15Addr, testZone9)
+	mtMap[mms21Addr] = addMetaServer(mms21Addr, testZone2)
 
 	// add ec node
 	addEcServer(ecs1Addr, httpPort, testZone1)
@@ -4699,34 +4702,32 @@ func TestMpRecorderOp(t *testing.T) {
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaRecorder, mp.PartitionID, opAddr)
 	process(reqURL, t)
 	assert.NotContainsf(t, mp.Recorders, opAddr, "recorders[%v] should not contain opAddr[%v]", mp.Recorders, opAddr)
-	assert.NotContainsf(t, mp.RecordersInfo, opAddr, "recordersInfo[%v] should not contain opAddr[%v]", mp.RecordersInfo, opAddr)
+	assert.NotContainsf(t, getRecordersInfoAddr(mp.RecordersInfo), opAddr, "recordersInfo[%v] should not contain opAddr[%v]", mp.RecordersInfo, opAddr)
 	assert.NotContainsf(t, mp.peerHosts(), opAddr, "peerHosts[%v] should not contain opAddr[%v]", mp.peerHosts(), opAddr)
 	assert.Equal(t, false, mp.IsRecover, "mp should not recover")
-	assert.Equal(t, ReadWrite, mp.Status, "mp should be ReadWrite")
+	assert.Equal(t, ReadWrite, int(mp.Status), "mp should be ReadWrite")
 	// add recorder
 	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaRecorder, mp.PartitionID, opAddr)
 	process(reqURL, t)
 	assert.Containsf(t, mp.Recorders, opAddr, "recorders[%v] should contain opAddr[%v]", mp.Recorders, opAddr)
-	assert.Containsf(t, mp.RecordersInfo, opAddr, "recordersInfo[%v] should contain opAddr[%v]", mp.RecordersInfo, opAddr)
+	assert.Containsf(t, getRecordersInfoAddr(mp.RecordersInfo), opAddr, "recordersInfo[%v] should contain opAddr[%v]", mp.RecordersInfo, opAddr)
 	assert.Containsf(t, mp.peerHosts(), opAddr, "peerHosts[%v] should contain opAddr[%v]", mp.peerHosts(), opAddr)
 	assert.Equal(t, true, mp.IsRecover, "mp should be recovering")
-	assert.Equal(t, ReadWrite, mp.Status, "mp should be ReadWrite")
-	_, ok := server.cluster.BadMetaPartitionIds.Load(mp.PartitionID)
-	assert.Truef(t, ok, "BadMetaPartitionIds should contain mp[%v]", mp.PartitionID)
+	assert.Equal(t, ReadWrite, int(mp.Status), "mp should be ReadWrite")
+	assert.Truef(t, hasBadMetaPartitionIds(mp.PartitionID), "BadMetaPartitionIds should contain mp[%v]", mp.PartitionID)
 	// decommission recorder
 	mp = mps[1]
 	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v&destAddr=%v", hostAddr, proto.AdminDecommissionMetaPartition, mp.PartitionID, opAddr, mms11Addr)
 	process(reqURL, t)
 	assert.NotContainsf(t, mp.Recorders, opAddr, "recorders[%v] should not contain opAddr[%v]", mp.Recorders, opAddr)
-	assert.NotContainsf(t, mp.RecordersInfo, opAddr, "recordersInfo[%v] should not contain opAddr[%v]", mp.RecordersInfo, opAddr)
+	assert.NotContainsf(t, getRecordersInfoAddr(mp.RecordersInfo), opAddr, "recordersInfo[%v] should not contain opAddr[%v]", mp.RecordersInfo, opAddr)
 	assert.NotContainsf(t, mp.peerHosts(), opAddr, "peerHosts[%v] should not contain opAddr[%v]", mp.peerHosts(), opAddr)
 	assert.Containsf(t, mp.Recorders, mms11Addr, "recorders[%v] should contain opAddr[%v]", mp.Recorders, mms11Addr)
-	assert.Containsf(t, mp.RecordersInfo, mms11Addr, "recordersInfo[%v] should contain opAddr[%v]", mp.RecordersInfo, mms11Addr)
+	assert.Containsf(t, getRecordersInfoAddr(mp.RecordersInfo), mms11Addr, "recordersInfo[%v] should contain opAddr[%v]", mp.RecordersInfo, mms11Addr)
 	assert.Containsf(t, mp.peerHosts(), mms11Addr, "peerHosts[%v] should contain opAddr[%v]", mp.peerHosts(), mms11Addr)
 	assert.Equal(t, true, mp.IsRecover, "mp should be recovering")
-	assert.Equal(t, ReadWrite, mp.Status, "mp should be ReadWrite")
-	_, ok = server.cluster.BadMetaPartitionIds.Load(mp.PartitionID)
-	assert.Truef(t, ok, "BadMetaPartitionIds should contain mp[%v]", mp.PartitionID)
+	assert.Equal(t, ReadWrite, int(mp.Status), "mp should be ReadWrite")
+	assert.Truef(t, hasBadMetaPartitionIds(mp.PartitionID), "BadMetaPartitionIds should contain mp[%v]", mp.PartitionID)
 	// reset recorder
 	mp = mps[2]
 	resetHost := mp.Hosts[0]
@@ -4738,7 +4739,70 @@ func TestMpRecorderOp(t *testing.T) {
 	assert.ElementsMatch(t, mp.Recorders, []string{resetRecorder}, "recorders after reset")
 	assert.ElementsMatch(t, mp.peerHosts(), []string{resetHost, resetRecorder}, "peers after reset")
 	assert.Equal(t, true, mp.IsRecover, "mp should be recovering")
-	assert.Equal(t, ReadOnly, mp.Status, "mp should be ReadOnly")
+	assert.Equal(t, ReadOnly, int(mp.Status), "mp should be ReadOnly")
+}
+
+func TestRecorderTransferVol(t *testing.T) {
+	var (
+		recorderTransferVol	*Vol
+		err 				error
+	)
+	testVolName := "recorderTransferVol"
+	reqURL := fmt.Sprintf("%v%v?name=%v&owner=%v&capacity=1&zoneName=%v", hostAddr, proto.AdminCreateVol, testVolName, "cfs", testZone2)
+	process(reqURL, t)
+	recorderTransferVol, err = server.cluster.getVol(testVolName)
+	assert.NoError(t, err, "get recorder transfer vol err")
+	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=%v&mpRecorderNum=%v", hostAddr, proto.AdminUpdateVol, testVolName, buildAuthKey("cfs"), 2)
+	process(reqURL, t)
+	assert.Equalf(t, uint8(2), recorderTransferVol.mpRecorderNum, "get recorder transfer vol err")
+	mps := make([]*MetaPartition, 0)
+	for _, mp := range recorderTransferVol.MetaPartitions {
+		mps = append(mps, mp)
+		fmt.Printf("mp(%v) hosts(%v)\n", mp.PartitionID, mp.Hosts)
+	}
+	// auto choose recorder node to add
+	mp := mps[0]
+	oldPeerHosts := mp.peerHosts()
+	assert.Equalf(t, 3, len(oldPeerHosts), "mp[%v] peers[%v] should be len 3 before auto add", mp.PartitionID, mp.Peers)
+	reqURL = fmt.Sprintf("%v%v?id=%v&autoAddr=%v", hostAddr, proto.AdminAddMetaRecorder, mp.PartitionID, "true")
+	process(reqURL, t)
+	assert.Equalf(t, uint8(1), mp.RecorderNum, "mp[%v] should be 1 after auto add", mp.PartitionID)
+	assert.Equalf(t, 1, len(mp.Recorders), "mp[%v] recorders[%v] should be len 1 after auto add", mp.PartitionID, mp.Recorders)
+	assert.Equalf(t, 1, len(mp.RecordersInfo), "mp[%v] recordersInfo[%v] should be len 1 after auto add", mp.PartitionID, mp.RecordersInfo)
+	assert.Equalf(t, 4, len(mp.Peers), "mp[%v] peers[%v] should be len 4 after auto add", mp.PartitionID, mp.Peers)
+	newPeerHosts := mp.peerHosts()
+	assert.Equalf(t, 4, len(newPeerHosts), "mp[%v] peers[%v] should be len 4 after auto add", mp.PartitionID, mp.Peers)
+	newRecorderAddr := make([]string, 0)
+	for _, addr := range newPeerHosts {
+		if !contains(oldPeerHosts, addr) {
+			newRecorderAddr = append(newRecorderAddr, addr)
+		}
+	}
+	assert.Equalf(t, 1, len(newRecorderAddr), "mp[%v] new recorder[%v] should be len 1 after auto add", mp.PartitionID, newRecorderAddr)
+	assert.Containsf(t, mp.Recorders, newRecorderAddr[0], "mp[%v] recorders[%v] should contain opAddr[%v]", mp.PartitionID, mp.Recorders, newRecorderAddr)
+	assert.Containsf(t, getRecordersInfoAddr(mp.RecordersInfo), newRecorderAddr[0], "recordersInfo[%v] should contain opAddr[%v]", mp.RecordersInfo, newRecorderAddr)
+	assert.Equal(t, true, mp.IsRecover, "mp should be recover")
+	assert.Equal(t, ReadWrite, int(mp.Status), "mp should be ReadWrite")
+	assert.Truef(t, hasBadMetaPartitionIds(mp.PartitionID), "BadMetaPartitionIds should contain mp[%v]", mp.PartitionID)
+}
+
+func hasBadMetaPartitionIds(pid uint64) (exist bool) {
+	server.cluster.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
+		if value.(uint64) == pid {
+			exist = true
+			return false
+		}
+		return true
+	})
+	return
+}
+
+func getRecordersInfoAddr(rInfo []*MetaRecorder) []string {
+	addrs := make([]string, 0, len(rInfo))
+	for _, info := range rInfo {
+		addrs = append(addrs, info.Addr)
+	}
+	return addrs
 }
 
 func checkRecorderPeers(t *testing.T, peers []proto.Peer, expectedRecorderNum int) {

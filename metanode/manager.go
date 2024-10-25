@@ -1222,7 +1222,7 @@ func (m *metadataManager) loadRecorder(fileName string) (mr *metaRecorder, err e
 		return
 	}
 	var cfg *raftstore.RecorderConfig
-	if cfg, err = raftstore.LoadRecorderConfig(path.Join(m.rootDir, fileName), m.nodeId, m.raftStore); err != nil {
+	if cfg, err = raftstore.LoadRecorderConfig(m.metaNode.clusterId, path.Join(m.rootDir, fileName), m.nodeId, m.raftStore); err != nil {
 		return
 	}
 	if id != cfg.PartitionID {
@@ -1281,6 +1281,7 @@ func (m *metadataManager) createRecorder(request *proto.CreateMetaRecorderReques
 		Peers:          request.Members,
 		Learners:       request.Learners,
 		Recorders: 		request.Recorders,
+		ClusterID:		m.metaNode.clusterId,
 		NodeID:         m.nodeId,
 		RaftStore:      m.raftStore,
 	}

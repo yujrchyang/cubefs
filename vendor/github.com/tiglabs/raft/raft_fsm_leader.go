@@ -28,13 +28,13 @@ import (
 )
 
 func (r *raftFsm) becomeLeader() {
-	if r.state == stateFollower {
-		panic(AppPanicError(fmt.Sprintf("[raft->becomeLeader][%v] invalid transition [follower -> leader].", r.id)))
+	if r.state == stateFollower || r.state == stateRecorder {
+		panic(AppPanicError(fmt.Sprintf("[raft->becomeLeader][%v] invalid transition [%v -> leader].", r.id, r.state)))
 	}
 	if r.maybeChangeState(UnstableState) && logger.IsEnableDebug() {
 		logger.Debug("raft[%v] change rist state to %v cause become leader", r.id, UnstableState)
 	}
-	//_ = r.recoverCommit()
+	_ = r.recoverCommit()
 	lasti := r.raftLog.lastIndex()
 	r.step = stepLeader
 	r.reset(r.term, lasti, true, true)
@@ -268,6 +268,7 @@ func (r *raftFsm) becomeElectionAck() {
 	r.reset(r.term, 0, false, true)
 	r.tick = r.tickElectionAck
 	r.state = stateElectionACK
+	r.needCompleteEntryTo = 0
 	for id := range r.replicas {
 		if id == r.config.NodeID {
 			continue
@@ -551,7 +552,7 @@ func (r *raftFsm) sendAppend(ctx context.Context, to uint64) {
 			return
 		}
 
-		snapshot, err := r.sm.Snapshot(pr.peer.ID)
+		snapshot, err := r.sm.Snapshot(pr.peer.ID, pr.peer.IsRecorder())
 		if err != nil {
 			panic(AppPanicError(fmt.Sprintf("raft[%v] failed to send snapshot to %v because snapshot is unavailable, error is: %v",
 				r.id, to, err)))

@@ -27,7 +27,7 @@ type PartitionFsm = raft.StateMachine
 type FunctionalPartitionFsm struct {
 	ApplyFunc              func(command []byte, index uint64) (interface{}, error)
 	ApplyMemberChangeFunc  func(confChange *proto.ConfChange, index uint64) (interface{}, error)
-	SnapshotFunc           func(recoverNode uint64) (proto.Snapshot, error)
+	SnapshotFunc           func(recoverNode uint64, isRecorder bool) (proto.Snapshot, error)
 	AskRollbackFunc        func(original []byte, index uint64) (rollback []byte, err error)
 	ApplySnapshotFunc      func(peers []proto.Peer, iter proto.SnapIterator, snapV uint32) error
 	HandleFatalEventFunc   func(err *raft.FatalError)
@@ -48,9 +48,9 @@ func (f *FunctionalPartitionFsm) ApplyMemberChange(confChange *proto.ConfChange,
 	return nil, nil
 }
 
-func (f *FunctionalPartitionFsm) Snapshot(recoverNode uint64) (proto.Snapshot, error) {
+func (f *FunctionalPartitionFsm) Snapshot(recoverNode uint64, isRecorder bool) (proto.Snapshot, error) {
 	if f != nil && f.SnapshotFunc != nil {
-		return f.SnapshotFunc(recoverNode)
+		return f.SnapshotFunc(recoverNode, isRecorder)
 	}
 	return nil, nil
 }

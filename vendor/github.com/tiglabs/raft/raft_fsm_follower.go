@@ -24,6 +24,11 @@ import (
 )
 
 func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
+	if r.state == stateRecorder {
+		r.becomeRecorder(ctx, term, lead)
+		logger.Error("[raft->becomeFollower][%v] state is recorder.", r.id)
+		return
+	}
 	if r.maybeChangeState(UnstableState) && logger.IsEnableDebug() {
 		logger.Debug("raft[%v] change rist state to %v cause become follower", r.id, UnstableState)
 	}

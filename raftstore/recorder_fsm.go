@@ -15,6 +15,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/async"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	raftproto "github.com/tiglabs/raft/proto"
 )
@@ -24,6 +25,8 @@ const (
 	TempMetadataFileName	= ".meta"
 	ApplyIndexFileName      = "APPLY"
 	TempApplyIndexFile      = ".apply"
+
+	RecorderCriticalUmpKey	= "recorder_critical"
 )
 
 type sortedPeers []proto.Peer
@@ -55,13 +58,14 @@ type RecorderConfig struct {
 	Learners    []proto.Learner	`json:"Learners"`
 	Recorders	[]string		`json:"recorders"`
 	CreateTime	string			`json:"CreateTime"`
+	ClusterID	string			`json:"-"`
 	NodeID		uint64			`json:"-"`
 	RaftStore   RaftStore 		`json:"-"`
 
 	sync.RWMutex
 }
 
-func LoadRecorderConfig(recorderDir string, nodeID uint64, rs RaftStore) (cfg *RecorderConfig, err error) {
+func LoadRecorderConfig(clusterID, recorderDir string, nodeID uint64, rs RaftStore) (cfg *RecorderConfig, err error) {
 	var (
 		metaFileData	[]byte
 	)
@@ -75,6 +79,7 @@ func LoadRecorderConfig(recorderDir string, nodeID uint64, rs RaftStore) (cfg *R
 	if err = cfg.CheckValidate(); err != nil {
 		return
 	}
+	cfg.ClusterID = clusterID
 	cfg.NodeID = nodeID
 	cfg.RaftStore = rs
 
@@ -121,6 +126,14 @@ func (r *Recorder) RaftPartition() Partition {
 
 func (r *Recorder) VolName() string {
 	return r.config.VolName
+}
+
+func (r *Recorder) ClusterName() string {
+	return r.config.ClusterID
+}
+
+func (r *Recorder) PartitionID() uint64 {
+	return r.config.PartitionID
 }
 
 func (r *Recorder) NodeID() uint64 {
@@ -200,14 +213,16 @@ func (r *Recorder) HandleApply(command []byte, index uint64) (interface{}, error
 	return nil, nil
 }
 
-func (r *Recorder) HandleRaftSnapshot(recoverNode uint64) (raftproto.Snapshot, error) {
-	log.LogError("Recorder(%v) handleRaftSnapshot from(%v)", r.config.PartitionID, recoverNode)
+func (r *Recorder) HandleRaftSnapshot(recoverNode uint64, isRecorder bool) (raftproto.Snapshot, error) {
+	msg := fmt.Sprintf("cluster(%v) vol(%v) mp(%v) recorderNode(%v) become leader and trigger snapshot from node(%v) by mistake, peers(%v)",
+		r.ClusterName(), r.VolName(), r.PartitionID(), r.NodeID(), recoverNode, r.GetPeers())
+	exporter.WarningBySpecialUMPKey(RecorderCriticalUmpKey, msg)
 	return nil, fmt.Errorf("unsupported snapshot")
 }
 
 func (r *Recorder) HandleRaftApplySnapshot(peers []raftproto.Peer, iterator raftproto.SnapIterator, snapV uint32) (err error) {
 	// Recorder needn't snapshot.
-	log.LogInfof("Recorder(%v) ApplySnapshot from nodeID(%v)", r.config.PartitionID, r.raftPartition.CommittedIndex())
+	log.LogInfof("Recorder(%v) ApplySnapshot from(%v)", r.config.PartitionID, r.raftPartition.CommittedIndex())
 	for {
 		if _, err = iterator.Next(); err != nil {
 			if err != io.EOF {
@@ -569,8 +584,10 @@ func (r *Recorder) GetRaftLeader() (addr string) {
 		return
 	}
 	if leaderID == r.config.NodeID {
-		// todo alarm
-		log.LogErrorf("vol(%v) recorder(%v) become leader by mistake, peers(%v)", r.config.VolName, r.config.PartitionID, r.GetPeers())
+		msg := fmt.Sprintf("cluster(%v) vol(%v) mp(%v) recorderNode(%v) become leader by mistake, peers(%v)",
+			r.ClusterName(), r.VolName(), r.PartitionID(), r.NodeID(), r.GetPeers())
+		exporter.WarningBySpecialUMPKey(RecorderCriticalUmpKey, msg)
+		return
 	}
 	for _, peer := range r.GetPeers() {
 		if leaderID == peer.ID {

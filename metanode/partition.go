@@ -308,6 +308,7 @@ type OpPartition interface {
 	IsExistPeerID(peer proto.Peer) bool
 	IsExistPeer(peer proto.Peer) bool
 	IsExistLearner(learner proto.Learner) bool
+	IsRecorder(peerID uint64) bool
 	TryToLeader(groupID uint64) error
 	CanRemoveRaftMember(peer proto.Peer) error
 	IsEquareCreateMetaPartitionRequst(request *proto.CreateMetaPartitionRequest) (err error)
@@ -1453,6 +1454,15 @@ func (mp *metaPartition) IsExistLearner(learner proto.Learner) bool {
 		}
 	}
 	return existPeer && existLearner
+}
+
+func (mp *metaPartition) IsRecorder(peerID uint64) bool {
+	for _, peer := range mp.config.Peers {
+		if peer.ID == peerID && peer.IsRecorder() {
+			return true
+		}
+	}
+	return false
 }
 
 func (mp *metaPartition) TryToLeader(groupID uint64) error {

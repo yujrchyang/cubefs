@@ -301,6 +301,20 @@ func (mp *MetaPartition) hasPeer(addr string) bool {
 	return false
 }
 
+func (mp *MetaPartition) hasRecorder(addr string) bool {
+	mp.RLock()
+	defer mp.RUnlock()
+
+	return contains(mp.Recorders, addr)
+}
+
+func (mp *MetaPartition) hasHost(addr string) bool {
+	mp.RLock()
+	defer mp.RUnlock()
+
+	return contains(mp.Hosts, addr)
+}
+
 func (mp *MetaPartition) getMetaReplica(addr string) (mr *MetaReplica, err error) {
 	for _, mr = range mp.Replicas {
 		if mr.Addr == addr {
@@ -327,11 +341,12 @@ func (mp *MetaPartition) checkLeader() {
 	return
 }
 
-func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum int, maxPartitionID uint64, vol *Vol, allowAdjustMpStatus bool) (doSplit bool) {
+func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum, recorderNum int, maxPartitionID uint64, vol *Vol, allowAdjustMpStatus bool) (doSplit bool) {
 	mp.Lock()
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
-	if len(liveReplicas) <= replicaNum/2 {
+	liveRecorders := mp.getLiveRecorders()
+	if (len(liveReplicas)+len(liveRecorders)) <= (replicaNum+recorderNum)/2 {
 		mp.Status = proto.Unavailable
 	} else {
 		mr, err := mp.getMetaReplicaLeader()
@@ -409,6 +424,16 @@ func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum 
 	}
 }
 
+func (mp *MetaPartition) checkRecorderNum(c *Cluster, volName string, volRecorderNum uint8) {
+	mp.RLock()
+	defer mp.RUnlock()
+	if mp.RecorderNum != volRecorderNum {
+		msg := fmt.Sprintf("cluster[%v] vol[%v] mp[%v] expect recorder num[%v], current num[%v]",
+			c.Name, volName, mp.PartitionID, volRecorderNum, mp.RecorderNum)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpRecorder], msg)
+	}
+}
+
 func (mp *MetaPartition) removeIllegalReplica() (excessAddr string, err error) {
 	mp.Lock()
 	defer mp.Unlock()
@@ -462,7 +487,7 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 	mp.removeMissingReplica(metaNode.Addr)
 }
 
-func (mp *MetaPartition) canBeOffline(nodeAddr string, replicaNum, recorderNum int) (err error) {
+func (mp *MetaPartition) hasMajorityLiveReplicas(nodeAddr string, replicaNum, recorderNum int) (err error) {
 	liveReplicas := mp.getLiveReplicas()
 	liveRecorders := mp.getLiveRecorders()
 	if len(liveReplicas) + len(liveRecorders) < int((mp.ReplicaNum+mp.RecorderNum)/2+1) {
@@ -649,7 +674,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 			msg := fmt.Sprintf("action[reportMissingReplicas], clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time > :%v  vlocLastRepostTime:%v   dnodeLastReportTime:%v  nodeisActive:%v",
 				clusterID, mp.volName, mp.PartitionID, replica.Addr, seconds, replica.ReportTime, lastReportTime, isActive)
-			msg = msg + fmt.Sprintf(" decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
+			msg = msg + fmt.Sprintf(" decommissionMetaPartitionURL is http://%v/metaPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, replica.Addr)
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
 		}
 	}
@@ -659,7 +684,7 @@ func (mp *MetaPartition) reportMissingReplicas(clusterID, leaderAddr string, sec
 			msg := fmt.Sprintf("action[reportMissingReplicas],clusterID[%v] volName[%v] partition:%v  on Node:%v  "+
 				"miss time  > %v ",
 				clusterID, mp.volName, mp.PartitionID, addr, defaultMetaPartitionTimeOutSec)
-			msg = msg + fmt.Sprintf(" decommissionMetaPartitionURL is http://%v/dataPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
+			msg = msg + fmt.Sprintf(" decommissionMetaPartitionURL is http://%v/metaPartition/decommission?id=%v&addr=%v", leaderAddr, mp.PartitionID, addr)
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpMissReplica], msg)
 		}
 	}
@@ -687,6 +712,41 @@ func (mp *MetaPartition) replicaCreationTasks(c *Cluster, volName string) {
 	}
 
 	return
+}
+
+func (mp *MetaPartition) checkRecordersInfo(c *Cluster, volName string, alarmIntervalSec int64) {
+	mp.offlineMutex.Lock()
+	mp.RLock()
+	defer func() {
+		mp.RUnlock()
+		mp.offlineMutex.Unlock()
+	}()
+
+	if time.Now().Unix() - mp.CreateTime < defaultIntervalToCheckHeartbeat {
+		return
+	}
+	if len(mp.Recorders) != int(mp.RecorderNum) {
+		msg := fmt.Sprintf("action[checkRecordersInfo] cluster[%v] vol[%v] mp[%v] mismatch recorderNum: recorders[%v] but recorderNum[%v]",
+			c.Name, volName, mp.PartitionID, mp.Recorders, mp.RecorderNum)
+		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpRecorder], msg)
+	}
+	liveRecorder := mp.getLiveRecorders()
+	liveRecordersAddr := mp.getLiveRecordersAddr(liveRecorder)
+	for _, addr := range mp.Recorders {
+		if !contains(liveRecordersAddr, addr) && mp.shouldReportMissingReplica(addr, alarmIntervalSec) {
+			msg := fmt.Sprintf("action[checkRecordersInfo] cluster[%v] vol[%v] mp[%v] recorders[%v] miss node[%v]",
+				c.Name, volName, mp.PartitionID, mp.Recorders, addr)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpRecorder], msg)
+		}
+	}
+	// check illegal recorder
+	for _, rInfo := range mp.RecordersInfo {
+		if !contains(mp.Recorders, rInfo.Addr) {
+			msg := fmt.Sprintf("action[checkRecordersInfo] clusterID[%v] metaPartition[%v] recorders[%v] find illegal info[%v]",
+				c.Name, mp.PartitionID, mp.Recorders, rInfo.Addr)
+			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpRecorder], msg)
+		}
+	}
 }
 
 func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers []proto.Peer, volName string,
@@ -1388,7 +1448,7 @@ func (mp *MetaPartition) needToRebalanceZone(c *Cluster, zoneList []string, volC
 			return
 		}
 	} else {
-		if curZoneMap, err = mp.getMetaZoneMap(c); err != nil {
+		if curZoneMap, err = mp.getMetaZoneMapByHosts(c, mp.Hosts); err != nil {
 			return
 		}
 	}
@@ -1493,9 +1553,9 @@ func (mp *MetaPartition) getZoneList(c *Cluster) (zoneList []string, err error) 
 	return
 }
 
-func (mp *MetaPartition) getMetaZoneMap(c *Cluster) (curZonesMap map[string]uint8, err error) {
+func (mp *MetaPartition) getMetaZoneMapByHosts(c *Cluster, hosts []string) (curZonesMap map[string]uint8, err error) {
 	curZonesMap = make(map[string]uint8, 0)
-	for _, host := range mp.Hosts {
+	for _, host := range hosts {
 		var metaNode *MetaNode
 		var zone *Zone
 		if metaNode, err = c.metaNode(host); err != nil {
@@ -1693,7 +1753,7 @@ func (mp *MetaPartition) updateMetaRecorder(report *proto.MetaRecorderReport, me
 func (mp *MetaPartition) getLiveRecorders() (liveRecorders []*MetaRecorder) {
 	liveRecorders = make([]*MetaRecorder, 0)
 	for _, mr := range mp.RecordersInfo {
-		if mr.isActive() {
+		if mr.isActive(mp.PartitionID) {
 			liveRecorders = append(liveRecorders, mr)
 		}
 	}
@@ -1724,4 +1784,37 @@ func (mp *MetaPartition) peerHosts() []string {
 		}
 	}
 	return peerHosts
+}
+
+func (mp *MetaPartition) canAddRecorder(expectRecorderNum int) (err error) {
+	if mp.IsRecover || len(mp.Recorders) >= expectRecorderNum {
+		err = fmt.Errorf("mp is recovering(%v) or recorder len(%v) already meets expected recorderNum(%v)", mp.IsRecover, len(mp.Recorders), expectRecorderNum)
+		return
+	}
+	if err = mp.hasMajorityLiveReplicas("", int(mp.ReplicaNum), int(mp.RecorderNum)); err != nil {
+		return
+	}
+	return
+}
+
+func (mp *MetaPartition) sortPeersByAddrs(hosts []string) error {
+	newPeers := make([]proto.Peer, 0, len(mp.Peers))
+	for _, addr := range hosts {
+		peer, exist := mp.getPeerByAddr(addr)
+		if !exist {
+			return fmt.Errorf("mp(%v) peers(%v) mismatch peer(%v)", mp.PartitionID, mp.Peers, addr)
+		}
+		newPeers = append(newPeers, peer)
+	}
+	mp.setPeers(newPeers)
+	return nil
+}
+
+func (mp *MetaPartition) getPeerByAddr(addr string) (peer proto.Peer, exist bool) {
+	for _, p := range mp.Peers {
+		if p.Addr == addr {
+			return p, true
+		}
+	}
+	return
 }

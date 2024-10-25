@@ -44,6 +44,7 @@ const (
 	alarmKeyMpMissReplica        = "mp_miss_replica"
 	alarmKeyMpValidateCrc        = "mp_validate_crc"
 	alarmKeyMpReplicaNum         = "mp_replica_num"
+	alarmKeyMpRecorder       	 = "mp_recorder"
 	alarmKeyMpIllegalReplica     = "mp_illegal_replica"
 	alarmKeyMpCreate             = "mp_create"
 	alarmKeyMpDecommissionFailed = "mp_decommission_failed"
@@ -114,6 +115,7 @@ func (c *Cluster) initAlarmKey() {
 	gAlarmKeyMap[alarmKeyMpMissReplica] = fmt.Sprintf("%v_%v_%v", c.Name, ModuleName, alarmKeyMpMissReplica)
 	gAlarmKeyMap[alarmKeyMpValidateCrc] = fmt.Sprintf("%v_%v_%v", c.Name, ModuleName, alarmKeyMpValidateCrc)
 	gAlarmKeyMap[alarmKeyMpReplicaNum] = fmt.Sprintf("%v_%v_%v", c.Name, ModuleName, alarmKeyMpReplicaNum)
+	gAlarmKeyMap[alarmKeyMpRecorder] = fmt.Sprintf("%v_%v_%v", c.Name, ModuleName, alarmKeyMpRecorder)
 	gAlarmKeyMap[alarmKeyMpIllegalReplica] = fmt.Sprintf("%v_%v_%v", c.Name, ModuleName, alarmKeyMpIllegalReplica)
 	gAlarmKeyMap[alarmKeyMpCreate] = fmt.Sprintf("%v_%v_%v", c.Name, ModuleName, alarmKeyMpCreate)
 	gAlarmKeyMap[alarmKeyMpDecommissionFailed] = fmt.Sprintf("%v_%v_%v", c.Name, ModuleName, alarmKeyMpDecommissionFailed)

@@ -4186,7 +4186,7 @@ func (dp *DataPartition) handleRaftApplyMemberChange(confChange *raftProto.ConfC
 // Snapshot persists the in-memory data (as a snapshot) to the disk.
 // Note that the data in each data partition has already been saved on the disk. Therefore there is no need to take the
 // snapshot in this case.
-func (dp *DataPartition) handleRaftSnapshot(recoverNode uint64) (raftProto.Snapshot, error) {
+func (dp *DataPartition) handleRaftSnapshot(recoverNode uint64, isRecorder bool) (raftProto.Snapshot, error) {
 	var as = dp.applyStatus.Snap()
 	var snapshotIndex = as.Truncated() + 1
 	snapIterator := NewItemIterator(snapshotIndex)

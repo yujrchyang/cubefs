@@ -148,7 +148,7 @@ func (ms *memoryStatemachine) AskRollback(original []byte, _ uint64) (rollback [
 	return rollback, nil
 }
 
-func (ms *memoryStatemachine) Snapshot(recoveryID uint64) (proto.Snapshot, error) {
+func (ms *memoryStatemachine) Snapshot(recoveryID uint64, isRecorder bool) (proto.Snapshot, error) {
 	ms.RLock()
 	defer ms.RUnlock()
 

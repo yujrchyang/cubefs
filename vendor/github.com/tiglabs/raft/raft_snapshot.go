@@ -180,7 +180,7 @@ func (s *raft) handleSnapshot(req *snapshotRequest) {
 		err = fmt.Errorf("raft %v [term: %d] ignored a snapshot message with lower term from %v [term: %d]", s.raftFsm.id, s.raftFsm.term, req.header.From, req.header.Term)
 		return
 	}
-	if req.header.Term > s.raftFsm.term || s.raftFsm.state != stateFollower {
+	if req.header.Term > s.raftFsm.term || (s.raftFsm.state != stateFollower && s.raftFsm.state != stateRecorder) {
 		if s.raftFsm.state == stateRecorder {
 			s.raftFsm.becomeRecorder(nil, req.header.Term, req.header.From)
 		} else {
