@@ -949,9 +949,15 @@ func (s *raft) maybeChange(respErr bool) {
 }
 
 func (s *raft) ready() {
-	s.send()
-	s.persist()
-	s.apply()
+	if s.isLeader() {
+		s.apply()
+		s.send()
+		s.persist()
+	} else {
+		s.persist()
+		s.send()
+		s.apply()
+	}
 	s.advance()
 
 	s.raftFsm.msgs = nil
