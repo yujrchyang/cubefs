@@ -57,7 +57,7 @@ func newVolCmd(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newVolListCmd(client),
-		newVolCreateCmd(client),
+		//newVolCreateCmd(client),
 		newVolInfoCmd(client),
 		//newVolDeleteCmd(client),
 		//newVolTransferCmd(client),

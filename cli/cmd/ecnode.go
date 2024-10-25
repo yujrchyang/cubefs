@@ -36,8 +36,8 @@ func newEcNodeCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newEcNodeListCmd(client),
 		newEcNodeInfoCmd(client),
-		newEcNodeDecommissionCmd(client),
-		newEcNodeDiskDecommissionCmd(client),
+		//newEcNodeDecommissionCmd(client),
+		//newEcNodeDiskDecommissionCmd(client),
 		newEcNodeGetTaskStatus(client),
 	)
 	return cmd
@@ -145,7 +145,7 @@ func newEcNodeDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			data, err := client.NodeAPI().EcNodeDecommission(nodeAddr)
 			if err != nil {
 				stdout("%v", err)
-			}else {
+			} else {
 				stdout("%v", string(data))
 			}
 		},
@@ -178,7 +178,7 @@ func newEcNodeDiskDecommissionCmd(client *master.MasterClient) *cobra.Command {
 			data, err := client.NodeAPI().EcNodeDiskDecommission(nodeAddr, diskAddr)
 			if err != nil {
 				stdout("%v", err)
-			}else {
+			} else {
 				stdout("%v", string(data))
 			}
 		},

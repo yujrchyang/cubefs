@@ -18,10 +18,10 @@ func newIdcCommand(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newIdcListCmd(client),
-		newIdcCreateCmd(client),
-		newIdcDeleteCmd(client),
+		//newIdcCreateCmd(client),
+		//newIdcDeleteCmd(client),
 		newIdcGetCmd(client),
-		newIdcSetCmd(client),
+		//newIdcSetCmd(client),
 	)
 	return cmd
 }

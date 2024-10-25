@@ -28,12 +28,12 @@ func newFlashGroupCommand(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newListFlashGroupsCmd(client),
-		newFlashGroupCreateCmd(client),
+		//newFlashGroupCreateCmd(client),
 		newFlashGroupGetCmd(client),
-		newFlashGroupSetCmd(client),
-		newFlashGroupRemoveCmd(client),
-		newFlashGroupAddFlashNodeCmd(client),
-		newFlashGroupRemoveFlashNodeCmd(client),
+		//newFlashGroupSetCmd(client),
+		//newFlashGroupRemoveCmd(client),
+		//newFlashGroupAddFlashNodeCmd(client),
+		//newFlashGroupRemoveFlashNodeCmd(client),
 		newFlashGroupSearchCmd(client),
 	)
 	return cmd

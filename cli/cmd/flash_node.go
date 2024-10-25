@@ -26,14 +26,14 @@ func newFlashNodeCommand(client *master.MasterClient) *cobra.Command {
 	}
 	cmd.AddCommand(
 		newFlashNodeGetCmd(client),
-		newFlashNodeDecommissionCmd(client),
+		//newFlashNodeDecommissionCmd(client),
 		newFlashNodeListCmd(client),
-		newFlashNodeSetStateCmd(client),
-		newFlashNodeSetPingCmd(client),
-		newFlashNodeSetStackCmd(client),
-		newFlashNodeSetTimeoutCmd(client),
-		newFlashNodeEvictCmd(client),
-		newFlashNodeEvictAllCmd(client),
+		//newFlashNodeSetStateCmd(client),
+		//newFlashNodeSetPingCmd(client),
+		//newFlashNodeSetStackCmd(client),
+		//newFlashNodeSetTimeoutCmd(client),
+		//newFlashNodeEvictCmd(client),
+		//newFlashNodeEvictAllCmd(client),
 	)
 	return cmd
 }

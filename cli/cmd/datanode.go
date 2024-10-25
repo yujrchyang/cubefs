@@ -48,8 +48,8 @@ func newDataNodeCmd(client *master.MasterClient) *cobra.Command {
 		//newStopMigratingByDataNode(client),
 		newCheckReplicaByDataNodeCmd(client),
 		//newResetDataNodeLogLevelCmd(client),
-		newDataNodeStartRiskFix(client),
-		newDataNodeStopRiskFix(client),
+		//newDataNodeStartRiskFix(client),
+		//newDataNodeStopRiskFix(client),
 	)
 	return cmd
 }

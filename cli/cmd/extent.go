@@ -78,7 +78,7 @@ func newExtentCmd(mc *sdk.MasterClient) *cobra.Command {
 		newExtentCheckCmd(data_check.CheckTypeInodeNlink),
 		newExtentSearchCmd(),
 		newExtentGarbageCheckCmd(),
-		newTinyExtentCheckHoleCmd(),
+		//newTinyExtentCheckHoleAndRepairCmd(),
 		newExtentGetCmd(),
 		newExtentRepairCmd(),
 		newExtentCheckByIdCmd(mc),
@@ -564,7 +564,7 @@ func newExtentGarbageCheckCmd() *cobra.Command {
 	return cmd
 }
 
-func newTinyExtentCheckHoleCmd() *cobra.Command {
+func newTinyExtentCheckHoleAndRepairCmd() *cobra.Command {
 	var (
 		use        = cmdCheckTinyExtentHoleUse
 		short      = cmdCheckTinyExtentHoleShort

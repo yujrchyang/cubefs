@@ -36,12 +36,12 @@ func newUserCmd(client *master.MasterClient) *cobra.Command {
 		Args:  cobra.MinimumNArgs(0),
 	}
 	cmd.AddCommand(
-		newUserCreateCmd(client),
+		//newUserCreateCmd(client),
 		newUserInfoCmd(client),
 		newUserListCmd(client),
-		newUserPermCmd(client),
-		newUserUpdateCmd(client),
-		newUserDeleteCmd(client),
+		//newUserPermCmd(client),
+		//newUserUpdateCmd(client),
+		//newUserDeleteCmd(client),
 	)
 	return cmd
 }

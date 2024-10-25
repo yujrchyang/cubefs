@@ -44,8 +44,8 @@ func newCompactCmd(client *master.MasterClient) *cobra.Command {
 	cmd.AddCommand(
 		newCompactVolList(client),
 		newCompactCheckVolList(client),
-		newCompactBatchCloseCmd(client),
-		newCompactBatchOpenCmd(client),
+		//newCompactBatchCloseCmd(client),
+		//newCompactBatchOpenCmd(client),
 		newCompactCheckFragCmd(client),
 	)
 	return cmd
@@ -569,7 +569,7 @@ func checkMps(index int, volName string, mps []*proto.MetaPartitionView, client 
 		go func(mp *proto.MetaPartitionView) {
 			defer func() {
 				wg.Done()
-				<- ch
+				<-ch
 			}()
 			var mpInfo *proto.MetaPartitionInfo
 			var err error
