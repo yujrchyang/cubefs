@@ -210,6 +210,7 @@ type ChubaoFSMonitor struct {
 	checkRiskFix                            bool
 	configMap                               map[string]string
 	integerMap                              map[string]int64
+	clientJMQConfig                         clientJMQConfig
 }
 
 func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
@@ -344,8 +345,9 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.NewSchedule(s.resetTokenMap, time.Minute*30)
 	go s.NewSchedule(s.checkDbbakDataPartition, time.Hour*6)
 	go s.NewSchedule(s.checkAvailableTinyExtents, time.Minute*2)
-	go s.NewSchedule(s.clientAlarm, clientAlarmInterval*time.Second)
 	go s.NewSchedule(s.CheckMetaPartitionApply, time.Minute*30)
+	go s.NewSchedule(s.clientAlarm, clientAlarmInterval)
+	//go s.NewSchedule(s.checkCoreVols, time.Minute*2)
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
@@ -547,12 +549,16 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		s.integerMap[k] = cfg.GetInt64(k)
 	}
 
+	s.clientJMQConfig.addr = cfg.GetString(cfgClientJMQAddr)
+	s.clientJMQConfig.topic = cfg.GetString(cfgClientJMQTopic)
+	s.clientJMQConfig.group = cfg.GetString(cfgClientJMQGroup)
+
 	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
 		",offlineDiskMaxCountIn24Hour[%v],offlineDiskThreshold[%v],  mpCheckInterval[%v], "+
-		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v]\n",
+		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v],clientJMQConfig[%v]\n",
 		s.usedRatio, s.availSpaceRatio, s.readWriteDpRatio, s.minReadWriteCount, s.hosts, s.scheduleInterval, s.clusterUsedRatio,
 		s.offlineDiskMaxCountIn24Hour, s.offlineDiskThreshold, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval,
-		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD)
+		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD, s.clientJMQConfig)
 	return
 }
 
