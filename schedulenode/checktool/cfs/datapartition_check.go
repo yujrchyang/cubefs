@@ -314,6 +314,22 @@ func checkDataPartitionAvailTiny(vol string, dp *DataPartitionResponse, recoverN
 	if good {
 		return []string{}
 	}
+	if len(tinyExtents) == 0 {
+		return []string{
+			fmt.Sprintf("%v", dp.PartitionID),
+			brokenType,
+			fmt.Sprintf("%v", dp.ReplicaNum),
+			strings.Join(dp.Hosts, ";"),
+			dp.LeaderAddr,
+			fmt.Sprintf("%v", dp.Status),
+			fmt.Sprintf("%v", dp.IsRecover || DpInRecoverMsg == brokenType),
+			"N/A",
+			"N/A",
+			"N/A",
+			"N/A",
+			"N/A",
+		}
+	}
 	return []string{
 		fmt.Sprintf("%v", dp.PartitionID),
 		brokenType,
@@ -394,7 +410,8 @@ func retryCheckAvailTinyExtent(vol string, dataClient *http_client.DataClient, d
 		}
 		time.Sleep(time.Second)
 	}
-	return false, BrokenTinyMsg, tinyExtents, nil
+
+	return false, BrokenTinyMsg, tinyExtents, err
 }
 
 func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64) {
