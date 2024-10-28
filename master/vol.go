@@ -44,8 +44,8 @@ type Vol struct {
 	mpReplicaNum               uint8
 	dpLearnerNum               uint8
 	mpLearnerNum               uint8
-	dpRecorderNum			   uint8
-	mpRecorderNum			   uint8
+	dpRecorderNum              uint8
+	mpRecorderNum              uint8
 	Status                     uint8
 	mpMemUsageThreshold        float32
 	dataPartitionSize          uint64
@@ -144,8 +144,9 @@ type Vol struct {
 	DisableState               bool
 	updateTimeOfReplicaNum     int64
 	ConnConfig                 proto.ConnConfig
-	ReadAheadMemMB			   int64
-	ReadAheadWindowMB		   int64
+	ReadAheadMemMB             int64
+	ReadAheadWindowMB          int64
+	MetaOut                    bool // whether metadata have be stored to cfs meta node
 	sync.RWMutex
 }
 
@@ -351,6 +352,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.EnableCheckDeleteEK = vv.EnableCheckDelEK
 	vol.DisableState = vv.DisableState
 	vol.updateTimeOfReplicaNum = vv.UpdateTimeOfReplicaNum
+	vol.MetaOut = vv.MetaOut
 	return vol
 }
 
@@ -1294,7 +1296,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		partitionID uint64
 		peers       []proto.Peer
 		learners    []proto.Learner
-		recorders	[]string
+		recorders   []string
 		wg          sync.WaitGroup
 		storeMode   proto.StoreMode
 	)
@@ -1415,6 +1417,7 @@ func (vol *Vol) backupConfig() *Vol {
 		compactTag:                 vol.compactTag,
 		compactTagModifyTime:       vol.compactTagModifyTime,
 		FollowerReadDelayCfg:       vol.FollowerReadDelayCfg,
+		FollReadHostWeight:         vol.FollReadHostWeight,
 		TrashCleanInterval:         vol.TrashCleanInterval,
 		BatchDelInodeCnt:           vol.BatchDelInodeCnt,
 		DelInodeInterval:           vol.DelInodeInterval,
@@ -1437,8 +1440,9 @@ func (vol *Vol) backupConfig() *Vol {
 		BitMapSnapFrozenHour:       vol.BitMapSnapFrozenHour,
 		EnableCheckDeleteEK:        vol.EnableCheckDeleteEK,
 		updateTimeOfReplicaNum:     vol.updateTimeOfReplicaNum,
-		ReadAheadMemMB:				vol.ReadAheadMemMB,
-		ReadAheadWindowMB: 			vol.ReadAheadWindowMB,
+		ReadAheadMemMB:             vol.ReadAheadMemMB,
+		ReadAheadWindowMB:          vol.ReadAheadWindowMB,
+		MetaOut:                    vol.MetaOut,
 	}
 }
 
@@ -1479,6 +1483,8 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.smartRules = backupVol.smartRules
 	vol.compactTag = backupVol.compactTag
 	vol.compactTagModifyTime = backupVol.compactTagModifyTime
+	vol.FollReadHostWeight = backupVol.FollReadHostWeight
+	vol.FollowerReadDelayCfg = backupVol.FollowerReadDelayCfg
 	vol.TrashCleanInterval = backupVol.TrashCleanInterval
 	vol.BatchDelInodeCnt = backupVol.BatchDelInodeCnt
 	vol.DelInodeInterval = backupVol.DelInodeInterval
@@ -1502,6 +1508,8 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.EnableCheckDeleteEK = backupVol.EnableCheckDeleteEK
 	vol.ReadAheadMemMB = backupVol.ReadAheadMemMB
 	vol.ReadAheadWindowMB = backupVol.ReadAheadWindowMB
+	vol.updateTimeOfReplicaNum = backupVol.updateTimeOfReplicaNum
+	vol.MetaOut = backupVol.MetaOut
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

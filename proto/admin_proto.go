@@ -101,9 +101,9 @@ const (
 	AdminGetUnavailDataPartitions         = "/admin/getUnavailDps"
 	AdminSetMNRocksDBDiskThreshold        = "/rocksdbDiskThreshold/set"
 	AdminSetMNMemModeRocksDBDiskThreshold = "/memModeRocksdbDiskThreshold/set"
-
-	AdminCompactVolList = "/admin/compactVol/list"
-	AdminCompactVolSet  = "/admin/compactVol/set"
+	AdminSetMqProducerState               = "/admin/setMqProducerState"
+	AdminCompactVolList                   = "/admin/compactVol/list"
+	AdminCompactVolSet                    = "/admin/compactVol/set"
 
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
@@ -239,8 +239,8 @@ const (
 	ClientFlashGroups              = "/client/flashGroups"
 
 	// Recorder API
-	AdminAddMetaRecorder	= "/metaRecorder/add"
-	AdminDeleteMetaRecorder	= "/metaRecorder/delete"
+	AdminAddMetaRecorder    = "/metaRecorder/add"
+	AdminDeleteMetaRecorder = "/metaRecorder/delete"
 
 	AdminSetClusterName = "/admin/setClusterName"
 
@@ -322,7 +322,8 @@ const (
 	DisableClusterCheckDelEK         = "disableClusterCheckDelEK"
 	UmpKeyPrefixKey                  = "umpKeyPrefix"
 
-	IDsKey = "ids"
+	IDsKey     = "ids"
+	MetaOutKey = "metaOut"
 )
 
 const (
@@ -855,11 +856,11 @@ type ResetMetaRecorderRaftMemberRequest struct {
 
 // CreateMetaRecorderRequest defines the request to create a meta partition.
 type CreateMetaRecorderRequest struct {
-	VolName      string
-	PartitionID  uint64
-	Members      []Peer
-	Learners     []Learner
-	Recorders	 []string
+	VolName     string
+	PartitionID uint64
+	Members     []Peer
+	Learners    []Learner
+	Recorders   []string
 }
 
 func (req *CreateMetaRecorderRequest) String() string {
@@ -999,11 +1000,11 @@ type MetaPartitionReport struct {
 }
 
 type MetaRecorderReport struct {
-	PartitionID       uint64
-	VolName           string
-	ApplyId           uint64
-	Status			  int
-	IsRecover         bool
+	PartitionID uint64
+	VolName     string
+	ApplyId     uint64
+	Status      int
+	IsRecover   bool
 }
 
 // MetaNodeHeartbeatResponse defines the response to the meta node heartbeat request.
@@ -1186,7 +1187,7 @@ type MetaPartitionView struct {
 	IsRecover          bool
 	Members            []string
 	Learners           []string
-	Recorders		   []string
+	Recorders          []string
 	LeaderAddr         string
 	Status             int8
 	StoreMode          StoreMode
@@ -1362,8 +1363,8 @@ type SimpleVolView struct {
 	EnableCheckDeleteEK    bool
 	NotCacheNode           bool
 	Flock                  bool
-	ReadAheadMemMB		   int64
-	ReadAheadWindowMB	   int64
+	ReadAheadMemMB         int64
+	ReadAheadWindowMB      int64
 
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
@@ -1375,6 +1376,7 @@ type SimpleVolView struct {
 	DelayMinutesReduceReplicaNum int64
 	UpdateTimeOfReplicaNum       int64
 	DisableState                 bool
+	MetaOut                      bool
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

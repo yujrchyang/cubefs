@@ -2045,11 +2045,6 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 			return
 		}
 	} else if vol.dpReplicaNum == 2 {
-		if len(dp.Replicas) != 2 || len(dp.Peers) != 2 || len(dp.Hosts) != 2 {
-			err = fmt.Errorf("vol[%v] has two replica limit, but dp[%v] has less or more than two Replicas, replicas[%v], peers[%v], hosts[%v]",
-				vol.Name, dp.PartitionID, dp.Replicas, dp.Peers, dp.Hosts)
-			return
-		}
 		aliveNodeCount := 0
 		aliveNodes := dp.availableDataReplicas()
 		for _, node := range aliveNodes {
@@ -2880,7 +2875,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
 	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
 	enableRemoveDupReq bool, notCacheNode bool, flock bool, truncateEKCountEveryTime int, mpSplitStep, inodeCountThreshold uint64,
-	bitMapSnapFrozenHour int64, enableCheckDelEK bool, readAheadMemMB, readAheadWindowMB int64) (err error) {
+	bitMapSnapFrozenHour int64, enableCheckDelEK bool, readAheadMemMB, readAheadWindowMB int64, metaOut bool) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -2992,10 +2987,12 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	}
 	vol.dpReplicaNum = replicaNum
 	vol.updateTimeOfReplicaNum = time.Now().Unix()
-	// only can increase mp replica num
 	if mpReplicaNum > vol.mpReplicaNum {
 		vol.mpReplicaNum = mpReplicaNum
 		vol.MPConvertMode = proto.IncreaseReplicaNum
+	} else {
+		vol.mpReplicaNum = mpReplicaNum
+		vol.MPConvertMode = proto.DefaultConvertMode
 	}
 
 	if remainingDays > maxTrashRemainingDays {
@@ -3047,6 +3044,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.EnableCheckDeleteEK = enableCheckDelEK
 	vol.ReadAheadMemMB = readAheadMemMB
 	vol.ReadAheadWindowMB = readAheadWindowMB
+	vol.MetaOut = metaOut
 	if err = c.syncUpdateVol(vol); err != nil {
 		log.LogErrorf("action[updateVol] vol[%v] err[%v]", name, err)
 		err = proto.ErrPersistenceByRaft
@@ -3068,7 +3066,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	childFileMaxCnt uint32, storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
 	compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32,
-	bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64, readAheadMemMB, readAheadWindowMB int64) (vol *Vol, err error) {
+	bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64, readAheadMemMB, readAheadWindowMB int64, metaOut bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -3114,7 +3112,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
 		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, uint8(mpRecorderNum), dpWriteableThreshold,
 		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocatorEnable,
-		mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB); err != nil {
+		mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -3149,7 +3147,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	dpWriteableThreshold float64, childFileMaxCnt uint32, storeMode proto.StoreMode, convertSt proto.VolConvertState,
 	mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
 	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64,
-	readAheadMemMB, readAheadWindowMB int64) (vol *Vol, err error) {
+	readAheadMemMB, readAheadWindowMB int64, metaOut bool) (vol *Vol, err error) {
 	var (
 		id              uint64
 		smartEnableTime int64
@@ -3191,6 +3189,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	vol.EcParityNum = parityNum
 	vol.EcEnable = enableEc
 	vol.EnableBitMapAllocator = bitMapAllocatorEnable
+	vol.MetaOut = metaOut
 	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
 	}
@@ -3326,10 +3325,10 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 result:
 	log.LogInfof("action[chooseTargetMetaHosts] replicaNum[%v],recorderNum[%v],zoneName[%v],selectedZones[%v],hosts[%v],peers[%v],recorders[%v]",
 		replicaNum, recorderNum, zoneName, zones, hosts, peers, recorders)
-	if len(hosts) != replicaNum || len(peers) != replicaNum + recorderNum || len(recorders) != recorderNum {
+	if len(hosts) != replicaNum || len(peers) != replicaNum+recorderNum || len(recorders) != recorderNum {
 		return nil, nil, nil,
-		errors.Trace(proto.ErrNoMetaNodeToCreateMetaPartition, "hosts len[%v], peers len[%v], recorders len[%v], replicaNum[%v], recorderNum[%v]",
-			len(hosts), len(peers), len(recorders), replicaNum, recorderNum)
+			errors.Trace(proto.ErrNoMetaNodeToCreateMetaPartition, "hosts len[%v], peers len[%v], recorders len[%v], replicaNum[%v], recorderNum[%v]",
+				len(hosts), len(peers), len(recorders), replicaNum, recorderNum)
 	}
 	return
 }
@@ -5635,6 +5634,7 @@ func (c *Cluster) getClusterView() (cv *proto.ClusterView) {
 		AutoUpdatePartitionReplicaNum:       c.cfg.AutoUpdatePartitionReplicaNum,
 		BandwidthLimit:                      c.cfg.BandwidthRateLimit,
 		NodesLiveRatioThreshold:             c.cfg.NodesLiveRatio,
+		MqProducerState:                     c.cfg.MqProducerState,
 	}
 
 	vols := c.allVolNames()
@@ -6189,5 +6189,17 @@ func (c *Cluster) setVolDisableState(name, authKey string, disableState bool) (e
 		return err
 	}
 	log.LogInfof("[setVolDisableState] set volume %v disable state to %v success", name, disableState)
+	return
+}
+
+func (c *Cluster) setMqProducerState(state bool) (err error) {
+	oldValue := c.cfg.MqProducerState
+	c.cfg.MqProducerState = state
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setMqProducerState] err[%v]", err)
+		c.cfg.MqProducerState = oldValue
+		err = proto.ErrPersistenceByRaft
+		return
+	}
 	return
 }

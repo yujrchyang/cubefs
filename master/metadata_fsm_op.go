@@ -116,6 +116,7 @@ type clusterValue struct {
 	APIReqBwRateLimitMap                map[uint8]int64
 	DisableClusterCheckDelEK            bool
 	DelayMinutesReduceReplicaNum        int64
+	MqProducerState                     bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -217,7 +218,7 @@ type metaPartitionValue struct {
 	OfflinePeerID  uint64
 	Peers          []bsProto.Peer
 	Learners       []bsProto.Learner
-	Recorders	   []string
+	Recorders      []string
 	PanicHosts     []string
 	PanicRecorders []string
 	IsRecover      bool
@@ -239,7 +240,7 @@ func newMetaPartitionValue(mp *MetaPartition) (mpv *metaPartitionValue) {
 		Hosts:          mp.hostsToString(),
 		Peers:          mp.Peers,
 		Learners:       mp.Learners,
-		Recorders: 		mp.Recorders,
+		Recorders:      mp.Recorders,
 		OfflinePeerID:  mp.OfflinePeerID,
 		IsRecover:      mp.IsRecover,
 		PanicHosts:     mp.PanicHosts,
@@ -384,8 +385,8 @@ type volValue struct {
 	RemoveDupReqEnable     bool
 	NotCacheNode           bool
 	Flock                  bool
-	ReadAheadMemMB		   int64
-	ReadAheadWindowMB	   int64
+	ReadAheadMemMB         int64
+	ReadAheadWindowMB      int64
 
 	TruncateEKCountEveryTime int
 	MpSplitStep              uint64
@@ -394,6 +395,7 @@ type volValue struct {
 	EnableCheckDelEK         bool
 	DisableState             bool
 	UpdateTimeOfReplicaNum   int64
+	MetaOut                  bool
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -485,8 +487,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		RemoveDupReqEnable:     vol.enableRemoveDupReq,
 		NotCacheNode:           vol.notCacheNode,
 		Flock:                  vol.flock,
-		ReadAheadMemMB:			vol.ReadAheadMemMB,
-		ReadAheadWindowMB: 		vol.ReadAheadWindowMB,
+		ReadAheadMemMB:         vol.ReadAheadMemMB,
+		ReadAheadWindowMB:      vol.ReadAheadWindowMB,
 
 		TruncateEKCountEveryTime: vol.TruncateEKCountEveryTime,
 		MpSplitStep:              vol.MpSplitStep,
@@ -495,6 +497,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		EnableCheckDelEK:         vol.EnableCheckDeleteEK,
 		DisableState:             vol.DisableState,
 		UpdateTimeOfReplicaNum:   vol.updateTimeOfReplicaNum,
+		MetaOut:                  vol.MetaOut,
 	}
 	return
 }
@@ -1244,6 +1247,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		if cv.DelayMinutesReduceReplicaNum < defaultDelayMinutesReduceReplicaNum {
 			c.cfg.delayMinutesReduceReplicaNum = defaultDelayMinutesReduceReplicaNum
 		}
+		c.cfg.MqProducerState = cv.MqProducerState
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
