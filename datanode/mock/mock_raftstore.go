@@ -2,7 +2,6 @@ package mock
 
 import (
 	cfsproto "github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
