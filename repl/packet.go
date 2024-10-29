@@ -537,7 +537,7 @@ func ParseFingerprintPacket(p *Packet) (req *FingerprintRequest, err error) {
 		ExtentID:    p.ExtentID,
 		Offset:      int64(binary.BigEndian.Uint64(p.Arg[0:8])),
 		Size:        int64(binary.BigEndian.Uint64(p.Arg[8:16])),
-		Force:       p.Arg[16] == proto.ForceDataRead,
+		Force:       p.Arg[16] == 1,
 	}
 	return
 }
@@ -548,9 +548,9 @@ func NewPacketToFingerprint(ctx context.Context, req *FingerprintRequest) (p *Pa
 	binary.BigEndian.PutUint64(arg[8:16], uint64(req.Size))
 	arg[16] = func() byte {
 		if req.Force {
-			return proto.ForceDataRead
+			return 1
 		}
-		return proto.NormalDataRead
+		return 0
 	}()
 
 	p = new(Packet)
@@ -597,7 +597,7 @@ func NewExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(offset)
 	if force {
-		p.Arg = []byte{proto.ForceDataRead}
+		p.Arg = []byte{1}
 		p.ArgLen = uint32(len(p.Arg))
 	}
 	p.Size = uint32(size)
@@ -616,7 +616,7 @@ func NewTinyExtentRepairReadPacket(ctx context.Context, partitionID uint64, exte
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(offset)
 	if force {
-		p.Arg = []byte{proto.ForceDataRead}
+		p.Arg = []byte{1}
 		p.ArgLen = uint32(len(p.Arg))
 	}
 	p.Size = uint32(size)
