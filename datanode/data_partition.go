@@ -1154,6 +1154,8 @@ func convertCheckCorruptLevel(l uint64) (FaultOccurredCheckLevel, error) {
 	}
 }
 
+var multirateDebug bool
+
 func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandType string) (err error) {
 	if dp == nil {
 		return ErrPartitionNil
@@ -1170,6 +1172,9 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 		prBuilder.SetBandType(bandType).Properties()
 		stBuilder.SetOutBytes(int(size)).Stat()
 	default:
+	}
+	if multirateDebug {
+		return
 	}
 	err = multirate.WaitNUseDefaultTimeout(ctx, prBuilder.Properties(), stBuilder.Stat())
 	if err != nil {

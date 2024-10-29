@@ -5,12 +5,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/datanode/mock"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util/holder"
-	"github.com/cubefs/cubefs/util/statistics"
-	"golang.org/x/net/context"
 	"hash/crc32"
 	"math/rand"
 	"os"
@@ -19,6 +13,15 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/datanode/mock"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/holder"
+	"github.com/cubefs/cubefs/util/multirate"
+	"github.com/cubefs/cubefs/util/statistics"
+	"github.com/cubefs/cubefs/util/unit"
+	"golang.org/x/net/context"
 )
 
 var fakeNode *fakeDataNode
@@ -924,4 +927,85 @@ func benchmarkActionHolder(b *testing.B, pendingEntries []extentAction) {
 		}
 		b.ReportAllocs()
 	})
+}
+
+const (
+	indexTimeout = iota
+	indexCount
+	indexInBytes
+	indexOutBytes
+	indexCountPerDisk
+	indexInBytesPerDisk
+	indexOutBytesPerDisk
+	indexCountPerPartition
+	indexInBytesPerPartition
+	indexOutBytesPerPartition
+	indexConcurrency
+	IndexMax // count of indexes
+)
+
+func BenchmarkRateLimit(b *testing.B) {
+	benchMarkRateLimitByMultiRule(1, b)
+	benchMarkRateLimitByMultiRule(100, b)
+	benchMarkRateLimitByMultiRule(200, b)
+	benchMarkRateLimitByMultiRule(500, b)
+	benchMarkRateLimitByMultiRule(1000, b)
+	benchMarkRateLimitByMultiRule(2000, b)
+}
+
+func benchMarkRateLimitByMultiRule(concurrent int, b *testing.B) {
+	var testZone string
+	multirate.InitLimiterManagerWithoutHttp(multirate.ModuleDataNode, testZone, func(volName string) (info *proto.LimitInfo, err error) {
+		info = &proto.LimitInfo{
+			RateLimit: make(map[string]map[string]map[int]proto.AllLimitGroup, 0),
+		}
+		info.RateLimit[multirate.ModuleDataNode] = make(map[string]map[int]proto.AllLimitGroup, 0)
+		limitGroup := proto.AllLimitGroup{}
+		limitGroup[indexCount] = 10000000000000
+		for i := 0; i < concurrent; i++ {
+			vol := fmt.Sprintf("testVol_%v", i)
+			info.RateLimit[multirate.ModuleDataNode]["vol:"+vol] = make(map[int]proto.AllLimitGroup)
+			info.RateLimit[multirate.ModuleDataNode]["vol:"+vol][int(proto.OpStreamFollowerRead)] = limitGroup
+		}
+		return
+	})
+	dpHit := &DataPartition{
+		partitionID: 1,
+		disk: &Disk{
+			Path: "/data1/disk1",
+		},
+		volumeID: "testVol_0",
+	}
+	dpMiss := &DataPartition{
+		partitionID: 1,
+		disk: &Disk{
+			Path: "/data1/disk1",
+		},
+		volumeID: "missVol",
+	}
+	b.Run(fmt.Sprintf("ratelimit_%v_hit_limiter", concurrent), func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			dpHit.limit(context.Background(), int(proto.OpStreamFollowerRead), unit.KB*128, multirate.FlowDisk)
+		}
+		b.ReportAllocs()
+	})
+
+	b.Run(fmt.Sprintf("ratelimit_%v_miss_limiter", concurrent), func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			dpMiss.limit(context.Background(), int(proto.OpWrite), unit.KB*128, multirate.FlowDisk)
+		}
+		b.ReportAllocs()
+	})
+	multirateDebug = true
+	b.Run(fmt.Sprintf("ratelimit_%v_no_limiter", concurrent), func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			dpMiss.limit(context.Background(), int(proto.OpWrite), unit.KB*128, multirate.FlowDisk)
+		}
+		b.ReportAllocs()
+	})
+	multirateDebug = false
+	multirate.Stop()
 }

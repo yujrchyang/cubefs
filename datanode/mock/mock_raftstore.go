@@ -2,7 +2,6 @@ package mock
 
 import (
 	cfsproto "github.com/cubefs/cubefs/proto"
-
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/tiglabs/raft"
 	"github.com/tiglabs/raft/proto"
@@ -66,10 +65,6 @@ func (m mockRaftPartition) CommittedIndex() uint64 {
 }
 
 func (m mockRaftPartition) Truncate(index uint64) {
-}
-
-func (m mockRaftPartition) GetTruncateIndex() uint64 {
-	return 0
 }
 
 func (m mockRaftPartition) TryToLeader(nodeID uint64) error {
