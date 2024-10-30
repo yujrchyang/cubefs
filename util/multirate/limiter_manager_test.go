@@ -37,7 +37,7 @@ func TestLimiterManager(t *testing.T) {
 		}
 		return
 	}
-	m, _ := newLimiterManager(ModuleDataNode, zone, getLimitInfo)
+	m, _ := newLimiterManager(ModuleDataNode, zone, getLimitInfo, false)
 	m.Stop()
 	ml := m.GetLimiter()
 	property := []Properties{

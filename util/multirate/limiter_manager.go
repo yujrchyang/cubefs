@@ -169,7 +169,14 @@ func GetIndexByName(name string) int {
 }
 
 func InitLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfoFunc) (lm *LimiterManager, err error) {
-	if lm, err = newLimiterManager(module, zoneName, getLimitInfo); err == nil {
+	if lm, err = newLimiterManager(module, zoneName, getLimitInfo, true); err == nil {
+		limiterManager = lm
+	}
+	return
+}
+
+func InitLimiterManagerWithoutHttp(module string, zoneName string, getLimitInfo GetLimitInfoFunc) (lm *LimiterManager, err error) {
+	if lm, err = newLimiterManager(module, zoneName, getLimitInfo, false); err == nil {
 		limiterManager = lm
 	}
 	return
@@ -187,9 +194,12 @@ func WaitN(ctx context.Context, ps Properties, stat Stat) error {
 	if limiterManager == nil {
 		return nil
 	}
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
 	start := time.Now()
-	hit, err := limiterManager.ml.WaitN(ctx, ps, stat)
-	if hit {
+	err := limiterManager.ml.WaitN(ctx, ps, stat)
+	if err != nil {
 		if op := ps.OpDesc(); op != "" {
 			metric := exporter.NewModuleTPUsWithStart(op+"_ratelimit", start)
 			metric.Set(err)
@@ -220,11 +230,13 @@ func WaitNUseDefaultTimeout(ctx context.Context, ps Properties, stat Stat) error
 	if limiterManager == nil {
 		return nil
 	}
+	if ctx == nil {
+		return fmt.Errorf("nil context")
+	}
 	start := time.Now()
-	hit, err := limiterManager.ml.WaitNUseDefaultTimeout(ctx, ps, stat)
-	if hit {
-		op := ps.OpDesc()
-		if op != "" {
+	err := limiterManager.ml.WaitNUseDefaultTimeout(ctx, ps, stat)
+	if err != nil {
+		if op := ps.OpDesc(); op != "" {
 			metric := exporter.NewModuleTPUsWithStart(op+"_wait", start)
 			metric.Set(err)
 		}
@@ -252,13 +264,13 @@ func Stop() {
 	}
 }
 
-func newLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfoFunc) (*LimiterManager, error) {
+func newLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfoFunc, withHttp bool) (*LimiterManager, error) {
 	m := new(LimiterManager)
 	m.module = module
 	m.zoneName = zoneName
 	m.getLimitInfo = getLimitInfo
-	m.ml = NewMultiLimiterWithHandler()
-	m.mc = NewMultiConcurrencyWithHandler()
+	m.ml = NewMultiLimiterWithHandler(withHttp)
+	m.mc = NewMultiConcurrencyWithHandler(withHttp)
 	m.stopC = make(chan struct{})
 	m.oldOpRateLimitMap = make(map[int]proto.AllLimitGroup)
 	m.oldVolOpRateLimitMap = make(map[string]map[int]proto.AllLimitGroup)

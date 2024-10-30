@@ -91,9 +91,11 @@ func NewMultiConcurrency() *MultiConcurrency {
 	return new(MultiConcurrency)
 }
 
-func NewMultiConcurrencyWithHandler() *MultiConcurrency {
+func NewMultiConcurrencyWithHandler(withHttp bool) *MultiConcurrency {
 	mc := NewMultiConcurrency()
-	http.HandleFunc(controlGetConcurrency, mc.handlerGetConcurrency)
+	if withHttp {
+		http.HandleFunc(controlGetConcurrency, mc.handlerGetConcurrency)
+	}
 	return mc
 }
 

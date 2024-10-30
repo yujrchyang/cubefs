@@ -188,9 +188,10 @@ func (s *StatBuilder) Stat() Stat {
 }
 
 type MultiLimiter struct {
-	status   bool
-	rules    sync.Map // map[name]*Rule
-	limiters sync.Map // map[name]LimiterGroup
+	status    bool
+	ruleNames sync.Map // map[ruleKey][]ruleName
+	rules     sync.Map // map[name]*Rule
+	limiters  sync.Map // map[name]LimiterGroup
 }
 
 func (t PropertyType) String() string {
@@ -256,6 +257,84 @@ func (ps Properties) name() string {
 		sb.WriteString(separator)
 	}
 	return strings.TrimSuffix(sb.String(), separator)
+}
+
+func (ps Properties) key() string {
+	var sb strings.Builder
+	for _, p := range ps {
+		if p.Type == PropertyTypeVol || p.Type == PropertyTypeOp {
+			sb.WriteString(strconv.Itoa(int(p.Type)))
+			sb.WriteString(p.Value)
+			sb.WriteString(separator)
+		}
+	}
+	return strings.TrimSuffix(sb.String(), separator)
+}
+
+func (ps Properties) keys() (keys []string) {
+	var hasVol, hasOp bool
+	var vol, op string
+	for _, p := range ps {
+		if p.Type == PropertyTypeVol {
+			hasVol = true
+			vol = p.Value
+		} else if p.Type == PropertyTypeOp {
+			hasOp = true
+			op = p.Value
+		}
+	}
+	if hasVol && hasOp {
+		keys = make([]string, 0, 9)
+	} else {
+		keys = make([]string, 0, 3)
+	}
+	keys = append(keys, "")
+	var sb strings.Builder
+	typeVol := strconv.Itoa(int(PropertyTypeVol))
+	typeOp := strconv.Itoa(int(PropertyTypeOp))
+	if hasVol {
+		keys = append(keys, typeVol)
+		sb.WriteString(typeVol)
+		sb.WriteString(vol)
+		keys = append(keys, sb.String())
+	}
+	if hasOp {
+		keys = append(keys, typeOp)
+		sb.Reset()
+		sb.WriteString(typeOp)
+		sb.WriteString(op)
+		keys = append(keys, sb.String())
+	}
+	if hasVol && hasOp {
+		sb.Reset()
+		sb.WriteString(typeVol)
+		sb.WriteString(separator)
+		sb.WriteString(typeOp)
+		keys = append(keys, sb.String())
+
+		sb.Reset()
+		sb.WriteString(typeVol)
+		sb.WriteString(vol)
+		sb.WriteString(separator)
+		sb.WriteString(typeOp)
+		keys = append(keys, sb.String())
+
+		sb.Reset()
+		sb.WriteString(typeVol)
+		sb.WriteString(separator)
+		sb.WriteString(typeOp)
+		sb.WriteString(op)
+		keys = append(keys, sb.String())
+
+		sb.Reset()
+		sb.WriteString(typeVol)
+		sb.WriteString(vol)
+		sb.WriteString(separator)
+		sb.WriteString(typeOp)
+		sb.WriteString(op)
+		keys = append(keys, sb.String())
+	}
+	return
 }
 
 func (ps Properties) match(name string) bool {
@@ -390,15 +469,22 @@ func NewMultiLimiter() *MultiLimiter {
 	return ml
 }
 
-func NewMultiLimiterWithHandler() *MultiLimiter {
+func NewMultiLimiterWithHandler(withHttp bool) *MultiLimiter {
 	ml := NewMultiLimiter()
-	http.HandleFunc(controlGet, ml.handlerGet)
-	http.HandleFunc(controlSetStatus, ml.handlerSetStatus)
+	if withHttp {
+		http.HandleFunc(controlGet, ml.handlerGet)
+		http.HandleFunc(controlSetStatus, ml.handlerSetStatus)
+	}
 	return ml
 }
 
 func (ml *MultiLimiter) String() string {
 	var builder strings.Builder
+	builder.WriteString("ruleNames: ")
+	ml.ruleNames.Range(func(k, v interface{}) bool {
+		builder.WriteString(fmt.Sprintf("key(%v) names(%v), ", k.(string), v.([]string)))
+		return true
+	})
 	builder.WriteString("rules: ")
 	ml.rules.Range(func(k, v interface{}) bool {
 		rule := v.(*Rule)
@@ -436,13 +522,38 @@ func (ml *MultiLimiter) AddRule(r *Rule) *MultiLimiter {
 		if !reflect.DeepEqual(oldRule.limit, r.limit) || oldRule.timeout != r.timeout {
 			ml.clearLimiter(r.properties)
 		}
+	} else {
+		key := r.properties.key()
+		if ruleNamesVal, ok := ml.ruleNames.Load(key); ok {
+			ruleNames := ruleNamesVal.([]string)
+			ruleNames = append(ruleNames, name)
+			ml.ruleNames.Store(key, ruleNames)
+		} else {
+			ml.ruleNames.Store(key, []string{name})
+		}
 	}
 	return ml
 }
 
 func (ml *MultiLimiter) ClearRule(ps Properties) *MultiLimiter {
 	ps.sort()
-	ml.rules.Delete(ps.name())
+	key := ps.key()
+	name := ps.name()
+	if ruleNamesVal, ok := ml.ruleNames.Load(key); ok {
+		ruleNames := ruleNamesVal.([]string)
+		newRuleNames := make([]string, 0, len(ruleNames))
+		for _, ruleName := range ruleNames {
+			if ruleName != name {
+				newRuleNames = append(newRuleNames, ruleName)
+			}
+		}
+		if len(newRuleNames) == 0 {
+			ml.ruleNames.Delete(key)
+		} else {
+			ml.ruleNames.Store(key, newRuleNames)
+		}
+	}
+	ml.rules.Delete(name)
 	ml.clearLimiter(ps)
 	return ml
 }
@@ -458,6 +569,10 @@ func (ml *MultiLimiter) clearLimiter(ps Properties) {
 }
 
 func (ml *MultiLimiter) clearAll() {
+	ml.ruleNames.Range(func(k, v interface{}) bool {
+		ml.ruleNames.Delete(k)
+		return true
+	})
 	ml.rules.Range(func(k, v interface{}) bool {
 		ml.rules.Delete(k)
 		return true
@@ -472,13 +587,13 @@ func (ml *MultiLimiter) setStatus(status bool) {
 	ml.status = status
 }
 
-func (ml *MultiLimiter) Wait(ctx context.Context, ps Properties) (bool, error) {
+func (ml *MultiLimiter) Wait(ctx context.Context, ps Properties) error {
 	return ml.WaitN(ctx, ps, Stat{Count: 1})
 }
 
-func (ml *MultiLimiter) WaitN(ctx context.Context, ps Properties, stat Stat) (bool, error) {
+func (ml *MultiLimiter) WaitN(ctx context.Context, ps Properties, stat Stat) error {
 	if ctx == nil {
-		return false, fmt.Errorf("nil context")
+		return fmt.Errorf("nil context")
 	}
 	return ml.waitOrAlowN(ctx, ps, stat, false)
 }
@@ -488,25 +603,25 @@ func (ml *MultiLimiter) Allow(ps Properties) bool {
 }
 
 func (ml *MultiLimiter) AllowN(ps Properties, stat Stat) bool {
-	_, err := ml.waitOrAlowN(nil, ps, stat, false)
+	err := ml.waitOrAlowN(nil, ps, stat, false)
 	return err == nil
 }
 
 // if ctx doesn't has Deadline, use rule timeout
-func (ml *MultiLimiter) WaitUseDefaultTimeout(ctx context.Context, ps Properties) (bool, error) {
+func (ml *MultiLimiter) WaitUseDefaultTimeout(ctx context.Context, ps Properties) error {
 	if ctx == nil {
-		return false, fmt.Errorf("nil context")
+		return fmt.Errorf("nil context")
 	}
 	return ml.WaitNUseDefaultTimeout(ctx, ps, Stat{Count: 1})
 }
 
-func (ml *MultiLimiter) WaitNUseDefaultTimeout(ctx context.Context, ps Properties, stat Stat) (bool, error) {
+func (ml *MultiLimiter) WaitNUseDefaultTimeout(ctx context.Context, ps Properties, stat Stat) error {
 	return ml.waitOrAlowN(ctx, ps, stat, true)
 }
 
-func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Stat, useDefault bool) (hit bool, err error) {
+func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Stat, useDefault bool) (err error) {
 	if !ml.status {
-		return false, nil
+		return
 	}
 
 	statIndex := stat.index()
@@ -541,7 +656,6 @@ func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Sta
 				continue
 			}
 
-			hit = true
 			// ctx is nil only in Allow()
 			if ctx == nil {
 				if !limiter.AllowN(time.Now(), stat.val(statType(i))) {
@@ -614,19 +728,29 @@ func (ml *MultiLimiter) getLimiterGroup(name string, limit LimitGroup, burst Bur
 
 func (ml *MultiLimiter) iterate(ps Properties, f func(name string, limit LimitGroup, burst BurstGroup, timeout time.Duration)) {
 	var nameRules []*nameRule
-	ml.rules.Range(func(k, v interface{}) bool {
-		rule := v.(*Rule)
+	keys := ps.keys()
+	var ruleNames []string
+	for _, key := range keys {
+		if ruleNamesVal, ok := ml.ruleNames.Load(key); ok {
+			ruleNames = append(ruleNames, ruleNamesVal.([]string)...)
+		}
+	}
+	for _, ruleName := range ruleNames {
+		ruleVal, ok := ml.rules.Load(ruleName)
+		if !ok {
+			continue
+		}
+		rule := ruleVal.(*Rule)
 		isMatch, name := rule.match(ps)
 		if !isMatch {
-			return true
+			continue
 		}
 
 		nameRule := getNameRule(nameRules, name, rule)
 		if nameRule != nil {
 			nameRules = append(nameRules, nameRule)
 		}
-		return true
-	})
+	}
 
 	for _, item := range nameRules {
 		f(item.name, item.limit, item.burst, item.timeout)
