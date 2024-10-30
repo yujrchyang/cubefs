@@ -600,8 +600,6 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		dataBuffer = make([]byte, needReplySize)
 	}
 
-	var isStrictModeEnabled = partition.GetConsistencyMode() == proto.StrictMode
-
 	for {
 		if needReplySize <= 0 {
 			break
@@ -633,7 +631,10 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 					tp.Set(storeErr)
 				}()
 			}
-			if isStrictModeEnabled {
+			// 变更前提：原来的raft消息成功条件是apply成功，现在改成commit成功
+			// 变更原因：在新前提下，如果raft commit后立即读leader，有可能读到未apply的脏数据
+			// 变更内容：对OpStreamRead，强制检查pending，此外，对于严格模式下的其他opcode(OpStreamFollowerRead, OpExtentRepairRead)是否需要做pending检查，需验证
+			if p.Opcode == proto.OpStreamRead {
 				if storeErr = partition.checkAndWaitForPendingActionApplied(reply.ExtentID, offset, int64(currReadSize)); storeErr != nil {
 					return storeErr
 				}
