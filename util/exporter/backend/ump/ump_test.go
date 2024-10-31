@@ -68,16 +68,16 @@ func BenchmarkAfterTPUsGroupByV629(b *testing.B) {
 
 func parallelUmpWriteGroupByV629(b *testing.B, wg *sync.WaitGroup) {
 	var key string
-	writeKey := fmt.Sprintf("datanode_write")
-	readKey := fmt.Sprintf("datanode_read")
+	writeKey := "datanode_write"
+	readKey := "datanode_read"
 	for i := 0; i < b.N; i++ {
 		if i%2 != 0 {
 			key = readKey
 		} else {
 			key = writeKey
 		}
-		o := BeforeTP(key)
-		AfterTPUs(o, nil)
+		o := BeforeTP(key, PrecisionMs)
+		o.Set(nil)
 	}
 	wg.Done()
 }
@@ -95,8 +95,8 @@ func BenchmarkSystemAliveByV629(b *testing.B) {
 
 func parallelUmpWriteSystemAliveV629(b *testing.B, wg *sync.WaitGroup) {
 	var key string
-	writeKey := fmt.Sprintf("datanode_write")
-	readKey := fmt.Sprintf("datanode_read")
+	writeKey := "datanode_write"
+	readKey := "datanode_read"
 	for i := 0; i < b.N; i++ {
 		if i%2 != 0 {
 			key = readKey
@@ -121,8 +121,8 @@ func BenchmarkBusinessAlarmV629(b *testing.B) {
 
 func parallelUmpWriteBusinessAlarmV629(b *testing.B, wg *sync.WaitGroup) {
 	var key string
-	writeKey := fmt.Sprintf("dbbak_master_warning")
-	readKey := fmt.Sprintf("spark_master_warning")
+	writeKey := "dbbak_master_warning"
+	readKey := "spark_master_warning"
 	for i := 0; i < b.N; i++ {
 		if i%2 != 0 {
 			key = readKey
@@ -148,8 +148,8 @@ func TestUmp(t *testing.T) {
 func sendUmp() {
 	count := 100
 	for i := 0; i < count; i++ {
-		tpObject := BeforeTP(fmt.Sprintf("tp key %d", i))
-		AfterTP(tpObject, nil)
+		tpObject := BeforeTP(fmt.Sprintf("tp key %d", i), PrecisionMs)
+		tpObject.Set(nil)
 		Alive(fmt.Sprintf("alive key %d", i))
 		Alarm(fmt.Sprintf("alarm key %d", i), fmt.Sprintf("alarm detail %d", i))
 	}

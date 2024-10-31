@@ -17,7 +17,6 @@ package exporter
 import (
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter/backend/prom"
@@ -46,9 +45,6 @@ var (
 	clusterName string
 	moduleName  string
 	zoneName    string
-
-	replacer = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
-	wg       sync.WaitGroup
 
 	umpEnabled, promEnabled bool
 )

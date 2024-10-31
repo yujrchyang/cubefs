@@ -9,7 +9,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/stretchr/testify/assert"
-	"golang.org/x/net/context"
 )
 
 func TestSetExtentSize(t *testing.T) {
@@ -126,7 +125,6 @@ func TestOverWriteBuffer(t *testing.T) {
 	streamer := ec.GetStreamer(ino)
 	data0 := make([]byte, 6)
 	data1 := []byte{1, 2, 3}
-	ctx := context.Background()
 	_, _, err = ec.Write(ctx, ino, 0, data0, false)
 	assert.Nil(t, err)
 	err = ec.Flush(ctx, ino)
@@ -155,4 +153,34 @@ func TestOverWriteBuffer(t *testing.T) {
 	_, _, err = ec.Read(ctx, ino, data1, 0, 3)
 	assert.Nil(t, err)
 	assert.Equal(t, data2, data1)
+}
+
+func BenchmarkExtentClient(b *testing.B) {
+	info, _ := create("BenchmarkExtentClient")
+	ino := info.Inode
+	ec.OpenStream(ino, false)
+	bs := 16 * 1024
+	data := make([]byte, bs)
+	b.Run("write", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			ec.Write(ctx, ino, uint64(bs*i), data, false)
+			ec.Flush(ctx, ino)
+		}
+		b.ReportAllocs()
+	})
+	b.Run("overwrite", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			ec.Write(ctx, ino, uint64(bs*i), data, false)
+		}
+		b.ReportAllocs()
+	})
+	b.Run("read", func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			ec.Read(ctx, ino, data, uint64(bs*i), bs)
+		}
+		b.ReportAllocs()
+	})
 }

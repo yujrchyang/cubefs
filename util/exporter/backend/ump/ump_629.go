@@ -43,7 +43,7 @@ func (lw *LogWrite) backGroupWriteForGroupByTPV629() {
 			}
 			n, _ := lw.logFp.Write(body)
 			lw.logSize += (int64)(n)
-			body = make([]byte, 0)
+			body = body[:0]
 		}
 	}
 }

@@ -98,14 +98,14 @@ func functionTPToLogFormat(key string, val *sync.Map) (*LogFormatV629, int) {
 	}
 	elapsedMap := make(map[string]string, 0)
 	var elapsedTimeCountStr strings.Builder
-	count := 0
+	total := 0
 	val.Range(func(key1, value1 interface{}) bool {
 		elapsedTime := key1.(int64)
 		elapsedTimeCountStr.WriteString(strconv.Itoa(int(elapsedTime)))
 		elapsedTimeCountStr.WriteString(elapsedTimeCountSeparator)
-		tpObj := value1.(*FunctionTpGroupBy)
-		elapsedTimeCountStr.WriteString(strconv.Itoa(int(tpObj.count)))
-		count += int(tpObj.count)
+		count := int(*value1.(*int64))
+		elapsedTimeCountStr.WriteString(strconv.Itoa(count))
+		total += count
 		elapsedTimeCountStr.WriteString(elapsedTimeCountSeparator)
 		return true
 	})
@@ -113,5 +113,5 @@ func functionTPToLogFormat(key string, val *sync.Map) (*LogFormatV629, int) {
 	elapsedMap["e"] = timeCount
 	elapsedMap["k"] = key
 	umpLog.Logs = append(umpLog.Logs, elapsedMap)
-	return umpLog, count
+	return umpLog, total
 }
