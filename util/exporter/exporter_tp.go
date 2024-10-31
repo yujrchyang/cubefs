@@ -23,29 +23,23 @@ import (
 	"github.com/cubefs/cubefs/util/exporter/backend/ump"
 )
 
-type UMPTPPrecision int8
-
-const (
-	PrecisionMs UMPTPPrecision = iota
-	PrecisionUs
-)
-
 var (
 	unspecifiedTime = time.Time{}
 	promKeyReplacer = strings.NewReplacer("-", "_", ".", "_", " ", "_", ",", "_", ":", "_")
+	separater       = "_"
 )
 
 type TP interface {
 	Set(err error)
 	SetWithCount(value int64, err error)
-	SetWithCost(costms int64, err error)
-	SetWithCostUS(costus int64, err error)
+	SetWithCost(cost int64, err error)
 }
 
 type promTP struct {
-	tp      prom.Summary
-	failure prom.Counter
-	start   time.Time
+	tp        prom.Summary
+	failure   prom.Counter
+	start     time.Time
+	precision ump.UMPTPPrecision
 }
 
 func (tp *promTP) Set(err error) {
@@ -80,12 +74,17 @@ func (tp *promTP) SetWithCount(value int64, err error) {
 	}
 }
 
-func (tp *promTP) SetWithCost(value int64, err error) {
+func (tp *promTP) SetWithCost(cost int64, err error) {
 	if tp == nil {
 		return
 	}
 	if tp.tp != nil {
-		tp.tp.Observe(float64(value * int64(time.Millisecond)))
+		if tp.precision == ump.PrecisionMs {
+			cost = cost * int64(time.Millisecond)
+		} else if tp.precision == ump.PrecisionUs {
+			cost = cost * int64(time.Microsecond)
+		}
+		tp.tp.Observe(float64(cost))
 	}
 	if tp.failure != nil {
 		if err != nil {
@@ -96,27 +95,12 @@ func (tp *promTP) SetWithCost(value int64, err error) {
 	}
 }
 
-func (tp *promTP) SetWithCostUS(value int64, err error) {
-	if tp == nil {
-		return
-	}
-	if tp.tp != nil {
-		tp.tp.Observe(float64(value * int64(time.Microsecond)))
-	}
-	if tp.failure != nil {
-		if err != nil {
-			tp.failure.Add(1)
-		} else {
-			tp.failure.Add(0)
-		}
-	}
-}
-
-func newPromTP(name string, start time.Time, lvs ...prom.LabelValue) TP {
+func newPromTP(name string, start time.Time, precision ump.UMPTPPrecision, lvs ...prom.LabelValue) TP {
 	name = promKeyReplacer.Replace(name)
 	var tp = &promTP{
-		tp:      prom.GetSummary(name, lvs...),
-		failure: prom.GetCounter(fmt.Sprintf("%s_failure", name), lvs...),
+		tp:        prom.GetSummary(name, lvs...),
+		failure:   prom.GetCounter(fmt.Sprintf("%s_failure", name), lvs...),
+		precision: precision,
 	}
 	if start == unspecifiedTime {
 		tp.start = time.Now()
@@ -126,61 +110,12 @@ func newPromTP(name string, start time.Time, lvs ...prom.LabelValue) TP {
 	return tp
 }
 
-type umpTP struct {
-	to        *ump.TpObject
-	precision UMPTPPrecision
-}
-
-func (tp *umpTP) Set(err error) {
-	if tp == nil {
-		return
-	}
-	if tp.to != nil {
-		if tp.precision == PrecisionUs {
-			ump.AfterTPUs(tp.to, err)
-			return
-		}
-		ump.AfterTP(tp.to, err)
-	}
-}
-
-func (tp *umpTP) SetWithCount(value int64, err error) {
-	if tp == nil {
-		return
-	}
-	if tp.to != nil {
-		ump.AfterTPWithCount(tp.to, value, err)
-	}
-}
-
-func (tp *umpTP) SetWithCost(value int64, err error) {
-	if tp == nil {
-		return
-	}
-	if tp.to != nil {
-		ump.AfterTPWithCost(tp.to, value, err)
-	}
-}
-
-func (tp *umpTP) SetWithCostUS(value int64, err error) {
-	if tp == nil {
-		return
-	}
-	if tp.to != nil {
-		ump.AfterTPWithCostUS(tp.to, value, err)
-	}
-}
-
-func newUmpTP(key string, start time.Time, precision UMPTPPrecision) TP {
-	var tp = &umpTP{
-		precision: precision,
-	}
+func newUmpTP(key string, start time.Time, precision ump.UMPTPPrecision) TP {
 	if start == unspecifiedTime {
-		tp.to = ump.BeforeTP(key)
-		return tp
+		return ump.BeforeTP(key, precision)
+	} else {
+		return ump.BeforeTPWithStartTime(key, precision, start)
 	}
-	tp.to = ump.BeforeTPWithStartTime(key, start)
-	return tp
 }
 
 type noonTP struct{}
@@ -223,89 +158,121 @@ func (tp multipleTP) SetWithCost(value int64, err error) {
 	}
 }
 
-func (tp multipleTP) SetWithCostUS(value int64, err error) {
-	for _, recorder := range tp {
-		recorder.SetWithCostUS(value, err)
-	}
-}
-
-func newTP(key string, start time.Time, precision UMPTPPrecision) (tp TP) {
-	var umpTP TP = singletonNoonTP
+func newTP(key string, start time.Time, precision ump.UMPTPPrecision) TP {
 	if umpEnabled {
-		umpTP = newUmpTP(key, start, precision)
+		if promEnabled {
+			return multipleTP{newUmpTP(key, start, precision), newPromTP(key, start, precision)}
+		} else {
+			return newUmpTP(key, start, precision)
+		}
+	} else {
+		if promEnabled {
+			return newPromTP(key, start, precision)
+		} else {
+			return singletonNoonTP
+		}
 	}
-	var promTP TP = singletonNoonTP
-	if promEnabled {
-		promTP = newPromTP(key, start)
-	}
-	tp = multipleTP{umpTP, promTP}
-	return
 }
 
-func newModuleTP(op string, precision UMPTPPrecision, start time.Time) (tp TP) {
+func newModuleTP(op string, precision ump.UMPTPPrecision, start time.Time) (tp TP) {
 	if len(zoneName) > 0 {
 		return multipleTP{
-			newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), start, precision),
-			newTP(fmt.Sprintf("%s_%s_%s_%s", clusterName, zoneName, moduleName, op), start, precision),
+			newTP(moduleKey(op), start, precision),
+			newTP(zoneKey(op), start, precision),
 		}
 	}
-	return newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), start, precision)
+	return newTP(moduleKey(op), start, precision)
 }
 
-func newVolumeTP(op string, volume string, precision UMPTPPrecision) (tp TP) {
-	return newTP(fmt.Sprintf("%s_%s_%s", clusterName, volume, op), unspecifiedTime, precision)
+func newVolumeTP(op string, volume string, precision ump.UMPTPPrecision) (tp TP) {
+	return newTP(volKey(volume, op), unspecifiedTime, precision)
 }
 
-func newNodeAndVolumeModuleTP(op, volName string, precision UMPTPPrecision) (tp TP) {
+func newNodeAndVolumeModuleTP(op, volName string, precision ump.UMPTPPrecision) (tp TP) {
 	if len(volName) > 0 {
 		return multipleTP{
-			newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), unspecifiedTime, precision),
-			newTP(fmt.Sprintf("%s_%s_%s", clusterName, volName, op), unspecifiedTime, precision),
+			newTP(moduleKey(op), unspecifiedTime, precision),
+			newTP(volKey(volName, op), unspecifiedTime, precision),
 		}
 	}
-	return newTP(fmt.Sprintf("%s_%s_%s", clusterName, moduleName, op), unspecifiedTime, precision)
+	return newTP(moduleKey(op), unspecifiedTime, precision)
 }
 
 func NewModuleTP(op string) TP {
-	return newModuleTP(op, PrecisionMs, unspecifiedTime)
+	return newModuleTP(op, ump.PrecisionMs, unspecifiedTime)
 }
 
 func NewModuleTPWithStart(op string, start time.Time) TP {
-	return newModuleTP(op, PrecisionMs, start)
+	return newModuleTP(op, ump.PrecisionMs, start)
 }
 
 func NewModuleTPUs(op string) TP {
-	return newModuleTP(op, PrecisionUs, unspecifiedTime)
+	return newModuleTP(op, ump.PrecisionUs, unspecifiedTime)
 }
 
 func NewModuleTPUsWithStart(op string, start time.Time) TP {
-	return newModuleTP(op, PrecisionUs, start)
+	return newModuleTP(op, ump.PrecisionUs, start)
 }
 
 func NewVolumeTP(op string, volume string) TP {
-	return newVolumeTP(op, volume, PrecisionMs)
+	return newVolumeTP(op, volume, ump.PrecisionMs)
 }
 
 func NewVolumeTPUs(op string, volume string) TP {
-	return newVolumeTP(op, volume, PrecisionUs)
+	return newVolumeTP(op, volume, ump.PrecisionUs)
 }
 
 func NewNodeAndVolTP(op, volName string) TP {
-	return newNodeAndVolumeModuleTP(op, volName, PrecisionMs)
+	return newNodeAndVolumeModuleTP(op, volName, ump.PrecisionMs)
 }
 
 func NewCustomKeyTP(key string) TP {
-	return newTP(key, unspecifiedTime, PrecisionMs)
+	return newTP(key, unspecifiedTime, ump.PrecisionMs)
 }
 
 func NewCustomKeyTPUs(key string) TP {
-	return newTP(key, unspecifiedTime, PrecisionUs)
+	return newTP(key, unspecifiedTime, ump.PrecisionUs)
 }
 
 func NewCustomKeyTPWithStartTime(key string, start time.Time) TP {
-	return newTP(key, start, PrecisionMs)
+	return newTP(key, start, ump.PrecisionMs)
 }
 
 func NewCustomKeyTPUsWithStartTime(key string, start time.Time) TP {
-	return newTP(key, start, PrecisionUs)
+	return newTP(key, start, ump.PrecisionUs)
+}
+
+func moduleKey(op string) string {
+	var sb strings.Builder
+	sb.Grow(64)
+	sb.WriteString(clusterName)
+	sb.WriteString(separater)
+	sb.WriteString(moduleName)
+	sb.WriteString(separater)
+	sb.WriteString(op)
+	return sb.String()
+}
+
+func zoneKey(op string) string {
+	var sb strings.Builder
+	sb.Grow(64)
+	sb.WriteString(clusterName)
+	sb.WriteString(separater)
+	sb.WriteString(zoneName)
+	sb.WriteString(separater)
+	sb.WriteString(moduleName)
+	sb.WriteString(separater)
+	sb.WriteString(op)
+	return sb.String()
+}
+
+func volKey(volume string, op string) string {
+	var sb strings.Builder
+	sb.Grow(64)
+	sb.WriteString(clusterName)
+	sb.WriteString(separater)
+	sb.WriteString(volume)
+	sb.WriteString(separater)
+	sb.WriteString(op)
+	return sb.String()
 }

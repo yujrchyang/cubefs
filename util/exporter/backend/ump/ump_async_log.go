@@ -21,7 +21,6 @@ import (
 	"net"
 	"os"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -146,80 +145,6 @@ func (lw *LogWrite) backGroundCheckFileExist() {
 	}
 }
 
-//func (lw *LogWrite) backGroupWriteForGroupByTP() {
-//
-//	for {
-//		var (
-//			body []byte
-//		)
-//		for index := 0; index < FunctionTPMapCount; index++ {
-//			FuncationTPMap[index].Range(func(key, value interface{}) bool {
-//				v := value.(*FunctionTpGroupBy)
-//				v.Count = strconv.FormatInt(v.count, 10)
-//				v.Time = v.currTime.Format(LogTimeForMat)
-//				v.ElapsedTime = strconv.FormatInt(v.elapsedTime, 10)
-//				lw.jsonEncoder.Encode(v)
-//				FunctionTpGroupByPool.Put(v)
-//				body = append(body, lw.bf.Bytes()...)
-//				lw.bf.Reset()
-//				FuncationTPMap[index].Delete(key.(string))
-//				return true
-//			})
-//			time.Sleep(time.Second)
-//		}
-//		if lw.backGroundCheckFile() != nil {
-//			continue
-//		}
-//		lw.logFp.Write(body)
-//		lw.logSize += (int64)(len(body))
-//		body = make([]byte, 0)
-//	}
-//	return
-//}
-
-func (lw *LogWrite) backGroundWrite(umpType string) {
-
-	for {
-		var (
-			body []byte
-		)
-		obj := <-lw.logCh
-		switch umpType {
-		case FunctionTpType:
-			tp := obj.(*FunctionTp)
-			lw.jsonEncoder.Encode(tp)
-			body = append(body, lw.bf.Bytes()...)
-			lw.bf.Reset()
-			FunctionTpPool.Put(tp)
-		case SystemAliveType:
-			alive := obj.(*SystemAlive)
-			lw.jsonEncoder.Encode(alive)
-			body = append(body, lw.bf.Bytes()...)
-			lw.bf.Reset()
-			SystemAlivePool.Put(alive)
-		case BusinessAlarmType:
-			alarm := obj.(*BusinessAlarm)
-			lw.jsonEncoder.Encode(alarm)
-			body = append(body, lw.bf.Bytes()...)
-			lw.bf.Reset()
-			AlarmPool.Put(alarm)
-		}
-		if lw.backGroundCheckFile() != nil {
-			continue
-		}
-		body = append(body, []byte("\n")...)
-		lw.logFp.Write(body)
-		lw.logSize += (int64)(len(body))
-		body = make([]byte, 0)
-		if umpType == BusinessAlarmType && atomic.AddInt32(&lw.inflight, -1) <= 0 {
-			select {
-			case lw.empty <- struct{}{}:
-			default:
-			}
-		}
-	}
-}
-
 func initLogName(module string) (err error) {
 	if err = os.MkdirAll(UmpDataDir, 0777); err != nil {
 		return
@@ -266,10 +191,6 @@ func GetLocalIpAddr() (localAddr string, err error) {
 
 func backGroudWriteLog() {
 	wg.Add(6)
-	//go FunctionTpLogWrite.backGroundWrite(FunctionTpType)
-	//go SystemAliveLogWrite.backGroundWrite(SystemAliveType)
-	//go BusinessAlarmLogWrite.backGroundWrite(BusinessAlarmType)
-	//go FunctionTpGroupByLogWrite.backGroupWriteForGroupByTP()
 	go FunctionTpLogWrite.backGroupWriteForGroupByTPV629()
 	go SystemAliveLogWrite.backGroupAliveWriteV629()
 	go BusinessAlarmLogWrite.backGroupBusinessWriteV629()

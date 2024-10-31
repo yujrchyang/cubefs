@@ -59,19 +59,28 @@ func TestInit(t *testing.T) {
 }
 
 func creatExtentClient() (mw *meta.MetaWrapper, ec *ExtentClient, err error) {
+	master := ltptestMaster
+	volume := ltptestVolume
+	owner := ltptestVolume
+	masterVal := os.Getenv("MASTER")
+	if masterVal != "" {
+		master = strings.Split(masterVal, ",")
+		volume = os.Getenv("VOLUME")
+		owner = os.Getenv("OWNER")
+	}
 	if mw, err = meta.NewMetaWrapper(&meta.MetaConfig{
-		Volume:        ltptestVolume,
-		Masters:       ltptestMaster,
+		Volume:        volume,
+		Masters:       master,
 		ValidateOwner: true,
-		Owner:         ltptestVolume,
+		Owner:         owner,
 	}); err != nil {
 		fmt.Printf("NewMetaWrapper failed: err(%v) vol(%v)", err, ltptestVolume)
 		return
 	}
 	ic := cache.NewInodeCache(1*time.Minute, 100, 1*time.Second, true, nil)
 	if ec, err = NewExtentClient(&ExtentConfig{
-		Volume:            ltptestVolume,
-		Masters:           ltptestMaster,
+		Volume:            volume,
+		Masters:           master,
 		FollowerRead:      false,
 		MetaWrapper:       mw,
 		OnInsertExtentKey: mw.InsertExtentKey,
