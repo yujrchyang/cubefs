@@ -79,7 +79,7 @@ func NewInoAllocatorV1(start, end uint64) *inoAllocatorV1 {
 		allocator.Bits.SetBit(index)
 		allocator.BitsSnap.SetBit(index)
 	}
-
+	allocator.Used = 2
 	return allocator
 }
 
@@ -202,7 +202,9 @@ func (allocator *inoAllocatorV1) ClearId(id uint64) {
 	bitIndex := int(id - allocator.Start)
 	if !allocator.Bits.IsBitFree(bitIndex) {
 		allocator.Bits.ClearBit(bitIndex)
-		allocator.Used--
+		if allocator.Used > 0 {
+			allocator.Used--
+		}
 	}
 }
 
