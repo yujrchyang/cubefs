@@ -116,6 +116,10 @@ func (m mockRaftPartition) GetLastIndex() (li uint64, err error) {
 	return
 }
 
+func (m mockRaftPartition) GetTruncateIndex() (index uint64) {
+	return
+}
+
 type mockRaftStore struct {
 	cfg *raft.Config
 }
@@ -158,6 +162,10 @@ func (m mockRaftStore) IsSyncWALOnUnstable() (enabled bool) {
 
 func (m mockRaftStore) RaftPath() string {
 	return ""
+}
+
+func (m mockRaftStore) RaftPort() (heartbeat, replica int, err error) {
+	return
 }
 
 func NewMockRaftStore() raftstore.RaftStore {

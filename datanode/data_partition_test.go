@@ -8,6 +8,7 @@ import (
 	"github.com/cubefs/cubefs/datanode/mock"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/holder"
 	"github.com/cubefs/cubefs/util/statistics"
 	"golang.org/x/net/context"
 	"hash/crc32"
@@ -895,4 +896,32 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 	partition.disk = d
 	partition.extentStore, err = storage.NewExtentStore(partition.path, partitionID, partitionSize, CacheCapacityPerPartition, nil, isCreatePartition, storage.IOInterceptors{})
 	return
+}
+
+func BenchmarkActionHolder(b *testing.B) {
+	pendingEntries := make([]extentAction, 0)
+	for i := uint64(0); i < uint64(10000); i++ {
+		pendingEntries = append(pendingEntries, extentAction{extentID: 1, size: 4096, offset: int64(i) * 4096})
+	}
+	benchmarkActionHolder(b, pendingEntries[:1])
+	benchmarkActionHolder(b, pendingEntries[:100])
+	benchmarkActionHolder(b, pendingEntries[:1000])
+	benchmarkActionHolder(b, pendingEntries[:10000])
+}
+
+func benchmarkActionHolder(b *testing.B, pendingEntries []extentAction) {
+	partition := &DataPartition{
+		partitionID:  1,
+		actionHolder: holder.NewActionHolder(),
+	}
+	for i, e := range pendingEntries {
+		partition.actionHolder.Register(uint64(i), &e)
+	}
+	b.Run(fmt.Sprintf("%v_entry", len(pendingEntries)), func(b *testing.B) {
+		b.ResetTimer()
+		for i := 0; i < b.N; i++ {
+			partition.checkAndWaitForPendingActionApplied(1, int64(20000*4096), 4096)
+		}
+		b.ReportAllocs()
+	})
 }
