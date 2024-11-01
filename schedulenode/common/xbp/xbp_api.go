@@ -12,13 +12,6 @@ import (
 )
 
 const (
-	Erp                    = "wjcc_chubaofsapply" //API用户 需要申请 + 添加到对应的流程中
-	Sign                   = "3abeaf2c12"
-	Domain                 = "xbp-api.jd.com" //正式环境域名
-	OfflineTicketProcessId = 5009
-)
-
-const (
 	TicketStatusReject     = -1 // 驳回
 	TicketStatusInProgress = 0  // 正在进行中
 	TicketStatusFinish     = 1  // 完结

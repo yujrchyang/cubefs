@@ -30,7 +30,7 @@ const (
 )
 
 type CompareRocksMeta interface {
-	RangeCompareKeys(rocksPaths []string, dbMap map[string]*raftstore.RocksDBStore, cluster string, umpKey string, iter func(string))
+	RangeCompareKeys(rocksPaths []string, dbMap map[string]*raftstore.RocksDBStore, cluster string, warn func(msg string), iter func(string))
 }
 
 func (s *ChubaoFSMonitor) checkMasterMetadata() {
@@ -44,7 +44,7 @@ func (s *ChubaoFSMonitor) checkMasterMetadata() {
 			log.LogErrorf("domain[%v] parameter cluster not found, domain:%v", domain, domain)
 			continue
 		}
-		executeCompare(masterAddrs, s.configMap[cfgKeyOssDomain], cluster, domain)
+		executeCompare(masterAddrs, s.envConfig.JcloudOssDomain, cluster, domain)
 	}
 }
 
@@ -191,7 +191,9 @@ func executeCompare(masterAddrs []string, ossDomain, cluster, domain string) {
 	} else {
 		compare = compare_meta.NewCompare(cluster, domain)
 	}
-	compare.RangeCompareKeys(rocksFilePaths, dbMap, cluster, UMPCFSMasterMetaCompareKey, func(s string) {
+	compare.RangeCompareKeys(rocksFilePaths, dbMap, cluster, func(msg string) {
+		warnBySpecialUmpKeyWithPrefix(UMPCFSMasterMetaCompareKey, msg)
+	}, func(s string) {
 		if s != "" {
 			diff++
 			// do not print too much to avoid disk full

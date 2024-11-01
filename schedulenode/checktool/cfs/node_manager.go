@@ -8,7 +8,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"io/ioutil"
 	"math"
@@ -50,11 +49,11 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 			if err != nil {
 				if isConnectionRefusedFailure(err) {
 					msg := fmt.Sprintf("get cluster info from %v failed, err:%v ", host.host, err)
-					checktool.WarnBySpecialUmpKey(UMPCFSClusterConnRefused, msg)
+					warnBySpecialUmpKeyWithPrefix(UMPCFSClusterConnRefused, msg)
 					return
 				}
 				msg := fmt.Sprintf("get cluster info from %v failed,err:%v ", host.host, err)
-				checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 				return
 			}
 			cv.checkMetaNodeAlive(host)
@@ -66,11 +65,12 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 			cv.checkMetaNodeDiskStat(host, defaultMNDiskMinWarnSize)
 			cv.checkMetaNodeDiskStatByMDCInfoFromSre(host, s)
 			cv.checkMetaNodeFailedMetaPartitions(host)
-			if time.Since(host.lastCleanExpiredMetaTime) > time.Hour*4 {
-				host.lastCleanExpiredMetaTime = time.Now()
+			if !s.disableCleanExpiredMP {
 				cv.cleanExpiredMetaPartitions(host, s.ExpiredMetaRemainDaysCfg)
 			}
-			cv.checkMetaNodeRaftLogBackupAlive(host)
+			if isProEnv() {
+				cv.checkMetaNodeRaftLogBackupAlive(host)
+			}
 			host.warnInactiveNodesBySpecialUMPKey()
 			log.LogInfof("checkNodesAlive [%v] end,cost[%v]", host, time.Since(startTime))
 		}(host)
@@ -110,7 +110,7 @@ func (cv *ClusterView) checkMetaNodeStuckHeartbeat(host *ClusterHost, warn bool)
 	msg := fmt.Sprintf("%v %v has %v stuck heartbeat meta nodes, %v dead meta nodes, stuck nodes:%v, dead nodes:%v", host, masterLeaderChange, len(stuckNodes), len(deadNodes), stuckNodes, deadNodes)
 	log.LogWarnf(msg)
 	if len(stuckNodes) > 0 && warn {
-		checktool.WarnBySpecialUmpKey(UMPKeyStuckNodes, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPKeyStuckNodes, msg)
 	}
 }
 
@@ -199,7 +199,7 @@ func (cv *ClusterView) checkMetaNodeAlive(host *ClusterHost) {
 		if time.Since(mn.ReportTime) > 15*time.Minute && len(host.offlineMetaNodesIn24Hour) < defaultMaxOfflineMetaNodes {
 			if isPhysicalMachineFailure(inactiveMn.Addr) {
 				log.LogErrorf("action[isPhysicalMachineFailure] %v meta node:%v", host.host, inactiveMn.Addr)
-				if host.host == "cn.chubaofs.jd.local" || host.host == "cn.chubaofs-seqwrite.jd.local" || host.host == "cn.elasticdb.jd.local" {
+				if isDevEnv() || host.host == DomainSpark || host.host == DomainDbbak || host.host == DomainMysql {
 					offlineMetaNode(host, inactiveMn.Addr)
 					host.lastTimeOfflineMetaNode = time.Now()
 					host.offlineMetaNodesIn24Hour[inactiveMn.Addr] = time.Now()
@@ -217,13 +217,17 @@ func (ch *ClusterHost) doProcessAlarm(nodes map[string]*DeadNode, msg string, no
 	for _, dd := range nodes {
 		msg = msg + "  " + dd.String() + "\n"
 	}
-	msg = msg + "\n"
+	msg = msg + "}"
+	if isDevEnv() {
+		warnBySpecialUmpKeyWithPrefix(UMPKeyInactiveNodes, msg)
+	}
+
 	// 荷兰CFS 存在故障节点就执行普通告警
-	if ch.host == "nl.chubaofs.jd.local" && len(nodes) > 0 {
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	if ch.host == DomainNL && len(nodes) > 0 {
+		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	}
 	if len(nodes) >= defaultMaxInactiveNodes {
-		checktool.WarnBySpecialUmpKey(UMPKeyInactiveNodes, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPKeyInactiveNodes, msg)
 	}
 	if len(nodes) == 1 {
 		return
@@ -262,7 +266,7 @@ func (ch *ClusterHost) doProcessDangerousDp(nodes map[string]*DeadNode) {
 			ips += ips + addr + ","
 		}
 		msg := fmt.Sprintf("%v has %v inactive data nodes,ips[%v],dangerous data partitions[%v]", ch.host, len(nodes), ips, dangerDps)
-		checktool.WarnBySpecialUmpKey(UMPKeyInactiveNodes, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPKeyInactiveNodes, msg)
 	}
 	return
 }
@@ -305,7 +309,7 @@ func (cv *ClusterView) checkFlashNodeVersion(host *ClusterHost, expectVersion []
 			}
 		}
 		if !rightV {
-			exporter.WarningBySpecialUMPKey(UMPCFSSparkFlashNodeVersionKey, fmt.Sprintf("flashnode[%v] invalid version[%v], expect[%v], has been automatically disabled", fn.Addr, version.CommitID, expectVersion))
+			warnBySpecialUmpKeyWithPrefix(UMPCFSSparkFlashNodeVersionKey, fmt.Sprintf("flashnode[%v] invalid version[%v], expect[%v], has been automatically disabled", fn.Addr, version.CommitID, expectVersion))
 			masterClient := master.NewMasterClient([]string{host.host}, false)
 			var fnv *proto.FlashNodeViewInfo
 			fnv, err = masterClient.NodeAPI().GetFlashNode(fn.Addr)
@@ -517,7 +521,7 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 func canOffline(host *ClusterHost) bool {
 	badDPsCount, err := getBadPartitionIDsCount(host)
 	if err != nil || badDPsCount > maxBadDataPartitionsCount {
-		log.LogWarn(fmt.Sprintf("action[canOffline] can not offline, host:%v badDPsCount:%v err:%v", host, badDPsCount, err))
+		log.LogWarnf("action[canOffline] can not offline, host:%v badDPsCount:%v err:%v", host, badDPsCount, err)
 		return false
 	}
 	return true
@@ -544,12 +548,12 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 
 	for dataNodeAddr, lastOfflineDiskTime := range host.inOfflineDataNodes {
 		// mysql集群禁止自动下线，先电话通知，手动下线，等下线方案成熟后再改为自动下线
-		if host.host == "cn.elasticdb.jd.local" {
-			exporter.WarningBySpecialUMPKey(UMPCFSMysqlInactiveNodeKey, fmt.Sprintf("Domain[%v] mysql inactive node[%v], please offline by tools", host.host, dataNodeAddr))
+		if host.host == DomainMysql {
+			warnBySpecialUmpKeyWithPrefix(UMPCFSMysqlInactiveNodeKey, fmt.Sprintf("Domain[%v] mysql inactive node[%v], please offline by tool", host.host, dataNodeAddr))
 			continue
 		}
-		if host.host == "nl.chubaofs.jd.local" || host.host == "nl.chubaofs.ochama.com" {
-			exporter.WarningBySpecialUMPKey(UMPCFSNLInactiveNodeKey, fmt.Sprintf("Domain[%v] inactive node[%v], please check", host.host, dataNodeAddr))
+		if host.host == DomainNL || host.host == DomainOchama {
+			warnBySpecialUmpKeyWithPrefix(UMPCFSNLInactiveNodeKey, fmt.Sprintf("Domain[%v] inactive node[%v], please check", host.host, dataNodeAddr))
 			continue
 		}
 		zoneName := nodeZoneMap[dataNodeAddr]
@@ -557,8 +561,9 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 		ssd := isSSD(host.host, zoneName)
 		diskOfflineInterval = getOfflineInterval(s, ssd)
 		autoOfflineThreshold = getOfflineThreshold(s, ssd)
-		log.LogInfof("action[offlineBadDataNodeByDisk] host[%v] addr[%v] zone[%v] diskOfflineInterval[%v] autoOfflineThreshold[%v]", host.host, dataNodeAddr, zoneName, diskOfflineInterval, autoOfflineThreshold)
+		log.LogInfof("action[offlineBadDataNodeByDisk] host[%v] addr[%v] zone[%v] lastOfflineDiskTime[%v] diskOfflineInterval[%v] autoOfflineThreshold[%v]", host.host, dataNodeAddr, zoneName, lastOfflineDiskTime, diskOfflineInterval, autoOfflineThreshold)
 		if time.Since(lastOfflineDiskTime) < diskOfflineInterval {
+			log.LogWarnf("action[offlineBadDataNodeByDisk] host[%v] addr[%v] zone[%v] lastOfflineDiskTime[%v] sinceLastOffline[%v] diskOfflineInterval[%v] skip", host.host, dataNodeAddr, zoneName, lastOfflineDiskTime, time.Since(lastOfflineDiskTime), diskOfflineInterval)
 			continue
 		}
 		// 再次确认是否为物理机故障
@@ -1000,7 +1005,7 @@ func checkNodeSetLen(tv *TopologyView, domain string) (badNodeSets, badMetaNodeS
 			})
 			if dataNodeSets[0].Num < dataNodeSets[1].Num*50/100 || dataNodeSets[1].Num-dataNodeSets[0].Num > minDataNodeSetDiff {
 				msg := fmt.Sprintf("Domain[%v] zone[%v] data nodeset[%v] too small[%v]", domain, zoneView.Name, dataNodeSets[0].SetID, dataNodeSets[0].Num)
-				exporter.WarningBySpecialUMPKey(UMPCFSNodeSetNumKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPCFSNodeSetNumKey, msg)
 				badNodeSets = append(badNodeSets, dataNodeSets[0].SetID)
 			}
 		}
@@ -1010,7 +1015,7 @@ func checkNodeSetLen(tv *TopologyView, domain string) (badNodeSets, badMetaNodeS
 			})
 			if metaNodeSets[0].Num < metaNodeSets[1].Num*50/100 || metaNodeSets[1].Num-metaNodeSets[0].Num > minMetaNodeSetDiff {
 				msg := fmt.Sprintf("Domain[%v] zone[%v] meta nodeset[%v] too small[%v]", domain, zoneView.Name, metaNodeSets[0].SetID, metaNodeSets[0].Num)
-				exporter.WarningBySpecialUMPKey(UMPCFSNodeSetNumKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPCFSNodeSetNumKey, msg)
 				badMetaNodeSets = append(badMetaNodeSets, metaNodeSets[0].SetID)
 			}
 		}
@@ -1082,7 +1087,7 @@ func offlineMetaPatition(host *ClusterHost, addr string, pid uint64) {
 		return
 	}
 	msg := fmt.Sprintf("action[offlineMetaPartition] reqURL[%v],data[%v]", reqURL, string(data))
-	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	return
 }
 
@@ -1099,7 +1104,7 @@ func offlineMetaNode(host *ClusterHost, addr string) {
 		return
 	}
 	msg := fmt.Sprintf("action[offlineMetaNode] reqURL[%v],data[%v]", reqURL, string(data))
-	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	return
 }
 
@@ -1116,26 +1121,24 @@ func offlineDataNode(host *ClusterHost, addr string) {
 		return
 	}
 	msg := fmt.Sprintf("action[offlineDataNode] reqURL[%v],data[%v]", reqURL, string(data))
-	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	return
 }
 
 func (cv *ClusterView) checkMetaNodeDiskStat(host *ClusterHost, diskMinWarnSize int) {
-	var port string
 	// exclude hosts which have not update the meta node disk stat API
-	if host.host == "cn.chubaofs-seqwrite.jd.local" {
+	if host.isReleaseCluster {
 		return
 	}
 	// set meta node port
 	checkedCount := 0
-	port = host.getMetaNodePProfPort()
 	diskWarnNodes := make([]string, 0)
 	for _, mn := range cv.MetaNodes {
 		if mn.Status == false {
 			continue
 		}
 		ipPort := strings.Split(mn.Addr, ":")
-		isNeedTelAlarm, err := doCheckMetaNodeDiskStat(ipPort[0], port, host.isReleaseCluster, diskMinWarnSize)
+		isNeedTelAlarm, err := doCheckMetaNodeDiskStat(ipPort[0], profPortMap[ipPort[1]], host.isReleaseCluster, diskMinWarnSize)
 		if err != nil {
 			log.LogErrorf("action[checkMetaNodeDiskStat] host[%v] addr[%v] doCheckMetaNodeDiskStat err[%v]", host, mn.Addr, err)
 			continue
@@ -1151,7 +1154,7 @@ func (cv *ClusterView) checkMetaNodeDiskStat(host *ClusterHost, diskMinWarnSize 
 	}
 	msg := fmt.Sprintf("%v has disk less than %vGB meta nodes:%v", host, diskMinWarnSize/GB, diskWarnNodes)
 	if time.Since(host.metaNodeDiskUsedWarnTime) >= time.Minute*5 {
-		checktool.WarnBySpecialUmpKey(UMPKeyMetaNodeDiskSpace, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPKeyMetaNodeDiskSpace, msg)
 		host.metaNodeDiskUsedWarnTime = time.Now()
 	} else {
 		log.LogWarnf("action[checkMetaNodeDiskStat] :%v", msg)
@@ -1159,7 +1162,7 @@ func (cv *ClusterView) checkMetaNodeDiskStat(host *ClusterHost, diskMinWarnSize 
 }
 
 var (
-	excludeCheckMetaNodeRaftLogBackupHosts = []string{"nl.chubaofs.ochama.com", "nl.chubaofs.jd.local"}
+	excludeCheckMetaNodeRaftLogBackupHosts = []string{DomainOchama, DomainNL}
 )
 
 func (cv *ClusterView) checkMetaNodeRaftLogBackupAlive(host *ClusterHost) {
@@ -1184,13 +1187,13 @@ func (cv *ClusterView) checkMetaNodeRaftLogBackupAlive(host *ClusterHost) {
 		return
 	}
 	msg := fmt.Sprintf("checkMetaNodeRaftLogBackupAlive: host[%v], fault count[%v]", host.host, len(raftLogBackupWarnMetaNodes))
-	checktool.WarnBySpecialUmpKey(UMPCFSRaftlogBackWarnKey, msg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSRaftlogBackWarnKey, msg)
 }
 
 func (cv *ClusterView) checkMetaNodeFailedMetaPartitions(host *ClusterHost) {
 	for _, metaNode := range cv.MetaNodes {
 		ipPort := strings.Split(metaNode.Addr, ":")
-		failedMpArr, err := doGetFailedMetaPartitions(ipPort[0], host.getMetaNodePProfPort(), host.isReleaseCluster)
+		failedMpArr, err := doGetFailedMetaPartitions(ipPort[0], profPortMap[ipPort[1]], host.isReleaseCluster)
 		if err != nil {
 			log.LogWarnf("action[checkMetaNodeFailedMetaPartitions] host[%v] addr[%v] doGetFailedMetaPartitions err[%v]", host, metaNode.Addr, err)
 			continue
@@ -1203,9 +1206,14 @@ func (cv *ClusterView) checkMetaNodeFailedMetaPartitions(host *ClusterHost) {
 }
 
 func (cv *ClusterView) cleanExpiredMetaPartitions(host *ClusterHost, days int) {
+	if time.Since(host.lastCleanExpiredMetaTime) < time.Hour*4 {
+		return
+	}
+
+	host.lastCleanExpiredMetaTime = time.Now()
 	for _, metaNode := range cv.MetaNodes {
 		ipPort := strings.Split(metaNode.Addr, ":")
-		_, err := doCleanExpiredMetaPartitions(ipPort[0], host.getMetaNodePProfPort(), days, host.isReleaseCluster)
+		_, err := doCleanExpiredMetaPartitions(ipPort[0], profPortMap[ipPort[1]], days, host.isReleaseCluster)
 		if err != nil {
 			log.LogWarnf("action[cleanExpiredMetaPartitions] host[%v] addr[%v] cleanExpiredMetaPartitions err[%v]", host, metaNode.Addr, err)
 			continue
@@ -1314,15 +1322,16 @@ func (ch *ClusterHost) warnInactiveNodesBySpecialUMPKey() {
 func (ch *ClusterHost) checkDeadNodesProcessStatus(needWarnCount int) {
 	// 检查进程的启动情况
 	for _, deadNode := range ch.deadDataNodes {
-		ch.checkDeadNodeStartStatus(deadNode, ch.getDataNodePProfPort(), needWarnCount)
+		ch.checkDeadNodeStartStatus(deadNode, needWarnCount)
 	}
 	for _, deadNode := range ch.deadMetaNodes {
-		ch.checkDeadNodeStartStatus(deadNode, ch.getMetaNodePProfPort(), needWarnCount)
+		ch.checkDeadNodeStartStatus(deadNode, needWarnCount)
 	}
 }
 
-func (ch *ClusterHost) checkDeadNodeStartStatus(deadNode *DeadNode, port string, needWarnCount int) {
-	nodeStatus, err := checkNodeStartStatus(fmt.Sprintf("%v:%v", strings.Split(deadNode.Addr, ":")[0], port), 5)
+func (ch *ClusterHost) checkDeadNodeStartStatus(deadNode *DeadNode, needWarnCount int) {
+	ipPort := strings.Split(deadNode.Addr, ":")
+	nodeStatus, err := checkNodeStartStatus(fmt.Sprintf("%v:%v", ipPort[0], profPortMap[ipPort[1]]), 5)
 	if err == nil && nodeStatus.Version != "" {
 		//Version信息不为空时才认为是获取成功了
 		deadNode.ProcessStatusCount++
@@ -1334,30 +1343,16 @@ func (ch *ClusterHost) checkDeadNodeStartStatus(deadNode *DeadNode, port string,
 	}
 }
 
-func (ch *ClusterHost) getDataNodePProfPort() (port string) {
-	switch ch.host {
-	case "id.chubaofs.jd.local", "th.chubaofs.jd.local":
-		port = "17320"
-	case "cn.chubaofs.jd.local", "cn.elasticdb.jd.local", "cn.chubaofs-seqwrite.jd.local", "idbbak.chubaofs.jd.local", "nl.chubaofs.jd.local", "nl.chubaofs.ochama.com":
-		port = "6001"
-	case "192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010":
-		port = "17320"
-	default:
-		port = "6001"
-	}
-	return
-}
-
 func getClusterName(domain string) (cluster string) {
 	switch domain {
-	case "nl.chubaofs.jd.local", "nl.chubaofs.ochama.com":
-		cluster = "cfs_AMS_MCA"
-	case "cn.chubaofs.jd.local", "sparkchubaofs.jd.local":
-		cluster = "spark"
-	case "cn.elasticdb.jd.local":
-		cluster = "mysql"
-	case "cn.chubaofs-seqwrite.jd.local":
-		cluster = "cfs_dbBack"
+	case DomainNL, DomainOchama:
+		cluster = ClusterNameAMS
+	case DomainSpark:
+		cluster = ClusterNameSpark
+	case DomainMysql:
+		cluster = ClusterNameMysql
+	case DomainDbbak:
+		cluster = ClusterNameDbbak
 	default:
 		cluster = "unknown"
 	}
@@ -1366,20 +1361,6 @@ func getClusterName(domain string) (cluster string) {
 
 func (ch *ClusterHost) getFlashNodeProfPort() string {
 	return "8001"
-}
-
-func (ch *ClusterHost) getMetaNodePProfPort() (port string) {
-	switch ch.host {
-	case "id.chubaofs.jd.local", "th.chubaofs.jd.local":
-		port = "17220"
-	case "cn.chubaofs.jd.local", "cn.elasticdb.jd.local", "cn.chubaofs-seqwrite.jd.local", "idbbak.chubaofs.jd.local", "nl.chubaofs.jd.local", "nl.chubaofs.ochama.com":
-		port = "9092"
-	case "192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010":
-		port = "17220"
-	default:
-		port = "9092"
-	}
-	return
 }
 
 func (ch *ClusterHost) doWarnInactiveNodesBySpecialUMPKey() {
@@ -1431,7 +1412,7 @@ func (ch *ClusterHost) doWarnInactiveNodesBySpecialUMPKey() {
 			}
 		}
 	}
-	if inactiveDataNodeCount <= 1 && inactiveMetaNodeCount <= 1 && ch.host != "cn.elasticdb.jd.local" {
+	if inactiveDataNodeCount <= 1 && inactiveMetaNodeCount <= 1 && ch.host != DomainMysql {
 		return
 	}
 	sb := new(strings.Builder)
@@ -1444,7 +1425,7 @@ func (ch *ClusterHost) doWarnInactiveNodesBySpecialUMPKey() {
 	}
 	sb.WriteString(fmt.Sprintf("详情:%v", nodes))
 	ch.lastTimeWarn = time.Now()
-	checktool.WarnBySpecialUmpKey(UMPCFSInactiveNodeWarnKey, sb.String())
+	warnBySpecialUmpKeyWithPrefix(UMPCFSInactiveNodeWarnKey, sb.String())
 }
 
 // 获取 mdc 存入到数据库的日志 磁盘使用率 大于阈值 电话告警
@@ -1492,14 +1473,15 @@ func (cv *ClusterView) checkMetaNodeDiskStatByMDCInfoFromSre(host *ClusterHost, 
 		return
 	}
 	msg := fmt.Sprintf("%v has meta nodes export disk used ratio more than %v%%,detail:%v", host, s.metaNodeExportDiskUsedRatio, highRatioNodes)
-	checktool.WarnBySpecialUmpKey(UMPKeyMetaNodeDiskRatio, msg)
+	warnBySpecialUmpKeyWithPrefix(UMPKeyMetaNodeDiskRatio, msg)
 }
 
+// isSSD 此方法只用于区分线上spark，mysql，dbBack集群的机房介质信息
 func isSSD(host, zoneName string) bool {
-	if host == "cn.elasticdb.jd.local" {
+	if host == DomainMysql {
 		return true
 	}
-	if host == "cn.chubaofs.jd.local" && (strings.Contains(zoneName, "_ssd") || strings.Contains(zoneName, "_sfx")) {
+	if host == DomainSpark && (strings.Contains(zoneName, "_ssd") || strings.Contains(zoneName, "_sfx")) {
 		return true
 	}
 	return false
@@ -1534,6 +1516,6 @@ func offlineFlashNode(host *ClusterHost, addr string) {
 		return
 	}
 	msg := fmt.Sprintf("action[offlineFlashNode] reqURL[%v],data[%v]", reqURL, string(data))
-	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	return
 }

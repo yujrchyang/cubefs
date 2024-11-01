@@ -6,7 +6,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/meta"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/robfig/cron"
 	"math"
@@ -191,7 +190,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 		} else if len(peerStrings) != len(hostStrings) || len(diffPeerToHost)+len(diffHostToPeer) > 0 {
 			// ump alarm
 			msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v, Unknown] peerStrings: %v , hostStrings: %v ", ch.host, mp.VolName, mp.PartitionID, r.Addr, peerStrings, hostStrings)
-			checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionPeerInconsistency, msg)
+			warnBySpecialUmpKeyWithPrefix(UMPKeyMetaPartitionPeerInconsistency, msg)
 		}
 	}
 	if ch.isReleaseCluster {
@@ -217,7 +216,7 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 		for _, item := range badReplicas {
 			msg := fmt.Sprintf("[Domain: %v, VolName: %v, PartitionID: %v, MultiError], nodeAddr: %v, PeerErrorInfo: %v, PeerAddr:%v ",
 				ch.host, item.VolName, item.ReplicationID, item.nodeAddr, item.PeerErrorInfo, item.PeerAddr)
-			checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionPeerInconsistency, msg)
+			warnBySpecialUmpKeyWithPrefix(UMPKeyMetaPartitionPeerInconsistency, msg)
 		}
 	}
 }
@@ -248,7 +247,7 @@ func repairMp(release bool, host string, rep PeerReplica) {
 	case "LACK_HOST":
 		outputStr := fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] cmd: cfs-cli metapartition add-replica %v %v",
 			host, rep.ReplicationID, rep.PeerErrorInfo, rep.PeerAddr, rep.ReplicationID)
-		checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionPeerInconsistency, outputStr)
+		warnBySpecialUmpKeyWithPrefix(UMPKeyMetaPartitionPeerInconsistency, outputStr)
 	default:
 		log.LogErrorf("wrong error info, %v", rep.PeerErrorInfo)
 		return
@@ -436,18 +435,15 @@ func checkRaftInodeCountOrDentryCountDiff(host *ClusterHost, replicaRaftStatusMa
 			replicas = append(replicas, *replica)
 		}
 		msg := fmt.Sprintf("Mp Inode/Dentry CountDIff host:%v id:%v replicas:%v", host, pID, replicas)
-		checktool.WarnBySpecialUmpKey(UMPCFSInodeCountDiffWarnKey, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSInodeCountDiffWarnKey, msg)
 	}
 }
 
 func checkRaftStoppedReplica(host *ClusterHost, replicaRaftStatusMap map[string]*proto.Status, pID uint64, volName, partitionType string, replicas []*DataReplica, mp *MetaPartition) {
 	// raft stop告警
-	var port string
 	switch partitionType {
 	case partitionTypeDP:
-		port = host.getDataNodePProfPort()
 	case partitionTypeMP:
-		port = host.getMetaNodePProfPort()
 		//PhyPID PartitionID  两者不相等的不进行检测
 		if mp != nil && mp.PhyPID != 0 && mp.PhyPID != mp.PartitionID {
 			return
@@ -462,6 +458,7 @@ func checkRaftStoppedReplica(host *ClusterHost, replicaRaftStatusMap map[string]
 			if partitionType == partitionTypeDP && isReplicaStatusUnavailable(replicaAddr, replicas) {
 				continue
 			}
+			port := profPortMap[strings.Split(replicaAddr, ":")[1]]
 			//检查节点升级的状态，只有节点启动1分钟后，才进行告警，避免raft异步加载造成误报
 			client := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(replicaAddr, ":")[0], port), false)
 			stat, err := client.GetStatInfo()
@@ -481,7 +478,7 @@ func checkRaftStoppedReplica(host *ClusterHost, replicaRaftStatusMap map[string]
 	}
 	if len(stoppedReplicas) != 0 {
 		msg := fmt.Sprintf("RaftStopped host:%v vol:%v %vid:%v replicas:%v", host, volName, partitionType, pID, stoppedReplicas)
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	}
 }
 
@@ -552,7 +549,7 @@ func checkRaftReplicaStatusOfPendingReplica(host *ClusterHost, replicaRaftStatus
 			newPendingInfo.ContinueCount = partitionPending.ContinueCount
 			if partitionPending.ContinueCount >= pendQueueAlarmThreshold {
 				msg := fmt.Sprintf("RaftPendQueueErr host:%v vol:%v %vid:%v replica:%v count:%v", host, volName, partitionType, pID, replica, newPendingInfo.PendQueue)
-				checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 			}
 		}
 	}
@@ -609,7 +606,7 @@ func checkRaftReplicaStatusOfRaftAppliedDiff(host *ClusterHost, replicaRaftStatu
 	if ok {
 		// 上次存在 且不大于24H，则告警
 		if reflect.DeepEqual(partitionApplied.lastDiffReplica, diffReplica) && time.Since(partitionApplied.lastCheckTime) < time.Hour*24 && minAppliedID == partitionApplied.lastMinApplyID {
-			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 		}
 	}
 	pApplied := &PartitionApplied{

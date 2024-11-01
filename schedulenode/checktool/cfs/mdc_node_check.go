@@ -3,7 +3,6 @@ package cfs
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/schedulenode/common/cfs"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/checktool/mdc"
 	"github.com/cubefs/cubefs/util/log"
 	"strings"
@@ -28,9 +27,10 @@ func (s *ChubaoFSMonitor) scheduleToCheckCFSHighIncreaseMemNodes() {
 	}
 }
 
+// 检查线上mysql集群内存过快增长
 func (s *ChubaoFSMonitor) checkCFSHighIncreaseMemNodes() {
 	for _, host := range s.hosts {
-		if host.host != "cn.elasticdb.jd.local" {
+		if isProEnv() && host.host != DomainMysql {
 			continue
 		}
 		log.LogInfof("checkCFSHighIncreaseMemNodes [%v] begin", host)
@@ -70,7 +70,7 @@ func (s *ChubaoFSMonitor) checkCFSNodeInfosThenWarn(host *ClusterHost) {
 		if len(highMemNodeIps) > 0 {
 			msg := fmt.Sprintf("HighMem host:%v count:%v ips:%v", host.host, len(highMemNodeIps), highMemNodeIps)
 			log.LogDebug(fmt.Sprintf("checkCFSNodeInfosThenWarn %v", highMemNodeMsg.String()))
-			checktool.WarnBySpecialUmpKey(UMPCFSMySqlMemWarnKey, msg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSMySqlMemWarnKey, msg)
 		}
 	}()
 	if len(host.nodeMemInfo) == 0 {
@@ -93,8 +93,8 @@ func (s *ChubaoFSMonitor) checkCFSNodeInfosThenWarn(host *ClusterHost) {
 		}
 	}
 	if nodeCount != 0 {
-		msg := fmt.Sprintf("Rapid Mem Increase host:%v count:%v detail:%v", host.host, nodeCount, warnMsg.String())
-		checktool.WarnBySpecialUmpKey(UMPCFSRapidMemIncreaseWarnKey, msg)
+		msg := fmt.Sprintf("Rapid Mem Increase host:%v count:%v detail:%v", host.host, nodeCount, strings.TrimSuffix(warnMsg.String(), ";"))
+		warnBySpecialUmpKeyWithPrefix(UMPCFSRapidMemIncreaseWarnKey, msg)
 	}
 }
 

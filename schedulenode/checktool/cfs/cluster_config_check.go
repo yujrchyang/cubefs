@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"time"
 )
@@ -41,7 +40,7 @@ func (s *ChubaoFSMonitor) CheckClusterConfig() {
 		}
 	}
 	if len(alarmMsg) > 0 {
-		checktool.WarnBySpecialUmpKey(UMPKeyClusterConfigCheck, alarmMsg)
+		warnBySpecialUmpKeyWithPrefix(UMPKeyClusterConfigCheck, alarmMsg)
 	} else {
 		log.LogInfo("CheckClusterConfig finished")
 	}
@@ -56,17 +55,17 @@ func (s *ChubaoFSMonitor) CheckClientPkgAddr(mc *master.MasterClient, expectClie
 			return
 		}
 		msg := fmt.Sprintf("get cluster info from %v failed,err:%v", mc.Nodes(), err)
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 		return
 	}
 	if cv.ClientPkgAddr != expectClientPkgAddr {
 		alarmMsg = fmt.Sprintf("host:%v clientPkgAddr expect:%v actual:%v\n", mc.Nodes(), expectClientPkgAddr, cv.ClientPkgAddr)
 		if err = mc.ClientAPI().SetClientPkgAddr(expectClientPkgAddr); err != nil {
 			msg := fmt.Sprintf("set client package addr from %v failed,err:%v", mc.Nodes(), err)
-			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 		} else {
 			msg := fmt.Sprintf("set client package addr from %v clientPkgAddr:%v success", mc.Nodes(), expectClientPkgAddr)
-			checktool.WarnBySpecialUmpKey(UMPKeyClusterConfigCheck, msg)
+			warnBySpecialUmpKeyWithPrefix(UMPKeyClusterConfigCheck, msg)
 		}
 	}
 	return

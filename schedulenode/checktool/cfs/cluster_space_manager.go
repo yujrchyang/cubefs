@@ -10,10 +10,6 @@ import (
 	"time"
 )
 
-const (
-	nlCluster = "nl.chubaofs.ochama.com"
-)
-
 func (s *ChubaoFSMonitor) scheduleToCheckClusterUsedRatio() {
 	s.checkClusterUsedRatio()
 	for {
@@ -45,7 +41,7 @@ func (s *ChubaoFSMonitor) checkClusterUsedRatio() {
 					return
 				}
 				msg := fmt.Sprintf("get cluster info from %v failed,err:%v", host.host, err)
-				checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 				return
 			}
 			s.doCheckDataNodeDiskUsedRatio(cv, host)
@@ -71,7 +67,7 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskUsedRatio(cv *ClusterView, host *Cl
 		return
 	}
 
-	if host.host == nlCluster {
+	if host.host == DomainOchama {
 		log.LogInfof("space check host:%v ClusterUsedRatio:%v", host.host, s.nlClusterUsedRatio)
 		if usedRatio > s.nlClusterUsedRatio {
 			msg := fmt.Sprintf("cluster[%v] dataNode used ratio [%v] larger than [%v]",
@@ -104,7 +100,7 @@ func (s *ChubaoFSMonitor) doCheckMetaNodeDiskUsedRatio(cv *ClusterView, host *Cl
 		return
 	}
 
-	if host.host == nlCluster {
+	if host.host == DomainOchama {
 		if usedRatio > s.nlClusterUsedRatio {
 			msg := fmt.Sprintf("cluster[%v] dataNode used ratio [%v] larger than [%v]",
 				host.host, usedRatio, s.nlClusterUsedRatio)
@@ -124,7 +120,7 @@ func (ch *ClusterHost) doProcessClusterUsedRatioAlarm(msg string) {
 
 	if ch.lastTimeAlarmClusterUsedRatio.IsZero() {
 		ch.lastTimeAlarmClusterUsedRatio = time.Now()
-		checktool.WarnBySpecialUmpKey(UMPCFSClusterUsedRatio, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSClusterUsedRatio, msg)
 		return
 	}
 	inOneCycle := time.Since(ch.lastTimeAlarmClusterUsedRatio) < time.Hour
@@ -132,6 +128,6 @@ func (ch *ClusterHost) doProcessClusterUsedRatioAlarm(msg string) {
 		return
 	}
 	ch.lastTimeAlarmClusterUsedRatio = time.Now()
-	checktool.WarnBySpecialUmpKey(UMPCFSClusterUsedRatio, msg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSClusterUsedRatio, msg)
 	return
 }

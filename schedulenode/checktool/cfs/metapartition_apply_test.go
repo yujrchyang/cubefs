@@ -20,12 +20,11 @@ func TestMetaPartitionApply(t *testing.T) {
 		log.LogFlush()
 	}()
 	t.Run("dbbak", func(t *testing.T) {
-		host := newClusterHost("")
-		host.isReleaseCluster = true
+		host := newClusterHost("", true)
 		checkMetaPartitionApply(host)
 	})
 	t.Run("spark", func(t *testing.T) {
-		host := newClusterHost("")
+		host := newClusterHost("", false)
 		checkMetaPartitionApply(host)
 	})
 }

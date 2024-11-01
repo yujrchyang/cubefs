@@ -23,15 +23,6 @@ type PackAlarmInfo struct {
 	zoneAlarmInfo  map[string]*AlarmInfo
 }
 
-const (
-	usedRatioMinThresholdSSD   = 0.85
-	usedRatioMinThresholdMysql = 0.75
-	usedRatioMaxThresholdMysql = 0.80
-	usedRatioMinThresholdOther = 0.75
-	usedRatioMaxThresholdOther = 0.80
-	masterDomainMysql          = "cn.elasticdb.jd.local"
-)
-
 func (s *ChubaoFSMonitor) scheduleToCheckZoneDiskUsedRatio() {
 	s.checkZoneDiskUsedRatio()
 	for {
@@ -80,7 +71,7 @@ func (s *ChubaoFSMonitor) checkZoneDiskUsedRatio() {
 				return
 			}
 			var dataNodeAlarmInfo, metaNodeAlarmInfo *PackAlarmInfo
-			if host.host == masterDomainMysql {
+			if host.host == DomainMysql {
 				dataNodeAlarmInfo, metaNodeAlarmInfo = s.doCheckZoneDiskUsedRatio(csv, cv.MetaNodeThreshold, host)
 			} else {
 				dataNodeAlarmInfo, metaNodeAlarmInfo = s.doCheckZoneDiskUsedRatio(csv, cv.MetaNodeThreshold, host)
@@ -120,17 +111,17 @@ func (s *ChubaoFSMonitor) alarmDataNode(clusterUsedRatioAlarmInfo map[string]*Pa
 	alarmMsg := finalAlarmMsg.String()
 	if shouldAlarm {
 		if time.Since(s.lastZoneDataNodeDiskUsedRatioAlarmTime) > 30*time.Minute {
-			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, alarmMsg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, alarmMsg)
 			s.lastZoneDataNodeDiskUsedRatioAlarmTime = time.Now()
 		}
 	}
 	if shouldTelAlarm {
 		if time.Since(s.lastZoneDataNodeDiskUsedRatioTelAlarm) > 60*time.Minute {
-			checktool.WarnBySpecialUmpKey(UMPCFSZoneUsedRatioWarnKey, alarmMsg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSZoneUsedRatioWarnKey, alarmMsg)
 			s.lastZoneDataNodeDiskUsedRatioTelAlarm = time.Now()
 		}
 		if time.Since(s.lastZoneDataNodeDiskUsedRatioTelOpAlarm) > 30*time.Minute {
-			checktool.WarnBySpecialUmpKey(UMPCFSZoneUsedRatioOPWarnKey, alarmMsg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSZoneUsedRatioOPWarnKey, alarmMsg)
 			s.lastZoneDataNodeDiskUsedRatioTelOpAlarm = time.Now()
 		}
 	}
@@ -159,17 +150,17 @@ func (s *ChubaoFSMonitor) alarmMataNode(clusterUsedRatioAlarmInfo map[string]*Pa
 	alarmMsg := finalAlarmMsg.String()
 	if shouldAlarm {
 		if time.Since(s.lastZoneMetaNodeDiskUsedRatioAlarmTime) > 10*time.Minute {
-			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, alarmMsg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, alarmMsg)
 			s.lastZoneMetaNodeDiskUsedRatioAlarmTime = time.Now()
 		}
 	}
 	if shouldTelAlarm {
 		if time.Since(s.lastZoneMetaNodeDiskUsedRatioTelAlarm) > 20*time.Minute {
-			checktool.WarnBySpecialUmpKey(UMPCFSZoneUsedRatioWarnKey, alarmMsg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSZoneUsedRatioWarnKey, alarmMsg)
 			s.lastZoneMetaNodeDiskUsedRatioTelAlarm = time.Now()
 		}
 		if time.Since(s.lastZoneMetaNodeDiskUsedRatioTelOpAlarm) > 10*time.Minute {
-			checktool.WarnBySpecialUmpKey(UMPCFSZoneUsedRatioOPWarnKey, alarmMsg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSZoneUsedRatioOPWarnKey, alarmMsg)
 			s.lastZoneMetaNodeDiskUsedRatioTelOpAlarm = time.Now()
 		}
 	}
@@ -243,10 +234,10 @@ func (ch *ClusterHost) isSSDZone(zoneName string) (ok bool) {
 	//elasticdb 集群 包含hdd的是hdd,其它为ssd, 即不包含hdd则为ssd
 	//spark集群 包含ssd的是ssd，其它为hdd
 	switch ch.host {
-	case "cn.elasticdb.jd.local":
+	case DomainMysql:
 		return !strings.Contains(zoneName, "hdd")
-	case "cn.chubaofs.jd.local":
-		return strings.Contains(zoneName, "ssd")
+	case DomainSpark:
+		return strings.Contains(zoneName, "ssd") || strings.Contains(zoneName, "sfx")
 	default:
 		return false
 	}

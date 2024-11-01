@@ -11,6 +11,8 @@ func (s *ChubaoFSMonitor) NewSchedule(task func(), interval time.Duration) {
 	}()
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-ticker.C:
 			task()
 		}
@@ -26,6 +28,8 @@ func (s *ChubaoFSMonitor) NewScheduleV2(task func(), interval time.Duration) {
 	}()
 	for {
 		select {
+		case <-s.ctx.Done():
+			return
 		case <-ticker.C:
 			task()
 			ticker.Reset(interval)

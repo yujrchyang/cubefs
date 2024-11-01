@@ -13,6 +13,8 @@ const (
 	XBPTicketTypeNodeDisk = "BadDisk"
 )
 
+// scheduleToCheckXBPTicket
+// 检查是否有可执行的xbp任务
 func (s *ChubaoFSMonitor) scheduleToCheckXBPTicket() {
 	t := time.NewTimer(time.Duration(s.scheduleInterval) * time.Second)
 	for {
@@ -41,7 +43,7 @@ func (s *ChubaoFSMonitor) checkXBPTicket() {
 	if len(ticketIDs) == 0 {
 		return
 	}
-	ticketStatus, err := xbp.GetTicketsStatus(xbp.Domain, xbp.Sign, xbp.Erp, ticketIDs)
+	ticketStatus, err := xbp.GetTicketsStatus(s.envConfig.Xbp.Domain, s.envConfig.Xbp.Sign, s.envConfig.Xbp.ApiUser, ticketIDs)
 	if err != nil {
 		log.LogErrorf("action[checkXBPTicket] failed ticketIDs:%v err:%v", ticketIDs, err)
 		return
@@ -74,7 +76,7 @@ func (s *ChubaoFSMonitor) checkXBPTicket() {
 					if !recheckIsNeedOfflineXBPTicket(ticketInfo) {
 						msg := fmt.Sprintf("ticketID:%v node:%s type:%s is not need offline any more",
 							ticketInfo.tickerID, ticketInfo.nodeAddr, ticketInfo.ticketType)
-						checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+						warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 						ticketInfo.status = xbp.TicketStatusFinish
 						ticketInfo.lastUpdateTime = time.Now()
 						s.badDiskXBPTickets.Store(badDiskXBPTicketKey, ticketInfo)
@@ -83,7 +85,7 @@ func (s *ChubaoFSMonitor) checkXBPTicket() {
 						//处理之后 添加标记 + 对应时间记录，超过一定时间 还有相同的 就创建新的XBP单子
 						//避免 1.清除之后又进行了添 或者 后面有进行了添加 问题
 						msg := fmt.Sprintf("ticketID:%v send url[%v] success, resp[%v]", ticketInfo.tickerID, ticketInfo.url, string(data))
-						checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+						warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 						ticketInfo.status = xbp.TicketStatusFinish
 						ticketInfo.lastUpdateTime = time.Now()
 						s.badDiskXBPTickets.Store(badDiskXBPTicketKey, ticketInfo)

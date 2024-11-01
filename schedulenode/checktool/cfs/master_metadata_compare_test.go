@@ -28,23 +28,25 @@ func TestCompareMeta(t *testing.T) {
 	}()
 
 	monitor := NewChubaoFSMonitor(context.Background())
-	monitor.configMap[cfgKeyOssDomain] = "storage-ops.x.x.x"
+	monitor.envConfig = &EnvConfig{
+		JcloudOssDomain: "oss****",
+	}
 	monitor.chubaoFSMasterNodes = map[string][]string{
-		"sparkchubaofs.jd.local": {
+		DomainSpark: {
 			/*			"1.1.1.1:8868",
 						"1.1.1.2:8868",
 						"1.1.1.3:8868",
 						"1.1.1.4:8868",
 						"1.1.1.5:8868",*/
 		},
-		"cn.chubaofs-seqwrite.jd.local": {
+		DomainDbbak: {
 			/*			"1.1.1.1:8868",
 						"1.1.1.2:8868",
 						"1.1.1.3:8868",
 						"1.1.1.4:8868",
 						"1.1.1.5:8868",*/
 		},
-		"cn.elasticdb.jd.local": {},
+		DomainMysql: {},
 	}
 	monitor.checkMasterMetadata()
 	monitor.checkMasterMetadata()

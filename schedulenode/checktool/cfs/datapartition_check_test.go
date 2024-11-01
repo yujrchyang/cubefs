@@ -13,6 +13,6 @@ func TestCheckAvailableTinyExtent(t *testing.T) {
 		log.LogFlush()
 	}()
 	multi_email.InitMultiMail(25, "mx.jd.local", "storage-sre@jd.com", "storage-sre", "******", []string{"xuxihao3@jd.com"})
-	host := newClusterHost("test.chubaofs.jd.local")
+	host := newClusterHost("test.chubaofs.jd.local", false)
 	checkTinyExtentsByVol(host, []string{"testvol"})
 }

@@ -2,12 +2,8 @@
   "interval": 100,
   "cfsCluster": [
     {
-      "host": "chubaofs.cluster.domain",
+      "host": "chubaofs.cluster.test.domain",
       "clientPkgAddr": "http://storage.jd.local/***/1***"
-    },
-    {
-      "host": "chubaofs.elasticdb.cluster.domain",
-      "clientPkgAddr": "http://storage.jd.local/***/2***"
     }
   ]
 }

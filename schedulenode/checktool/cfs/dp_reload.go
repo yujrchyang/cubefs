@@ -18,12 +18,8 @@ import (
 const (
 	UmpAppName               = "chubaofs-node"
 	UmpPlatForm              = "jdos"
-	ClusterNameSpark         = "spark"
-	ClusterNameMysql         = "mysql"
 	UmpKeyCheckDpStatusSpark = "spark_master_dp_check_status"
 	UmpKeyCheckDpStatusMysql = "mysql_master_dp_check_status"
-	DomainSpark              = "sparkchubaofs.jd.local"
-	DomainMysql              = "cn.elasticdb.jd.local"
 	DpReloadTaskInterval     = 300 // unit: second
 	DpReloadReloadInterval   = 10  // unit: minute
 	RegexpFailedDpInfo       = "\\[(.*?)\\]"

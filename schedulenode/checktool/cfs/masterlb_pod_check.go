@@ -3,8 +3,6 @@ package cfs
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/schedulenode/common/jdos"
-	"github.com/cubefs/cubefs/util/checktool"
-	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"io/ioutil"
 	"net"
@@ -18,15 +16,14 @@ const (
 	PodStatusTerminating   = "Terminating"
 	GroupEnvironmentPro    = "pro" // 分组类型,生产分组,对应jdos.Group中Environment字段
 	GroupEnvironmentPre    = "pre" // 分组类型,预发分组,对应jdos.Group中Environment字段
-	SysNameCFS             = "chubaofs"
 	MasterLBAPPNameCFSpark = "overwrite-master-lb"
-	MasterLBHostCFSpark    = "cn.chubaofs.jd.local"
+	MasterLBHostCFSpark    = DomainSpark
 
 	MasterLBAPPNameCFSDbbak = "dbbakmasterlb"
-	MasterLBHostCFSDbbak    = "cn.chubaofs-seqwrite.jd.local"
+	MasterLBHostCFSDbbak    = DomainDbbak
 
 	MasterLBAPPNameCFSMysql     = "elasticdb-master-lb"
-	MasterLBHostCFSMysql        = "cn.elasticdb.jd.local"
+	MasterLBHostCFSMysql        = DomainMysql
 	MasterLBPort                = 80
 	MaxCheckConnRetryCount      = 3
 	MasterLBPortHealthyCheckAPI = "/admin/getIp"
@@ -36,11 +33,7 @@ const (
 	minMasterLBWarnCount        = 3
 )
 
-func (s *ChubaoFSMonitor) scheduleToCheckMasterLbPodStatus(cfg *config.Config) {
-	if cfg.GetString(config.CfgRegion) == config.IDRegion {
-		log.LogInfo("action[scheduleToCheckMasterLbPodStatus] need not for id region")
-		return
-	}
+func (s *ChubaoFSMonitor) scheduleToCheckMasterLbPodStatus() {
 	s.checkMasterLbPodStatus()
 	for {
 		t := time.NewTimer(time.Duration(s.scheduleInterval) * time.Second)
@@ -60,20 +53,20 @@ func (s *ChubaoFSMonitor) checkMasterLbPodStatus() {
 		}
 	}()
 	// check cfs spark
-	s.checkPodsStatusOfAppAndAlarm(SysNameCFS, MasterLBAPPNameCFSpark, MasterLBHostCFSpark, PodStatusWarningThreshold)
+	s.checkPodsStatusOfAppAndAlarm(MasterLBAPPNameCFSpark, MasterLBHostCFSpark, PodStatusWarningThreshold)
 	// check cfs dbback
-	s.checkPodsStatusOfAppAndAlarm(SysNameCFS, MasterLBAPPNameCFSDbbak, MasterLBHostCFSDbbak, PodStatusWarningThreshold)
+	s.checkPodsStatusOfAppAndAlarm(MasterLBAPPNameCFSDbbak, MasterLBHostCFSDbbak, PodStatusWarningThreshold)
 	// check cfs mysql
-	s.checkPodsStatusOfAppAndAlarm(SysNameCFS, MasterLBAPPNameCFSMysql, MasterLBHostCFSMysql, PodStatusWarningThreshold)
+	s.checkPodsStatusOfAppAndAlarm(MasterLBAPPNameCFSMysql, MasterLBHostCFSMysql, PodStatusWarningThreshold)
 }
 
-func (s *ChubaoFSMonitor) checkPodsStatusOfAppAndAlarm(systemName, appName, host string, threshold float32) {
-	totalPodsCounts, notRunningPodIps, err := checkPodsStatFromJDOS(systemName, appName, host, s)
+func (s *ChubaoFSMonitor) checkPodsStatusOfAppAndAlarm(appName, host string, threshold float32) {
+	totalPodsCounts, notRunningPodIps, err := checkPodsStatFromJDOS(s.envConfig.Jdos.JdosSysName, appName, host, s)
 	if err != nil {
 		log.LogErrorf("action[checkPodsStatusOfAppAndAlarm] err:%v", err)
 		return
 	}
-	key := systemName + appName
+	key := s.envConfig.Jdos.JdosSysName + appName
 	masterLBWarnInfo, ok := s.masterLbLastWarnInfo[key]
 	if !ok || masterLBWarnInfo == nil {
 		masterLBWarnInfo = &MasterLBWarnInfo{}
@@ -82,16 +75,16 @@ func (s *ChubaoFSMonitor) checkPodsStatusOfAppAndAlarm(systemName, appName, host
 	if totalPodsCounts == 0 || len(notRunningPodIps) == 0 {
 		masterLBWarnInfo.ContinuedTimes = 0
 		log.LogInfof("action[checkPodsStatusOfAppAndAlarm] masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v",
-			systemName, appName, totalPodsCounts, notRunningPodIps)
+			s.envConfig.Jdos.JdosSysName, appName, totalPodsCounts, notRunningPodIps)
 		return
 	}
 	if float32(len(notRunningPodIps))/float32(totalPodsCounts) > threshold || len(notRunningPodIps) > minMasterLBFaultTelCount {
 		msg := fmt.Sprintf("masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v",
-			systemName, appName, totalPodsCounts, notRunningPodIps)
-		checktool.WarnBySpecialUmpKey(UMPKeyMasterLbPodStatus, msg)
+			s.envConfig.Jdos.JdosSysName, appName, totalPodsCounts, notRunningPodIps)
+		warnBySpecialUmpKeyWithPrefix(UMPKeyMasterLbPodStatus, msg)
 	} else {
 		log.LogWarnf("masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v",
-			systemName, appName, totalPodsCounts, notRunningPodIps)
+			s.envConfig.Jdos.JdosSysName, appName, totalPodsCounts, notRunningPodIps)
 		// 连续minMasterLBWarnCount次再执行普通告警, 每次告警时间间隔十分钟
 		//masterLBWarnInfo.ContinuedTimes++
 		//if time.Since(masterLBWarnInfo.LastWarnTime) >= time.Minute*5 && masterLBWarnInfo.ContinuedTimes >= minMasterLBWarnCount {
@@ -99,7 +92,7 @@ func (s *ChubaoFSMonitor) checkPodsStatusOfAppAndAlarm(systemName, appName, host
 		//	masterLBWarnInfo.ContinuedTimes = 0
 		//	msg := fmt.Sprintf("masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v",
 		//		systemName, appName, totalPodsCounts, notRunningPodIps)
-		//	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		//	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 		//} else {
 		//	msg := fmt.Sprintf("masterlb check systemName:%v, appName:%v, PodsCounts:%v, notRunningPodIps:%v, masterLBWarnInfo:%v",
 		//		systemName, appName, totalPodsCounts, notRunningPodIps, *masterLBWarnInfo)
@@ -110,7 +103,7 @@ func (s *ChubaoFSMonitor) checkPodsStatusOfAppAndAlarm(systemName, appName, host
 
 func checkPodsStatFromJDOS(systemName, appName, host string, s *ChubaoFSMonitor) (totalPodsCount int, notRunningPodIps []string, err error) {
 	notRunningPodIps = make([]string, 0)
-	jdosOpenApi := jdos.NewJDOSOpenApi(systemName, appName, s.jdosUrl, s.jdosErp, s.jdosToken)
+	jdosOpenApi := jdos.NewJDOSOpenApi(systemName, appName, s.envConfig.Jdos.JdosURL, s.envConfig.Jdos.JdosErp, s.envConfig.Jdos.JdosToken)
 	groupsDetails, err := jdosOpenApi.GetAllGroupsDetails()
 	if err != nil {
 		return

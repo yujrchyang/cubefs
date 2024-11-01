@@ -8,7 +8,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/tcp_api"
 	"github.com/cubefs/cubefs/sdk/http_client"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"io"
 	"math"
@@ -67,7 +66,7 @@ func checkMetaPartitionApply(clusterHost *ClusterHost) {
 
 		if len(checkFailed) > 0 {
 			// 连续三次检查都失败的mp发送报警提示
-			exporter.WarningBySpecialUMPKey(metaPartitionApplyFailedWarningKey, fmt.Sprintf("Domain[%v] check failed meta partition len[%v] details[%v] ", clusterHost.host, len(checkFailed), checkFailed))
+			warnBySpecialUmpKeyWithPrefix(UMPMetaPartitionApplyFailedKey, fmt.Sprintf("Domain[%v] check failed meta partition len[%v] details[%v] ", clusterHost.host, len(checkFailed), checkFailed))
 		}
 		// 清空map
 		clusterHost.metaPartitionHolder.badMetaMapLock.Lock()
@@ -175,7 +174,7 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartitio
 				ch.host, volName, mp.PartitionID, first.Addr, first.ApplyID)
 			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr, time.Minute*2) {
 				uploadMetaNodeStack(first.Addr)
-				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPMetaPartitionApplyKey, msg)
 			} else {
 				err = fmt.Errorf("check failed, metanode not start")
 				log.LogWarnf("%v server not completed start", msg)
@@ -190,7 +189,7 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartitio
 		if first.Addr == last.Addr {
 			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different dentry, min addr[%v] min dEntry[%v]", ch.host, volName, mp.PartitionID, first.Addr, first.DentryCount)
 			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr, time.Minute*2) {
-				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPMetaPartitionApplyKey, msg)
 			} else {
 				err = fmt.Errorf("check failed, metanode not start")
 				log.LogWarnf("%v server not completed start", msg)
@@ -204,7 +203,7 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartitio
 		if first.Addr == last.Addr {
 			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different inode count, min addr[%v] min inode count[%v]", ch.host, volName, mp.PartitionID, first.Addr, first.InodeCount)
 			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr, time.Minute*2) {
-				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPMetaPartitionApplyKey, msg)
 			} else {
 				err = fmt.Errorf("check failed, metanode not start")
 				log.LogWarnf("%v server not completed start", msg)

@@ -9,55 +9,25 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/cubefs/cubefs/util/log"
 	"net/http"
+	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/multi_email"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/checktool/ump"
 	"github.com/cubefs/cubefs/util/config"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
+var prefix = "a"
+
 const (
-	domainSeparator                      = ","
-	UMPCFSNormalWarnKey                  = checktool.UmpKeyStorageBotPrefix + "cfs"
-	UMPCFSBadDiskWarnKey                 = UMPCFSNormalWarnKey + ".bad.disk"
-	UMPCFSZoneUsedRatioWarnKey           = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio"
-	UMPCFSZoneUsedRatioOPWarnKey         = checktool.UmpKeyStorageBotPrefix + "cfs.zone.used.ratio.op"
-	UMPCFSRaftlogBackWarnKey             = checktool.UmpKeyStorageBotPrefix + "chubaofs.raft.log.backup"
-	UMPCFSClusterUsedRatio               = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.used.ratio"
-	UMPCFSClusterConnRefused             = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.connection.refused"
-	UMPKeyInactiveNodes                  = checktool.UmpKeyStorageBotPrefix + "chubaofs.inactive.nodes"
-	UMPKeyMetaPartitionNoLeader          = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.no.leader"
-	UMPKeyDataPartitionLoadFailed        = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.load.failed"
-	UMPKeyMetaPartitionPeerInconsistency = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.partition.peer.inconsistency"
-	UMPKeyDataPartitionPeerInconsistency = checktool.UmpKeyStorageBotPrefix + "chubaofs.data.partition.peer.inconsistency"
-	UMPKeyMetaNodeDiskSpace              = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.space"
-	UMPKeyMetaNodeDiskRatio              = checktool.UmpKeyStorageBotPrefix + "chubaofs.meta.node.disk.ratio"
-	UMPKeyMasterLbPodStatus              = checktool.UmpKeyStorageBotPrefix + "chubaofs.master.lb.pod.status"
-	UMPKeyClusterConfigCheck             = checktool.UmpKeyStorageBotPrefix + "chubaofs.cluster.config"
-	UMPCFSNodeRestartWarnKey             = checktool.UmpKeyStorageBotPrefix + "cfs.restart.node"
-	UMPCFSInactiveNodeWarnKey            = checktool.UmpKeyStorageBotPrefix + "cfs.inactive.node"
-	UMPCFSZoneWriteAbilityWarnKey        = checktool.UmpKeyStorageBotPrefix + "cfs.zone.writeability.ratio"
-	UMPCFSInodeCountDiffWarnKey          = checktool.UmpKeyStorageBotPrefix + "cfs.inode.count.diff"
-	UMPCFSRapidMemIncreaseWarnKey        = checktool.UmpKeyStorageBotPrefix + "cfs.rapid.mem.increase"
-	UMPCFSMySqlMemWarnKey                = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.mem"
-	UMPCFSSparkFixPartitionKey           = checktool.UmpKeyStorageBotPrefix + "cfs.fix_bad_replica"
-	UMPCFSSparkFlashNodeVersionKey       = checktool.UmpKeyStorageBotPrefix + "cfs.flashnode.version"
-	UMPCFSMasterMetaCompareKey           = checktool.UmpKeyStorageBotPrefix + "cfs.master.rocksdb.compare"
-	UMPCFSNodeSetNumKey                  = checktool.UmpKeyStorageBotPrefix + "cfs.nodeset.num"
-	UMPCFSNodeTinyExtentCheckKey         = checktool.UmpKeyStorageBotPrefix + "cfs.tiny.extent.check"
-	UMPCFSCoreVolWarnKey                 = checktool.UmpKeyStorageBotPrefix + "cfs.core.vol"
-	UMPCFSMysqlBadDiskKey                = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.bad.disk"
-	UMPCFSMysqlInactiveNodeKey           = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.inactive.node"
-	UMPCFSNLInactiveNodeKey              = checktool.UmpKeyStorageBotPrefix + "cfs.nl.inactive.node"
-	metaPartitionApplyWarningKey         = "Storage-Bot.cfs.meta.apply"
-	metaPartitionApplyFailedWarningKey   = "Storage-Bot.cfs.meta.apply.failed"
-	UMPKeyStuckNodes                     = checktool.UmpKeyStorageBotPrefix + "chubaofs.stuck.nodes"
+	domainSeparator       = ","
+	dbBakClusterSeparator = "#"
 
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024
@@ -98,7 +68,6 @@ const (
 	cfgKeyCheckAvailTinyVols               = "checkAvailTinyVols"
 	cfgKeyNlClusterUsedRatio               = "nlClusterUsedRatio"
 	cfgKeyMinRWCnt                         = "minRWCnt"
-	cfgKeyDomains                          = "cfsDomains"
 	cfgKeyInterval                         = "interval"
 	cfgKeyDpCheckInterval                  = "dpCheckInterval"
 	cfgKeyMpCheckInterval                  = "mpCheckInterval"
@@ -118,49 +87,22 @@ const (
 	cfgKeyMPMaxAppliedIDDiffCount          = "mpMaxAppliedIDDiffCount"
 	cfgKeyDPPendQueueAlarmThreshold        = "dpPendQueueAlarmThreshold"
 	cfgKeyMPPendQueueAlarmThreshold        = "mpPendQueueAlarmThreshold"
-	cfgKeySreDbConfigDSNPort               = "sreDbConfig"
-	cfgKeyJdosToken                        = "jdosToken"
-	cfgKeyJdosURl                          = "jdosURL"
-	cfgKeyJdosErp                          = "jdosErp"
 	cfgKeyMetaNodeExportDiskUsedRatio      = "metaNodeExportDiskUsedRatio"
 	cfgKeyIgnoreCheckMP                    = "ignoreCheckMP"
 	cfgKeyNodeRapidMemIncWarnThreshold     = "nodeRapidMemIncWarnThreshold"
 	cfgKeyNodeRapidMemIncreaseWarnRatio    = "nodeRapidMemIncreaseWarnRatio"
 	cfgKeyExpiredMetaRemainDays            = "expiredMetaRemainDays"
-	cfgKeyXbpUsername                      = "xbpUsername"
-	cfgKeyOssDomain                        = "jcloudOssDomain"
 	cfgKeyHDDDiskOfflineInterval           = "hddDiskOfflineInterval"
 	cfgKeySSDDiskOfflineInterval           = "ssdDiskOfflineInterval"
 	cfgKeyHDDDiskOfflineThreshold          = "hddDiskOfflineThreshold"
 	cfgKeySSDDiskOfflineThreshold          = "ssdDiskOfflineThreshold"
-	cfgKeyEmail                            = "email"
+	cfgKeyDisableCleanExpiredMP            = "disableCleanExpiredMP"
 	cfgKeyEnable                           = "enable"
-	cfgKeyBucketConfig                     = "bucketConfig"
+	cfgKeyEnvironment                      = "env" //online or test
+	cfgKeyConfigsPath                      = "configsPath"
 )
 
-type emailConfig struct {
-	Enable   bool `json:"enable"`
-	Property struct {
-		SmtpHost string   `json:"smtpHost"`
-		SmtpPort int      `json:"smtpPort"`
-		MailFrom string   `json:"mailFrom"`
-		MailTo   []string `json:"mailTo"`
-		MailUser string   `json:"mailUser"`
-		MailPwd  string   `json:"mailPwd"`
-	} `json:"property"`
-}
-
-type BucketConfig struct {
-	BucketName string `json:"bucketName"`
-	EndPoint   string `json:"endPoint"`
-	Region     string `json:"region"`
-	AccessKey  string `json:"ak"`
-	SecretKey  string `json:"sk"`
-}
-
-var configKeys = []string{
-	cfgKeyOssDomain,
-}
+var configKeys []string
 
 var intKeys = []string{
 	cfgKeyHDDDiskOfflineInterval,
@@ -179,6 +121,25 @@ const (
 	flashNodeType = 2
 )
 
+const (
+	DevelopmentEnv = "development"
+	ProductionEnv  = "production"
+)
+
+var env string
+
+func initEnv(e string) {
+	env = e
+}
+
+func isProEnv() bool {
+	return env == ProductionEnv
+}
+
+func isDevEnv() bool {
+	return env == DevelopmentEnv
+}
+
 var (
 	checkVolWg         sync.WaitGroup
 	checkNodeWg        sync.WaitGroup
@@ -195,13 +156,12 @@ var (
 )
 
 type ChubaoFSMonitor struct {
+	envConfig                               *EnvConfig
 	usedRatio                               float64
 	availSpaceRatio                         float64
 	readWriteDpRatio                        float64
 	hosts                                   []*ClusterHost
-	idHosts                                 []*ClusterHost
 	minReadWriteCount                       int64
-	lastWarnTime                            int64
 	scheduleInterval                        int
 	clusterUsedRatio                        float64
 	nlClusterUsedRatio                      float64
@@ -238,16 +198,14 @@ type ChubaoFSMonitor struct {
 	checkPeerConcurrency                    int
 	checkFlashNode                          bool
 	flashNodeValidVersions                  []string
-	jdosToken                               string
-	jdosUrl                                 string
-	jdosErp                                 string
 	umpClient                               *ump.UMPClient
 	clusterConfigCheck                      *ClusterConfigCheck
 	ExpiredMetaRemainDaysCfg                int
 	checkAvailTinyVols                      []string
+	disableCleanExpiredMP                   bool
+	fixBadPartition                         bool
 	ctx                                     context.Context
 	dpReleaser                              *ChubaoFSDPReleaser
-	xbpUsername                             string
 	checkRiskFix                            bool
 	configMap                               map[string]string
 	integerMap                              map[string]int64
@@ -278,13 +236,13 @@ func (s *ChubaoFSMonitor) Start(cfg *config.Config) (err error) {
 	noLeaderMps = new(sync.Map)
 	s.umpClient = ump.NewUmpClient(cfg.GetString(cfgUmpAPiToken), umpOpenAPiDomain)
 	s.scheduleTask(cfg)
-	releaser := StartChubaoFSDPReleaser(cfg)
+	releaser := startChubaoFSDPReleaser(cfg)
 	if releaser == nil {
 		err = fmt.Errorf("init dp releaser failed")
 		return
 	}
 	s.dpReleaser = releaser
-	highLoadNodeSolver := StartChubaoFSHighLoadNodeSolver(cfg)
+	highLoadNodeSolver := StartChubaoFSHighLoadNodeSolver(s.sreDB)
 	if highLoadNodeSolver != nil {
 		s.RestartNodeMaxCountIn24Hour = defaultRestartNodeMaxCountIn24Hour
 		s.highLoadNodeSolver = highLoadNodeSolver
@@ -312,6 +270,11 @@ func (s *ChubaoFSMonitor) extractMinRWDPAndMPVols(filePath string) (err error) {
 		return
 	}
 	s.MinRWDPAndMPVols = volInfos.MinRWDPAndMPVols
+	for _, vol := range s.MinRWDPAndMPVols {
+		if s.envConfig.Env == DevelopmentEnv && isOnlineDomain(vol.Host) {
+			panic("can not using online domain for MinRWDPAndMPVols in dev environment")
+		}
+	}
 	fmt.Println("MinRWDPAndMPVols:", s.MinRWDPAndMPVols)
 	return
 }
@@ -350,35 +313,38 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.scheduleToCheckVol()
 	go s.scheduleToCheckSpecificVol()
 	go s.scheduleToCheckNodesAlive()
-	//go s.scheduleToCheckIDMetaNodeDiskStat()
 	go s.scheduleToCheckClusterUsedRatio()
-	go s.scheduleToCheckMasterLbPodStatus(cfg)
-	//go s.scheduleToCompareMasterMetaDataDiff()
 	go s.scheduleToCheckMasterNodesAlive()
-	go s.scheduleToFixBadDataPartition(cfg)
-	go s.scheduleToCheckXBPTicket()
-	go s.scheduleToCheckZoneDiskUsedRatio()
-	go s.scheduleToCheckObjectNodeAlive(cfg)
+	go s.scheduleToCheckObjectNodeAlive()
 	go s.scheduleToCheckMpPeerCorrupt()
 	go s.scheduleToCheckDpPeerCorrupt()
-	go s.scheduleToCheckAndWarnFaultToUsers()
-	go s.scheduleToCheckMetaPartitionSplit()
-	go s.scheduleToCheckZoneMnDnWriteAbilityRate()
+	if isProEnv() {
+		log.LogInfof("start schedulers for production environment")
+		go s.scheduleToCheckAndWarnFaultToUsers()
+		go s.NewSchedule(s.fixOnlineBadDataPartition, time.Minute)
+		go s.scheduleToCheckZoneDiskUsedRatio()
+		go s.scheduleToCheckXBPTicket()
+		go s.scheduleToCheckMasterLbPodStatus()
+		go s.scheduleToCheckMetaPartitionSplit()
+		go s.scheduleToCheckClusterConfig()
+		go s.scheduleToCheckZoneMnDnWriteAbilityRate()
+		go s.NewSchedule(s.checkMasterMetadata, time.Hour)
+		go s.NewSchedule(s.checkSparkHbaseCap, time.Minute*30)
+		go s.NewSchedule(s.checkOnlineCoreVols, time.Minute*2)
+		go s.scheduleToReloadDP()
+	} else {
+		log.LogInfof("disable some schedulers for development environment")
+	}
 	go s.scheduleToCheckCFSHighIncreaseMemNodes()
-	go s.scheduleToCheckClusterConfig()
-	go s.scheduleToReloadDP()
 	go s.NewSchedule(s.checkDiskError, time.Minute*1)
 	go s.NewScheduleV2(s.checkUnavailableDataPartition, time.Minute*15)
 	go s.NewSchedule(s.checkDataNodeRiskData, time.Hour)
-	go s.NewSchedule(s.checkMasterMetadata, time.Hour)
 	go s.NewSchedule(s.checkNodeSet, time.Hour)
 	go s.NewSchedule(s.resetTokenMap, time.Minute*30)
 	go s.NewSchedule(s.checkDbbakDataPartition, time.Hour*6)
 	go s.NewSchedule(s.checkAvailableTinyExtents, time.Minute*2)
 	go s.NewSchedule(s.clientAlarm, clientAlarmInterval*time.Second)
-	go s.NewSchedule(s.checkCoreVols, time.Minute*2)
 	go s.NewSchedule(s.CheckMetaPartitionApply, time.Minute*30)
-	go s.NewSchedule(s.CheckHbaseCap, time.Minute*30)
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
@@ -394,7 +360,39 @@ func (s *ChubaoFSMonitor) scheduleToCheckVol() {
 	}
 }
 
+func isOnlineDomain(domain string) bool {
+	switch domain {
+	case DomainSpark, DomainMysql, DomainDbbak, DomainNL, DomainOchama:
+		return true
+	default:
+		return false
+	}
+}
+
 func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
+	var envConfig *EnvConfig
+	configsPath := cfg.GetString(cfgKeyConfigsPath)
+	envConfig, err = s.parseEnv(configsPath, cfg)
+	if err != nil {
+		return
+	}
+	s.envConfig = envConfig
+	if err = s.initSreDBConfig(); err != nil {
+		return
+	}
+	if err = s.parseChubaoFSDomains(); err != nil {
+		return
+	}
+	if s.envConfig.Env == DevelopmentEnv {
+		for _, h := range s.hosts {
+			if isOnlineDomain(h.host) {
+				panic("can not using online cfsDomains in dev environment")
+			}
+		}
+	}
+	if err = s.parseBucket(); err != nil {
+		return err
+	}
 	cfsMasterJsonPath := cfg.GetString(cfsKeymasterJsonPath)
 	if cfsMasterJsonPath == "" {
 		return fmt.Errorf("cfsMasterJsonPath is empty")
@@ -431,35 +429,11 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("parse availSpaceRatio failed")
 	}
 	s.readWriteDpRatio = readWriteDpRatio
-	s.xbpUsername = cfg.GetString(cfgKeyXbpUsername)
 	minRWCnt := cfg.GetFloat(cfgKeyMinRWCnt)
 	if minRWCnt <= 0 {
 		return fmt.Errorf("parse minRWCnt failed")
 	}
 	s.minReadWriteCount = int64(minRWCnt)
-	domains := cfg.GetString(cfgKeyDomains)
-	if domains == "" {
-		return fmt.Errorf("parse cfsDomains failed,cfsDomains can not be nil")
-	}
-	hosts := strings.Split(domains, domainSeparator)
-
-	clusterHosts := make([]*ClusterHost, 0)
-	for _, host := range hosts {
-		if cfg.GetString(config.CfgRegion) == config.IDRegion && !strings.Contains(host, config.IDRegion) {
-			continue
-		}
-		if cfg.GetString(config.CfgRegion) != config.IDRegion && strings.Contains(host, config.IDRegion) {
-			continue
-		}
-		clusterHosts = append(clusterHosts, newClusterHost(host))
-	}
-	s.hosts = clusterHosts
-	for _, host := range s.hosts {
-		if masterNodes, ok := s.chubaoFSMasterNodes[host.host]; ok {
-			host.masterNodes = masterNodes
-			fmt.Printf("domain: %v chubaoFSMasterNodes: %v\n", host.host, s.chubaoFSMasterNodes)
-		}
-	}
 
 	s.updateMaxPendQueueAndMaxAppliedIDDiffCountByConfig(cfg)
 	interval := cfg.GetString(cfgKeyInterval)
@@ -526,7 +500,6 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 			return fmt.Errorf("parse cfsWarnFaultToUsersJsonPath failed,detail:%v err:%v", cfsWarnFaultToUsersJsonPath, err)
 		}
 	}
-	s.parseSreDBConfig(cfg)
 	s.parseHighMemNodeWarnConfig(cfg)
 	s.metaNodeExportDiskUsedRatio = cfg.GetFloat(cfgKeyMetaNodeExportDiskUsedRatio)
 	if s.metaNodeExportDiskUsedRatio <= 0 {
@@ -560,16 +533,6 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	if err = loadDockerIPList(); err != nil {
 		return
 	}
-	s.parseJdosToken(cfg)
-	var email *emailConfig
-	email, err = s.parseEmailConfig(cfg)
-	if err != nil {
-		return
-	}
-	if email.Enable {
-		multi_email.InitMultiMail(email.Property.SmtpPort, email.Property.SmtpHost, email.Property.MailFrom, email.Property.MailUser, email.Property.MailPwd, email.Property.MailTo)
-	}
-
 	for _, k := range configKeys {
 		val := cfg.GetString(k)
 		if val == "" {
@@ -577,37 +540,10 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		}
 		s.configMap[k] = cfg.GetString(k)
 	}
-
+	s.disableCleanExpiredMP = cfg.GetBool(cfgKeyDisableCleanExpiredMP)
+	s.fixBadPartition = cfg.GetBool(cfgFixBadPartition)
 	for _, k := range intKeys {
 		s.integerMap[k] = cfg.GetInt64(k)
-	}
-
-	//parse bucket config
-	bucketConfigData := cfg.GetJsonObjectBytes(cfgKeyBucketConfig)
-	if len(bucketConfigData) != 0 {
-		var bucketConfig = &BucketConfig{}
-		err = json.Unmarshal(bucketConfigData, bucketConfig)
-		if err != nil {
-			log.LogErrorf("unmarshal bucket config failed, data: %v, err: %v", bucketConfigData, err)
-			return
-		}
-		httpClient := &http.Client{
-			Timeout: 2 * time.Minute,
-		}
-		bucketName = bucketConfig.BucketName
-		log.LogInfof("bucket config: %v", bucketConfig)
-		bucketSession, err = session.NewSession(&aws.Config{
-			Credentials:      credentials.NewStaticCredentials(bucketConfig.AccessKey, bucketConfig.SecretKey, ""),
-			Endpoint:         aws.String(bucketConfig.EndPoint),
-			Region:           aws.String(bucketConfig.Region),
-			DisableSSL:       aws.Bool(true),
-			S3ForcePathStyle: aws.Bool(false),
-			HTTPClient:       httpClient,
-		})
-		if err != nil {
-			log.LogErrorf("new bucket session failed, bucketConfig: %v, err: %v", bucketConfig, err)
-			return
-		}
 	}
 
 	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
@@ -619,6 +555,172 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	return
 }
 
+func (s *ChubaoFSMonitor) parseBucket() (err error) {
+	if s.envConfig.Bucket == nil {
+		log.LogWarnf("no bucket config specified")
+		return
+	}
+	httpClient := &http.Client{
+		Timeout: 2 * time.Minute,
+	}
+	bucketName = s.envConfig.Bucket.BucketName
+	log.LogInfof("bucket config: %v", s.envConfig.Bucket)
+	bucketSession, err = session.NewSession(&aws.Config{
+		Credentials:      credentials.NewStaticCredentials(s.envConfig.Bucket.AccessKey, s.envConfig.Bucket.SecretKey, ""),
+		Endpoint:         aws.String(s.envConfig.Bucket.EndPoint),
+		Region:           aws.String(s.envConfig.Bucket.Region),
+		DisableSSL:       aws.Bool(true),
+		S3ForcePathStyle: aws.Bool(false),
+		HTTPClient:       httpClient,
+	})
+	if err != nil {
+		log.LogErrorf("new bucket session failed, bucketConfig: %v, err: %v", s.envConfig.Bucket, err)
+		return
+	}
+	return
+}
+
+type EnvConfig struct {
+	Env             string            `json:"env"`
+	ObjectAppName   string            `json:"objectAppName"`
+	CfsDomains      string            `json:"cfsDomains"`
+	SreDbConfig     string            `json:"sreDbConfig"`
+	Email           *EmailConfig      `json:"email"`
+	JcloudOssDomain string            `json:"jcloudOssDomain"`
+	Xbp             *XbpConfig        `json:"xbp"`
+	Jdos            *JDOSConfig       `json:"jdos"`
+	Ump             *UmpConfig        `json:"ump"`
+	GroupAlarm      *GroupAlarmConfig `json:"groupAlarm"`
+	Bucket          *BucketConfig     `json:"bucket"`
+}
+
+type XbpConfig struct {
+	UserName     string `json:"userName"`
+	Domain       string `json:"domain"`
+	Sign         string `json:"sign"`
+	ApiUser      string `json:"apiUser"`
+	OfflineXbpID int    `json:"offlineXbpID"`
+}
+
+type JDOSConfig struct {
+	JdosToken   string `json:"jdosToken"`
+	JdosURL     string `json:"jdosURL"`
+	JdosErp     string `json:"jdosErp"`
+	JdosSysName string `json:"jdosSysName"`
+}
+
+type UmpConfig struct {
+	UmpKeyStorageBotPrefix string `json:"umpKeyStorageBotPrefix"`
+	UmpToken               string `json:"umpToken"`
+}
+
+// GroupAlarmConfig 咚咚消息通知
+type GroupAlarmConfig struct {
+	AlarmGid     int    `json:"alarmGid"`
+	AlarmAppName string `json:"alarmAppName"`
+}
+
+type BucketConfig struct {
+	BucketName string `json:"bucketName"`
+	EndPoint   string `json:"endPoint"`
+	Region     string `json:"region"`
+	AccessKey  string `json:"ak"`
+	SecretKey  string `json:"sk"`
+}
+
+type EmailConfig struct {
+	Enable   bool           `json:"enable"`
+	Property *EmailProperty `json:"property"`
+}
+
+type EmailProperty struct {
+	SmtpHost string   `json:"smtpHost"`
+	SmtpPort int      `json:"smtpPort"`
+	MailFrom string   `json:"mailFrom"`
+	MailTo   []string `json:"mailTo"`
+	MailUser string   `json:"mailUser"`
+	MailPwd  string   `json:"mailPwd"`
+}
+
+func (s *ChubaoFSMonitor) parseEnv(configsPath string, cfg *config.Config) (envConfig *EnvConfig, err error) {
+	envStr := cfg.GetString(cfgKeyEnvironment)
+	var envJsonFile string
+	switch envStr {
+	case DevelopmentEnv:
+		initEnv(DevelopmentEnv)
+		envJsonFile = path.Join(configsPath, "env_dev.json")
+	case ProductionEnv:
+		initEnv(ProductionEnv)
+		envJsonFile = path.Join(configsPath, "env_pro.json")
+	default:
+		return nil, fmt.Errorf("unknown env: %v", envStr)
+	}
+	var wd string
+	wd, err = os.Getwd()
+	var c *config.Config
+	c, err = config.LoadConfigFile(path.Join(wd, envJsonFile))
+	if err != nil {
+		return
+	}
+
+	envConfig = new(EnvConfig)
+	if err = json.Unmarshal(c.Raw, envConfig); err != nil {
+		return
+	}
+	if envConfig.Env != envStr {
+		return nil, fmt.Errorf("invalid environment %v %v", envConfig.Env, envStr)
+	}
+	if envConfig.Ump.UmpKeyStorageBotPrefix == "" {
+		return nil, fmt.Errorf("UmpKeyStorageBotPrefix is empty")
+	}
+	if envConfig.GroupAlarm.AlarmAppName == "" {
+		return nil, fmt.Errorf("AlarmAppName is empty")
+	}
+	if envConfig.GroupAlarm.AlarmGid == 0 {
+		return nil, fmt.Errorf("AlarmGid is empty")
+	}
+	if envConfig.Jdos.JdosSysName == "" {
+		return nil, fmt.Errorf("empty jdos system name")
+	}
+	ResetUmpKeyPrefix(envConfig.Ump.UmpKeyStorageBotPrefix)
+	dongDongAlarmApp = envConfig.GroupAlarm.AlarmAppName
+	dongDongAlarmGid = envConfig.GroupAlarm.AlarmGid
+	// objectAppName用来检查object node存活，依赖 JDOS Open Api，如果为空则跳过检查
+	ResetObjectNodeAppName(envConfig.ObjectAppName)
+	if envConfig.Ump.UmpToken == "" {
+		err = fmt.Errorf("ump token not found in config")
+		return
+	}
+	email := envConfig.Email
+	if email.Enable {
+		multi_email.InitMultiMail(email.Property.SmtpPort, email.Property.SmtpHost, email.Property.MailFrom, email.Property.MailUser, email.Property.MailPwd, email.Property.MailTo)
+	}
+	log.LogInfof("env config: email:%v xbp:%v ump:%v group:%v mysql:%v bucket:%v jdos:%v",
+		envConfig.Email, envConfig.Xbp, envConfig.Ump, envConfig.GroupAlarm, envConfig.SreDbConfig, envConfig.Bucket, envConfig.Jdos)
+	return
+}
+
+func (s *ChubaoFSMonitor) parseChubaoFSDomains() (err error) {
+	if s.envConfig.CfsDomains == "" {
+		err = fmt.Errorf("parse cfsDomains failed,cfsDomains can not be nil")
+		return
+	}
+	hosts := strings.Split(s.envConfig.CfsDomains, domainSeparator)
+	clusterHosts := make([]*ClusterHost, 0)
+	for _, hostStr := range hosts {
+		host := strings.Split(hostStr, dbBakClusterSeparator)[0]
+		isRelease := strings.Split(hostStr, dbBakClusterSeparator)[1] == "1"
+		clusterHosts = append(clusterHosts, newClusterHost(host, isRelease))
+	}
+	s.hosts = clusterHosts
+	for _, host := range s.hosts {
+		if masterNodes, ok := s.chubaoFSMasterNodes[host.host]; ok {
+			host.masterNodes = masterNodes
+			fmt.Printf("domain: %v chubaoFSMasterNodes: %v\n", host.host, s.chubaoFSMasterNodes)
+		}
+	}
+	return
+}
 func (s *ChubaoFSMonitor) updateMaxPendQueueAndMaxAppliedIDDiffCountByConfig(cfg *config.Config) {
 	dpMaxPendQueueCount, _ := strconv.Atoi(cfg.GetString(cfgKeyDPMaxPendQueueCount))
 	dpMaxAppliedIDDiffCount, _ := strconv.Atoi(cfg.GetString(cfgKeyDPMaxAppliedIDDiffCount))
@@ -657,31 +759,14 @@ func (s *ChubaoFSMonitor) updateMaxPendQueueAndMaxAppliedIDDiffCountByConfig(cfg
 		s.hosts, dpMaxPendQueueCount, dpMaxAppliedIDDiffCount, mpMaxPendQueueCount, mpMaxAppliedIDDiffCount, dpPendQueueAlarmThreshold, mpPendQueueAlarmThreshold)
 }
 
-func (s *ChubaoFSMonitor) parseJdosToken(cfg *config.Config) {
-	s.jdosToken = cfg.GetString(cfgKeyJdosToken)
-	s.jdosUrl = cfg.GetString(cfgKeyJdosURl)
-	s.jdosErp = cfg.GetString(cfgKeyJdosErp)
-}
-
-func (s *ChubaoFSMonitor) parseEmailConfig(cfg *config.Config) (email *emailConfig, err error) {
-	email = new(emailConfig)
-	bytes := cfg.GetJsonObjectBytes(cfgKeyEmail)
-	if err = json.Unmarshal(bytes, email); err != nil {
-		return
-	}
-	return
-}
-
-func (s *ChubaoFSMonitor) parseSreDBConfig(cfg *config.Config) {
-	var err error
-	dBConfigDSN := cfg.GetString(cfgKeySreDbConfigDSNPort)
-	if dBConfigDSN == "" {
+func (s *ChubaoFSMonitor) initSreDBConfig() (err error) {
+	if s.envConfig.SreDbConfig == "" {
 		fmt.Println("sre DBConfigDSN is empty")
 		return
 	}
-	fmt.Println("cfgKeySreDbConfigDSNPort:", dBConfigDSN)
+	fmt.Println("cfgKeySreDbConfigDSNPort:", s.envConfig.SreDbConfig)
 	s.sreDB, err = gorm.Open(mysql.New(mysql.Config{
-		DSN:                       dBConfigDSN,
+		DSN:                       s.envConfig.SreDbConfig,
 		DefaultStringSize:         256,   // string 类型字段的默认长度
 		DisableDatetimePrecision:  true,  // 禁用 datetime 精度，MySQL 5.6 之前的数据库不支持
 		DontSupportRenameIndex:    true,  // 重命名索引时采用删除并新建的方式，MySQL 5.7 之前的数据库和 MariaDB 不支持重命名索引

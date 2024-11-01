@@ -6,8 +6,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool/ump"
-	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"math/rand"
@@ -24,35 +22,28 @@ const (
 	dpFixBadReplicaNumEndPoint = "spark_master_dp_replica_num"
 	umpOpenAPiDomain           = "open.ump.jd.com"
 	alarmRecordsMethod         = "/alarm/records"
-	cfsDomain                  = "sparkchubaofs.jd.local"
 )
 
 var notRecoverDpRegex = regexp.MustCompile("#[1-9][0-9]*:")
 
 var fixPartitionMap = make(map[uint64]time.Time, 0)
 
-func (s *ChubaoFSMonitor) scheduleToFixBadDataPartition(cfg *config.Config) {
-	if !cfg.GetBool(cfgFixBadPartition) {
+func (s *ChubaoFSMonitor) fixOnlineBadDataPartition() {
+	if !s.fixBadPartition {
 		return
 	}
-	if cfg.GetString(cfgUmpAPiToken) == "" {
-		log.LogErrorf("ump token not found in config")
-		return
-	}
-	log.LogInfof("scheduleToFixBadDataPartition started")
-	var fixTick = time.NewTicker(time.Second)
-	defer fixTick.Stop()
-	for {
-		select {
-		case <-fixTick.C:
-			s.fixPartitions(dpFixBadReplicaNumEndPoint, parseBadReplicaNumPartition, fixBadReplicaNumPartition)
-			s.fixPartitions(dpNotRecoverEndPoint, parseNotRecoverPartition, fix24HourNotRecoverPartition)
-			fixTick.Reset(time.Minute)
+	for _, host := range s.hosts {
+		if host.host != DomainSpark {
+			continue
 		}
+		log.LogInfof("fixOnlineBadDataPartition started")
+		host.fixPartitions(s.umpClient, dpFixBadReplicaNumEndPoint, parseBadReplicaNumPartition, host.fixBadReplicaNumPartition)
+		host.fixPartitions(s.umpClient, dpNotRecoverEndPoint, parseNotRecoverPartition, host.fix24HourNotRecoverPartition)
+		log.LogInfof("fixOnlineBadDataPartition finished")
 	}
 }
 
-func (s *ChubaoFSMonitor) fixPartitions(endPoint string, parseFunc func(string) []uint64, fixPartitionFunc func(partition uint64)) {
+func (ch *ClusterHost) fixPartitions(umpClient *ump.UMPClient, endPoint string, parseFunc func(string) []uint64, fixPartitionFunc func(partition uint64)) {
 	var err error
 	var badPartitions []uint64
 	defer func() {
@@ -64,14 +55,14 @@ func (s *ChubaoFSMonitor) fixPartitions(endPoint string, parseFunc func(string) 
 		}
 	}()
 	log.LogInfo("action[fixPartitions] start")
-	badPartitions, err = s.parseBadPartitionIDsFromUmpRecord(endPoint, parseFunc)
+	badPartitions, err = parseBadPartitionIDsFromUmpRecord(umpClient, endPoint, parseFunc)
 	if err != nil {
 		return
 	}
 	if len(badPartitions) == 0 {
 		return
 	}
-	log.LogWarnf("action[fixPartitions] domain[%v] found %v bad partitions:%v, start fix", cfsDomain, len(badPartitions), badPartitions)
+	log.LogWarnf("action[fixPartitions] domain[%v] found %v bad partitions:%v, start fix", ch.host, len(badPartitions), badPartitions)
 	for _, partition := range badPartitions {
 		if _, ok := fixPartitionMap[partition]; !ok {
 			fixPartitionMap[partition] = time.Now()
@@ -86,11 +77,11 @@ func (s *ChubaoFSMonitor) fixPartitions(endPoint string, parseFunc func(string) 
 	return
 }
 
-func (s *ChubaoFSMonitor) parseBadPartitionIDsFromUmpRecord(endPoint string, parseFunc func(string) []uint64) (ids []uint64, err error) {
+func parseBadPartitionIDsFromUmpRecord(umpClient *ump.UMPClient, endPoint string, parseFunc func(string) []uint64) (ids []uint64, err error) {
 	var alarmRecords *ump.AlarmRecordResponse
 	ids = make([]uint64, 0)
 	idsMap := make(map[uint64]bool, 0)
-	alarmRecords, err = s.umpClient.GetAlarmRecords(alarmRecordsMethod, "chubaofs-node", "jdos", endPoint, time.Now().UnixMilli()-60*10*1000, time.Now().UnixMilli())
+	alarmRecords, err = umpClient.GetAlarmRecords(alarmRecordsMethod, "chubaofs-node", "jdos", endPoint, time.Now().UnixMilli()-60*10*1000, time.Now().UnixMilli())
 	if err != nil {
 		return
 	}
@@ -187,7 +178,7 @@ func isNeedFix(client *master.MasterClient, partition uint64) (fix bool, dp *pro
 	return
 }
 
-func fixBadReplicaNumPartition(partition uint64) {
+func (ch *ClusterHost) fixBadReplicaNumPartition(partition uint64) {
 	var (
 		dn         *proto.DataNodeInfo
 		dp         *proto.DataPartitionInfo
@@ -201,7 +192,7 @@ func fixBadReplicaNumPartition(partition uint64) {
 			log.LogErrorf("action[fixBadReplicaNumPartition] err:%v", err)
 		}
 	}()
-	client := master.NewMasterClient([]string{cfsDomain}, false)
+	client := master.NewMasterClient([]string{ch.host}, false)
 	if needFix, dp, err = isNeedFix(client, partition); err != nil {
 		log.LogErrorf("action[fixBadReplicaNumPartition] err:%v", err)
 		return
@@ -262,13 +253,13 @@ func fixBadReplicaNumPartition(partition uint64) {
 			log.LogErrorf("action[fixBadReplicaNumPartition] partition:%v, err:%v", partition, err)
 			break
 		}
-		exporter.WarningBySpecialUMPKey(UMPCFSSparkFixPartitionKey, fmt.Sprintf("Domain[%v] fix one replica partition:%v success, add learner:%v", cfsDomain, partition, destNode.Addr))
+		warnBySpecialUmpKeyWithPrefix(UMPCFSSparkFixPartitionKey, fmt.Sprintf("Domain[%v] fix one replica partition:%v success, add learner:%v", ch.host, partition, destNode.Addr))
 		break
 	}
 	return
 }
 
-func fix24HourNotRecoverPartition(partition uint64) {
+func (ch *ClusterHost) fix24HourNotRecoverPartition(partition uint64) {
 	var (
 		err error
 		dp  *proto.DataPartitionInfo
@@ -278,7 +269,7 @@ func fix24HourNotRecoverPartition(partition uint64) {
 			log.LogErrorf("action[fix24HourNotRecoverPartition] partition:%v err:%v", partition, err)
 		}
 	}()
-	client := master.NewMasterClient([]string{cfsDomain}, false)
+	client := master.NewMasterClient([]string{ch.host}, false)
 	dp, err = client.AdminAPI().GetDataPartition("", partition)
 	if err != nil {
 		return
@@ -295,10 +286,10 @@ func fix24HourNotRecoverPartition(partition uint64) {
 		err = fmt.Errorf("missing nodes:%v", dp.MissingNodes)
 		return
 	}
-	err = fixSizeNoEqual(dp)
+	err = fixSizeNoEqual(dp, ch.host)
 }
 
-func fixSizeNoEqual(dp *proto.DataPartitionInfo) (err error) {
+func fixSizeNoEqual(dp *proto.DataPartitionInfo, host string) (err error) {
 	var (
 		minReplica *proto.DataReplica
 		maxReplica *proto.DataReplica
@@ -354,7 +345,7 @@ func fixSizeNoEqual(dp *proto.DataPartitionInfo) (err error) {
 		reason = "normal extent repair after deleted, decommission replica with smaller size"
 		execute = "decommission replicas with smaller used size"
 	}
-	exporter.WarningBySpecialUMPKey(UMPCFSSparkFixPartitionKey, fmt.Sprintf("Domain[%v] fix used size, partition(%v), replica(%v), reason(%s), execute(%s)", cfsDomain, dp.PartitionID, maxReplica.Addr, reason, execute))
+	warnBySpecialUmpKeyWithPrefix(UMPCFSSparkFixPartitionKey, fmt.Sprintf("Domain[%v] fix used size, partition(%v), replica(%v), reason(%s), execute(%s)", host, dp.PartitionID, maxReplica.Addr, reason, execute))
 	return
 }
 

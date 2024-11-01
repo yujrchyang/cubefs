@@ -24,7 +24,7 @@ const (
 
 func main() {
 	flag.Parse()
-	if *masterAddr != "cn.chubaofs.jd.local" && *masterAddr != "cn.elasticdb.jd.local" && *masterAddr != "sparkchubaofs.jd.local" {
+	if *masterAddr != "cn.chubaofs.jd.local" && *masterAddr != "cn.elasticdb.jd.local" {
 		fmt.Printf("unsupported master address: %v", *masterAddr)
 		return
 	}

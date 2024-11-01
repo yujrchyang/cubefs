@@ -68,7 +68,7 @@ type MetaPartitionHolder struct {
 	badMetaCheckCount int
 }
 
-func newClusterHost(host string) *ClusterHost {
+func newClusterHost(host string, release bool) *ClusterHost {
 	ch := &ClusterHost{
 		host:                      host,
 		masterNodes:               make([]string, 0),
@@ -90,7 +90,7 @@ func newClusterHost(host string) *ClusterHost {
 			badMetaMap: make(map[uint64]int, 0),
 		},
 	}
-	ch.isReleaseCluster = isReleaseCluster(host)
+	ch.isReleaseCluster = release
 	ch.initTokenMap()
 	return ch
 }
@@ -349,6 +349,7 @@ type MasterLBWarnInfo struct {
 }
 
 type MinRWDPAndMPVolInfo struct {
+	IsDbbak      bool   `json:"isDbbak"`
 	Host         string `json:"host"`
 	VolName      string `json:"volName"`
 	MinRWMPCount int    `json:"minRWMPCount"`
@@ -390,6 +391,7 @@ type NodeView struct {
 
 type WarnFaultToTargetUsers struct {
 	ClusterDomain    string //	指定检查的集群域名，以及对应的zone列表
+	IsDbbak          bool
 	Users            []*TargetUserInfo
 	host             *ClusterHost
 	dataNodeBadDisks []DataNodeBadDisksView

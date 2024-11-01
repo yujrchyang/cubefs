@@ -7,15 +7,10 @@ import (
 
 	"github.com/cubefs/cubefs/util/checktool/mdc"
 	"github.com/cubefs/cubefs/util/checktool/ump"
-	"github.com/cubefs/cubefs/util/exporter"
 )
 
 const (
-	clientAlarmInterval     = 60
-	umpKeyMysqlClientPrefix = "mysql_kbpclient_"
-	umpKeySparkClientPrefix = "spark_client_"
-	umpKeyWarningSufix      = "warning"
-	umpKeyFatalSufix        = "fatal"
+	clientAlarmInterval = 60
 )
 
 func (s *ChubaoFSMonitor) clientAlarm() {
@@ -64,7 +59,7 @@ func (s *ChubaoFSMonitor) clientAlarmImpl(prefix string, begin int64, end int64)
 			record.Content = fmt.Sprintf("报警主机：%s，%s", ip, strings.Trim(ipRes[0], ",，"))
 		}
 		alarmCount++
-		exporter.WarningBySpecialUMPKey(prefix+umpKeyFatalSufix, record.Content)
+		warnBySpecialUmpKeyWithPrefix(prefix+umpKeyFatalSufix, record.Content)
 	}
 	return
 }
