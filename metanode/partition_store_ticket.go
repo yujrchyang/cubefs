@@ -176,6 +176,8 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 			case <-timer.C:
 				if mp.applyID <= curIndex {
+					log.LogDebugf("[startSchedule] meta partition apply id less than curIndex, partitionID: %v," +
+						"applyID: %v, curIndex: %v", mp.config.PartitionId, mp.applyID, curIndex)
 					timer.Reset(intervalToPersistData)
 					continue
 				}
