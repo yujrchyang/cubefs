@@ -27,7 +27,7 @@ func (s *ChubaoFSMonitor) scheduleToCheckAndWarnFaultToUsers() {
 
 func (s *ChubaoFSMonitor) initWarnFaultToTargetUsers() {
 	for _, warnFaultToUser := range s.WarnFaultToUsers {
-		warnFaultToUser.host = newClusterHost(warnFaultToUser.ClusterDomain)
+		warnFaultToUser.host = newClusterHost(warnFaultToUser.ClusterDomain, warnFaultToUser.IsDbbak)
 	}
 }
 
@@ -44,8 +44,8 @@ func (s *ChubaoFSMonitor) checkAndWarnFaultToUsers() {
 	}
 }
 
-//定期从master getCluster获取 故障节点 坏盘
-//和用户配置的zone信息进行匹配，相同则告警
+// 定期从master getCluster获取 故障节点 坏盘
+// 和用户配置的zone信息进行匹配，相同则告警
 func (warnFaultToUser *WarnFaultToTargetUsers) doCheckAndWarnFaultToUsers() (err error) {
 	if err = warnFaultToUser.updateDeadNodesAndBadDisks(); err != nil {
 		return
@@ -134,13 +134,13 @@ func (warnFaultToUser *WarnFaultToTargetUsers) formatClusterBadInfosToZoneMap() 
 func (warnFaultToUser *WarnFaultToTargetUsers) warnFaultToUsers() {
 	for _, targetUserInfo := range warnFaultToUser.Users {
 		if msg := warnFaultToUser.getDataNodeWarnMsgOfTargetZones(targetUserInfo.Zones); len(msg) != 0 {
-			checktool.WarnToTargetGidByDongDongAlarm(targetUserInfo.TargetGid, targetUserInfo.AppName, "DataNode节点故障", msg)
+			checktool.WarnByDongDongAlarmToTargetGid(targetUserInfo.TargetGid, targetUserInfo.AppName, "DataNode节点故障", msg)
 		}
 		if msg := warnFaultToUser.getMetaNodeWarnMsgOfTargetZones(targetUserInfo.Zones); len(msg) != 0 {
-			checktool.WarnToTargetGidByDongDongAlarm(targetUserInfo.TargetGid, targetUserInfo.AppName, "MetaNode节点故障", msg)
+			checktool.WarnByDongDongAlarmToTargetGid(targetUserInfo.TargetGid, targetUserInfo.AppName, "MetaNode节点故障", msg)
 		}
 		if msg := warnFaultToUser.getBadDiskWarnMsgOfTargetZones(targetUserInfo.Zones); len(msg) != 0 {
-			checktool.WarnToTargetGidByDongDongAlarm(targetUserInfo.TargetGid, targetUserInfo.AppName, "磁盘故障", msg)
+			checktool.WarnByDongDongAlarmToTargetGid(targetUserInfo.TargetGid, targetUserInfo.AppName, "磁盘故障", msg)
 		}
 	}
 }

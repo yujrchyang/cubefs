@@ -3,7 +3,6 @@ package cfs
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"sync"
 	"time"
@@ -48,15 +47,15 @@ func (s *ChubaoFSMonitor) checkSpecificVols() {
 		wg.Add(1)
 		go func(vol MinRWDPAndMPVolInfo) {
 			defer wg.Done()
-			s.checkSpecificVol(vol.VolName, vol.Host, vol.MinRWMPCount, vol.MinRWDPCount)
+			s.checkSpecificVol(vol.VolName, vol.Host, vol.IsDbbak, vol.MinRWMPCount, vol.MinRWDPCount)
 		}(v)
 	}
 	wg.Wait()
 	log.LogInfof("checkSpecificVols end,cost[%v]", time.Since(startTime))
 }
 
-func (s *ChubaoFSMonitor) checkSpecificVol(volName, host string, minRwMpCount, minRwDpCount int) {
-	ch := newClusterHost(host)
+func (s *ChubaoFSMonitor) checkSpecificVol(volName, host string, isDbbak bool, minRwMpCount, minRwDpCount int) {
+	ch := newClusterHost(host, isDbbak)
 	vol, err := getVolSimpleView(volName, ch)
 	if err != nil {
 		log.LogErrorf("check vol[%v] failed,err[%v]\n", volName, err)
@@ -65,7 +64,7 @@ func (s *ChubaoFSMonitor) checkSpecificVol(volName, host string, minRwMpCount, m
 	if vol.RwDpCnt < minRwDpCount {
 		count := minRwDpCount - vol.RwDpCnt
 		msg := fmt.Sprintf("vol:%v totalDpCount:%v RwDpCnt:%v minRwCount:%v", volName, vol.RwDpCnt, vol.DpCnt, minRwDpCount)
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 		checkAndCreateDataPartitions(volName, ch, count, minRwDpCount)
 	}
 	rwMPCount, err := checkRwMetaPartitionCount(volName, ch)
@@ -76,7 +75,7 @@ func (s *ChubaoFSMonitor) checkSpecificVol(volName, host string, minRwMpCount, m
 	if rwMPCount < minRwMpCount {
 		count := minRwMpCount - rwMPCount
 		msg := fmt.Sprintf("vol:%v totalMPCount:%v rwMPCount:%v minRwCount:%v", vol.Name, vol.MpCnt, rwMPCount, minRwMpCount)
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 		log.LogWarn(msg)
 		err = checkAndCreateMetaPartitions(volName, ch, count, minRwMpCount)
 		if err != nil {

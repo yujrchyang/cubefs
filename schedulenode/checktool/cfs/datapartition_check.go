@@ -130,7 +130,7 @@ func (s *ChubaoFSMonitor) checkAvailableTinyExtents() {
 		if host.isReleaseCluster {
 			continue
 		}
-		if host.host != "cn.chubaofs.jd.local" && host.host != "sparkchubaofs.jd.local" {
+		if isProEnv() && host.host != DomainSpark {
 			continue
 		}
 		checkTinyExtentsByVol(host, s.checkAvailTinyVols)
@@ -222,7 +222,7 @@ func checkTinyExtentsByVol(host *ClusterHost, vols []string) {
 
 		warnMsg := fmt.Sprintf("Domain: %v Volume: %v BadPartitions: %v", host.host, vol, partitionStr)
 		if (volInfo.RwDpCnt > 0 && brokenCount*100/volInfo.RwDpCnt > 70) || brokenCount > 200 {
-			checktool.WarnBySpecialUmpKey(UMPCFSNodeTinyExtentCheckKey, warnMsg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSNodeTinyExtentCheckKey, warnMsg)
 			err = multi_email.Email(fmt.Sprintf("AvailableTinyExtentCheck [Domain: %v, Volume: %v]", host.host, vol), summary, elements)
 			if err != nil {
 				log.LogErrorf("send email failed, err:%v", err)
@@ -458,7 +458,7 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 				msg := fmt.Sprintf("Domain [%v], data partition [%v] volName [%v] load failed in replica: "+
 					"addr[%v], may be raft start failed or partition is stopped by fatal error", ch.host, dp.PartitionID, volName, addr)
 				if strings.Contains(err.Error(), "partition not exist") {
-					checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionLoadFailed, msg)
+					warnBySpecialUmpKeyWithPrefix(UMPKeyDataPartitionLoadFailed, msg)
 				}
 				continue
 			}
@@ -508,7 +508,7 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 		} else if len(peerStrings) != len(dp.Hosts) || len(diffPeerToHost)+len(diffHostToPeer) > 0 {
 			if val, ok := badPeerPartitionMap.Load(dp.PartitionID); ok {
 				msg := fmt.Sprintf("[Domain: %v, vol: %v, partition: %v, host: %v, unknown] peerStrings: %v , hostStrings: %v ", ch.host, volName, dp.PartitionID, r.Addr, peerStrings, dp.Hosts)
-				checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPKeyDataPartitionPeerInconsistency, msg)
 				badPeerPartitionMap.Store(dp.PartitionID, val.(int)+1)
 			} else {
 				badPeerPartitionMap.Store(dp.PartitionID, 1)
@@ -536,7 +536,7 @@ func checkDataPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 	} else {
 		for _, item := range badReplicas {
 			msg := fmt.Sprintf("[Domain: %v, VolName: %v, ReplicationID: %v, MultiError], nodeAddr: %v, PeerErrorInfo: %v, PeerAddr:%v ", ch.host, item.VolName, item.ReplicationID, item.nodeAddr, item.PeerErrorInfo, item.PeerAddr)
-			checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, msg)
+			warnBySpecialUmpKeyWithPrefix(UMPKeyDataPartitionPeerInconsistency, msg)
 		}
 	}
 }
@@ -559,32 +559,6 @@ func getDataPartitionsFromVolume(ch *ClusterHost, volName string, authKey string
 	}
 	if err = json.Unmarshal(data, &vv); err != nil {
 		log.LogErrorf("unmarshal to dp data[%v],err[%v]", string(data), err)
-		return
-	}
-	return
-}
-
-func dataNodeGetPartition(ch *ClusterHost, addr string, id uint64) (node *DNDataPartitionInfo, err error) {
-	var (
-		port   string
-		reqURL string
-	)
-	if ch.host == "cn.chubaofs.jd.local" || ch.host == "sparkchubaofs.jd.local" || ch.host == "idbbak.chubaofs.jd.local" || ch.host == "cn.chubaofs-seqwrite.jd.local" ||
-		ch.host == "nl.chubaofs.jd.local" || ch.host == "cn.elasticdb.jd.local" || ch.host == "nl.chubaofs.ochama.com" {
-		port = "6001"
-	} else {
-		log.LogInfof("action[checkDetaNodeDiskStat] host[%v] can not match its DN port", ch.host)
-		return
-	}
-	reqURL = fmt.Sprintf("http://%v:%v/partition?id=%v", addr, port, id)
-	data, err := doRequest(reqURL, ch.isReleaseCluster)
-	if err != nil {
-		log.LogErrorf("request dp from host: [%v] addr: [%v] failed , err: %v", ch.host, reqURL, err)
-		return
-	}
-	dp := &node
-	if err = json.Unmarshal(data, dp); err != nil {
-		log.LogErrorf("[%v] unmarshal to dp data[%v],err[%v]", addr, string(data), err)
 		return
 	}
 	return
@@ -624,7 +598,7 @@ func repairDp(release bool, host string, replica PeerReplica) {
 	case "LACK_HOST":
 		outputStr := fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] recommond cmd: cfs-cli datapartition add-replica %v %v",
 			host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
-		checktool.WarnBySpecialUmpKey(UMPKeyDataPartitionPeerInconsistency, outputStr)
+		warnBySpecialUmpKeyWithPrefix(UMPKeyDataPartitionPeerInconsistency, outputStr)
 	default:
 		log.LogErrorf("wrong error info, %v", replica.PeerErrorInfo)
 		return

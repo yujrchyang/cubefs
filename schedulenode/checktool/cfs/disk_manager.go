@@ -7,7 +7,6 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/common/xbp"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"strings"
 	"sync"
@@ -18,6 +17,7 @@ const (
 	badDiskCountToAlarm = 5
 )
 
+// checkUnavailableDataPartition 自动检查dp三副本磁盘状态，下线坏盘的副本
 func (s *ChubaoFSMonitor) checkUnavailableDataPartition() {
 	var wg sync.WaitGroup
 	for _, host := range s.hosts {
@@ -37,7 +37,7 @@ func (s *ChubaoFSMonitor) checkUnavailableDataPartition() {
 					return
 				}
 				msg := fmt.Sprintf("getUnavailableDataPartitions from %v failed,err:%v", host.host, err)
-				checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 				return
 			}
 			s.doCheckUnavailableDataPartition(dps, host)
@@ -60,9 +60,9 @@ func (s *ChubaoFSMonitor) doCheckUnavailableDataPartition(dps map[uint64]map[str
 	}
 	maxOfflineCount := maxBadDataPartitionsCount - badDPsCount
 	// mysql集群禁止自动下线，先电话通知，手动下线，等下线方案成熟后再改为自动下线
-	if host.host == "cn.elasticdb.jd.local" {
+	if host.host == DomainMysql {
 		if len(dps) > 0 {
-			exporter.WarningBySpecialUMPKey(UMPCFSMysqlBadDiskKey, fmt.Sprintf("Domain[%v] occurred bad disk, bad partitions[%v]", host.host, len(dps)))
+			warnBySpecialUmpKeyWithPrefix(UMPCFSMysqlBadDiskKey, fmt.Sprintf("Domain[%v] occurred bad disk, bad partitions[%v]", host.host, len(dps)))
 		}
 		return
 	}
@@ -93,7 +93,7 @@ func (s *ChubaoFSMonitor) checkDiskError() {
 					return
 				}
 				msg := fmt.Sprintf("get cluster info from %v failed,err:%v", host.host, err)
-				checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 				return
 			}
 			s.doCheckBadDiskCount(cv, host)
@@ -117,7 +117,7 @@ func (s *ChubaoFSMonitor) doCheckBadDiskCount(cv *ClusterDataNodeBadDisks, host 
 	}
 	if count > badDiskCountToAlarm {
 		msg := fmt.Sprintf("cluster:%v,bad disk count larger than %v,current bad disk count is:%v", cv.Name, badDiskCountToAlarm, count)
-		checktool.WarnBySpecialUmpKey(UMPCFSBadDiskWarnKey, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSBadDiskWarnKey, msg)
 	}
 }
 
@@ -150,8 +150,8 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 					// 超过offlineDiskThreshold第一次下线，然后每间隔10分钟下线一次
 					lastOfflineThisDiskTime := host.offlineDisksIn24Hour[dataNodeBadDiskKey]
 					if time.Since(lastOfflineThisDiskTime) > time.Minute*10 {
-						if host.host == "cn.elasticdb.jd.local" {
-							exporter.WarningBySpecialUMPKey(UMPCFSMysqlBadDiskKey, fmt.Sprintf("Domain[%v] occurred bad disk, addr[%v] disk[%v]", host.host, badDiskOnNode.Addr, badDisk))
+						if host.host == DomainMysql {
+							warnBySpecialUmpKeyWithPrefix(UMPCFSMysqlBadDiskKey, fmt.Sprintf("Domain[%v] occurred bad disk, addr[%v] disk[%v]", host.host, badDiskOnNode.Addr, badDisk))
 						} else {
 							if canOffline(host) {
 								offlineDataNodeDisk(host, badDiskOnNode.Addr, badDisk, true)
@@ -175,7 +175,7 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 			badDiskXBPTicketKey := fmt.Sprintf("%s#%s", badDiskOnNode.Addr, badDisk)
 			value, ok := s.badDiskXBPTickets.Load(badDiskXBPTicketKey)
 			if !ok {
-				newTicketInfo, err := CreateOfflineXBPTicket(cv.Name, badDiskOnNode.Addr, fmt.Sprintf("datanode disk err %s", badDisk), url, s.xbpUsername, host.isReleaseCluster)
+				newTicketInfo, err := s.CreateOfflineXBPTicket(cv.Name, badDiskOnNode.Addr, fmt.Sprintf("datanode disk err %s", badDisk), url, s.envConfig.Xbp.UserName, host.isReleaseCluster)
 				if err != nil {
 					log.LogErrorf("action[doCheckDataNodeDiskError] err:%v", err)
 					continue
@@ -190,7 +190,7 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 				// 订单号为0 或者单子已经处理（驳回/完结），但是超过一定时间还有告警
 				if ticketInfo.tickerID == 0 || (ticketInfo.status == xbp.TicketStatusReject && time.Now().Sub(ticketInfo.lastUpdateTime) > 5*time.Hour) ||
 					(ticketInfo.status == xbp.TicketStatusFinish && time.Now().Sub(ticketInfo.lastUpdateTime) > 1*time.Hour) {
-					newTicketInfo, err := CreateOfflineXBPTicket(cv.Name, badDiskOnNode.Addr, fmt.Sprintf("datanode disk err %s", badDisk), url, s.xbpUsername, host.isReleaseCluster)
+					newTicketInfo, err := s.CreateOfflineXBPTicket(cv.Name, badDiskOnNode.Addr, fmt.Sprintf("datanode disk err %s", badDisk), url, s.envConfig.Xbp.UserName, host.isReleaseCluster)
 					if err != nil {
 						log.LogErrorf("action[doCheckDataNodeDiskError] err:%v", err)
 						continue
@@ -238,13 +238,13 @@ func badDiskIsEmpty(host *ClusterHost, addr, badDisk string) bool {
 	return true
 }
 
-func CreateOfflineXBPTicket(clusterID, nodeAddr, detailMsg, url, username string, isReleaseCluster bool) (ticketInfo XBPTicketInfo, err error) {
+func (s *ChubaoFSMonitor) CreateOfflineXBPTicket(clusterID, nodeAddr, detailMsg, url, username string, isReleaseCluster bool) (ticketInfo XBPTicketInfo, err error) {
 	m := map[string]string{
 		"集群ID":  clusterID,
 		"节点信息":  nodeAddr,
 		"故障类型":  detailMsg,
 		"执行URL": url}
-	ticketId, err := xbp.CreateTicket(xbp.OfflineTicketProcessId, xbp.Domain, username, xbp.Sign, xbp.Erp, m)
+	ticketId, err := xbp.CreateTicket(s.envConfig.Xbp.OfflineXbpID, s.envConfig.Xbp.Domain, username, s.envConfig.Xbp.Sign, s.envConfig.Xbp.ApiUser, m)
 	if err != nil {
 		err = fmt.Errorf("%v:%v add xbp ticket failed, err:%v", nodeAddr, detailMsg, err)
 		return
@@ -310,7 +310,7 @@ func doOfflineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) 
 	data, err := doRequest(reqURL, host.isReleaseCluster)
 	if err != nil && host.isReleaseCluster && strings.Contains(err.Error(), "no any datapartition") {
 		msg := fmt.Sprintf("action[offlineDataNodeDisk] reqURL[%v],data[%v]", reqURL, string(data))
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 		return
 	}
 	if err != nil {
@@ -318,7 +318,7 @@ func doOfflineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) 
 		return
 	}
 	msg := fmt.Sprintf("action[offlineDataNodeDisk] reqURL[%v],data[%v]", reqURL, string(data))
-	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	return
 }
 

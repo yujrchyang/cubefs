@@ -1,0 +1,51 @@
+{
+  "env": "production",
+  "cfsDomains": "cn.chubaofs-seqwrite.jd.local#1,cn.chubaofs.jd.local#0,cn.elasticdb.jd.local#0,nl.chubaofs.ochama.com#0",
+  "sreDbConfig": "root:****(******:3306)/storage_sre_test?charset=utf8mb4&parseTime=True&loc=Local",
+  "email": {
+    "enable": true,
+    "property": {
+      "smtpHost": "mx.jd.local",
+      "smtpPort": 25,
+      "mailFrom": "storage-sre@jd.com",
+      "mailTo": [
+        "xuxihao3@jd.com",
+        "liyubo@jd.com",
+        "zhuhongyin@jd.com",
+        "zhangmofei@jd.com"
+      ],
+      "mailUser": "storage-sre",
+      "mailPwd": "******"
+    }
+  },
+  "jcloudOssDomain": "storage-ops.s3-internal.cn-north-1.jdcloud-oss.com",
+  "xbp": {
+    "userName": "zhuhongyin",
+    "domain": "xbp-api.jd.com",
+    "sign": "3abeaf2c12",
+    "apiUser": "wjcc_chubaofsapply",
+    "offlineXbpID": 5009
+  },
+  "jdos": {
+    "jdosToken": "******",
+    "jdosURL": "http://api.jcd-gateway.jd.com",
+    "jdosErp": "org.imgsupport",
+    "jdosSysName": "chubaofs"
+  },
+  "objectAppName": "sparkobject",
+  "ump": {
+    "umpKeyStorageBotPrefix": "Storage-Bot",
+    "umpToken": "**************"
+  },
+  "groupAlarm": {
+    "alarmGid": 1025258503,
+    "alarmAppName": "check_tool"
+  },
+  "bucket" : {
+    "bucketName": "storageteam",
+    "endPoint": "objectcfs.jd.local",
+    "ak": "******",
+    "sk": "******",
+    "region": "spark"
+  }
+}

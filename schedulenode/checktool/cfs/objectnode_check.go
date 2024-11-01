@@ -3,8 +3,6 @@ package cfs
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/schedulenode/common/jdos"
-	"github.com/cubefs/cubefs/util/checktool"
-	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"net"
 	"strings"
@@ -13,14 +11,19 @@ import (
 )
 
 const (
-	ObjectNodeAppName    = "sparkobject"
 	ObjectNodeListen     = 1601
 	MaxConnectivityRetry = 5
 )
 
-func (s *ChubaoFSMonitor) scheduleToCheckObjectNodeAlive(cfg *config.Config) {
-	if cfg.GetString(config.CfgRegion) == config.IDRegion {
-		log.LogInfo("action[scheduleToCheckMasterLbPodStatus] need not for id region")
+var ObjectNodeAppName string
+
+func ResetObjectNodeAppName(name string) {
+	ObjectNodeAppName = name
+}
+
+func (s *ChubaoFSMonitor) scheduleToCheckObjectNodeAlive() {
+	if ObjectNodeAppName == "" {
+		log.LogInfo("action[scheduleToCheckMasterLbPodStatus] object node app name is nil")
 		return
 	}
 	ticker := time.NewTicker(time.Duration(s.scheduleInterval) * time.Second)
@@ -42,7 +45,7 @@ func (s *ChubaoFSMonitor) checkObjectNodeAlive() {
 	var err error
 	startTime := time.Now()
 	log.LogInfof("checkObjectNodeAlive start")
-	jdosAPI := jdos.NewJDOSOpenApi(SysNameCFS, ObjectNodeAppName, s.jdosUrl, s.jdosErp, s.jdosToken)
+	jdosAPI := jdos.NewJDOSOpenApi(s.envConfig.Jdos.JdosSysName, ObjectNodeAppName, s.envConfig.Jdos.JdosURL, s.envConfig.Jdos.JdosErp, s.envConfig.Jdos.JdosToken)
 	var groups jdos.Groups
 	if groups, err = jdosAPI.GetAllGroupsDetails(); err != nil {
 		log.LogErrorf("get all ObjectNode groups details failed: %v", err)
@@ -84,13 +87,13 @@ func (s *ChubaoFSMonitor) checkObjectNodeAlive() {
 			}
 		}
 		msg := fmt.Sprintf("Bad ObjectNode pods found！\n%v", detailBuilder.String())
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	}
 	log.LogInfof("checkObjectNodeAlive end,totalPods:%v cost [%v]", totalPods, time.Since(startTime))
 }
 
 func (s *ChubaoFSMonitor) checkObjectNodeAliveByGroup(group *jdos.Group) (badPodIps []string, totalPods int, err error) {
-	api := jdos.NewJDOSOpenApi(SysNameCFS, ObjectNodeAppName, s.jdosUrl, s.jdosErp, s.jdosToken)
+	api := jdos.NewJDOSOpenApi(s.envConfig.Jdos.JdosSysName, ObjectNodeAppName, s.envConfig.Jdos.JdosURL, s.envConfig.Jdos.JdosErp, s.envConfig.Jdos.JdosToken)
 	var pods jdos.Pods
 	if pods, err = api.GetGroupAllPods(group.GroupName); err != nil {
 		return

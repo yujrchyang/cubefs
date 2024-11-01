@@ -77,7 +77,7 @@ func (s *ChubaoFSMonitor) checkZoneMnDnWriteAbilityRate() {
 		}
 	}
 	if len(alarmMsg) > 0 {
-		checktool.WarnBySpecialUmpKey(UMPCFSZoneWriteAbilityWarnKey, alarmMsg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSZoneWriteAbilityWarnKey, alarmMsg)
 	}
 }
 

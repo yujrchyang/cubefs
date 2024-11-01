@@ -2,7 +2,6 @@ package cfs
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"runtime/debug"
 	"strings"
@@ -46,7 +45,7 @@ func (s *ChubaoFSMonitor) checkThenRestartNode(nodeAddr, host string) (err error
 				return
 			}
 			s.lastCheckStartTime[nodeAddr] = time.Now()
-			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, fmt.Sprintf("IP:%v get sysUpTimeInstance failed", nodeIp))
+			warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, fmt.Sprintf("IP:%v get sysUpTimeInstance failed", nodeIp))
 			return
 		}
 	}

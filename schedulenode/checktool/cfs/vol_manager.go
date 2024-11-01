@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/schedulenode/common/cfs"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"strconv"
 	"strings"
@@ -36,9 +35,14 @@ func (s *ChubaoFSMonitor) doProcessMetrics(item, umpKey, msg string) {
 	} else {
 		metric.lastAlarmTime = time.Now()
 	}
-	checktool.WarnBySpecialUmpKey(umpKey, msg)
+	warnBySpecialUmpKeyWithPrefix(umpKey, msg)
 }
 
+// CheckVolHealth
+// 1 volume删除报警到咚咚群
+// 2 自动检测可写dp占比是否小于一定比例（1%），如果连续两次检查小于此比例，则自动创建10个dp，并发送咚咚群
+// 3 dbbak集群vol可用空间如果少于一定比例(10%)，则自动创建dp
+// 4 mp no leader检查（线上开关 ignoreCheckMp 已禁用，为何？）
 func (s *ChubaoFSMonitor) CheckVolHealth(ch *ClusterHost) {
 	ch.updateInactiveNodes()
 	volStats, leaderAddr, err := getAllVolStat(ch)
@@ -77,7 +81,7 @@ func (s *ChubaoFSMonitor) CheckVolHealth(ch *ClusterHost) {
 				s.markDeleteVols[hostVolKey] = time.Now()
 				// 第一次检测到，进行普通告警通知, 每隔24小时 如果还是这个状态 就告警
 				warnMsg := fmt.Sprintf("host[%v],vol[%v] Status[%v] has been markDelete", ch.host, vol.Name, vol.Status)
-				checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, warnMsg)
+				warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, warnMsg)
 			}
 			continue
 		}
@@ -109,7 +113,7 @@ func (s *ChubaoFSMonitor) CheckVolHealth(ch *ClusterHost) {
 			count := float64(vol.DpCnt) * s.readWriteDpRatio
 			if count > 100 {
 				count = 100
-				checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+				warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 			}
 			_, err = doRequest(generateAllocateDataPartitionURL(ch.host, vss.Name, int(count)), ch.isReleaseCluster)
 			if err != nil {
@@ -188,7 +192,8 @@ func checkMetaPartitions(volName string, ch *ClusterHost) {
 			log.LogErrorf("action[checkMetaPartitions] host[%v] vol[%v]", ch.host, volName)
 		}
 	}()
-	if volName == "offline_logs" && ch.host == "cn.chubaofs.jd.local" {
+	// ignore spark deleted vol offline_logs, 历史遗留问题
+	if volName == "offline_logs" && ch.host == DomainSpark {
 		return
 	}
 	reqURL := fmt.Sprintf("http://%v/client/metaPartitions?name=%v", ch.host, volName)
@@ -201,7 +206,7 @@ func checkMetaPartitions(volName string, ch *ClusterHost) {
 		return
 	}
 	for _, mp := range mpvs {
-		if ch.host == "cn.chubaofs.jd.local" && mp.PhyPid != mp.PartitionID {
+		if ch.host == DomainSpark && mp.PhyPid != mp.PartitionID {
 			continue
 		}
 		checkMetaPartition(ch, volName, mp.PartitionID)
@@ -239,7 +244,7 @@ func checkMetaPartition(ch *ClusterHost, volName string, id uint64) {
 		if ch.missReplicaIsInactiveNodes(mp) {
 			log.LogWarn(warnMsg)
 		} else {
-			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, warnMsg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, warnMsg)
 		}
 	}
 	noLeader := true
@@ -266,7 +271,7 @@ func checkMetaPartition(ch *ClusterHost, volName string, id uint64) {
 			inOneCycle := time.Now().Unix()-tmpMp.LastCheckedTime < defaultMpNoLeaderWarnInternal
 			if inOneCycle && tmpMp.Count >= defaultMpNoLeaderMinCount {
 				warnMsg := fmt.Sprintf("host[%v],vol[%v],meta partition[%v],no leader,json[%v]", ch.host, volName, mp.PartitionID, string(data))
-				checktool.WarnBySpecialUmpKey(UMPKeyMetaPartitionNoLeader, warnMsg)
+				warnBySpecialUmpKeyWithPrefix(UMPKeyMetaPartitionNoLeader, warnMsg)
 				tmpMp.Count = 0
 				tmpMp.LastCheckedTime = time.Now().Unix()
 			}
@@ -358,13 +363,13 @@ func (ch *ClusterHost) missReplicaIsInactiveNodes(mp *MetaPartition) bool {
 	return true
 }
 
-func (s *ChubaoFSMonitor) checkCoreVols() {
+func (s *ChubaoFSMonitor) checkOnlineCoreVols() {
 	dpCheckStartTime := time.Now()
-	log.LogInfof("checkCoreVols start")
+	log.LogInfof("checkOnlineCoreVols start")
 	for _, host := range s.hosts {
 		checkCoreVols(host)
 	}
-	log.LogInfof("checkCoreVols end, cost [%v]", time.Since(dpCheckStartTime))
+	log.LogInfof("checkOnlineCoreVols end, cost [%v]", time.Since(dpCheckStartTime))
 }
 
 type volThreshold struct {
@@ -374,13 +379,13 @@ type volThreshold struct {
 
 // todo 下个版本入数据库
 var importantVolMap = map[string]map[string]*volThreshold{
-	"cn.chubaofs-seqwrite.jd.local": {
+	DomainDbbak: {
 		"offline_logs": {
 			maxInodeCount: 1200000000,
 			minRWDpCount:  20000,
 		},
 	},
-	"cn.chubaofs.jd.local": {
+	DomainSpark: {
 		"ofw-cof": {
 			maxInodeCount: 1000000000,
 			minRWDpCount:  50,
@@ -402,7 +407,7 @@ func checkCoreVols(ch *ClusterHost) {
 		if vol.RwDpCnt < threshold.minRWDpCount || vol.InodeCount > threshold.maxInodeCount || vol.RwDpCnt < vol.MinWritableDPNum {
 			msg := fmt.Sprintf("Domain[%v] vol[%v] is unhealthy, rwDpCount[%v] minRWDpCount[%v] inodeCount[%v] maxInodeCount[%v]",
 				ch.host, volName, vol.RwDpCnt, threshold.minRWDpCount, vol.InodeCount, threshold.maxInodeCount)
-			checktool.WarnBySpecialUmpKey(UMPCFSCoreVolWarnKey, msg)
+			warnBySpecialUmpKeyWithPrefix(UMPCFSCoreVolWarnKey, msg)
 		}
 	}
 }

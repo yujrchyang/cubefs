@@ -3,7 +3,6 @@ package cfs
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
 	"os"
@@ -62,7 +61,7 @@ func TestCheckNodeSet(t *testing.T) {
 }
 
 func initTestLog(module string) {
-	checktool.DebugMod = true
+	initEnv(DevelopmentEnv)
 	logdir := path.Join(os.TempDir(), fmt.Sprintf("test_%v", module))
 	os.RemoveAll(logdir)
 	os.MkdirAll(logdir, 0666)
@@ -80,8 +79,7 @@ func TestCheckNodeAlive(t *testing.T) {
 	s.integerMap[cfgKeySSDDiskOfflineThreshold] = 10
 
 	t.Run("spark", func(t *testing.T) {
-		host := newClusterHost("test.chubaofs.jd.local")
-		host.isReleaseCluster = false
+		host := newClusterHost("test.chubaofs.jd.local", false)
 		host.offlineDataNodeTokenPool = newTokenPool(time.Hour, 1)
 		for i := 0; i < 20; i++ {
 			cv, err := getCluster(host)
@@ -95,8 +93,7 @@ func TestCheckNodeAlive(t *testing.T) {
 	})
 
 	t.Run("dbbak", func(t *testing.T) {
-		host := newClusterHost("test.dbbak.jd.local")
-		host.isReleaseCluster = true
+		host := newClusterHost("test.dbbak.jd.local", true)
 		host.offlineDataNodeTokenPool = newTokenPool(time.Hour, 1)
 		for i := 0; i < 20; i++ {
 			cv, err := getCluster(host)
@@ -117,8 +114,7 @@ func TestGetDiskMap(t *testing.T) {
 		log.LogFlush()
 	}()
 	t.Run("dbbak", func(t *testing.T) {
-		host := newClusterHost("dbbak.jd.local")
-		host.isReleaseCluster = true
+		host := newClusterHost("dbbak.jd.local", true)
 		dataNodeView, err := getDataNode(host, "1.1.1.1:6000")
 		if !assert.NoError(t, err) {
 			return
@@ -128,8 +124,7 @@ func TestGetDiskMap(t *testing.T) {
 	})
 
 	t.Run("spark", func(t *testing.T) {
-		host := newClusterHost("cn.chubaofs.jd.local")
-		host.isReleaseCluster = true
+		host := newClusterHost("cn.chubaofs.jd.local", false)
 		dataNodeView, err := getDataNode(host, "1.1.1.1:6000")
 		if !assert.NoError(t, err) {
 			return
@@ -145,8 +140,7 @@ func TestConfirmCheckNodeAlive(t *testing.T) {
 	defer func() {
 		log.LogFlush()
 	}()
-	host := newClusterHost("test.chubaofs.jd.local")
-	host.isReleaseCluster = false
+	host := newClusterHost("test.chubaofs.jd.local", false)
 	cv, err := getCluster(host)
 	if err != nil {
 		return
@@ -195,7 +189,7 @@ func TestGetClusterByMasterNodes(t *testing.T) {
 	defer func() {
 		log.LogFlush()
 	}()
-	host := newClusterHost("test.chubaofs.jd.local")
+	host := newClusterHost("test.chubaofs.jd.local", false)
 	host.masterNodes = []string{
 		"1.1.1.1:80",
 		"",

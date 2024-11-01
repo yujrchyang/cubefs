@@ -15,50 +15,24 @@ import (
 )
 
 const (
-	UmpKeyStorageBotPrefix = "Storage-Bot."
-	UmpKeyNormalWarn       = UmpKeyStorageBotPrefix + "common.normal"
-	UMPCFSNormalWarnKey    = UmpKeyStorageBotPrefix + "cfs"
-	DefaultMinCount        = 3
-	DefaultWarnInternal    = 5 * 60
+	DefaultMinCount     = 3
+	DefaultWarnInternal = 5 * 60
 )
 
-var (
-	DebugMod  bool
-	ddAlarm   *dongdong.CommonAlarm = nil
-	ddAlarmMu sync.RWMutex
-)
+var ddAlarmMap = new(sync.Map)
 
-func getCheckToolDDAlarm() (alarm *dongdong.CommonAlarm, err error) {
-	ddAlarmMu.RLock()
-	alarm = ddAlarm
-	ddAlarmMu.RUnlock()
-
-	if alarm != nil {
-		return
-	}
-
-	ddAlarmMu.Lock()
-	if ddAlarm == nil {
-		ddAlarm, err = dongdong.NewCommonAlarm("check_tool")
-	}
-	alarm = ddAlarm
-	ddAlarmMu.Unlock()
-	return
+func WarnBySpecialUmpKey(umpKey, msg string) {
+	log.LogWarn(msg)
+	exporter.WarningBySpecialUMPKey(umpKey, msg)
 }
 
-var otherDDAlarmMap = new(sync.Map)
-
-// WarnToTargetGidByDongDongAlarm
+// WarnByDongDongAlarmToTargetGid
 //
 //	buff.WriteString(fmt.Sprintf("【警告】%v\n", msg))
 //	buff.WriteString(fmt.Sprintf("【应用】%v\n", app))
 //	buff.WriteString(fmt.Sprintf("【采集点】%v\n", umpKey))
-func WarnToTargetGidByDongDongAlarm(targetGid int, app, umpKey, msg string) {
-	log.LogInfo(msg)
-	warnToTargetGidByDongDongAlarm(targetGid, app, umpKey, msg)
-}
-
-func warnToTargetGidByDongDongAlarm(targetGid int, app, umpKey, msg string) {
+func WarnByDongDongAlarmToTargetGid(targetGid int, app, umpKey, msg string) {
+	log.LogWarnf(msg)
 	defer HandleCrash()
 	var (
 		err           error
@@ -69,53 +43,16 @@ func warnToTargetGidByDongDongAlarm(targetGid int, app, umpKey, msg string) {
 			log.LogErrorf("action[warnToTargetGidByDongDongAlarm] err:%v", err)
 		}
 	}()
-	if load, ok := otherDDAlarmMap.Load(targetGid); ok {
+	if load, ok := ddAlarmMap.Load(targetGid); ok {
 		targetDDAlarm = load.(*dongdong.CommonAlarm)
 	}
 	if targetDDAlarm == nil {
-		if targetDDAlarm, err = dongdong.NewCommonAlarmWithGid(targetGid, app); err != nil {
+		if targetDDAlarm, err = dongdong.NewCommonAlarm(targetGid, app); err != nil {
 			return
 		}
-		otherDDAlarmMap.Store(targetGid, targetDDAlarm)
+		ddAlarmMap.Store(targetGid, targetDDAlarm)
 	}
 	err = targetDDAlarm.Alarm(umpKey, msg)
-	return
-}
-
-func WarnBySpecialUmpKey(umpKey, msg string) {
-	log.LogWarn(msg)
-	if DebugMod {
-		return
-	}
-	if isNormalUmpKey(umpKey) {
-		warnByDongDongAlarm(umpKey, msg)
-		return
-	}
-	exporter.WarningBySpecialUMPKey(umpKey, msg)
-}
-
-func isNormalUmpKey(umpKey string) bool {
-	switch umpKey {
-	case UMPCFSNormalWarnKey:
-		return true
-	default:
-		return false
-	}
-}
-
-func warnByDongDongAlarm(umpKey, msg string) {
-	defer HandleCrash()
-	var err error
-	defer func() {
-		if err != nil {
-			log.LogErrorf("action[warnByDongDongAlarm] err:%v", err)
-		}
-	}()
-	var alarm *dongdong.CommonAlarm
-	if alarm, err = getCheckToolDDAlarm(); err != nil {
-		return
-	}
-	err = alarm.Alarm(umpKey, msg)
 	return
 }
 

@@ -3,7 +3,6 @@ package cfs
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/schedulenode/common"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"time"
 )
@@ -62,7 +61,7 @@ func umpWarn(faultMap map[string][]string) {
 	if faultInfo.FaultMsg != "" {
 		msg := fmt.Sprintf("action[checkCFSMasterNodesAlive] connection failed, faultCount[%d], faultNodes[%s]", faultInfo.FaultCount, faultInfo.FaultMsg)
 		fmt.Println(msg)
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	} else {
 		log.LogInfof("action[checkCFSMasterNodesAlive] complete, the results were normal.")
 	}

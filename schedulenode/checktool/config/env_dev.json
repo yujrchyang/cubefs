@@ -1,0 +1,48 @@
+{
+  "env": "development",
+  "cfsDomains": "11.13.129.66:80#1,11.97.58.130:17010#0",
+  "sreDbConfig": "test1:****@tcp(11.22.154.86:3306)/storage_sre_test?charset=utf8mb4&parseTime=True&loc=Local",
+  "email": {
+    "enable": true,
+    "property": {
+      "smtpHost": "mx.jd.local",
+      "smtpPort": 25,
+      "mailFrom": "storage-sre@jd.com",
+      "mailTo": [
+        "xuxihao3@jd.com"
+      ],
+      "mailUser": "storage-sre",
+      "mailPwd": "******"
+    }
+  },
+  "jcloudOssDomain": "xxxx.jd.com",
+  "xbp": {
+    "userName": "xuxihao1",
+    "domain": "xbp-api-pre.jd.com",
+    "sign": "6f5e35bf05",
+    "apiUser": "cfs_test",
+    "offlineXbpID": 1435
+  },
+  "jdos": {
+    "jdosToken": "******",
+    "jdosURL": "http://api.jcd-gateway.jd.com",
+    "jdosErp": "org.imgsupport",
+    "jdosSysName": "chubaofs-test"
+  },
+  "objectAppName": "sparkobject-test",
+  "ump": {
+    "umpKeyStorageBotPrefix": "Test-Storage-Bot",
+    "umpToken": "**************"
+  },
+  "groupAlarm": {
+    "alarmGid": 10207863263,
+    "alarmAppName": "test_check_tool"
+  },
+  "bucketConfig" : {
+    "bucketName": "***",
+    "endPoint": "objectcfs.jd.local-test",
+    "ak": "******",
+    "sk": "******",
+    "region": "spark"
+  }
+}

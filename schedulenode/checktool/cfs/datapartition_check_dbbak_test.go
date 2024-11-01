@@ -11,7 +11,6 @@ func TestCheckDbBackPeer(t *testing.T) {
 		log.LogFlush()
 	}()
 	warnUmp = false
-	host := newClusterHost("test.dbbak.jd.local")
-	host.isReleaseCluster = true
+	host := newClusterHost("test.dbbak.jd.local", true)
 	checkDbbakDataPartition(host, 4)
 }

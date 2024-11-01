@@ -5,11 +5,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/checktool"
-	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/go-ping/ping"
-	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"io"
 	"net/http"
@@ -23,7 +20,6 @@ import (
 )
 
 const (
-	cfgKeyDbConfigDSNPort          = "dbConfigDSN"
 	SaveToDBReTryTimes             = 3
 	LoadMinCurrent                 = 4000
 	maxRestartNodeMaxCountIn24Hour = 3
@@ -110,29 +106,16 @@ type ChubaoFSHighLoadNodeSolver struct {
 
 var dockerIpMap map[string]string
 
-func StartChubaoFSHighLoadNodeSolver(cfg *config.Config) (s *ChubaoFSHighLoadNodeSolver) {
+func StartChubaoFSHighLoadNodeSolver(db *gorm.DB) (s *ChubaoFSHighLoadNodeSolver) {
 	s = &ChubaoFSHighLoadNodeSolver{
 		RestartNodeMaxCountIn24Hour: maxRestartNodeMaxCountIn24Hour,
 		LoadMinCurrent:              LoadMinCurrent,
 		ch:                          make(chan *NodeInfo, 500),
 		nodeAlarmRecords:            make(map[string]*AlarmRecord, 0),
 	}
-	err := s.parseConfig(cfg)
-	if err != nil {
-		fmt.Printf("StartChubaoFSHighLoadNodeSolver err:%v\n", err)
-		return
-	}
+	s.db = db
 	registerChubaoFSHighLoadNodeSolver(s)
 	go s.startChubaoFSHighLoadNodeSolver()
-	return
-}
-
-func (s *ChubaoFSHighLoadNodeSolver) parseConfig(cfg *config.Config) (err error) {
-	s.DBConfigDSN = cfg.GetString(cfgKeyDbConfigDSNPort)
-	log.LogInfof("action[parseConfig] DBConfigDSN[%v]", s.DBConfigDSN)
-	if s.DBConfigDSN == "" {
-		return fmt.Errorf("DBConfigDSN is empty, do not start this")
-	}
 	return
 }
 
@@ -220,11 +203,6 @@ func (s *ChubaoFSHighLoadNodeSolver) startChubaoFSHighLoadNodeSolver() {
 			debug.PrintStack()
 		}
 	}()
-	if err := s.initDB(); err != nil {
-		fmt.Printf("startChubaoFSHighLoadNodeSolver failed to initDB ,err %s db config:%s", err, s.DBConfigDSN)
-		return
-	}
-	fmt.Printf("startChubaoFSHighLoadNodeSolver finished DBConfigDSN[%v]\n", s.DBConfigDSN)
 	s.highLoadNodeSolver()
 }
 
@@ -280,13 +258,13 @@ func (s *ChubaoFSHighLoadNodeSolver) recordAndRestartNode(nodeInfo *NodeInfo) {
 		if strings.Contains(err.Error(), "exit") {
 			log.LogErrorf("action[recordAndRestartNode] NodeIp:%v sysUpTimeInstance err:%v", nodeInfo.NodeIp, err)
 		} else {
-			checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, fmt.Sprintf("高负载节点IP:%v 负载:%v, get sysUpTimeInstance failed",
+			warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, fmt.Sprintf("高负载节点IP:%v 负载:%v, get sysUpTimeInstance failed",
 				nodeInfo.NodeIp, nodeInfo.Current))
 			return
 		}
 	}
 	if err == nil && totalStartupTime < minRestartDuration {
-		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, fmt.Sprintf("高负载节点IP:%v 负载:%v sysUpTimeInstance:%v less than minRestartDuration:%v will not restart",
+		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, fmt.Sprintf("高负载节点IP:%v 负载:%v sysUpTimeInstance:%v less than minRestartDuration:%v will not restart",
 			nodeInfo.NodeIp, nodeInfo.Current, totalStartupTime, minRestartDuration))
 		err = fmt.Errorf("totalStartupTime:%v less than minRestartDuration:%v", totalStartupTime, minRestartDuration)
 		return
@@ -299,7 +277,7 @@ func (s *ChubaoFSHighLoadNodeSolver) recordAndRestartNode(nodeInfo *NodeInfo) {
 	} else {
 		log.LogErrorf("action[recordAndRestartNode] NodeIp:%v nodeStatus:%v err:%v", nodeInfo.NodeIp, nodeStatus, err)
 	}
-	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, fmt.Sprintf("高负载节点IP:%v 负载:%v sysUpTimeInstance:%v",
+	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, fmt.Sprintf("高负载节点IP:%v 负载:%v sysUpTimeInstance:%v",
 		nodeInfo.NodeIp, nodeInfo.Current, totalStartupTime))
 	if time.Since(s.lastRestartNodeTime) < RestartHighLoadNodeInterval {
 		err = fmt.Errorf("lastRestartNodeTime:%v less than %v", s.lastRestartNodeTime, RestartHighLoadNodeInterval)
@@ -430,12 +408,12 @@ func DoRestartByPythonScript(nodeIp, nodeIloIp string, restartReason RestartReas
 	//	}
 	//}()
 	//msg = fmt.Sprintf("RestartReason:%v nodeIp:%v nodeIloIp:%v will be restart", restartReason, nodeIp, nodeIloIp)
-	//checktool.WarnBySpecialUmpKey(UMPCFSNodeRestartWarnKey, msg)
+	//warnBySpecialUmpKeyWithPrefix(UMPCFSNodeRestartWarnKey, msg)
 	//go recordBySre(nodeIp, restartReason)
 	//if _, _, err = DoCMDByPythonScript(nodeIloIp, nodeIp, "soft", restartReason); err != nil {
 	//	msg = fmt.Sprintf("RestartReason:%v DoCMDByPythonScript_soft nodeIp:%v nodeIloIp:%v err:%v", restartReason, nodeIp, nodeIloIp, err)
 	//	log.LogErrorf(msg)
-	//	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	//	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	//	return
 	//}
 	//// wait 60s then power on, 重试几次，确保已经启动
@@ -443,7 +421,7 @@ func DoRestartByPythonScript(nodeIp, nodeIloIp string, restartReason RestartReas
 	//if _, _, err = DoCMDByPythonScript(nodeIloIp, nodeIp, "on", restartReason); err != nil {
 	//	msg = fmt.Sprintf("RestartReason:%v DoCMDByPythonScript_on nodeIp:%v nodeIloIp:%v err:%v", restartReason, nodeIp, nodeIloIp, err)
 	//	log.LogErrorf(msg)
-	//	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	//	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	//}
 	//for i := 0; i < 3; i++ {
 	//	time.Sleep(time.Second * 60)
@@ -455,7 +433,7 @@ func DoRestartByPythonScript(nodeIp, nodeIloIp string, restartReason RestartReas
 	//		//错误记录日志 直接重试开机，开机状态下重试不会有影响
 	//		msg = fmt.Sprintf("RestartReason:%v DoCMDByPythonScript_on nodeIp:%v nodeIloIp:%v err:%v", restartReason, nodeIp, nodeIloIp, err)
 	//		log.LogErrorf(msg)
-	//		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	//		warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	//		continue
 	//	}
 	//}
@@ -492,35 +470,8 @@ func DoCMDByPythonScript(nodeIloIp, nodeIP, cmdStr string, restartReason Restart
 		msg = fmt.Sprintf("RestartReason:%v Power_%v nodeIloIp:%v nodeIP:%v outStr:%v, errStr:%v", restartReason, cmdStr, nodeIloIp, nodeIP, outStr, errStr)
 	}
 	fmt.Println(msg)
-	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	return
-}
-
-func (s *ChubaoFSHighLoadNodeSolver) initDB() (err error) {
-	s.db, err = gorm.Open(mysql.New(mysql.Config{
-		DSN:                       s.DBConfigDSN,
-		DefaultStringSize:         256,   // string 类型字段的默认长度
-		DisableDatetimePrecision:  true,  // 禁用 datetime 精度，MySQL 5.6 之前的数据库不支持
-		DontSupportRenameIndex:    true,  // 重命名索引时采用删除并新建的方式，MySQL 5.7 之前的数据库和 MariaDB 不支持重命名索引
-		DontSupportRenameColumn:   true,  // 用 `change` 重命名列，MySQL 8 之前的数据库和 MariaDB 不支持重命名列
-		SkipInitializeWithVersion: false, // 根据版本自动配置
-	}), &gorm.Config{})
-	if err != nil {
-		log.LogErrorf("initDB failed err:%v", err)
-		s.db = nil
-		return
-	}
-	return
-}
-
-func (s *ChubaoFSHighLoadNodeSolver) closeDB() {
-	if s.db == nil {
-		return
-	}
-	db, _ := s.db.DB()
-	if db != nil {
-		db.Close()
-	}
 }
 
 func ServerPing(target string) (ok bool, err error) {

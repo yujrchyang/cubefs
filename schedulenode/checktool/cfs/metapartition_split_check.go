@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/schedulenode/common/cfs"
-	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
 	"sort"
 	"sync"
@@ -20,7 +19,7 @@ const (
 )
 
 var (
-	requireCheckMasterDomain = []string{"cn.chubaofs.jd.local", "cn.elasticdb.jd.local", "cn.chubaofs-seqwrite.jd.local"}
+	requireCheckMasterDomain = []string{DomainSpark, DomainMysql, DomainDbbak}
 )
 
 func (s *ChubaoFSMonitor) scheduleToCheckMetaPartitionSplit() {
@@ -71,12 +70,12 @@ func (s *ChubaoFSMonitor) checkAndCreateMp(volName string, inodeCount, dentryCou
 		warnMsg = fmt.Sprintf("check the mp of large inodeCount and dentryCount, host[%v] volume[%v] create mp count(%v) success, because inodeCount[%v], dentryCount[%v]",
 			host.host, volName, createMpCount, inodeCount, dentryCount)
 	}
-	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, warnMsg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, warnMsg)
 }
 
 func (s *ChubaoFSMonitor) umpMpEndValueAlarm(vMpIds VolumeEndIncorrectMpId, host *ClusterHost) {
 	var warnMsg = fmt.Sprintf("check that the End value of non-maximum mpId is incorrect, host[%v] volume[%v] mpIds[%v]", host.host, vMpIds.volumeName, vMpIds.mpIds)
-	checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, warnMsg)
+	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, warnMsg)
 }
 
 func domainExist(domain string) bool {

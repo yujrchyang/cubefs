@@ -122,6 +122,11 @@ func (c *Config) parse(fileName string) error {
 	return err
 }
 
+func (c *Config) HasKey(key string) (has bool) {
+	_, has = c.data[key]
+	return has
+}
+
 // GetString returns a string for the config key.
 func (c *Config) GetString(key string) string {
 	x, present := c.data[key]

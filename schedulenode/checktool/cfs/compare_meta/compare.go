@@ -215,7 +215,7 @@ func rangeRocksDB(rs *raftstore.RocksDBStore, prefix []byte, iter func(string, [
 	return
 }
 
-func (c *CompareMeta) RangeCompareKeys(rocksPaths []string, dbMap map[string]*raftstore.RocksDBStore, cluster string, umpKey string, iter func(string)) {
+func (c *CompareMeta) RangeCompareKeys(rocksPaths []string, dbMap map[string]*raftstore.RocksDBStore, cluster string, warn func(msg string), iter func(string)) {
 	c.rangePrefix(func(prefix string) {
 		badCount := 0
 		badKeys := make([]string, 0)
@@ -255,7 +255,7 @@ func (c *CompareMeta) RangeCompareKeys(rocksPaths []string, dbMap map[string]*ra
 			} else {
 				msg = fmt.Sprintf("cluster:%v prefix:%v badKeys:%v num:%v", cluster, prefix, badKeys, len(badKeys))
 			}
-			exporter.WarningBySpecialUMPKey(umpKey, msg)
+			warn(msg)
 		} else {
 			log.LogInfof("cluster:%v prefix:%v passed", cluster, prefix)
 		}
