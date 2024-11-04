@@ -494,7 +494,7 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 		log.LogErrorf("action[checkDataNodeAlive] host[%v] err[%v]", host.host, err)
 		return
 	}
-	offlineThreshold := getOfflineThreshold(s, host.host, zoneName)
+	offlineThreshold := getOfflineThreshold(s, isSSD(host.host, zoneName))
 	log.LogInfof("action[checkDataNodeAlive] host[%v] addr[%v] zone[%v] inOfflineDataNodes[%v] autoOfflineThreshold[%v] offline pool size[%v]", host.host, dn.Addr, zoneName, len(host.inOfflineDataNodes), offlineThreshold, host.offlineDataNodeTokenPool.getSize())
 	if time.Since(dataNodeView.ReportTime) < offlineThreshold {
 		return
@@ -553,20 +553,9 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 	for dataNodeAddr, lastOfflineDiskTime := range host.inOfflineDataNodes {
 		zoneName := nodeZoneMap[dataNodeAddr]
 		// 下线最小时间间隔，ssd - 5分钟，hdd - 10分钟
-		if isSSD(host.host, zoneName) {
-			if s.integerMap[cfgKeySSDDiskOfflineInterval] > 0 {
-				diskOfflineInterval = time.Duration(s.integerMap[cfgKeySSDDiskOfflineInterval]) * time.Minute
-			} else {
-				diskOfflineInterval = 5 * time.Minute
-			}
-		} else {
-			if s.integerMap[cfgKeyHDDDiskOfflineInterval] > 0 {
-				diskOfflineInterval = time.Duration(s.integerMap[cfgKeyHDDDiskOfflineInterval]) * time.Minute
-			} else {
-				diskOfflineInterval = 20 * time.Minute
-			}
-		}
-		autoOfflineThreshold = getOfflineThreshold(s, host.host, zoneName)
+		ssd := isSSD(host.host, zoneName)
+		diskOfflineInterval = getOfflineInterval(s, ssd)
+		autoOfflineThreshold = getOfflineThreshold(s, ssd)
 		log.LogInfof("action[offlineBadDataNodeByDisk] host[%v] addr[%v] zone[%v] diskOfflineInterval[%v] autoOfflineThreshold[%v]", host.host, dataNodeAddr, zoneName, diskOfflineInterval, autoOfflineThreshold)
 		if time.Since(lastOfflineDiskTime) < diskOfflineInterval {
 			continue
@@ -605,8 +594,8 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 	}
 }
 
-func getOfflineThreshold(s *ChubaoFSMonitor, host string, zone string) (autoOfflineThreshold time.Duration) {
-	if isSSD(host, zone) {
+func getOfflineThreshold(s *ChubaoFSMonitor, ssd bool) (autoOfflineThreshold time.Duration) {
+	if ssd {
 		if s.integerMap[cfgKeySSDDiskOfflineThreshold] > 0 {
 			autoOfflineThreshold = time.Duration(s.integerMap[cfgKeySSDDiskOfflineThreshold]) * time.Minute
 		} else {
@@ -617,6 +606,23 @@ func getOfflineThreshold(s *ChubaoFSMonitor, host string, zone string) (autoOffl
 			autoOfflineThreshold = time.Duration(s.integerMap[cfgKeyHDDDiskOfflineThreshold]) * time.Minute
 		} else {
 			autoOfflineThreshold = 300 * time.Minute
+		}
+	}
+	return
+}
+
+func getOfflineInterval(s *ChubaoFSMonitor, ssd bool) (diskOfflineInterval time.Duration) {
+	if ssd {
+		if s.integerMap[cfgKeySSDDiskOfflineInterval] > 0 {
+			diskOfflineInterval = time.Duration(s.integerMap[cfgKeySSDDiskOfflineInterval]) * time.Minute
+		} else {
+			diskOfflineInterval = 5 * time.Minute
+		}
+	} else {
+		if s.integerMap[cfgKeyHDDDiskOfflineInterval] > 0 {
+			diskOfflineInterval = time.Duration(s.integerMap[cfgKeyHDDDiskOfflineInterval]) * time.Minute
+		} else {
+			diskOfflineInterval = 20 * time.Minute
 		}
 	}
 	return
