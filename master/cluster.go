@@ -53,6 +53,7 @@ type Cluster struct {
 	createVolMutex             sync.RWMutex // create volume mutex
 	mnMutex                    sync.RWMutex // meta node mutex
 	dnMutex                    sync.RWMutex // data node mutex
+	clusterConfMutex           sync.RWMutex // cluster value mutex
 	leaderInfo                 *LeaderInfo
 	cfg                        *clusterConfig
 	retainLogs                 uint64
@@ -6250,7 +6251,7 @@ func (c *Cluster) setVolDisableState(name, authKey string, disableState bool) (e
 func (c *Cluster) setMqProducerState(state bool) (err error) {
 	oldValue := c.cfg.MqProducerState
 	c.cfg.MqProducerState = state
-	if err = c.syncPutCluster(); err != nil {
+	if err = c.syncSetMqProducerState(); err != nil {
 		log.LogErrorf("action[setMqProducerState] err[%v]", err)
 		c.cfg.MqProducerState = oldValue
 		err = proto.ErrPersistenceByRaft

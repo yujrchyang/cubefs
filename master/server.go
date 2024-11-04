@@ -35,24 +35,25 @@ import (
 
 // configuration keys
 const (
-	ClusterName        = "clusterName"
-	ID                 = "id"
-	IP                 = "ip"
-	Port               = "port"
-	LogLevel           = "logLevel"
-	WalDir             = "walDir"
-	StoreDir           = "storeDir"
-	GroupID            = 1
-	ModuleName         = "master"
-	CfgRetainLogs      = "retainLogs"
-	DefaultRetainLogs  = 20000
-	cfgTickInterval    = "tickInterval"
-	cfgElectionTick    = "electionTick"
-	SecretKey          = "masterServiceKey"
-	cfgMaxConnsPerHost = "maxConnsPerHost"
-	CfgKeyMQTopic      = "mqTopic"
-	CfgKeyMQAddress    = "mqAddr"
-	CfgKeyMQAppName    = "mqAppName"
+	ClusterName           = "clusterName"
+	ID                    = "id"
+	IP                    = "ip"
+	Port                  = "port"
+	LogLevel              = "logLevel"
+	WalDir                = "walDir"
+	StoreDir              = "storeDir"
+	GroupID               = 1
+	ModuleName            = "master"
+	CfgRetainLogs         = "retainLogs"
+	DefaultRetainLogs     = 20000
+	cfgTickInterval       = "tickInterval"
+	cfgElectionTick       = "electionTick"
+	SecretKey             = "masterServiceKey"
+	cfgMaxConnsPerHost    = "maxConnsPerHost"
+	CfgKeyMQProducerState = "mqProducerState"
+	CfgKeyMQTopic         = "mqTopic"
+	CfgKeyMQAddress       = "mqAddr"
+	CfgKeyMQAppName       = "mqAppName"
 )
 
 var (
@@ -149,8 +150,15 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 
 	m.cluster.scheduleTask()
-	if err = m.initMetadataMqProducer(cfg); err != nil {
-		return
+
+	var producerStat bool
+	if producerStat, err = m.getMqProducerState(cfg); err != nil {
+		return fmt.Errorf("action[Start] failed %v, err: mq producer stat may be invalid = %s", proto.ErrInvalidCfg, err.Error())
+	}
+	if producerStat {
+		if err = m.initMetadataMqProducer(cfg); err != nil {
+			return
+		}
 	}
 	if err = m.startHTTPService(); err != nil {
 		return
@@ -169,6 +177,9 @@ func (m *Server) Shutdown() {
 		if err = m.apiListener.Close(); err != nil {
 			log.LogErrorf("close API net listener failed: %v", err)
 		}
+	}
+	if m.mqProducer != nil {
+		m.mqProducer.shutdown()
 	}
 	m.wg.Done()
 }

@@ -288,10 +288,10 @@ const (
 	minBw                                                  = 500 * 1024 * 1024
 	minInodeCountThreshold                                 = 10000000
 	minDeleteMarkDelVolInterval                            = 60 * 60 * 2
-	defaultReadAheadMemMB								   = 0
-	defaultReadAheadWindowMB							   = 0
-	maxReadAheadMemMB									   = 8192
-	maxReadAheadWindowMB								   = 64
+	defaultReadAheadMemMB                                  = 0
+	defaultReadAheadWindowMB                               = 0
+	maxReadAheadMemMB                                      = 8192
+	maxReadAheadWindowMB                                   = 64
 )
 
 const (
@@ -368,12 +368,13 @@ const (
 	opSyncDeleteMigrateTask uint32 = 0x39
 	opSyncUpdateMigrateTask uint32 = 0x3A
 
-	opSyncAddFlashNode     uint32 = 0x40
-	opSyncDeleteFlashNode  uint32 = 0x41
-	opSyncUpdateFlashNode  uint32 = 0x42
-	opSyncAddFlashGroup    uint32 = 0x43
-	opSyncDeleteFlashGroup uint32 = 0x44
-	opSyncUpdateFlashGroup uint32 = 0x45
+	opSyncAddFlashNode       uint32 = 0x40
+	opSyncDeleteFlashNode    uint32 = 0x41
+	opSyncUpdateFlashNode    uint32 = 0x42
+	opSyncAddFlashGroup      uint32 = 0x43
+	opSyncDeleteFlashGroup   uint32 = 0x44
+	opSyncUpdateFlashGroup   uint32 = 0x45
+	opSyncSetMqProducerState uint32 = 0x46
 )
 
 const (

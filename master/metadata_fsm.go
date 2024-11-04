@@ -163,6 +163,10 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 		}
 	}
 
+	if err = mf.ApplyFollowerMqProducerStateToMemory(cmd); err != nil {
+		return nil, err
+	}
+
 	log.LogInfof("action[fsmApply] finished,index[%v],cmd.op[%v],cmd.K[%v],cmd.V[%v]", index, cmd.Op, cmd.K, string(cmd.V))
 	mf.applied = index
 	if mf.applied > 0 && (mf.applied%mf.retainLogs) == 0 {
@@ -171,8 +175,8 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 	}
 
 	//only master leader send message
-	if mf.s.cluster.IsLeader() && mf.s.cluster.cfg.MqProducerState {
-		mf.s.mqProducer.SendMessage(cmd, index)
+	if mf.s.cluster.cfg.MqProducerState {
+		mf.s.mqProducer.addCommandMessage(cmd, index, mf.s.clusterName, mf.s.ip, mf.s.cluster.IsLeader())
 	}
 	return
 }
@@ -251,4 +255,22 @@ func (mf *MetadataFsm) putIndex(key string, index uint64) (err error) {
 func (mf *MetadataFsm) AskRollback(_ []byte, _ uint64) (rollback []byte, err error) {
 	// Do nothing.
 	return nil, nil
+}
+
+// ApplyFollowerMqProducerStateToMemory
+// If op is setting mqProducerState, persist it to RocksDB first and then modify it in memory,
+// because followers also need to send messages.
+func (mf *MetadataFsm) ApplyFollowerMqProducerStateToMemory(cmd *RaftCmd) (err error) {
+	if mf.s.partition.IsRaftLeader() {
+		return nil
+	}
+	if cmd.Op == opSyncSetMqProducerState {
+		cv := &clusterValue{}
+		if err = json.Unmarshal(cmd.V, cv); err != nil {
+			log.LogErrorf("action[ApplyFollowerMqProducerStateToMemory], unmarshal err:%v", err.Error())
+			return err
+		}
+		mf.s.cluster.cfg.MqProducerState = cv.MqProducerState
+	}
+	return
 }
