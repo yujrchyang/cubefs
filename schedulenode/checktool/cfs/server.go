@@ -48,6 +48,7 @@ const (
 	UMPCFSNodeTinyExtentCheckKey            = checktool.UmpKeyStorageBotPrefix + "cfs.tiny.extent.check"
 	UMPCFSCoreVolWarnKey                    = checktool.UmpKeyStorageBotPrefix + "cfs.core.vol"
 	UMPCFSMysqlBadDiskKey                   = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.bad.disk"
+	UMPCFSMysqlInactiveNodeKey              = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.inactive.node"
 	metaPartitionApplyWarningKey            = "Storage-Bot-Extend.cfs.meta.apply"
 	metaPartitionApplyFailedWarningKey      = "Storage-Bot-Extend.cfs.meta.apply.failed"
 	TB                                      = 1024 * 1024 * 1024 * 1024
