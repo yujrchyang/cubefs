@@ -538,10 +538,7 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 		autoOfflineThreshold time.Duration
 		err                  error
 	)
-	// mysql集群禁止自动下线，先电话通知，手动下线，等下线方案成熟后再改为自动下线
-	if host.host == "cn.elasticdb.jd.local" {
-		return
-	}
+
 	if !host.isReleaseCluster {
 		nodeZoneMap, err = getNodeToZoneMap(host)
 		if err != nil {
@@ -551,6 +548,11 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 	}
 
 	for dataNodeAddr, lastOfflineDiskTime := range host.inOfflineDataNodes {
+		// mysql集群禁止自动下线，先电话通知，手动下线，等下线方案成熟后再改为自动下线
+		if host.host == "cn.elasticdb.jd.local" {
+			exporter.WarningBySpecialUMPKey(UMPCFSMysqlInactiveNodeKey, fmt.Sprintf("Domain[%v] mysql inactive node[%v], please offline by tool", host.host, dataNodeAddr))
+			continue
+		}
 		zoneName := nodeZoneMap[dataNodeAddr]
 		// 下线最小时间间隔，ssd - 5分钟，hdd - 10分钟
 		ssd := isSSD(host.host, zoneName)
