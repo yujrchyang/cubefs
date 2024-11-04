@@ -58,7 +58,7 @@ const (
 	defaultMaxOfflineDataNodes              = 3
 	defaultMaxOfflineMetaNodes              = 3
 	defaultMaxOfflineDisks                  = 10
-	defaultMinOfflineDiskDuration           = time.Minute * 10
+	minOfflineDiskThreshold                 = time.Minute * 5
 	defaultMNDiskMinWarnSize                = GB * 20
 	defaultMNDiskMinWarnRatio               = 0.7
 	defaultMetaNodeUsedRatioMinThresholdSSD = 0.87
@@ -186,7 +186,7 @@ type ChubaoFSMonitor struct {
 	badDiskXBPTickets                       *sync.Map            //map[string]XBPTicketInfo
 	markDeleteVols                          map[string]time.Time // host#volName:lastWarnTime
 	offlineDiskMaxCountIn24Hour             int
-	offlineDiskMinDuration                  time.Duration
+	offlineDiskThreshold                    time.Duration
 	masterLbLastWarnInfo                    map[string]*MasterLBWarnInfo
 	scheduleDpCheckInterval                 int
 	scheduleMpCheckInterval                 int
@@ -488,9 +488,9 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		return fmt.Errorf("parse nlClusterUsedRatio failed")
 	}
 	offlineDiskMinMinute, _ := strconv.Atoi(cfg.GetString(cfgKeyMinOfflineDiskMinute))
-	s.offlineDiskMinDuration = time.Minute * time.Duration(offlineDiskMinMinute)
-	if s.offlineDiskMinDuration < defaultMinOfflineDiskDuration {
-		s.offlineDiskMinDuration = defaultMinOfflineDiskDuration
+	s.offlineDiskThreshold = time.Minute * time.Duration(offlineDiskMinMinute)
+	if s.offlineDiskThreshold < minOfflineDiskThreshold {
+		s.offlineDiskThreshold = minOfflineDiskThreshold
 	}
 	s.checkFlashNode = cfg.GetBool(cfgKeyCheckFlashNode)
 	s.checkRiskFix = cfg.GetBool(cfgKeyCheckRiskFix)
@@ -557,10 +557,10 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	}
 
 	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
-		",offlineDiskMaxCountIn24Hour[%v],offlineDiskMinDuration[%v],  mpCheckInterval[%v], "+
+		",offlineDiskMaxCountIn24Hour[%v],offlineDiskThreshold[%v],  mpCheckInterval[%v], "+
 		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v]\n",
 		s.usedRatio, s.availSpaceRatio, s.readWriteDpRatio, s.minReadWriteCount, s.hosts, s.scheduleInterval, s.clusterUsedRatio,
-		s.offlineDiskMaxCountIn24Hour, s.offlineDiskMinDuration, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval,
+		s.offlineDiskMaxCountIn24Hour, s.offlineDiskThreshold, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval,
 		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD)
 	return
 }

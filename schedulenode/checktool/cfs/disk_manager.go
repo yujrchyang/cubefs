@@ -144,9 +144,10 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 					badDisk, firstReportTime, len(host.offlineDisksIn24Hour))
 
 				// 2 - 执行下线
-				if time.Since(firstReportTime) > s.offlineDiskMinDuration && len(host.offlineDisksIn24Hour) < s.offlineDiskMaxCountIn24Hour {
+				if time.Since(firstReportTime) > s.offlineDiskThreshold && len(host.offlineDisksIn24Hour) < s.offlineDiskMaxCountIn24Hour {
 					log.LogDebugf("action[doCheckDataNodeDiskError] host[%s] Addr[%s] badDisk[%s]", host, badDiskOnNode.Addr, badDisk)
-					// 控制单块盘的下线间隔时间
+					// 控制单块盘的下线间隔时间（同一块盘为什么要反复下？是失败重试吗？）
+					// 超过offlineDiskThreshold第一次下线，然后每间隔10分钟下线一次
 					lastOfflineThisDiskTime := host.offlineDisksIn24Hour[dataNodeBadDiskKey]
 					if time.Since(lastOfflineThisDiskTime) > time.Minute*10 {
 						if host.host == "cn.elasticdb.jd.local" {
@@ -154,7 +155,8 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 						} else {
 							if canOffline(host) {
 								offlineDataNodeDisk(host, badDiskOnNode.Addr, badDisk, true)
-							}						}
+							}
+						}
 						host.offlineDisksIn24Hour[dataNodeBadDiskKey] = time.Now()
 					}
 				}
