@@ -49,8 +49,8 @@ const (
 	UMPCFSCoreVolWarnKey                    = checktool.UmpKeyStorageBotPrefix + "cfs.core.vol"
 	UMPCFSMysqlBadDiskKey                   = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.bad.disk"
 	UMPCFSMysqlInactiveNodeKey              = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.inactive.node"
-	metaPartitionApplyWarningKey            = "Storage-Bot-Extend.cfs.meta.apply"
-	metaPartitionApplyFailedWarningKey      = "Storage-Bot-Extend.cfs.meta.apply.failed"
+	metaPartitionApplyWarningKey            = "Storage-Bot.cfs.meta.apply"
+	metaPartitionApplyFailedWarningKey      = "Storage-Bot.cfs.meta.apply.failed"
 	TB                                      = 1024 * 1024 * 1024 * 1024
 	GB                                      = 1024 * 1024 * 1024
 	defaultMpNoLeaderWarnInternal           = 10 * 60
