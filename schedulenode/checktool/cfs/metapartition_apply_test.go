@@ -1,6 +1,7 @@
 package cfs
 
 import (
+	"fmt"
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/tcp_api"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
@@ -50,4 +51,13 @@ func TestCompareMetaLoadInfo(t *testing.T) {
 
 	minReplica, same = compareLoadResponse(200, 0, func(mpr *tcp_api.MetaPartitionLoadResponse) uint64 { return mpr.ApplyID }, metaInfos)
 	assert.True(t, same)
+}
+
+func TestServerStartedCheck(t *testing.T) {
+	initTestLog("storagebot")
+	defer func() {
+		log.LogFlush()
+	}()
+	started := isServerStartCompleted("")
+	fmt.Printf("%v", started)
 }
