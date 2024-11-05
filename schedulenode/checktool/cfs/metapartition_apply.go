@@ -4,9 +4,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/tcp_api"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"math"
+	"strings"
 	"sync"
 	"time"
 )
@@ -154,13 +156,14 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, partitionID uint
 		err = fmt.Errorf("failed too much times")
 		return
 	}
+
 	// Apply至少命中两次
 	if len(minReplicas[applyIndex]) > 2 {
 		first := minReplicas[applyIndex][0]
 		last := minReplicas[applyIndex][len(minReplicas[applyIndex])-1]
 		// 两次检查apply相同且address相同，可能卡住
 		if first.ApplyID == last.ApplyID && first.Addr == last.Addr {
-			exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, fmt.Sprintf("Domain[%v] vol[%v] meta[%v] addr[%v] apply[%v]", ch.host, volName, partitionID, first.Addr, first.ApplyID))
+			exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different apply id, min apply addr[%v] min apply id[%v]", ch.host, volName, partitionID, first.Addr, first.ApplyID))
 			return
 		}
 	}
@@ -169,7 +172,12 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, partitionID uint
 		first := minReplicas[dEntryIndex][0]
 		last := minReplicas[dEntryIndex][len(minReplicas[dEntryIndex])-1]
 		if first.Addr == last.Addr {
-			exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, fmt.Sprintf("Domain[%v] vol[%v] meta[%v] addr[%v] dEntry[%v]", ch.host, volName, partitionID, first.Addr, first.DentryCount))
+			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different dentry, min addr[%v] min dEntry[%v]", ch.host, volName, partitionID, first.Addr, first.DentryCount)
+			if isServerStartCompleted(first.Addr) {
+				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
+			} else {
+				log.LogWarnf("%v server not completed start", msg)
+			}
 		}
 	}
 	// inode连续命中并且addr相同，报警
@@ -177,9 +185,24 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, partitionID uint
 		first := minReplicas[inoudeIndex][0]
 		last := minReplicas[inoudeIndex][len(minReplicas[inoudeIndex])-1]
 		if first.Addr == last.Addr {
-			exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, fmt.Sprintf("Domain[%v] vol[%v] meta[%v] addr[%v] inode[%v]", ch.host, volName, partitionID, first.Addr, first.InodeCount))
+			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different inode count, min addr[%v] min inode count[%v]", ch.host, volName, partitionID, first.Addr, first.InodeCount)
+			if isServerStartCompleted(first.Addr) {
+				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
+			} else {
+				log.LogWarnf("%v server not completed start", msg)
+			}
 		}
 	}
+}
+
+func isServerStartCompleted(tcpAddr string) bool {
+	client := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(tcpAddr, ":")[0], profPortMap[strings.Split(tcpAddr, ":")[1]]), false)
+	stat, err := client.GetStatus()
+	if err != nil {
+		log.LogErrorf("ip[%v] get status failed, err:%v", tcpAddr, err)
+		return false
+	}
+	return stat.StartComplete
 }
 
 func compareMetaPartition(dbbak bool, minReplicas [][]*tcp_api.MetaPartitionLoadResponse, mp *MetaPartition, partitionID uint64) (err error) {

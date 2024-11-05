@@ -3,6 +3,7 @@ package http_client
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -486,6 +487,33 @@ func (dc *DataClient) GetStatInfo() (statInfo *proto.StatInfo, err error) {
 	}
 	statInfo = new(proto.StatInfo)
 	if err = json.Unmarshal(d, statInfo); err != nil {
+		return
+	}
+	return
+}
+
+type ServerStatus struct {
+	StartComplete bool          `json:"StartComplete"`
+	StarCost      time.Duration `json:"StarCost"`
+	Version       string        `json:"Version"`
+}
+
+func (dc *DataClient) GetStatus() (status *ServerStatus, err error) {
+	var resp *http.Response
+	var respData []byte
+	client := &http.Client{}
+	client.Timeout = time.Second * 20
+	resp, err = client.Get(fmt.Sprintf("http://%s/status", dc.host))
+	if err != nil {
+		return
+	}
+	respData, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return
+	}
+	_ = resp.Body.Close()
+	status = new(ServerStatus)
+	if err = json.Unmarshal(respData, &status); err != nil {
 		return
 	}
 	return
