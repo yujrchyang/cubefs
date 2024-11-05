@@ -302,6 +302,7 @@ type MetaReplica struct {
 	ReportTime  int64
 	Status      int8
 	IsLeader    bool
+	ApplyId     uint64
 	InodeCount  uint64 `json:"InodeCount"`
 	DentryCount uint64 `json:"DentryCount"`
 }
