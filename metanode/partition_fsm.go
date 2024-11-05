@@ -216,6 +216,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		select {
 		case mp.storeChan <- sMsg:
 		default:
+			log.LogErrorf("discard store msg, partitionID: %v, applyID: %v", mp.config.PartitionId, sMsg.applyIndex)
 		}
 		mp.fsmStoreConfig()
 
