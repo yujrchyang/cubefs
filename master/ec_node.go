@@ -1435,7 +1435,7 @@ func (c *Cluster) checkEcDiskRecoveryProgress() {
 		if !ep.isRecover {
 			return true
 		}
-
+		passedTime = time.Now().Unix() - ep.modifyTime
 		if ep.isEcFilesCatchUp() && ep.isEcDataCatchUp() && len(ep.ecReplicas) >= int(ep.DataUnitsNum+ep.ParityUnitsNum) && passedTime > 2*defaultIntervalToCheckHeartbeat {
 			ep.RLock()
 			ep.isRecover = false

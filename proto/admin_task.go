@@ -121,8 +121,89 @@ func NewAdminTask(opCode uint8, opAddr string, request interface{}) (t *AdminTas
 	t.OpCode = opCode
 	t.Request = request
 	t.OperatorAddr = opAddr
-	t.ID = fmt.Sprintf("addr[%v]_op[%v]", t.OperatorAddr, t.OpCode)
+	t.ID = fmt.Sprintf("addr[%v]_op[%v]", t.OperatorAddr, t.opCodeToString())
 	t.CreateTime = time.Now().Unix()
+	return
+}
+
+func (t *AdminTask) opCodeToString() (msg string) {
+	switch t.OpCode {
+	case OpDataNodeHeartbeat:
+		msg = "dataNodeHeartbeat"
+	case OpCreateDataPartition:
+		msg = "createDataPartition"
+	case OpDeleteDataPartition:
+		msg = "deleteDataPartition"
+	case OpLoadDataPartition:
+		msg = "loadDataPartition"
+	case OpReplicateFile:
+		msg = "replicateFile"
+	case OpDeleteFile:
+		msg = "deleteFile"
+	case OpDecommissionDataPartition:
+		msg = "decommissionDataPartition"
+	case OpAddDataPartitionRaftMember:
+		msg = "addDataPartitionRaftMember"
+	case OpRemoveDataPartitionRaftMember:
+		msg = "removeDataPartitionRaftMember"
+	case OpResetDataPartitionRaftMember:
+		msg = "resetDataPartitionRaftMember"
+	case OpDataPartitionTryToLeader:
+		msg = "dataPartitionTryToLeader"
+	case OpSyncDataPartitionReplicas:
+		msg = "syncDataPartitionReplicas"
+	case OpAddDataPartitionRaftLearner:
+		msg = "addDataPartitionRaftLearner"
+	case OpPromoteDataPartitionRaftLearner:
+		msg = "promoteDataPartitionRaftLearner"
+	case OpMetaNodeHeartbeat:
+		msg = "metaNodeHeartbeat"
+	case OpCreateMetaPartition:
+		msg = "createMetaPartition"
+	case OpDeleteMetaPartition:
+		msg = "deleteMetaPartition"
+	case OpUpdateMetaPartition:
+		msg = "updateMetaPartition"
+	case OpLoadMetaPartition:
+		msg = "loadMetaPartition"
+	case OpDecommissionMetaPartition:
+		msg = "decommissionMetaPartition"
+	case OpAddMetaPartitionRaftMember:
+		msg = "addMetaPartitionRaftMember"
+	case OpRemoveMetaPartitionRaftMember:
+		msg = "removeMetaPartitionRaftMember"
+	case OpMetaPartitionTryToLeader:
+		msg = "metaPartitionTryToLeader"
+	case OpResetMetaPartitionRaftMember:
+		msg = "resetMetaPartitionRaftMember"
+	case OpAddMetaPartitionRaftLearner:
+		msg = "addMetaPartitionRaftLearner"
+	case OpPromoteMetaPartitionRaftLearner:
+		msg = "promoteMetaPartitionRaftLearner"
+	case OpMetaGetExtentsNoModifyAccessTime:
+		msg = "metaGetExtentsNoModifyAccessTime"
+	case OpEcNodeHeartbeat:
+		msg = "ecNodeHeartbeat"
+	case OpCreateEcDataPartition:
+		msg = "createEcDataPartition"
+	case OpDeleteEcDataPartition:
+		msg = "deleteEcDataPartition"
+	case OpChangeEcPartitionMembers:
+		msg = "changeEcPartitionMembers"
+	case OpIssueMigrationTask:
+		msg = "issueMigrationTask"
+	case OpStopMigratingByDatapartitionTask:
+		msg = "stopMigratingByDataPartitionTask"
+	case OpStopMigratingByNodeTask:
+		msg = "stopMigratingByNodeTask"
+	case OpCodecNodeHeartbeat:
+		msg = "codecNodeHeartbeat"
+	case OpFlashNodeHeartbeat:
+		msg = "flashNodeHeartbeat"
+	}
+	if msg == "" {
+		msg = fmt.Sprintf("%v", t.OpCode)
+	}
 	return
 }
 

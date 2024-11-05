@@ -35,6 +35,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
 			return true
 		}
+		passedTime = time.Now().Unix() - partition.modifyTime
 		if partition.isDataCatchUpInStrictMode() && partition.allReplicaHasRecovered() && passedTime > 2*defaultIntervalToCheckHeartbeat {
 			partition.RLock()
 			if partition.isRecover {
