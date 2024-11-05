@@ -95,6 +95,8 @@ func TestRecorder(t *testing.T) {
 	}
 	followerDownTests := []string{
 		F1_complete_1,
+		F2_complete_1,
+		F2_complete_2,
 	}
 	for _, name := range followerDownTests{
 		tt := raftTestCasesForRecorder[name]
@@ -282,6 +284,7 @@ func TestRecorder_truncate(t *testing.T) {
 	truncateServer.raft.Truncate(1, truncateIndex)
 	time.Sleep(1*time.Second)
 	fi, _ := truncateServer.store[1].FirstIndex()
+	// 由于nodeID=3落后，因此只能truncate到actualTruncIndex
 	assert.Equal(t, actualTruncIndex+1, fi, "get first index for actual truncate index")
 
 	for _, s := range servers {
@@ -291,6 +294,7 @@ func TestRecorder_truncate(t *testing.T) {
 	truncateServer.raft.Truncate(1, truncateIndex)
 	time.Sleep(1*time.Second)
 	fi, _ = truncateServer.store[1].FirstIndex()
+	// 取消nodeID=3的append限制后，可以truncate到指定的truncateIndex
 	assert.Equal(t, truncateIndex+1, fi, "get first index")
 
 	wg.Add(1)
@@ -300,6 +304,7 @@ func TestRecorder_truncate(t *testing.T) {
 	}(dataLen)
 	dataLen += putDataStep
 	wg.Wait()
+	waitForApply(servers, 1, w)
 
 	// check data
 	err = verifyStrictRestoreValue(dataLen, servers, w)

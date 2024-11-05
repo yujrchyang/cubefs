@@ -103,7 +103,7 @@ func stepRecorder(r *raftFsm, m *proto.Message) {
 		//		6	|		|	100	|		|	100	|
 		// 假设以上场景 F1和F2 宕机，需要 R1和R2 给 F3 投票，此时不能采用正常的投票判断条件(isUpToDate)，而需要比较激进的：只要本轮没投过票给其它节点，就可以投给当前节点
 		// 但该策略有可能导致在正常无宕机的情况下，扰乱投票秩序，造成非必要的日志补全消息，需要上线后观察是否有影响
-		if (!r.config.LeaseCheck || r.leader == NoLeader) && (r.vote == NoLeader || r.vote == m.From) && (fpri >= lpri) {
+		if (!r.config.LeaseCheck || r.leader == NoLeader) && (r.vote == NoLeader || r.vote == m.From) && r.raftLog.isUpToDateForRecorder(m.Index, m.LogTerm, fpri, lpri) {
 			r.electionElapsed = 0
 			if logger.IsEnableDebug() {
 				logger.Debug("ID[%v] raft[%v] [logterm: %d, index: %d, vote: %v startCommit: %d] voted for %v [logterm: %d, index: %d] at term %d.",
@@ -133,6 +133,13 @@ func stepRecorder(r *raftFsm, m *proto.Message) {
 		return
 
 	case proto.LeaseMsgTimeout:
+		if r.leader == m.From {
+			r.electionElapsed = 0
+			r.leader = NoLeader
+			if logger.IsEnableDebug() {
+				logger.Debug("raft[%v] term[%v] set leader to NoLeader because receive LeaseMsgTimeout from[%v].", r.id, r.term, m.From)
+			}
+		}
 		proto.ReturnMessage(m)
 		return
 
@@ -170,7 +177,21 @@ func stepRecorder(r *raftFsm, m *proto.Message) {
 }
 
 func (r *raftFsm) tickRecord() {
-	// do nothing?
+	r.electionElapsed++
+	timeout := false
+	// check recorder lease (2 * electiontimeout)
+	if r.config.LeaseCheck && r.leader != NoLeader && r.state == stateRecorder {
+		timeout = r.electionElapsed >= (r.config.ElectionTick << 1)
+	} else {
+		timeout = r.pastElectionTimeout()
+	}
+	if timeout {
+		if logger.IsEnableDebug() {
+			logger.Debug("raft[%v] term[%v] set leader to NoLeader because of electionElapsed[%v] timeout.", r.id, r.term, r.electionElapsed)
+		}
+		r.electionElapsed = 0
+		r.leader = NoLeader
+	}
 }
 
 func (r *raftFsm) bcastGetApplyIndex(truncateIndex uint64) {
