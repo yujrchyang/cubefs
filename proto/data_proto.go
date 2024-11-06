@@ -155,6 +155,7 @@ type StatInfo struct {
 	Zone             string       `json:"zone"`
 	VersionInfo      VersionValue `json:"versionInfo"`
 	StartTime        string       `json:"startTime"`
+	MNStartTime      string       `json:"statTime"`
 	CPUUsageList     []float64    `json:"cpuUsageList"`
 	MaxCPUUsage      float64      `json:"maxCPUUsage"`
 	CPUCoreNumber    int          `json:"cpuCoreNumber"`

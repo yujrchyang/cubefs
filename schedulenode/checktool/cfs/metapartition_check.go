@@ -469,7 +469,7 @@ func checkRaftStoppedReplica(host *ClusterHost, replicaRaftStatusMap map[string]
 				log.LogErrorf("host: %v, address: %v, get stat info failed, err:%v", host.host, replicaAddr, err)
 				continue
 			}
-			sTime, err := time.Parse("2006-01-02 15:04:05", stat.StartTime)
+			sTime, err := time.ParseInLocation("2006-01-02 15:04:05", stat.StartTime, time.Local)
 			if err != nil {
 				log.LogErrorf("host: %v, address: %v, err:%v", host.host, replicaAddr, err)
 				continue
