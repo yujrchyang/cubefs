@@ -3,7 +3,7 @@ package mock
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/repl"
-	"github.com/cubefs/cubefs/util/connpool"
+	"github.com/cubefs/cubefs/util/connman"
 	"hash/crc32"
 	"io"
 	"net"
@@ -118,7 +118,7 @@ func RunMockTest(config *MockTestConfig, t *testing.T) {
 		hostAddrs = append(hostAddrs, hostAddress)
 	}
 
-	repl.SetConnectPool(connpool.NewConnectPool())
+	repl.SetConnectPool(connman.NewConnectionManager(connman.NewDefaultConfig()))
 
 	// Start all mockHosts
 	for _, host := range mockHosts {

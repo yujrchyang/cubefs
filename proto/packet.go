@@ -149,10 +149,10 @@ const (
 	OpSyncRandomWriteV3 uint8 = 0x51
 
 	// Operations for raft recorder
-	OpAddMetaPartitionRaftRecorder    	uint8 = 0x52
-	OpRemoveMetaPartitionRaftRecorder 	uint8 = 0x53
-	OpCreateMetaRecorder 				uint8 = 0x54
-	OpDeleteMetaRecorder 				uint8 = 0x55
+	OpAddMetaPartitionRaftRecorder    uint8 = 0x52
+	OpRemoveMetaPartitionRaftRecorder uint8 = 0x53
+	OpCreateMetaRecorder              uint8 = 0x54
+	OpDeleteMetaRecorder              uint8 = 0x55
 
 	// Operations: Master -> DataNode
 	OpCreateDataPartition             uint8 = 0x60
@@ -169,8 +169,7 @@ const (
 	OpAddDataPartitionRaftLearner     uint8 = 0x6B
 	OpPromoteDataPartitionRaftLearner uint8 = 0x6C
 	OpResetDataPartitionRaftMember    uint8 = 0x6D
-
-	OpBatchTrashExtent uint8 = 0x6E
+	OpBatchTrashExtent                uint8 = 0x6E
 
 	// Operations: MultipartInfo
 	OpCreateMultipart   uint8 = 0x70
@@ -574,6 +573,8 @@ func GetOpMsg(opcode uint8) (m string) {
 		m = "OpListMultiparts"
 	case OpBatchDeleteExtent:
 		m = "OpBatchDeleteExtent"
+	case OpBatchTrashExtent:
+		m = "OpBatchTrashExtent"
 	case OpMetaCursorReset:
 		m = "OpMetaCursorReset"
 	case OpSyncDataPartitionReplicas:
@@ -1100,4 +1101,11 @@ func NewPacketToGetAllExtentInfo(ctx context.Context, partitionID uint64) (p *Pa
 	p.ReqID = GenerateRequestID()
 	p.SetCtx(ctx)
 	return
+}
+
+func (p *Packet) ParseRequestSource() (source RequestSource) {
+	if len(p.Arg) > 1 {
+		return RequestSource(p.Arg[1])
+	}
+	return SourceBase
 }

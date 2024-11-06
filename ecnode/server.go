@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/connman"
 	"net"
 	"net/http"
 	"regexp"
@@ -30,7 +31,6 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 
@@ -53,7 +53,7 @@ const (
 
 var (
 	localIP, serverPort, cellName string
-	gConnPool                     = connpool.NewConnectPool()
+	gConnPool                     = connman.NewConnectionManager(connman.NewDefaultConfig())
 	MasterClient                  = masterSDK.NewMasterClient(nil, false)
 )
 

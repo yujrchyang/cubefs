@@ -1533,7 +1533,7 @@ func (ep *EcPartition) repairAndTinyDelScheduler() {
 
 func (ep *EcPartition) repairOriginTinyDelInfo(readHost string) (err error) {
 	var (
-		conn *net.TCPConn
+		conn net.Conn
 	)
 	defer func() {
 		if err != nil {
@@ -1575,7 +1575,7 @@ func (ep *EcPartition) repairOriginTinyDelInfo(readHost string) (err error) {
 
 func (ep *EcPartition) repairTinyDelete(readHost string, maxTinyDelCount int64) (err error) {
 	var (
-		conn *net.TCPConn
+		conn net.Conn
 	)
 	defer func() {
 		if err != nil {

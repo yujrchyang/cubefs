@@ -17,6 +17,7 @@ package repl
 import (
 	"container/list"
 	"fmt"
+	"github.com/cubefs/cubefs/util/connman"
 	"net"
 	"runtime/debug"
 	"sync"
@@ -26,13 +27,12 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 )
 
 var (
-	gConnPool       *connpool.ConnectPool
+	gConnPool       *connman.ConnManager
 	ReplProtocalMap sync.Map
 )
 
@@ -74,11 +74,8 @@ type ReplProtocol struct {
 	remote               string
 	stopError            string
 
-	forwardPacketCheckList     *list.List
-	forwardPacketCheckListLock sync.RWMutex
-	forwardPacketCheckCnt      uint64
-	globalErr                  error
-	firstErrPkg                *Packet
+	globalErr   error
+	firstErrPkg *Packet
 }
 
 func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet, remote string) error,
@@ -101,7 +98,6 @@ func NewReplProtocol(inConn *net.TCPConn, prepareFunc func(p *Packet, remote str
 	rp.postFunc = postFunc
 	rp.allThreadStats = make([]int, 3)
 	rp.exited = ReplRuning
-	rp.forwardPacketCheckList = list.New()
 	rp.replId = proto.GenerateRequestID()
 	ReplProtocalMap.Store(rp.replId, rp)
 	rp.remote = rp.sourceConn.RemoteAddr().String()
@@ -185,8 +181,8 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 	request.replSource = rp.remote
 	rp.addGetNumFromPacketPoolCnt()
 	if err != nil {
-		rp.forceCleanDataPoolFlag(request, "readPkgAndPrepare")
-		rp.forceCleanPacketPoolFlag(request, "readPkgAndPrepare")
+		rp.cleanDataPoolFlag(request, "readPkgAndPrepare")
+		rp.cleanPacketPoolFlag(request, "readPkgAndPrepare")
 		err = fmt.Errorf("%v local(%v)->remote(%v) recive error(%v)", ActionreadPkgAndPrepare, rp.sourceConn.LocalAddr().String(),
 			rp.sourceConn.RemoteAddr().String(), err)
 		return
@@ -230,6 +226,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (err error) {
 	var failure = 0
 	var maxFailure int
+
 	if request.quorum > 0 && len(request.followersAddrs)+1 >= request.quorum {
 		maxFailure = len(request.followersAddrs) - (request.quorum - 1)
 	} else {
@@ -247,9 +244,15 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (err error) {
 			multiErr = fmt.Errorf("%v: %v", err, multiErr)
 		}
 	}
+
+	// connection pool with blacklist is for cross-region-ha volumes only
+	useConnWithBlackList := request.quorum > 0 && request.quorum < len(request.followersAddrs)+1
+
 	for index := 0; index < len(request.followersAddrs); index++ {
+		request.addDataPoolRefCnt()
+		request.addPacketPoolRefCnt()
 		var transport *FollowerTransport
-		if transport, forwardErr = rp.allocateFollowersConns(request, index); forwardErr != nil {
+		if transport, forwardErr = rp.allocateFollowersConns(request, index, useConnWithBlackList); forwardErr != nil {
 			rp.setGlobalErrAndFirstPkg(request, forwardErr)
 			log.LogErrorf("replID(%v) firstErrAndPkg(%v,%v),reqID(%v) Op(%v) forwardErr(%v)",
 				rp.replId, rp.globalErr, rp.firstErrPkg, request.ReqID, request.GetOpMsg(), forwardErr)
@@ -281,8 +284,6 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (err error) {
 			}
 			err = nil
 		}
-		request.addDataPoolRefCnt()
-		request.addPacketPoolRefCnt()
 	}
 
 	return
@@ -381,52 +382,6 @@ func (rp *ReplProtocol) autoReleaseFollowerTransport() {
 		delete(rp.followerConnects, k)
 	}
 	rp.lock.Unlock()
-}
-
-func (rp *ReplProtocol) putLeaderPacketToCheckList(request *Packet) {
-	if request.IsLeaderPacket() {
-		rp.packetListLock.Lock()
-		atomic.AddUint64(&rp.forwardPacketCheckCnt, 1)
-		rp.forwardPacketCheckList.PushBack(request)
-		rp.packetListLock.Unlock()
-	}
-}
-
-const (
-	MaxForwardPacketCheckCnt = 1000
-)
-
-func (rp *ReplProtocol) checkForwardPacketPost() {
-	if atomic.LoadUint64(&rp.forwardPacketCheckCnt)%MaxForwardPacketCheckCnt == 0 {
-		return
-	}
-	maxFreeCnt := 100
-	freeCnt := 0
-	rp.packetListLock.Lock()
-	defer rp.packetListLock.Unlock()
-	if rp.forwardPacketCheckList.Len() == 0 {
-		return
-	}
-	for e := rp.forwardPacketCheckList.Front(); e != nil; e = e.Next() {
-		p := e.Value.(*Packet)
-		if p.canPutToDataPool() {
-			rp.cleanDataPoolFlag(p, "checkForwardPacketPost")
-			rp.forwardPacketCheckList.Remove(e)
-			freeCnt++
-			continue
-		}
-		if freeCnt >= maxFreeCnt {
-			break
-		}
-	}
-	if freeCnt > 0 {
-		log.LogDebugf(fmt.Sprintf("repl(%v) ReplProtocol(%v) "+
-			"getNumFromDataPool(%v) putNumToDataPool(%v)  currentFreeCnt(%v)",
-			rp.replId, rp.sourceConn.RemoteAddr().String(), atomic.LoadInt64(&rp.getNumFromDataPool),
-			atomic.LoadInt64(&rp.putNumToDataPool), freeCnt))
-	}
-	atomic.StoreUint64(&rp.forwardPacketCheckCnt, 0)
-
 }
 
 func (rp *ReplProtocol) exitGoRoutine(index int) {
@@ -537,9 +492,9 @@ func (rp *ReplProtocol) checkLocalResultAndReceiveAllFollowerResponse(request *P
 	}
 
 	for index := 0; index < len(request.followersAddrs); index++ {
+		request.DecDataPoolRefCnt()
+		request.DecPacketPoolRefCnt()
 		if forwardErr := <-request.errorCh; forwardErr != nil {
-			// 来自某Follower的失败响应
-			request.DecPacketPoolRefCnt()
 			// 组合所有错误
 			if multiError == nil {
 				multiError = forwardErr
@@ -555,8 +510,6 @@ func (rp *ReplProtocol) checkLocalResultAndReceiveAllFollowerResponse(request *P
 			}
 
 		} else {
-			// 来自某Follower的成功响应
-			request.DecPacketPoolRefCnt()
 			if forwardSuccess += 1; forwardSuccess >= minForwardSuccess {
 				// 已成功数量满足了最小成功数量要求，判定为成功
 				return
@@ -613,7 +566,7 @@ func (rp *ReplProtocol) Stop(stopErr error) {
 
 // Allocate the connections to the followers. We use partitionId + extentId + followerAddr as the key.
 // Note that we need to ensure the order of packets sent to the datanode is consistent here.
-func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (transport *FollowerTransport, err error) {
+func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int, useBlackList bool) (transport *FollowerTransport, err error) {
 	rp.lock.RLock()
 	transport = rp.followerConnects[p.followersAddrs[index]]
 	if transport != nil {
@@ -621,7 +574,7 @@ func (rp *ReplProtocol) allocateFollowersConns(p *Packet, index int) (transport 
 	}
 	rp.lock.RUnlock()
 	if transport == nil {
-		transport, err = NewFollowersTransport(p.followersAddrs[index], rp.replId)
+		transport, err = NewFollowersTransport(p.followersAddrs[index], rp.replId, useBlackList)
 		if err != nil {
 			return
 		}
@@ -655,8 +608,6 @@ func (rp *ReplProtocol) cleanToBeProcessCh() {
 				return
 			}
 			_ = rp.postFunc(p)
-			rp.forceCleanDataPoolFlag(p, "cleanToBeProcessCh")
-			rp.forceCleanPacketPoolFlag(p, "cleanToBeProcessCh")
 		default:
 			return
 		}
@@ -671,9 +622,7 @@ func (rp *ReplProtocol) cleanResponseCh() {
 				return
 			}
 			_ = rp.postFunc(p)
-			rp.forceCleanDataPoolFlag(p, "cleanResponseCh")
 			log.LogErrorf("Action[cleanResponseCh] request(%v) because (%v) elapsed (%v)", p.GetUniqueLogId(), rp.stopError, p.Elapsed())
-			rp.forceCleanPacketPoolFlag(p, "cleanResponseCh")
 		default:
 			return
 		}
@@ -724,29 +673,6 @@ func (rp *ReplProtocol) cleanPacketPoolFlag(p *Packet, srcFunc string) {
 	}
 }
 
-func (rp *ReplProtocol) forceCleanDataPoolFlag(p *Packet, srcFunc string) {
-	var ok bool
-	if !p.isUseDataPool() {
-		return
-	}
-	if ok = p.forceCleanDataPoolFlag(srcFunc); ok {
-		rp.addPutNumFromDataPoolCnt()
-		return
-	}
-
-}
-
-func (rp *ReplProtocol) forceCleanPacketPoolFlag(p *Packet, srcFunc string) {
-	var ok bool
-	if !p.isUsePacketPool() {
-		return
-	}
-	if ok = p.forceCleanPacketPoolFlag(srcFunc); ok {
-		rp.addPutNumFromPacketPoolCnt()
-		return
-	}
-}
-
 func (rp *ReplProtocol) addGetNumFromDataPoolCnt() {
 	atomic.AddInt64(&rp.getNumFromDataPool, 1)
 }
@@ -780,18 +706,9 @@ func (rp *ReplProtocol) cleanResource() {
 		request := e.Value.(*Packet)
 		_ = rp.postFunc(request)
 		log.LogErrorf("Action[cleanResource] request(%v) because (%v) elapsed (%v)", request.GetUniqueLogId(), rp.stopError, request.Elapsed())
-		rp.forceCleanDataPoolFlag(request, "cleanResourcePacketList")
-		rp.forceCleanPacketPoolFlag(request, "cleanResourcePacketList")
-	}
-
-	for e := rp.forwardPacketCheckList.Front(); e != nil; e = e.Next() {
-		request := e.Value.(*Packet)
-		rp.forceCleanDataPoolFlag(request, "cleanResourceforwardPacketCheckList")
-		rp.forceCleanPacketPoolFlag(request, "cleanResourceforwardPacketCheckList")
 	}
 	rp.cleanResponseCh()
 	rp.packetList = list.New()
-	rp.forwardPacketCheckList = list.New()
 	rp.packetList = nil
 	rp.followerConnects = nil
 	rp.packetListLock.Unlock()

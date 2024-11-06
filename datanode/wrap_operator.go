@@ -90,6 +90,8 @@ func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 		s.handleMarkDeletePacket(p, c)
 	case proto.OpBatchDeleteExtent:
 		s.handleBatchMarkDeletePacket(p, c)
+	case proto.OpBatchTrashExtent:
+		s.handleBatchTrashExtentPacket(p, c)
 	case proto.OpRandomWrite, proto.OpSyncRandomWrite:
 		s.handleRandomWritePacket(p)
 	case proto.OpLockOrUnlockExtent:
@@ -329,6 +331,35 @@ func (s *DataNode) handleMarkDeletePacket(p *repl.Packet, c net.Conn) {
 	}
 	p.PacketOkReply()
 	return
+}
+
+func (s *DataNode) handleBatchTrashExtentPacket(p *repl.Packet, c net.Conn) {
+	var err error
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[handleBatchTrashExtentPacket] packet(%v) packet.data(%v) err(%v).", p.GetUniqueLogId(), string(p.Data), err)
+		}
+		p.PacketOkReply()
+	}()
+	remote := c.RemoteAddr().String()
+	partition := p.Object.(*DataPartition)
+	toObject := partition.monitorData[proto.ActionBatchTrashExtent].BeforeTp()
+
+	var keys []*proto.InodeExtentKey
+	if err = json.Unmarshal(p.Data, &keys); err != nil {
+		return
+	}
+	for _, key := range keys {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("action[handleBatchTrashExtentPacket] handleBatchTrashExtentPacket Delete PartitionID(%v)_InodeID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
+				p.PartitionID, key.InodeId, key.ExtentId, key.ExtentOffset, key.Size, remote)
+		}
+		err = partition.TrashExtent(key.ExtentId, key.InodeId, key.Size)
+		if err != nil {
+			log.LogErrorf("action[handleBatchTrashExtentPacket] trash extent failed, packet(%v) from(%v) err(%v)", p.GetUniqueLogId(), remote, err)
+		}
+	}
+	toObject.AfterTp(uint64(len(keys)))
 }
 
 // Handle OpMarkDelete packet.
@@ -579,7 +610,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	}
 
 	// isForceRead 函数用来检查读请求包是否有强制读表示，强制读请求会不检查请求所读数据区域是否存在风险
-	var isForceRead = len(p.Arg) > 0 && p.Arg[0] == 1
+	var isForceRead = len(p.Arg) > 0 && p.Arg[0] == proto.ForceReadFlag
 
 	if !isForceRead && partition.CheckRisk(p.ExtentID, uint64(p.ExtentOffset), uint64(p.Size)) {
 		// 正常非强制读请求下，若请求所读数据区域存在风险，则拒绝响应。
@@ -591,6 +622,7 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 	if isRepairRead {
 		action = proto.ActionRepairRead
 	}
+	limitOp := proto.GetOpByReadSource(p.Opcode, p.ParseRequestSource())
 
 	var dataBuffer []byte
 	if needReplySize >= unit.ReadBlockSize {
@@ -608,11 +640,11 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 		reply := repl.NewStreamReadResponsePacket(p.Ctx(), p.ReqID, p.PartitionID, p.ExtentID)
 		reply.StartT = p.StartT
 		currReadSize := uint32(unit.Min(int(needReplySize), unit.ReadBlockSize))
-		err = partition.limit(context.Background(), int(p.Opcode), currReadSize, multirate.FlowNetwork)
+		err = partition.limit(context.Background(), limitOp, currReadSize, multirate.FlowNetwork)
 		if err != nil {
 			return
 		}
-		err = partition.limit(context.Background(), int(p.Opcode), currReadSize, multirate.FlowDisk)
+		err = partition.limit(context.Background(), limitOp, currReadSize, multirate.FlowDisk)
 		if err != nil {
 			return
 		}
@@ -1660,7 +1692,7 @@ const (
 
 func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bool, err error) {
 	var (
-		conn       *net.TCPConn
+		conn       net.Conn
 		leaderAddr string
 	)
 
@@ -1696,7 +1728,7 @@ func (s *DataNode) forwardToRaftLeader(dp *DataPartition, p *repl.Packet) (ok bo
 
 func (s *DataNode) forwardToRaftLeaderWithTimeOut(dp *DataPartition, p *repl.Packet) (ok bool, err error) {
 	var (
-		conn       *net.TCPConn
+		conn       net.Conn
 		leaderAddr string
 	)
 

@@ -18,6 +18,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/connman"
 	"io/ioutil"
 	"net"
 	"os"
@@ -39,7 +40,6 @@ import (
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/async"
 	"github.com/cubefs/cubefs/util/config"
-	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/cpu"
 	utilErrors "github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -61,7 +61,7 @@ var (
 	ErrPartitionNil             = errors.New("partition is nil")
 	LocalIP                     string
 	LocalServerPort             string
-	gConnPool                   = connpool.NewConnectPool()
+	gConnPool                   = connman.NewConnectionManager(connman.NewDefaultConfig())
 	MasterClient                = masterSDK.NewMasterClient(nil, false)
 	MasterLBDomainClient        = masterSDK.NewMasterClientWithLBDomain("", false)
 	gHasLoadDataPartition       bool
@@ -84,9 +84,11 @@ const (
 )
 
 const (
-	ModuleName          = "dataNode"
-	SystemStartTimeFile = "SYS_START_TIME"
-	MAX_OFFSET_OF_TIME  = 5
+	ModuleName           = "dataNode"
+	SystemStartTimeFile  = "SYS_START_TIME"
+	DataSettingsFile     = "data_settings.json"
+	TempDataSettingsFile = "data_settings.tmp"
+	MAX_OFFSET_OF_TIME   = 5
 )
 
 const (
@@ -126,6 +128,8 @@ type DataNode struct {
 	processStatInfo          *statinfo.ProcessStatInfo
 	topoManager              *topology.TopologyManager
 	transferDeleteLock       sync.Mutex
+	nodeSettings             *NodeSettings
+	nodeSettingLock          sync.RWMutex
 }
 
 func NewServer() *DataNode {
@@ -161,6 +165,11 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	if err = s.parseConfig(cfg); err != nil {
 		return
 	}
+
+	if err = s.parseNodeSettings(); err != nil {
+		return err
+	}
+
 	repl.SetConnectPool(gConnPool)
 	if err = s.register(); err != nil {
 		err = fmt.Errorf("regiter failed: %v", err)
@@ -275,6 +284,91 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("DataNode: parse config: port %v", s.port)
 	log.LogInfof("DataNode: parse config: zoneName %v ", s.zoneName)
 	return
+}
+
+type SwitchCollection struct {
+	DisableBlackList bool `json:"disableBlackList"`
+	// SyncExtent bool `json:"syncExtent"`
+}
+
+type NodeSettings struct {
+	SwitchCollection    *SwitchCollection `json:"switchCollection"`
+	TimeoutCollection   interface{}       `json:"timeoutCollection,omitempty"`
+	ThresholdCollection interface{}       `json:"thresholdCollection,omitempty"`
+	UpdateTime          string            `json:"updateTime"`
+}
+
+// parseNodeSettings
+// 1 switches: disableBlacklist,...
+// 2 timeouts:
+// 3 thresholds:
+// ...
+func (s *DataNode) parseNodeSettings() (err error) {
+	s.nodeSettingLock.RLock()
+	defer s.nodeSettingLock.RUnlock()
+	s.nodeSettings = &NodeSettings{
+		SwitchCollection: &SwitchCollection{},
+	}
+	settingFileName := path.Join(getBasePath(), DataSettingsFile)
+	_, err = os.Stat(settingFileName)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.LogWarnf("action[parseNodeSettings] %v not exist, using default node setting", settingFileName)
+			err = nil
+		}
+		return
+	}
+	var c *config.Config
+	c, err = config.LoadConfigFile(settingFileName)
+	if err != nil {
+		return
+	}
+
+	// load switches
+	switches := &SwitchCollection{}
+	bufSwitch := c.GetJsonObjectBytes("switchCollection")
+	if err = json.Unmarshal(bufSwitch, switches); err != nil {
+		return err
+	}
+	s.nodeSettings.SwitchCollection = switches
+
+	// init switches
+	if s.nodeSettings.SwitchCollection.DisableBlackList {
+		gConnPool.DisableBlackList(true)
+		log.LogInfof("action[parseNodeSettings] connection manager black list disabled")
+	}
+	return nil
+}
+
+func (s *DataNode) persistNodeSettings() (err error) {
+	var newData []byte
+	s.nodeSettings.UpdateTime = time.Now().Format(TimeLayout)
+	if newData, err = json.Marshal(s.nodeSettings); err != nil {
+		return
+	}
+	tmpSettingFileName := path.Join(getBasePath(), TempDataSettingsFile)
+	settingFileName := path.Join(getBasePath(), DataSettingsFile)
+
+	var tmp *os.File
+	if tmp, err = os.OpenFile(tmpSettingFileName, os.O_CREATE|os.O_RDWR|os.O_TRUNC|os.O_APPEND, 0666); err != nil {
+		return
+	}
+	defer func() {
+		_ = tmp.Close()
+		if err != nil {
+			_ = os.Remove(tmpSettingFileName)
+		}
+	}()
+	if _, err = tmp.Write(newData); err != nil {
+		return
+	}
+	if err = tmp.Sync(); err != nil {
+		return
+	}
+	if err = os.Rename(tmpSettingFileName, settingFileName); err != nil {
+		return
+	}
+	return err
 }
 
 func (s *DataNode) parseMasterAddrs(cfg *config.Config) (masterDomain string, masterAddrs []string) {

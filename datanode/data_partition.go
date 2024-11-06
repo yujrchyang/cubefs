@@ -469,6 +469,11 @@ func (dp *DataPartition) MarkDelete(marker storage.Marker) (err error) {
 	return
 }
 
+func (dp *DataPartition) TrashExtent(extent, inode uint64, size uint32) (err error) {
+	err = dp.extentStore.TrashExtent(extent, inode, size)
+	return
+}
+
 func (dp *DataPartition) FlushDelete(limit int) (deleted, remain int, err error) {
 
 	const (
@@ -813,7 +818,7 @@ func (dp *DataPartition) doStreamFixTinyDeleteRecord(ctx context.Context, repair
 		originLocalTinyDeleteSize int64
 		localTinyDeleteFileSize   int64
 		err                       error
-		conn                      *net.TCPConn
+		conn                      net.Conn
 		isRealSync                bool
 	)
 
@@ -1168,7 +1173,7 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 		prBuilder.SetBandType(bandType)
 		stBuilder.SetInBytes(int(size))
 	case int(proto.OpStreamRead), int(proto.OpRead), int(proto.OpStreamFollowerRead), int(proto.OpTinyExtentRepairRead), int(proto.OpTinyExtentAvaliRead),
-		int(proto.OpExtentRepairRead), proto.OpExtentRepairReadToRollback_, proto.OpExtentRepairReadToComputeCrc_, proto.OpExtentReadToGetCrc_:
+		int(proto.OpExtentRepairRead), proto.OpExtentRepairReadToRollback_, proto.OpExtentRepairReadToComputeCrc_, proto.OpExtentReadToGetCrc_, proto.OpStreamFollowerReadSrcFlashNode_:
 		prBuilder.SetBandType(bandType).Properties()
 		stBuilder.SetOutBytes(int(size)).Stat()
 	default:
@@ -1195,6 +1200,10 @@ func (dp *DataPartition) getCacheView() (dataPartition *topology.DataPartition, 
 		return nil, fmt.Errorf("topo manager is nil")
 	}
 	return dp.topologyManager.GetPartition(dp.volumeID, dp.partitionID)
+}
+
+func (dp *DataPartition) markDeleteTrashExtents(keepTime uint64) uint64 {
+	return dp.extentStore.MarkDeleteTrashExtents(keepTime)
 }
 
 // partition op by raft
@@ -1736,8 +1745,8 @@ func (dp *DataPartition) startRaft() (err error) {
 		GetStartIndex:      getStartIndex,
 		WALContinuityCheck: dp.isNeedFaultCheck(),
 		WALContinuityFix:   dp.isNeedFaultCheck(),
-		WALSync: 			true,
-		WALSyncRotate: 		true,
+		WALSync:            true,
+		WALSyncRotate:      true,
 		Mode:               dp.config.Mode,
 		StorageListener: raftstore.NewStorageListenerBuilder().
 			ListenStoredEntry(dp.listenStoredRaftLogEntry).
@@ -2341,7 +2350,7 @@ func (dp *DataPartition) findMaxID(allIDs map[string]uint64) (maxID uint64, host
 // Get the partition size from the leader.
 func (dp *DataPartition) getLeaderPartitionSize(ctx context.Context, maxExtentID uint64) (size uint64, err error) {
 	var (
-		conn *net.TCPConn
+		conn net.Conn
 	)
 
 	p := NewPacketToGetPartitionSize(ctx, dp.partitionID)
@@ -2382,7 +2391,7 @@ func (dp *DataPartition) getLeaderPartitionSize(ctx context.Context, maxExtentID
 // Get the MaxExtentID partition  from the leader.
 func (dp *DataPartition) getLeaderMaxExtentIDAndPartitionSize(ctx context.Context) (maxExtentID, PartitionSize uint64, err error) {
 	var (
-		conn *net.TCPConn
+		conn net.Conn
 	)
 
 	p := NewPacketToGetMaxExtentIDAndPartitionSIze(ctx, dp.partitionID)
@@ -2439,7 +2448,7 @@ func (dp *DataPartition) broadcastTruncateRaftWAL(ctx context.Context, truncateI
 		go func(target string) {
 			defer wg.Done()
 			p := NewPacketToBroadcastMinAppliedID(ctx, dp.partitionID, truncateID)
-			var conn *net.TCPConn
+			var conn net.Conn
 			conn, err = gConnPool.GetConnect(target)
 			if err != nil {
 				return
@@ -2616,7 +2625,7 @@ func (dp *DataPartition) getRemotePersistedAppliedID(ctx context.Context, target
 }
 
 func (dp *DataPartition) sendTcpPacket(target string, p *repl.Packet, timeout, readTimeout int64) (err error) {
-	var conn *net.TCPConn
+	var conn net.Conn
 	start := time.Now().UnixNano()
 	defer func() {
 		if err != nil {
@@ -2968,7 +2977,7 @@ func (dp *DataPartition) getRemoteExtentInfoForValidateCRCWithRetry(ctx context.
 
 func (dp *DataPartition) getRemoteExtentInfoForValidateCRC(ctx context.Context, target string) (extentFiles []storage.ExtentInfoBlock, err error) {
 	var packet = proto.NewPacketToGetAllExtentInfo(ctx, dp.partitionID)
-	var conn *net.TCPConn
+	var conn net.Conn
 	if conn, err = gConnPool.GetConnect(target); err != nil {
 		err = errors.Trace(err, errorGetConnectMsg)
 		return
@@ -3280,7 +3289,7 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 			}
 			packet.Size = uint32(len(packet.Data))
 		}
-		var conn *net.TCPConn
+		var conn net.Conn
 		if conn, err = gConnPool.GetConnect(target); err != nil {
 			err = errors.Trace(err, fmt.Sprintf("get connection failed: %v", err))
 			return
@@ -3321,7 +3330,7 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 			packet.Data = buffer.Bytes()
 			packet.Size = uint32(len(packet.Data))
 		}
-		var conn *net.TCPConn
+		var conn net.Conn
 		if conn, err = gConnPool.GetConnect(target); err != nil {
 			err = errors.Trace(err, "get connection failed")
 			return
@@ -3374,7 +3383,7 @@ func (dp *DataPartition) getRemoteExtentInfo(ctx context.Context, extentType uin
 			packet.Data = buffer.Bytes()
 			packet.Size = uint32(len(packet.Data))
 		}
-		var conn *net.TCPConn
+		var conn net.Conn
 		if conn, err = gConnPool.GetConnect(target); err != nil {
 			err = errors.Trace(err, "get connection failed")
 			return
@@ -3795,7 +3804,7 @@ func (dp *DataPartition) generateBaseExtentIDTasks(repairTasks []*DataPartitionR
 
 func (dp *DataPartition) notifyFollower(ctx context.Context, task *DataPartitionRepairTask) (err error) {
 	p := repl.NewPacketToNotifyExtentRepair(ctx, dp.partitionID) // notify all the followers to repair
-	var conn *net.TCPConn
+	var conn net.Conn
 	target := task.addr
 	p.Data, _ = json.Marshal(task)
 	p.Size = uint32(len(p.Data))
@@ -3953,7 +3962,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 		}
 		request = repl.NewTinyExtentRepairReadPacket(ctx, dp.partitionID, remoteExtentInfo[storage.FileID], int(localExtentInfo[storage.Size]), int(sizeDiff), false)
 	}
-	var conn *net.TCPConn
+	var conn net.Conn
 	conn, err = gConnPool.GetConnect(source)
 	if err != nil {
 		return errors.Trace(err, "streamRepairExtent get conn from host(%v) error", source)

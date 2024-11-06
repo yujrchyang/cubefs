@@ -1,20 +1,15 @@
 package datanode
 
 import (
+	"bytes"
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/datanode/riskdata"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/repl"
-	"github.com/cubefs/cubefs/storage"
-	"github.com/cubefs/cubefs/util/cpu"
-	"github.com/cubefs/cubefs/util/diskusage"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/ttlstore"
-	"github.com/cubefs/cubefs/util/unit"
-	raftProto "github.com/tiglabs/raft/proto"
+	"github.com/cubefs/cubefs/util/connman"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/multirate"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -25,6 +20,17 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/datanode/riskdata"
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/repl"
+	"github.com/cubefs/cubefs/storage"
+	"github.com/cubefs/cubefs/util/cpu"
+	"github.com/cubefs/cubefs/util/diskusage"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/ttlstore"
+	"github.com/cubefs/cubefs/util/unit"
+	raftProto "github.com/tiglabs/raft/proto"
 )
 
 func (s *DataNode) registerHandler() {
@@ -70,6 +76,12 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/risk/stopFix", s.stopRiskFix)
 	http.HandleFunc("/getDataPartitionViewCache", s.getDataPartitionViewCache)
 	http.HandleFunc("/tinyExtents", s.getTinyExtents)
+	http.HandleFunc("/releaseTrashExtents", s.releaseTrashExtents)
+	http.HandleFunc("/getTrashExtents", s.getTrashExtents)
+	http.HandleFunc("/getRecentDeleteExtents", s.getRecentDeleteExtents)
+	http.HandleFunc("/batchRecoverExtents", s.batchRecoverExtents)
+	http.HandleFunc("/setSwitchCollection", s.setSwitchCollection)
+	http.HandleFunc("/listSwitchCollection", s.listSwitchCollection)
 }
 
 // handler
@@ -672,17 +684,18 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		diskList = append(diskList, diskInfo)
 	}
 	result := &struct {
-		Type           string        `json:"type"`
-		Zone           string        `json:"zone"`
-		Version        interface{}   `json:"versionInfo"`
-		StartTime      string        `json:"startTime"`
-		CPUUsageList   []float64     `json:"cpuUsageList"`
-		MaxCPUUsage    float64       `json:"maxCPUUsage"`
-		CPUCoreNumber  int           `json:"cpuCoreNumber"`
-		MemoryUsedList []float64     `json:"memoryUsedGBList"`
-		MaxMemoryUsed  float64       `json:"maxMemoryUsedGB"`
-		MaxMemoryUsage float64       `json:"maxMemoryUsage"`
-		DiskInfo       []interface{} `json:"diskInfo"`
+		Type           string         `json:"type"`
+		Zone           string         `json:"zone"`
+		Version        interface{}    `json:"versionInfo"`
+		StartTime      string         `json:"startTime"`
+		CPUUsageList   []float64      `json:"cpuUsageList"`
+		MaxCPUUsage    float64        `json:"maxCPUUsage"`
+		CPUCoreNumber  int            `json:"cpuCoreNumber"`
+		MemoryUsedList []float64      `json:"memoryUsedGBList"`
+		MaxMemoryUsed  float64        `json:"maxMemoryUsedGB"`
+		MaxMemoryUsage float64        `json:"maxMemoryUsage"`
+		DiskInfo       []interface{}  `json:"diskInfo"`
+		ConnmanStats   *connman.Stats `json:"connmanStats"`
 	}{
 		Type:           ModuleName,
 		Zone:           s.zoneName,
@@ -695,6 +708,7 @@ func (s *DataNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		MaxMemoryUsed:  maxMemoryUsedGB,
 		MaxMemoryUsage: maxMemoryUsage,
 		DiskInfo:       diskList,
+		ConnmanStats:   gConnPool.Stats(),
 	}
 	s.buildSuccessResp(w, result)
 }
@@ -1605,4 +1619,251 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 		return
 	}
 	w.Write(jsonBody)
+}
+
+func (s *DataNode) getTrashExtents(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		files       map[uint64]uint64
+		recentSec   int
+		err         error
+	)
+	const (
+		paramPartitionID = "id"
+		paramRecentSec   = "recentSec"
+		defaultRecentSec = 24 * 60 * 60
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	recent := r.FormValue(paramRecentSec)
+	if recent == "all" {
+		recentSec = 0
+	} else if recent == "" {
+		recentSec = defaultRecentSec
+	} else {
+		recentSec, err = strconv.Atoi(recent)
+	}
+
+	if partitionID, err = strconv.ParseUint(r.FormValue(paramPartitionID), 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	files = partition.ExtentStore().GetTrashExtents(recentSec)
+	s.buildSuccessResp(w, files)
+}
+
+func (s *DataNode) getRecentDeleteExtents(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		files       map[uint64]int64
+		recentSec   int
+		err         error
+	)
+	const (
+		paramPartitionID = "id"
+		paramRecentSec   = "recentSec"
+		defaultRecentSec = 24 * 60 * 60
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	recent := r.FormValue(paramRecentSec)
+	if recent == "all" {
+		recentSec = 0
+	} else if recent == "" {
+		recentSec = defaultRecentSec
+	} else {
+		recentSec, err = strconv.Atoi(recent)
+	}
+
+	if partitionID, err = strconv.ParseUint(r.FormValue(paramPartitionID), 10, 64); err != nil {
+		err = fmt.Errorf("parse param %v fail: %v", paramPartitionID, err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	files = partition.ExtentStore().GetRecentDeleteExtents(recentSec)
+	s.buildSuccessResp(w, files)
+}
+
+func (s *DataNode) batchRecoverExtents(w http.ResponseWriter, r *http.Request) {
+	type RecoverExtentRequest struct {
+		Partition uint64   `json:"partition"`
+		Extents   []uint64 `json:"extents"`
+	}
+	var (
+		req *RecoverExtentRequest
+		err error
+	)
+	defer func() {
+		if err != nil {
+			log.LogErrorf("action[batchRecoverExtents] failed, err:%v", err)
+		}
+	}()
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(r.Body)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	req = new(RecoverExtentRequest)
+	if err = json.Unmarshal(buf.Bytes(), &req); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	partition := s.space.Partition(req.Partition)
+	if partition == nil {
+		err = fmt.Errorf("partition[%d] not exist, can not recover", req.Partition)
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if len(req.Extents) == 0 {
+		err = fmt.Errorf("no extents in request")
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if !partition.ExtentStore().IsFinishLoad() {
+		err = fmt.Errorf("partition[%d] not finish load", req.Partition)
+		s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	recovered := 0
+	failed := make([]uint64, 0)
+	for _, extent := range req.Extents {
+		err = partition.limit(context.Background(), proto.OpRecoverTrashExtent_, 0, multirate.FlowDisk)
+		if err != nil {
+			log.LogErrorf("action[batchRecoverExtents] partition(%v) extent(%v) failed, err:%v", req.Partition, extent, err)
+			failed = append(failed, extent)
+			continue
+		}
+		tp := exporter.NewModuleTP(proto.GetOpMsgExtend(proto.OpRecoverTrashExtent_))
+		if partition.ExtentStore().RecoverTrashExtent(extent) {
+			recovered++
+		} else {
+			failed = append(failed, extent)
+		}
+		tp.Set(nil)
+	}
+	s.buildSuccessResp(w, fmt.Sprintf("partition(%v) extents recover total(%v) recovered(%v) failed(%v)", req.Partition, len(req.Extents), recovered, failed))
+}
+
+type SwitchCollectionPara struct {
+	DisableBlackList string `json:"disableBlackList,omitempty"`
+}
+
+func (s *DataNode) setSwitchCollection(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseForm()
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(r.Body)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	paras := new(SwitchCollectionPara)
+	err = json.Unmarshal(buf.Bytes(), paras)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	if paras.DisableBlackList != "" {
+		var isDisable bool
+		var oldStat bool
+		isDisable, err = strconv.ParseBool(paras.DisableBlackList)
+		if err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		oldStat = gConnPool.IsDisableBlackList()
+		if oldStat != isDisable {
+			log.LogWarnf("action[setSwitchCollection] set isDisable blacklist from (%v) to (%v)", oldStat, isDisable)
+			gConnPool.DisableBlackList(isDisable)
+			s.nodeSettingLock.Lock()
+			defer s.nodeSettingLock.Unlock()
+			s.nodeSettings.SwitchCollection.DisableBlackList = isDisable
+			err = s.persistNodeSettings()
+			if err != nil {
+				s.nodeSettings.SwitchCollection.DisableBlackList = oldStat
+				log.LogErrorf("action[setSwitchCollection] set isDisable blacklist err:%v, rollback to old stat:%v", err, oldStat)
+				s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+	}
+	s.buildSuccessResp(w, fmt.Sprintf("set switch collection success"))
+}
+
+func (s *DataNode) listSwitchCollection(w http.ResponseWriter, r *http.Request) {
+	s.buildSuccessResp(w, s.nodeSettings.SwitchCollection)
+}
+
+func (s *DataNode) releaseTrashExtents(w http.ResponseWriter, r *http.Request) {
+	var (
+		keepTime uint64
+		err      error
+	)
+	const (
+		paramAuthKey       = "key"
+		paramKeepTimeSec   = "keepTimeSec"
+		defaultKeepTImeSec = 60 * 60 * 24 * 7
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	key := r.FormValue(paramAuthKey)
+	if !matchKey(key) {
+		err = fmt.Errorf("auth key not match: %v", key)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	keepTimeSec := r.FormValue(paramKeepTimeSec)
+	if keepTimeSec == "" {
+		keepTime = defaultKeepTImeSec
+	} else {
+		var keepTimeSecVal uint64
+		if keepTimeSecVal, err = strconv.ParseUint(keepTimeSec, 10, 64); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse param %v failed: %v", paramKeepTimeSec, err))
+			return
+		}
+		keepTime = keepTimeSecVal
+	}
+	releaseCount := uint64(0)
+	for _, d := range s.space.disks {
+		for _, partition := range d.partitionMap {
+			releaseCount += partition.markDeleteTrashExtents(keepTime)
+		}
+	}
+	s.buildSuccessResp(w, fmt.Sprintf("release trash extents, release extent count: %v: ", releaseCount))
 }

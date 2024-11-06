@@ -29,23 +29,25 @@ const (
 	ActionDiskIORemove
 	ActionDiskIOPunch
 	ActionDiskIOSync
+	ActionBatchTrashExtent
 )
 
 var ActionDataMap = map[int]string{
-	ActionRead:            "read",
-	ActionRepairRead:      "repairRead",
-	ActionAppendWrite:     "appendWrite",
-	ActionOverWrite:       "overWrite",
-	ActionRepairWrite:     "repairWrite",
-	ActionMarkDelete:      "markDelete",
-	ActionBatchMarkDelete: "batchMarkDelete",
-	ActionFlushDelete:     "flushDelete",
-	ActionDiskIOCreate:    "diskIOCreate",
-	ActionDiskIOWrite:     "diskIOWrite",
-	ActionDiskIORead:      "diskIORead",
-	ActionDiskIORemove:    "diskIORemove",
-	ActionDiskIOPunch:     "diskIOPunch",
-	ActionDiskIOSync:      "diskIOSync",
+	ActionRead:             "read",
+	ActionRepairRead:       "repairRead",
+	ActionAppendWrite:      "appendWrite",
+	ActionOverWrite:        "overWrite",
+	ActionRepairWrite:      "repairWrite",
+	ActionMarkDelete:       "markDelete",
+	ActionBatchMarkDelete:  "batchMarkDelete",
+	ActionBatchTrashExtent: "batchTrashExtent",
+	ActionFlushDelete:      "flushDelete",
+	ActionDiskIOCreate:     "diskIOCreate",
+	ActionDiskIOWrite:      "diskIOWrite",
+	ActionDiskIORead:       "diskIORead",
+	ActionDiskIORemove:     "diskIORemove",
+	ActionDiskIOPunch:      "diskIOPunch",
+	ActionDiskIOSync:       "diskIOSync",
 }
 
 const (

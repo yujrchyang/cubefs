@@ -2,6 +2,7 @@ package proto
 
 import math "math"
 
+// normal limit opcode start from 512 to 1023, total count 512
 const (
 	OpExtentRepairWrite_ = iota + 512
 	OpFlushDelete_
@@ -13,6 +14,20 @@ const (
 	OpFetchDataPartitionView_
 	OpFixIssueFragments_
 	OpPlaybackTinyDelete_
+	OpRecoverTrashExtent_
+)
+
+type RequestSource uint8
+
+const (
+	SourceBase RequestSource = iota
+	SourceFlashNode
+)
+
+// read source opcode start from 1024 to 1279, total count 256
+const (
+	OpStreamFollowerReadSrcBase_      = 1024
+	OpStreamFollowerReadSrcFlashNode_ = OpStreamFollowerReadSrcBase_ - 1 + int(SourceFlashNode)
 )
 
 const (
@@ -46,6 +61,10 @@ func GetOpMsgExtend(opcode int) (m string) {
 		m = "OpFixIssueFragments_"
 	case OpPlaybackTinyDelete_:
 		m = "OpPlaybackTinyDelete_"
+	case OpStreamFollowerReadSrcFlashNode_:
+		m = "OpStreamFollowerReadSrcFlashNode_"
+	case OpRecoverTrashExtent_:
+		m = "OpRecoverTrashExtent_"
 	}
 	return m
 }
@@ -72,6 +91,22 @@ func GetOpCodeExtend(m string) (opcode int) {
 		opcode = OpFixIssueFragments_
 	case "OpPlaybackTinyDelete_":
 		opcode = OpPlaybackTinyDelete_
+	case "OpStreamFollowerReadSrcFlashNode_":
+		opcode = OpStreamFollowerReadSrcFlashNode_
+	case "OpRecoverTrashExtent_":
+		opcode = OpRecoverTrashExtent_
 	}
 	return opcode
+}
+
+func GetOpByReadSource(originOp uint8, source RequestSource) int {
+	if source == SourceBase {
+		return int(originOp)
+	}
+	switch originOp {
+	case OpStreamFollowerRead:
+		return OpStreamFollowerReadSrcBase_ - 1 + int(source)
+	default:
+		return int(originOp)
+	}
 }

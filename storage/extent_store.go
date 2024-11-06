@@ -62,14 +62,17 @@ const (
 	deletionQueueDirname                 = "Deletion"
 	deletionQueueFilesize    int64       = 1024 * 1024 * 4
 	deletionQueueRetainFiles RetainFiles = 10
-
-	LoadInProgress int32 = 0
-	LoadFinish     int32 = 1
+	ExtentTrashDirName                   = "Trash"
+	ExtentTrashPrefix                    = "trash_"
+	ExtentTrashInodeFlag                 = math.MaxUint64
+	LoadInProgress           int32       = 0
+	LoadFinish               int32       = 1
 )
 
 var (
-	RegexpExtentFile, _ = regexp.Compile("^(\\d)+$")
-	SnapShotFilePool    = &sync.Pool{New: func() interface{} {
+	RegexpExtentFile, _  = regexp.Compile("^(\\d)+$")
+	RegexpExtentTrash, _ = regexp.Compile("^trash_(\\d)+_(\\d)+_(\\d)+$") // trash_extent_size_time
+	SnapShotFilePool     = &sync.Pool{New: func() interface{} {
 		return new(proto.File)
 	}}
 	ValidateCrcInterval = int64(20 * RepairInterval)
@@ -129,6 +132,11 @@ var (
 // The difference between them is that the extentID of a tinyExtent starts at 5000000 and ends at 5000128.
 // Multiple small files can be appended to the same tinyExtent.
 // In addition, the deletion of small files is implemented by the punch hole from the underlying file system.
+// Extent life cycle:
+// normal extent -> deleted extent
+// normal extent -> trash extent
+// trash extent -> recover extent
+// trash extent -> deleted extent
 type ExtentStore struct {
 	dataPath              string
 	baseExtentID          uint64 // TODO what is baseExtentID
@@ -156,9 +164,9 @@ type ExtentStore struct {
 	loadStatus                        int32
 	loadMux                           sync.Mutex
 	tinyExtentDeleteMutex             sync.Mutex
-	recentDeletedExtents              sync.Map
-
-	deletionQueue *ExtentQueue
+	recentDeletedExtents              sync.Map // key: extent  val: deleteTime
+	trashExtents                      sync.Map // key: extent  val: []uint64{trashTime, extentSize}
+	deletionQueue                     *ExtentQueue
 
 	interceptors IOInterceptors
 
@@ -196,6 +204,10 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 		data := make([]byte, needWriteEmpty)
 		s.tinyExtentDeleteFp.Write(data)
 	}
+	err = os.Mkdir(path.Join(s.dataPath, ExtentTrashDirName), 0666)
+	if err != nil && !os.IsExist(err) {
+		return
+	}
 	if s.verifyExtentFp, err = os.OpenFile(path.Join(s.dataPath, extentCRCHeaderFilename), os.O_CREATE|os.O_RDWR, 0666); err != nil {
 		return
 	}
@@ -209,13 +221,17 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	if s.deletionQueue, err = OpenExtentQueue(path.Join(s.dataPath, deletionQueueDirname), deletionQueueFilesize, deletionQueueRetainFiles); err != nil {
 		return
 	}
-
 	s.cache = NewExtentCache(cacheCapacity, time.Minute*5, ln)
-	if err = s.initBaseFileID(); err != nil {
-		err = fmt.Errorf("init base field ID: %v", err)
+
+	if err = s.loadRecentDeletedExtents(); err != nil {
 		return
 	}
-	if err = s.loadRecentDeletedExtents(); err != nil {
+	if err = s.loadTrashExtents(); err != nil {
+		return
+	}
+
+	if err = s.initBaseFileID(); err != nil {
+		err = fmt.Errorf("init base field ID: %v", err)
 		return
 	}
 	s.hasAllocSpaceExtentIDOnVerfiyFile = s.allocatedExtentHeader()
@@ -388,6 +404,32 @@ func (s *ExtentStore) loadRecentDeletedExtents() (err error) {
 	return
 }
 
+func (s *ExtentStore) loadTrashExtents() (err error) {
+	var dir []os.DirEntry
+	dir, err = os.ReadDir(path.Join(s.dataPath, ExtentTrashDirName))
+	if err != nil {
+		if err == os.ErrNotExist {
+			return nil
+		}
+		return
+	}
+	for _, d := range dir {
+		if d.IsDir() {
+			continue
+		}
+		fName := d.Name()
+		if !RegexpExtentTrash.MatchString(fName) {
+			continue
+		}
+		arr := strings.Split(fName, "_")
+		extent, _ := strconv.ParseUint(arr[1], 10, 64)
+		size, _ := strconv.ParseUint(arr[2], 10, 64)
+		trashTime, _ := strconv.ParseUint(arr[3], 10, 64)
+		s.trashExtents.Store(extent, []uint64{trashTime, size})
+	}
+	return nil
+}
+
 // Load 加载存储引擎剩余未加载的必要信息.
 func (s *ExtentStore) Load() {
 
@@ -534,12 +576,12 @@ func (s *ExtentStore) __markDeleteOne(inode, extentID uint64, offset, size int64
 
 	var nowUnixSec = time.Now().Unix()
 	if !proto.IsTinyExtent(extentID) {
-		if s.IsDeleted(extentID) {
+		if s.IsRealDeleted(extentID) {
 			// Skip cause target have been marked as deleted.
 			return
 		}
 		if ei, exists := s.getExtentInfoByExtentID(extentID); exists {
-			if inode != 0 && ei[Inode] != 0 && inode != ei[Inode] {
+			if inode != 0 && inode != ExtentTrashInodeFlag && ei[Inode] != 0 && inode != ei[Inode] {
 				return NewParameterMismatchErr(fmt.Sprintf("inode mismatch: expected %v, actual %v", ei[Inode], inode))
 			}
 			s.cache.Del(extentID)
@@ -562,12 +604,12 @@ func (s *ExtentStore) __markDeleteMore(marker Marker) (err error) {
 	var nowUnixSec = time.Now().Unix()
 	marker.Walk(func(_ int, ino, extent uint64, offset, size int64) bool {
 		if !proto.IsTinyExtent(extent) {
-			if s.IsDeleted(extent) {
+			if s.IsRealDeleted(extent) {
 				// Skip cause target normal extent have been marked as deleted.
 				return true
 			}
 			if ei, exist := s.getExtentInfoByExtentID(extent); exist {
-				if ino != 0 && ei[Inode] != 0 && ino != ei[Inode] {
+				if ino != 0 && ino != ExtentTrashInodeFlag && ei[Inode] != 0 && ino != ei[Inode] {
 					return true
 				}
 				s.cache.Del(extent)
@@ -611,6 +653,65 @@ func (s *ExtentStore) MarkDelete(marker Marker) (err error) {
 	return
 }
 
+func (s *ExtentStore) TrashExtent(extent, inode uint64, size uint32) (err error) {
+	if proto.IsTinyExtent(extent) {
+		return nil
+	}
+
+	ei, ok := s.getExtentInfoByExtentID(extent)
+	if !ok {
+		return nil
+	}
+
+	if inode != 0 && ei[Inode] != 0 && inode != ei[Inode] {
+		return NewParameterMismatchErr(fmt.Sprintf("inode mismatch: expected %v, actual %v", ei[Inode], inode))
+	}
+
+	trashTime := time.Now().Unix()
+
+	// remove extent in memory
+	s.cache.Del(extent)
+	s.infoStore.Delete(extent)
+	s.trashExtents.Store(extent, []uint64{uint64(trashTime), uint64(size)})
+
+	// rename extent to trash dir
+	extentPath := path.Join(s.dataPath, strconv.FormatUint(extent, 10))
+	newExtentFileName := ExtentTrashPrefix + strconv.FormatUint(extent, 10) + "_" + strconv.FormatUint(uint64(size), 10) + "_" + strconv.FormatUint(uint64(trashTime), 10)
+	err = os.Rename(extentPath, path.Join(s.dataPath, ExtentTrashDirName, newExtentFileName))
+	if err != nil {
+		return err
+	}
+	return
+}
+
+// MarkDeleteTrashExtents
+// if trash extent is mark delete, it can not be recovered
+func (s *ExtentStore) MarkDeleteTrashExtents(keepSec uint64) uint64 {
+	var count uint64
+	var batch = BatchMarker(1000)
+	s.trashExtents.Range(func(k, v interface{}) bool {
+		extent := k.(uint64)
+		arr := v.([]uint64)
+		trashTime := arr[0]
+		extentSize := arr[1]
+		tNow := time.Now().Unix()
+		if tNow-int64(trashTime) <= int64(keepSec) {
+			return true
+		}
+		batch.Add(ExtentTrashInodeFlag, extent, 0, int64(extentSize))
+		count++
+		if batch.Len()%1000 == 0 {
+			_ = s.MarkDelete(batch)
+			batch = BatchMarker(1000)
+		}
+		return true
+	})
+	if batch.Len()%1000 != 0 {
+		_ = s.MarkDelete(batch)
+	}
+	return count
+}
+
 func (s *ExtentStore) TransferDeleteV0() (archives int, err error) {
 	pathV0 := path.Join(s.dataPath, ExtentReleasorDirName)
 	if _, err = os.Stat(pathV0); os.IsNotExist(err) {
@@ -621,6 +722,26 @@ func (s *ExtentStore) TransferDeleteV0() (archives int, err error) {
 		return
 	}
 	return releaser.TransferDelete()
+}
+
+func (s *ExtentStore) RecoverTrashExtent(extent uint64) (recovered bool) {
+	var err error
+	v, ok := s.trashExtents.Load(extent)
+	if !ok {
+		if log.IsDebugEnabled() {
+			log.LogDebugf("extent may be deleted, can not recover")
+		}
+		return false
+	}
+	arr := v.([]uint64)
+	trashTime := arr[0]
+	extentSize := arr[1]
+	err = s.recoverTrashExtent(extent, trashTime, extentSize)
+	if err != nil {
+		log.LogErrorf("Store(%v) recover extent(%v) failed, err:%v", s.partitionID, extent, err)
+		return false
+	}
+	return true
 }
 
 // FlushDelete is exported public method removes and releases storage space resource through delete marked extents.
@@ -699,14 +820,17 @@ func (s *ExtentStore) __deleteExtent(ino, extent uint64, offset, size int64) (er
 		log.LogDebugf("Store(%v) flush delete NormalExtent: ino=%v, extent=%v",
 			s.partitionID, ino, extent)
 	}
-	var filepath = path.Join(s.dataPath, strconv.FormatUint(extent, 10))
 	var interceptor = s.interceptors.Get(IORemove)
 	var ctx context.Context
 	if ctx, err = interceptor.Before(); err != nil {
 		return
 	}
-	if err = os.Remove(filepath); err != nil && os.IsNotExist(err) {
-		err = nil
+
+	var filepath string
+	if ino == ExtentTrashInodeFlag {
+		err = s.removeTrashExtent(extent)
+	} else {
+		err = s.removeExtent(extent)
 	}
 	interceptor.After(ctx, 0, err)
 	if err != nil {
@@ -715,6 +839,75 @@ func (s *ExtentStore) __deleteExtent(ino, extent uint64, offset, size int64) (er
 	if err = s.removeExtentHeader(extent); err != nil && log.IsWarnEnabled() {
 		log.LogWarnf("Store(%v) remove block CRC info failed: extent=%v, ino=%v, error=%v", s.partitionID, extent, ino, err)
 	}
+	return
+}
+
+func (s *ExtentStore) removeTrashExtent(extent uint64) (err error) {
+	val, ok := s.trashExtents.Load(extent)
+	if !ok || len(val.([]uint64)) < 2 {
+		log.LogErrorf("Store(%v) extent not found in trashExtents: %v", s.partitionID, extent)
+		return nil
+	}
+	trashTime := val.([]uint64)[0]
+	size := val.([]uint64)[1]
+	extentFName := ExtentTrashPrefix + strconv.FormatUint(extent, 10) + "_" + strconv.FormatUint(size, 10) + "_" + strconv.FormatUint(trashTime, 10)
+	filepath := path.Join(s.dataPath, ExtentTrashDirName, extentFName)
+	if err = os.Remove(filepath); err != nil && os.IsNotExist(err) {
+		err = nil
+	}
+	if err == nil {
+		s.trashExtents.Delete(extent)
+	}
+	return
+}
+
+func (s *ExtentStore) removeExtent(extent uint64) (err error) {
+	filepath := path.Join(s.dataPath, strconv.FormatUint(extent, 10))
+	if err = os.Remove(filepath); err != nil && os.IsNotExist(err) {
+		err = nil
+	}
+	return
+}
+
+func (s *ExtentStore) recoverTrashExtent(extent uint64, trashTime, size uint64) (err error) {
+	var inode uint64
+	extentFName := ExtentTrashPrefix + strconv.FormatUint(extent, 10) + "_" + strconv.FormatUint(size, 10) + "_" + strconv.FormatUint(trashTime, 10)
+	filepath := path.Join(s.dataPath, ExtentTrashDirName, extentFName)
+	newFName := path.Join(s.dataPath, strconv.FormatUint(extent, 10))
+
+	if proto.IsTinyExtent(extent) {
+		err = fmt.Errorf("tiny extent, can not recover")
+		return err
+	}
+
+	if s.IsRealDeleted(extent) {
+		err = fmt.Errorf("extent deleted, can not recover")
+		return err
+	}
+
+	_, ok := s.getExtentInfoByExtentID(extent)
+	if ok {
+		err = fmt.Errorf("extent exists, can not recover")
+	}
+
+	// todo is there need newFName exists judgement?
+	if err = os.Rename(filepath, newFName); err != nil {
+		return err
+	}
+	if err = s.AdvanceBaseExtentID(extent); err != nil {
+		return err
+	}
+
+	s.trashExtents.Delete(extent)
+	inode, _ = s.inodeIndex.Get(extent)
+	s.infoStore.Create(extent, inode)
+
+	info, err := os.Stat(newFName)
+	if err != nil {
+		log.LogWarnf("action[recoverTrashExtent] stat file(%v) error(%v)", newFName, err)
+		return
+	}
+	s.infoStore.Update(extent, uint64(info.Size()), uint64(info.ModTime().Unix()), 0)
 	return
 }
 
@@ -1230,8 +1423,15 @@ func (s *ExtentStore) IsExists(extentID uint64) (exist bool) {
 	return ok
 }
 
-// IsDeleted tells if the normal extent is deleted recently, true-it must has been deleted, false-it may not be deleted
+// IsDeleted tells if the normal extent is deleted recently, true-it must has been deleted or has been trashed, false-it may not be deleted
 func (s *ExtentStore) IsDeleted(extentID uint64) (deleted bool) {
+	_, ok := s.recentDeletedExtents.Load(extentID)
+	_, ok2 := s.trashExtents.Load(extentID)
+	return ok || ok2
+}
+
+// IsRealDeleted tells if the normal extent is deleted recently, true-it must has been real deleted, not in trash, false-it may not be deleted
+func (s *ExtentStore) IsRealDeleted(extentID uint64) (deleted bool) {
 	_, ok := s.recentDeletedExtents.Load(extentID)
 	return ok
 }
@@ -1631,4 +1831,30 @@ func (s *ExtentStore) __lockFlushDelete(wait bool) (release func()) {
 	default:
 	}
 	return nil
+}
+
+func (s *ExtentStore) GetRecentDeleteExtents(recentSec int) (recentDeleteExtents map[uint64]int64) {
+	recentDeleteExtents = make(map[uint64]int64)
+	now := time.Now().Unix()
+	s.recentDeletedExtents.Range(func(key, value interface{}) bool {
+		if recentSec > 0 && now-int64(recentSec) > value.(int64) {
+			return true
+		}
+		recentDeleteExtents[key.(uint64)] = value.(int64)
+		return true
+	})
+	return
+}
+
+func (s *ExtentStore) GetTrashExtents(recentSec int) (trashExtents map[uint64]uint64) {
+	trashExtents = make(map[uint64]uint64)
+	now := time.Now().Unix()
+	s.trashExtents.Range(func(key, value interface{}) bool {
+		if recentSec > 0 && uint64(now-int64(recentSec)) > value.([]uint64)[0] {
+			return true
+		}
+		trashExtents[key.(uint64)] = value.([]uint64)[0]
+		return true
+	})
+	return
 }

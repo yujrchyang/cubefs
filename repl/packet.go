@@ -68,9 +68,7 @@ type Packet struct {
 
 type FollowerPacket struct {
 	proto.Packet
-	errorCh        chan error
-	dataPoolRefCnt *int32
-	isUseDataPool  bool
+	errorCh chan error
 }
 
 func NewFollowerPacket(ctx context.Context, parent *Packet) (fp *FollowerPacket) {
@@ -88,12 +86,6 @@ func (p *FollowerPacket) PackErrorBody(action, msg string) {
 	copy(p.Data[:int(p.Size)], []byte(action+"_"+msg))
 }
 
-func (p *FollowerPacket) DecDataPoolRefCnt() {
-	if p.isUseDataPool && atomic.LoadInt32(p.dataPoolRefCnt) > 0 {
-		atomic.AddInt32(p.dataPoolRefCnt, -1)
-	}
-}
-
 func (p *FollowerPacket) IsErrPacket() bool {
 	return p.ResultCode != proto.OpOk && p.ResultCode != proto.OpInitResultCode
 }
@@ -105,12 +97,12 @@ func (p *FollowerPacket) identificationErrorResultCode(errLog string, errMsg str
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
-	} else if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
-		strings.Contains(errLog, ConnIsNullErr) {
-		p.ResultCode = proto.OpIntraGroupNetErr
 	} else if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
 		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
 		p.ResultCode = proto.OpArgMismatchErr
+	} else if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
+		strings.Contains(errLog, ConnIsNullErr) {
+		p.ResultCode = proto.OpIntraGroupNetErr
 	} else if strings.Contains(errMsg, proto.ExtentNotFoundError.Error()) ||
 		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
 		p.ResultCode = proto.OpNotExistErr
@@ -184,38 +176,8 @@ func (p *Packet) cleanDataPoolFlag(srcFun string) (isReturnToPool bool) {
 	return
 }
 
-func (p *Packet) forceCleanDataPoolFlag(srcFun string) (isReturnToPool bool) {
-	if p.isUseDataPool() {
-		atomic.StoreInt64(&p.useDataPoolFlag, PacketNoUseDataPool)
-		if len(p.followerPackets) != 0 {
-			for i := 0; i < len(p.followerPackets); i++ {
-				if p.followerPackets[i] != nil {
-					p.followerPackets[i].Data = nil
-				}
-			}
-		}
-		proto.Buffers.Put(p.OrgBuffer)
-		isReturnToPool = true
-		p.Object = nil
-		p.TpObject = nil
-		p.dataPoolRefCnt = 0
-		p.Arg = nil
-		p.followerPackets = nil
-		p.OrgBuffer = nil
-	}
-	return
-}
-
 func (p *Packet) cleanPacketPoolFlag(srcFun string) (isReturnToPool bool) {
 	if p.isUsePacketPool() && p.canPutToPacketPool() {
-		PutPacketToPool(p)
-		isReturnToPool = true
-	}
-	return
-}
-
-func (p *Packet) forceCleanPacketPoolFlag(srcFun string) (isReturnToPool bool) {
-	if p.isUsePacketPool() {
 		PutPacketToPool(p)
 		isReturnToPool = true
 	}
@@ -247,10 +209,6 @@ func copyPacket(src *Packet, dst *FollowerPacket) {
 	dst.ExtentOffset = src.ExtentOffset
 	dst.ReqID = src.ReqID
 	dst.Data = src.OrgBuffer
-	dst.dataPoolRefCnt = &src.dataPoolRefCnt
-	if src.isUseDataPool() {
-		dst.isUseDataPool = true
-	}
 }
 
 func copyFollowerPacket(src *FollowerPacket, dst *FollowerPacket) {
@@ -598,7 +556,7 @@ func NewExtentRepairReadPacket(ctx context.Context, partitionID uint64, extentID
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(offset)
 	if force {
-		p.Arg = []byte{1}
+		p.Arg = []byte{proto.ForceReadFlag}
 		p.ArgLen = uint32(len(p.Arg))
 	}
 	p.Size = uint32(size)
@@ -617,7 +575,7 @@ func NewTinyExtentRepairReadPacket(ctx context.Context, partitionID uint64, exte
 	p.Magic = proto.ProtoMagic
 	p.ExtentOffset = int64(offset)
 	if force {
-		p.Arg = []byte{1}
+		p.Arg = []byte{proto.ForceReadFlag}
 		p.ArgLen = uint32(len(p.Arg))
 	}
 	p.Size = uint32(size)
@@ -713,12 +671,11 @@ func (p *Packet) identificationErrorResultCode(errLog string, errMsg string) {
 		p.ResultCode = proto.OpTryOtherAddr
 	} else if strings.Contains(errMsg, storage.NoSpaceError.Error()) {
 		p.ResultCode = proto.OpDiskNoSpaceErr
+	} else if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) || strings.Contains(errMsg, ErrorUnknownOp.Error()) {
+		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errLog, ActionReceiveFromFollower) || strings.Contains(errLog, ActionSendToFollowers) ||
 		strings.Contains(errLog, ConnIsNullErr) {
 		p.ResultCode = proto.OpIntraGroupNetErr
-	} else if strings.Contains(errMsg, storage.ParameterMismatchError.Error()) ||
-		strings.Contains(errMsg, ErrorUnknownOp.Error()) {
-		p.ResultCode = proto.OpArgMismatchErr
 	} else if strings.Contains(errMsg, proto.ExtentNotFoundError.Error()) ||
 		strings.Contains(errMsg, storage.ExtentHasBeenDeletedError.Error()) {
 		p.ResultCode = proto.OpNotExistErr
@@ -863,10 +820,6 @@ func (p *Packet) IsCreateExtentOperation() bool {
 
 func (p *Packet) IsMarkDeleteExtentOperation() bool {
 	return p.Opcode == proto.OpMarkDelete
-}
-
-func (p *Packet) IsBatchDeleteExtentOperation() bool {
-	return p.Opcode == proto.OpBatchDeleteExtent
 }
 
 func (p *Packet) IsBroadcastMinAppliedID() bool {

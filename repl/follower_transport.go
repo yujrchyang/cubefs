@@ -2,13 +2,13 @@ package repl
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/connman"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -28,11 +28,16 @@ type FollowerTransport struct {
 	errState int32
 }
 
-func NewFollowersTransport(addr string, replId int64) (ft *FollowerTransport, err error) {
+func NewFollowersTransport(addr string, replId int64, useBlackList bool) (ft *FollowerTransport, err error) {
 	var (
 		conn net.Conn
 	)
-	if conn, err = gConnPool.GetConnect(addr); err != nil {
+	if useBlackList {
+		conn, err = gConnPool.GetConnectWithBlackList(addr)
+	} else {
+		conn, err = gConnPool.GetConnect(addr)
+	}
+	if err != nil {
 		return
 	}
 	ft = new(FollowerTransport)
@@ -67,7 +72,7 @@ func (ft *FollowerTransport) PutRequestToSendCh(request *FollowerPacket) (err er
 	}
 }
 
-func SetConnectPool(cp *connpool.ConnectPool) {
+func SetConnectPool(cp *connman.ConnManager) {
 	gConnPool = cp
 }
 
@@ -78,7 +83,6 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 			ft.pkgOrder++
 			atomic.StoreInt64(&ft.lastActiveTime, time.Now().Unix())
 			if err := p.WriteToConn(ft.conn, proto.WriteDeadlineTime); err != nil {
-				p.DecDataPoolRefCnt()
 				p.Data = nil
 				p.errorCh <- fmt.Errorf("send to follower %v failed: %v", ft.addr, err)
 				_ = ft.conn.Close()
@@ -88,7 +92,6 @@ func (ft *FollowerTransport) serverWriteToFollower() {
 				continue
 			}
 			p.Data = nil
-			p.DecDataPoolRefCnt()
 			if err := ft.PutRequestToRecvCh(p); err != nil {
 				p.errorCh <- fmt.Errorf("send to follower %v failed: %v", ft.addr, err)
 				_ = ft.conn.Close()

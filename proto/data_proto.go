@@ -257,3 +257,8 @@ type DbbackDataNodeHeartBeatResponse struct {
 	Status                          uint8
 	Result                          string
 }
+
+const (
+	NormalReadFlag = 0
+	ForceReadFlag  = 1
+)

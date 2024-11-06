@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/util/connman"
 	"hash/crc32"
 	"io"
 	"math"
@@ -27,7 +28,6 @@ import (
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/async"
-	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
@@ -99,7 +99,7 @@ func (f WriterAtFunc) WriteAt(b []byte, off int64) (n int, err error) {
 type Fixer struct {
 	path            string
 	partitionID     uint64
-	connPool        *connpool.ConnectPool
+	connPool        *connman.ConnManager
 	indexes         []*fragmentIndex
 	indexNextOffset int64
 	indexesMu       sync.RWMutex
@@ -370,7 +370,7 @@ func (p *Fixer) fetchRemoveFingerprint(host string, extentID, offset, size uint6
 		Size:        int64(size),
 		Force:       force,
 	})
-	var conn *net.TCPConn
+	var conn net.Conn
 	if conn, err = p.connPool.GetConnect(host); err != nil {
 		return
 	}
@@ -413,7 +413,7 @@ func (p *Fixer) fetchRemoteDataTo(host string, extentID, offset, size uint64, fo
 	if proto.IsTinyExtent(extentID) {
 		request = repl.NewTinyExtentRepairReadPacket(context.Background(), p.partitionID, extentID, readOffset, readSize, force)
 	}
-	var conn *net.TCPConn
+	var conn net.Conn
 	if conn, err = p.connPool.GetConnect(host); err != nil {
 		return
 	}
@@ -818,7 +818,7 @@ func (p *Fixer) closeFp() (err error) {
 }
 
 func NewFixer(partitionID uint64, path string, storage *storage.ExtentStore, getRemotes GetRemotesFunc, getHAType GetHATypeFunc,
-	fragments []*Fragment, connPool *connpool.ConnectPool, diskPath string, limiter LimiterFunc) (*Fixer, error) {
+	fragments []*Fragment, connPool *connman.ConnManager, diskPath string, limiter LimiterFunc) (*Fixer, error) {
 	var err error
 	var p = &Fixer{
 		partitionID:   partitionID,
