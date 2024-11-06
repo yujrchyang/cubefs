@@ -218,6 +218,7 @@ type RebalancedInfoTable struct {
 	DstMetaNodePartitionMaxCount int           `gorm:"column:dst_metanode_partition_max_count"`
 	SrcNodes                     string        `gorm:"column:src_nodes_list"`
 	DstNodes                     string        `gorm:"column:dst_nodes_list"`
+	OutMigRatio                  float64       `gorm:"column:out_mig_ratio"`
 	CreatedAt                    time.Time     `gorm:"column:created_at"`
 	UpdatedAt                    time.Time     `gorm:"column:updated_at"`
 	// vols迁移, srcZone用zone_name字段
@@ -333,7 +334,7 @@ func (rw *ReBalanceWorker) updateNodesRebalanceInfo(taskId uint64, maxBatchCount
 }
 
 func (rw *ReBalanceWorker) createNodesRebalanceInfo(cluster string, rType RebalanceType, maxBatchCount int, dstMNPartitionMaxCount int,
-	srcNodes, dstNodes string, status Status) (rInfo *RebalancedInfoTable, err error) {
+	srcNodes, dstNodes, migVols string, outMigRatio float64, status Status) (rInfo *RebalancedInfoTable, err error) {
 
 	rInfo = new(RebalancedInfoTable)
 	rInfo.Cluster = cluster
@@ -346,6 +347,8 @@ func (rw *ReBalanceWorker) createNodesRebalanceInfo(cluster string, rType Rebala
 	rInfo.DstMetaNodePartitionMaxCount = dstMNPartitionMaxCount
 	rInfo.SrcNodes = srcNodes
 	rInfo.DstNodes = dstNodes
+	rInfo.VolName = migVols
+	rInfo.OutMigRatio = outMigRatio
 	rInfo.CreatedAt = time.Now()
 	rInfo.UpdatedAt = rInfo.CreatedAt
 	err = rw.PutRebalancedInfoToDB(rInfo)

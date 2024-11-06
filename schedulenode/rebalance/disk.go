@@ -54,18 +54,18 @@ func (d *Disk) Usage() float64 {
 }
 
 // SelectDP 返回当前Disk中的一块DP供迁移
-func (d *Disk) SelectDP() (*proto.DataPartitionInfo, error) {
-	var dpInfo *proto.DataPartitionInfo
+func (d *Disk) SelectDP() (dpInfo *proto.DataPartitionInfo, err error) {
 	var ok bool
-
 	if d.migrateLimit > -1 && d.migratedCount >= d.migrateLimit { // 设置每块磁盘迁移dp数量上限，-1代表无上限
 		return nil, ErrNoSuitablePartition
 	}
 
 	for d.dpIndex < len(d.dpList) {
 		dp := d.dpList[d.dpIndex]
-
 		d.dpIndex++
+		if exist := d.zoneCtrl.CheckMigVolumeExist(dp.VolName); !exist {
+			continue
+		}
 		if ok, dpInfo = d.checkAvailable(dp); ok {
 			break
 		}

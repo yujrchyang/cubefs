@@ -53,6 +53,8 @@ const (
 	ParamDstMetaNodePartitionMaxCount = "dstMetaNodeMaxPartitionCount"
 	ParamSrcNodesList                 = "srcNodes"
 	ParamDstNodesList                 = "dstNodes"
+	ParamMigVolumesList               = "volNames"
+	ParamOutMigRatio                  = "outMigRatio"
 
 	ParamPage          = "page"
 	ParamPageSize      = "pageSize"
@@ -165,4 +167,8 @@ const (
 const (
 	DeleteFlagForThreeReplica int = iota
 	DeleteFlagForTwoReplica
+)
+
+const (
+	MaxMigrateVolumeNum = 100
 )

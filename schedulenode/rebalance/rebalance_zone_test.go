@@ -45,7 +45,8 @@ func TestNodesReBalance(t *testing.T) {
 	srcNodeList := []string{"11.60.241.50:17310"}
 	dstNodeList := []string{"11.60.241.112:17310"}
 
-	ctrl := newNodeMigrateController(1, "11.60.241.50:17010", RebalanceData, srcNodeList, dstNodeList, rw)
+	migVolMap := make(map[string]struct{})
+	ctrl := newNodeMigrateController(1, "11.60.241.50:17010", RebalanceData, srcNodeList, dstNodeList, migVolMap, 1, rw)
 	t.Run("test node migrate", func(t *testing.T) {
 		err = ctrl.ReBalanceStart()
 		if err != nil {

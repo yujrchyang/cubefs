@@ -17,4 +17,5 @@ var (
 	ErrDataPartitionNotFound = errors.New("dataPartition not found")
 	ErrReachClusterCurrency  = errors.New("reach cluster bad partition limit")
 	ErrReachVolCurrency      = errors.New("reach vol bad partition limit")
+	ErrMigVolumesTooMany     = errors.New("too many migrate volumes")
 )

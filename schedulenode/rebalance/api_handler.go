@@ -52,6 +52,8 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 	// nodesMigrate
 	srcNodesStr := req.URL.Query().Get(ParamSrcNodesList)
 	dstNodesStr := req.URL.Query().Get(ParamDstNodesList)
+	migVolumesStr := req.URL.Query().Get(ParamMigVolumesList)
+	outMigRatioStr := req.URL.Query().Get(ParamOutMigRatio)
 	// common
 	maxBatchCountStr := req.URL.Query().Get(ParamClusterMaxBatchCount)
 	migrateLimitPerDiskStr := req.URL.Query().Get(ParamMigrateLimitPerDisk)
@@ -110,12 +112,39 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 		if !isValid {
 			return http.StatusBadRequest, nil, fmt.Errorf("%v: %v", ErrInputNodesInvalid, commonNode)
 		}
-		_, err = rw.NodesMigrateStart(cluster, rType, maxBatchCount, dstMetaNodePartitionMaxCount, srcNodeList, dstNodeList)
+		migVolList := strings.Split(strings.TrimSpace(migVolumesStr), ",")
+		if len(migVolList) > MaxMigrateVolumeNum {
+			return http.StatusBadRequest, nil, fmt.Errorf("%v, should be less than %v", ErrMigVolumesTooMany, MaxMigrateVolumeNum)
+		}
+		var (
+			outMigRatio float64
+		)
+		if outMigRatioStr == "" {
+			outMigRatio = 1
+		} else {
+			outMigRatio, err = strconv.ParseFloat(outMigRatioStr, 64)
+			if err != nil {
+				return http.StatusBadRequest, nil, err
+			}
+		}
+		_, err = rw.NodesMigrateStart(cluster, rType, maxBatchCount, dstMetaNodePartitionMaxCount, srcNodeList, dstNodeList, migVolList, outMigRatio)
 		if err != nil {
 			return http.StatusInternalServerError, nil, err
 		}
 	}
 	return http.StatusOK, nil, nil
+}
+
+func getMigVolMap(migVolList []string) (volMap map[string]struct{}){
+	volMap = make(map[string]struct{})
+	for _, vol := range migVolList {
+		vol = strings.Replace(vol, " ", "", -1)
+		if vol == "" {
+			continue
+		}
+		volMap[vol] = struct{}{}
+	}
+	return
 }
 
 func checkInputAddrValid(srcNodes, dstNodes string) (bool, []string, []string, []string) {
