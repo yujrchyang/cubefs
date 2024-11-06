@@ -85,9 +85,9 @@ const (
 	mms20Addr = "127.0.0.1:8120"
 	mms21Addr = "127.0.0.1:8121"
 
-	commonVolName   = "commonVol"
-	quorumVolName   = "quorumVol"
-	smartVolName    = "smartVol"
+	commonVolName = "commonVol"
+	quorumVolName = "quorumVol"
+	smartVolName  = "smartVol"
 
 	recorderVolName = "recorderVol"
 
@@ -170,7 +170,10 @@ func createDefaultMasterServerForTest() *Server {
 		"logLevel":"DEBUG",
 		"walDir":"/tmp/chubaofs/raft",
 		"storeDir":"/tmp/chubaofs/rocksdbstore",
-		"clusterName":"chubaofs"
+		"clusterName":"chubaofs",
+		"mqAddr":"yufa-nameserver.jmq.jd.local:50088",
+  		"mqAppName":"JMQOnCFS",
+  		"mqTopic":"JMQ_CFS_Test"
 	}`
 	testServer, err := createMasterServer(cfgJSON)
 	if err != nil {
@@ -4744,8 +4747,8 @@ func TestMpRecorderOp(t *testing.T) {
 
 func TestRecorderTransferVol(t *testing.T) {
 	var (
-		recorderTransferVol	*Vol
-		err 				error
+		recorderTransferVol *Vol
+		err                 error
 	)
 	testVolName := "recorderTransferVol"
 	reqURL := fmt.Sprintf("%v%v?name=%v&owner=%v&capacity=1&zoneName=%v", hostAddr, proto.AdminCreateVol, testVolName, "cfs", testZone2)
@@ -4821,4 +4824,103 @@ func checkRecorderPeers(t *testing.T, peers []proto.Peer, expectedRecorderNum in
 	}
 	assert.Equal(t, defaultReplicaNum, peerNormalNum, "the num of normal peers")
 	assert.Equal(t, expectedRecorderNum, peerRecorderNum, "the num of recorder peers")
+}
+
+func TestCreateAndUpdateVolWithMetaOutFlag(t *testing.T) {
+	// check metaOut value of initial vol
+	existvol, err := server.cluster.getVol(commonVolName)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Falsef(t, existvol.MetaOut, "expect vol.MetaOut to be true, but is %v", existvol.MetaOut) {
+		return
+	}
+
+	name := "test_jss_vol"
+	metaOut := true
+	// check create vol with metaOut=true
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v&metaOut=%v", hostAddr, proto.AdminCreateVol, name, testZone2, metaOut)
+	process(reqURL, t)
+	vol, err := server.cluster.getVol(name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Truef(t, vol.MetaOut, "expect vol.MetaOut to be true, but is %v", vol.MetaOut) {
+		return
+	}
+
+	// check /admin/getVol(simpleVol) info
+	simpleVol1, err := mc.AdminAPI().GetVolumeSimpleInfo(name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Truef(t, simpleVol1.MetaOut, "expect vol.MetaOut to be true, but is %v", simpleVol1.MetaOut) {
+		return
+	}
+
+	// check persist vol info
+	persistVols, err := server.cluster.fsm.store.SeekForPrefix([]byte(volPrefix))
+	if !assert.NoError(t, err) {
+		return
+	}
+	for _, pVol := range persistVols {
+		var vv *volValue
+		if vv, err = newVolValueFromBytes(pVol); err != nil {
+			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(pVol), err)
+			return
+		}
+		if vv.Name == name {
+			checkVol := newVolFromVolValue(vv)
+			if !assert.Truef(t, checkVol.MetaOut, "expect vol.MetaOut to be true, but is %v", vol.MetaOut) {
+				return
+			}
+		}
+	}
+
+	// check /admin/getVol(simpleVol) info
+	simpleVol, err := mc.AdminAPI().GetVolumeSimpleInfo(name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Truef(t, simpleVol.MetaOut, "expect vol.MetaOut to be true, but is %v", simpleVol.MetaOut) {
+		return
+	}
+
+	//check update metaOut
+	metaOut = false
+	reqURL = fmt.Sprintf("%v%v?name=%v&metaOut=%v&authKey=%v",
+		hostAddr, proto.AdminUpdateVol, name, metaOut, buildAuthKey("cfstest"))
+	process(reqURL, t)
+	vol, err = server.cluster.getVol(name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Falsef(t, vol.MetaOut, "expect vol.MetaOut to be false, but is %v", vol.MetaOut) {
+		return
+	}
+
+	// check persist vol info
+	persistVols, err = server.cluster.fsm.store.SeekForPrefix([]byte(volPrefix))
+	if !assert.NoError(t, err) {
+		return
+	}
+	for _, pVol := range persistVols {
+		var vv *volValue
+		if vv, err = newVolValueFromBytes(pVol); err != nil {
+			err = fmt.Errorf("action[loadVols],value:%v,unmarshal err:%v", string(pVol), err)
+			return
+		}
+		if vv.Name == name {
+			checkVol := newVolFromVolValue(vv)
+			if !assert.Falsef(t, checkVol.MetaOut, "expect vol.MetaOut to be true, but is %v", vol.MetaOut) {
+				return
+			}
+		}
+	}
+
+	// del this test vol
+	err = mc.AdminAPI().DeleteVolume(name, buildAuthKey("cfstest"))
+	if !assert.NoError(t, err) {
+		return
+	}
 }
