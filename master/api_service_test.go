@@ -4972,6 +4972,7 @@ func TestCreateAndUpdateVolWithMetaOutFlag(t *testing.T) {
 		return
 	}
 }
+<<<<<<< HEAD
 
 func TestCreateHddDataPartitionForSmartVolume(t *testing.T) {
 	name := "createHddDpsForSmartVolume"
