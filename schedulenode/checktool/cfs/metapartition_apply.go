@@ -1,19 +1,27 @@
 package cfs
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/tcp_api"
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"io"
 	"math"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 )
 
+var uploadStackCount int
+
 func (s *ChubaoFSMonitor) CheckMetaPartitionApply() {
+	uploadStackCount = 0
 	log.LogInfof("CheckMetaPartitionApply start")
 	wg := sync.WaitGroup{}
 	for _, clusterHost := range s.hosts {
@@ -83,8 +91,7 @@ func checkMetaPartitionByVol(volName string, ch *ClusterHost) {
 		go func(w *sync.WaitGroup, mpCh chan *MetaPartition) {
 			defer w.Done()
 			for mp := range mpCh {
-				retryCompareMetaPartition(ch, volName, mp.PartitionID)
-				time.Sleep(time.Millisecond * 16)
+				retryCompareMetaPartition(ch, volName, mp)
 			}
 		}(&wg, mpChan)
 	}
@@ -101,44 +108,32 @@ const (
 	inoudeIndex
 )
 
-func retryCompareMetaPartition(ch *ClusterHost, volName string, partitionID uint64) {
-	var (
-		mp  *MetaPartition
-		err error
-	)
+func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartition) {
+	var err error
 	defer func() {
 		if err != nil {
-			log.LogErrorf("action[retryCompareMetaPartition] failed, host[%v] vol[%v] bad partition id[%v], err:%v", ch.host, volName, partitionID, err)
+			log.LogErrorf("action[retryCompareMetaPartition] failed, host[%v] vol[%v] bad partition id[%v], err:%v", ch.host, volName, mp.PartitionID, err)
 			// 这类mp检查失败的报警原则是尽力而为，不需全报，应防止map过大产生过多内存或影响计算速度
 			ch.metaPartitionHolder.badMetaMapLock.Lock()
-			if _, ok := ch.metaPartitionHolder.badMetaMap[partitionID]; !ok && len(ch.metaPartitionHolder.badMetaMap) < 3000 {
-				ch.metaPartitionHolder.badMetaMap[partitionID] = 1
+			if _, ok := ch.metaPartitionHolder.badMetaMap[mp.PartitionID]; !ok && len(ch.metaPartitionHolder.badMetaMap) < 3000 {
+				ch.metaPartitionHolder.badMetaMap[mp.PartitionID] = 1
 			} else {
-				ch.metaPartitionHolder.badMetaMap[partitionID] = ch.metaPartitionHolder.badMetaMap[partitionID] + 1
+				ch.metaPartitionHolder.badMetaMap[mp.PartitionID] = ch.metaPartitionHolder.badMetaMap[mp.PartitionID] + 1
 			}
 			ch.metaPartitionHolder.badMetaMapLock.Unlock()
 		}
 	}()
 	minReplicas := make([][]*tcp_api.MetaPartitionLoadResponse, 3)
 
-	reqURL := fmt.Sprintf("http://%v/metaPartition/get?name=%v&id=%v", ch.host, volName, partitionID)
-	data, err := doRequest(reqURL, ch.isReleaseCluster)
-	if err != nil {
-		return
-	}
-	mp = new(MetaPartition)
-	if err = json.Unmarshal(data, mp); err != nil {
-		return
-	}
-	log.LogDebugf("action[retryCompareMetaPartition] host[%v] vol[%v] partition[%v] isRecover[%v] mp[%v]", ch.host, volName, partitionID, mp.IsRecover, mp)
+	log.LogDebugf("action[retryCompareMetaPartition] host[%v] vol[%v] partition[%v] isRecover[%v] mp[%v]", ch.host, volName, mp.PartitionID, mp.IsRecover, mp)
 	if mp.IsRecover {
 		return
 	}
-	var retry = 3
+	var retry = 5
 	var failedTime int
-	// 连续检查 3 次，降低误报
-	for i := 0; i < retry; i++ {
-		if err = compareMetaPartition(ch.isReleaseCluster, minReplicas, mp, partitionID); err != nil {
+	// 连续检查 5 次，降低误报
+	for i := 1; i <= retry; i++ {
+		if err = compareMetaPartition(ch.isReleaseCluster, minReplicas, mp, mp.PartitionID); err != nil {
 			failedTime++
 			continue
 		}
@@ -146,7 +141,20 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, partitionID uint
 		if len(minReplicas[applyIndex]) == 0 && len(minReplicas[dEntryIndex]) == 0 && len(minReplicas[inoudeIndex]) == 0 {
 			return
 		}
-		time.Sleep(time.Second * 3)
+
+		if i == 3 { //连续检查三次指标有问题时，检查一下recover状态
+			var isRecovering = false
+			if isRecovering, err = checkMetaPartitionIsRecovering(ch.host, volName, ch.isReleaseCluster, mp.PartitionID); err != nil {
+				return
+			}
+
+			if isRecovering {
+				//如果正在恢复中，则退出检查
+				return
+			}
+		}
+
+		time.Sleep(time.Second * time.Duration(2 * i)) //每次检查间隔等待时长梯度增长
 	}
 	if err != nil {
 		return
@@ -163,7 +171,15 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, partitionID uint
 		last := minReplicas[applyIndex][len(minReplicas[applyIndex])-1]
 		// 两次检查apply相同且address相同，可能卡住
 		if first.ApplyID == last.ApplyID && first.Addr == last.Addr {
-			exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different apply id, min apply addr[%v] min apply id[%v]", ch.host, volName, partitionID, first.Addr, first.ApplyID))
+			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different apply id, min apply addr[%v] min apply id[%v]",
+				ch.host, volName, mp.PartitionID, first.Addr, first.ApplyID)
+			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr) {
+				uploadMetaNodeStack(first.Addr)
+				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
+			} else {
+				err = fmt.Errorf("check failed, metanode not start")
+				log.LogWarnf("%v server not completed start", msg)
+			}
 			return
 		}
 	}
@@ -172,10 +188,11 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, partitionID uint
 		first := minReplicas[dEntryIndex][0]
 		last := minReplicas[dEntryIndex][len(minReplicas[dEntryIndex])-1]
 		if first.Addr == last.Addr {
-			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different dentry, min addr[%v] min dEntry[%v]", ch.host, volName, partitionID, first.Addr, first.DentryCount)
-			if isServerStartCompleted(first.Addr) {
+			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different dentry, min addr[%v] min dEntry[%v]", ch.host, volName, mp.PartitionID, first.Addr, first.DentryCount)
+			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr) {
 				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
 			} else {
+				err = fmt.Errorf("check failed, metanode not start")
 				log.LogWarnf("%v server not completed start", msg)
 			}
 		}
@@ -185,14 +202,77 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, partitionID uint
 		first := minReplicas[inoudeIndex][0]
 		last := minReplicas[inoudeIndex][len(minReplicas[inoudeIndex])-1]
 		if first.Addr == last.Addr {
-			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different inode count, min addr[%v] min inode count[%v]", ch.host, volName, partitionID, first.Addr, first.InodeCount)
-			if isServerStartCompleted(first.Addr) {
+			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different inode count, min addr[%v] min inode count[%v]", ch.host, volName, mp.PartitionID, first.Addr, first.InodeCount)
+			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr) {
 				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
 			} else {
+				err = fmt.Errorf("check failed, metanode not start")
 				log.LogWarnf("%v server not completed start", msg)
 			}
 		}
 	}
+}
+
+func checkMetaPartitionIsRecovering(host, volName string, isRelease bool, partitionID uint64) (isRecovering bool, err error) {
+	var data []byte
+	reqURL := fmt.Sprintf("http://%v/metaPartition/get?name=%v&id=%v", host, volName, partitionID)
+	data, err = doRequest(reqURL, isRelease)
+	if err != nil {
+		return
+	}
+	mp := new(MetaPartition)
+	if err = json.Unmarshal(data, mp); err != nil {
+		return
+	}
+
+	isRecovering = mp.IsRecover
+	if isRecovering {
+		log.LogDebugf("action[retryCompareMetaPartition] host[%v] vol[%v] partition[%v] is recovering", host, volName, partitionID)
+	}
+	return
+}
+
+func uploadMetaNodeStack(addr string) {
+	if uploadStackCount > 30 {
+		log.LogErrorf("upload stack count greater than max count(30)")
+		return
+	}
+	url := fmt.Sprintf("http://%s:%s/debug/pprof/goroutine?debug=2", strings.Split(addr, ":")[0], profPortMap[strings.Split(addr, ":")[1]])
+	client := &http.Client{}
+	client.Timeout = time.Minute * 2
+	resp, err := client.Get(url)
+	if err != nil {
+		log.LogErrorf("get %s failed: %v", url, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var data []byte
+	data, err = io.ReadAll(resp.Body)
+	if err != nil {
+		log.LogErrorf("read resp body failed, url: %s, err: %v", url, err)
+		return
+	}
+
+	if bucketSession == nil {
+		return
+	}
+
+	curTime := time.Now()
+	today := time.Date(curTime.Year(), curTime.Month(), curTime.Day(), 0, 0, 0, 0, time.Local)
+	svc := s3.New(bucketSession)
+	key := fmt.Sprintf("/metanode_stack/%s/%s_%s", today.Format("20060102150405"), strings.Split(addr, ":")[0], curTime.Format("20060102150405"))
+	_, err = svc.PutObject(&s3.PutObjectInput{
+		Bucket:      aws.String(bucketName),
+		Key:         aws.String(key),
+		Body:        bytes.NewReader(data),
+		ContentType: aws.String("text/plain"),
+	})
+	if err != nil {
+		log.LogErrorf("put object to %s failed, path: %s, err: %v", bucketName, key, err)
+		return
+	}
+	uploadStackCount++
 }
 
 func isServerStartCompleted(tcpAddr string) bool {
@@ -203,6 +283,27 @@ func isServerStartCompleted(tcpAddr string) bool {
 		return false
 	}
 	return stat.StartComplete
+}
+
+func isServerAlreadyStart(tcpAddr string) bool {
+	client := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(tcpAddr, ":")[0], profPortMap[strings.Split(tcpAddr, ":")[1]]), false)
+	stat, err := client.GetStatInfo()
+	if err != nil {
+		log.LogErrorf("ip[%v] get stat info failed, err:%v", tcpAddr, err)
+		return false
+	}
+	if stat.StartTime == "" {
+		stat.StartTime = stat.MNStartTime
+	}
+	sTime, err := time.ParseInLocation("2006-01-02 15:04:05", stat.StartTime, time.Local)
+	if err != nil {
+		log.LogErrorf("parse time %s failed, address: %v, err:%v", stat.StartTime, tcpAddr, err)
+		return false
+	}
+	if time.Since(sTime) > time.Minute*2 {
+		return true
+	}
+	return false
 }
 
 func compareMetaPartition(dbbak bool, minReplicas [][]*tcp_api.MetaPartitionLoadResponse, mp *MetaPartition, partitionID uint64) (err error) {

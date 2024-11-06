@@ -4,6 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/cubefs/cubefs/util/log"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -127,6 +132,7 @@ const (
 	cfgKeySSDDiskOfflineThreshold          = "ssdDiskOfflineThreshold"
 	cfgKeyEmail                            = "email"
 	cfgKeyEnable                           = "enable"
+	cfgKeyBucketConfig                     = "bucketConfig"
 )
 
 type emailConfig struct {
@@ -139,6 +145,14 @@ type emailConfig struct {
 		MailUser string   `json:"mailUser"`
 		MailPwd  string   `json:"mailPwd"`
 	} `json:"property"`
+}
+
+type BucketConfig struct {
+	BucketName string `json:"bucketName"`
+	EndPoint   string `json:"endPoint"`
+	Region     string `json:"region"`
+	AccessKey  string `json:"ak"`
+	SecretKey  string `json:"sk"`
 }
 
 var configKeys = []string{
@@ -170,6 +184,11 @@ var (
 	masterNodesMutex   sync.Mutex
 	checkDpCorruptWg   sync.WaitGroup
 	checkMpCorruptWg   sync.WaitGroup
+)
+
+var (
+	bucketName    string
+	bucketSession *session.Session
 )
 
 type ChubaoFSMonitor struct {
@@ -558,6 +577,34 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 
 	for _, k := range intKeys {
 		s.integerMap[k] = cfg.GetInt64(k)
+	}
+
+	//parse bucket config
+	bucketConfigData := cfg.GetJsonObjectBytes(cfgKeyBucketConfig)
+	if len(bucketConfigData) != 0 {
+		var bucketConfig = &BucketConfig{}
+		err = json.Unmarshal(bucketConfigData, bucketConfig)
+		if err != nil {
+			log.LogErrorf("unmarshal bucket config failed, data: %v, err: %v", bucketConfigData, err)
+			return
+		}
+		httpClient := &http.Client{
+			Timeout: 2 * time.Minute,
+		}
+		bucketName = bucketConfig.BucketName
+		log.LogInfof("bucket config: %v", bucketConfig)
+		bucketSession, err = session.NewSession(&aws.Config{
+			Credentials:      credentials.NewStaticCredentials(bucketConfig.AccessKey, bucketConfig.SecretKey, ""),
+			Endpoint:         aws.String(bucketConfig.EndPoint),
+			Region:           aws.String(bucketConfig.Region),
+			DisableSSL:       aws.Bool(true),
+			S3ForcePathStyle: aws.Bool(false),
+			HTTPClient:       httpClient,
+		})
+		if err != nil {
+			log.LogErrorf("new bucket session failed, bucketConfig: %v, err: %v", bucketConfig, err)
+			return
+		}
 	}
 
 	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
