@@ -11,8 +11,8 @@ import (
 
 func registerChubaoFSHighLoadNodeSolver(s *ChubaoFSHighLoadNodeSolver) {
 	if s != nil {
-		http.HandleFunc("/checkToolHighLoadNodeSolver", s.highLoadNodeSolverHandle)
-		http.HandleFunc("/checkToolHighLoadNodeSolverCritical", s.highLoadNodeSolverCriticalHandle)
+		/*		http.HandleFunc("/checkToolHighLoadNodeSolver", s.highLoadNodeSolverHandle)
+				http.HandleFunc("/checkToolHighLoadNodeSolverCritical", s.highLoadNodeSolverCriticalHandle)*/
 	}
 }
 
