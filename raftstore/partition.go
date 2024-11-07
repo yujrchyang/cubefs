@@ -15,6 +15,7 @@
 package raftstore
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path"
@@ -303,8 +304,8 @@ func (p *partition) Start() (err error) {
 		peers = append(peers, peerAddress.Peer)
 	}
 	var applied = p.config.GetStartIndex.Get(fi, li)
-	if p.config.LogIndexCheck && (applied > li || (fi > 1 && applied < fi)) {
-		err = raft.ErrLackOfRaftLog
+	if p.config.LogIndexCheck && (applied > li || (fi > 1 && applied < fi - 1)) {
+		err = fmt.Errorf("%v, applyID: %v, firstIndex: %v, lastIndex: %v", raft.ErrLackOfRaftLog, applied, fi, li)
 		return
 	}
 	var consistencyMode = func() raft.ConsistencyMode {
