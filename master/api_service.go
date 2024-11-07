@@ -3073,6 +3073,7 @@ func (m *Server) getMetaNode(w http.ResponseWriter, r *http.Request) {
 		Threshold:                 metaNode.Threshold,
 		ReportTime:                metaNode.ReportTime,
 		MetaPartitionCount:        metaNode.MetaPartitionCount,
+		MetaRecorderCount: 		   metaNode.MetaRecorderCount,
 		NodeSetID:                 metaNode.NodeSetID,
 		PersistenceMetaPartitions: metaNode.PersistenceMetaPartitions,
 		PersistenceMetaRecorders:  metaNode.PersistenceMetaRecorders,

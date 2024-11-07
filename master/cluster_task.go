@@ -346,8 +346,15 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 			return
 		}
 	}
-	if mp.IsRecover && !mp.isLatestReplica(nodeAddr) { // todo recorder引起的recover
+	if mp.IsRecover && mp.allRecorderHasRecovered() && !mp.isLatestReplica(nodeAddr) {
 		err = fmt.Errorf("vol[%v],meta partition[%v] is recovering,[%v] can't be decommissioned", vol.Name, mp.PartitionID, nodeAddr)
+		return
+	}
+	if mp.IsRecover && !mp.allRecorderHasRecovered() {
+		if mp.isRecoveringRecorder(nodeAddr) {
+			return
+		}
+		err = fmt.Errorf("vol[%v],meta partition[%v] has recovering recorder,[%v] can't be decommissioned", vol.Name, mp.PartitionID, nodeAddr)
 		return
 	}
 	return
@@ -599,7 +606,7 @@ func (c *Cluster) forceRemoveMetaRaftPeers(mp *MetaPartition, panicHosts, panicR
 		return
 	}
 	mp.RUnlock()
-	if len(newHostsPeers) == 0 {
+	if len(newHostsPeers) == 0 || len(newHostsPeers) < len(newRecordersPeers) {
 		err = proto.ErrNoLiveReplicas
 		return
 	}
@@ -1042,7 +1049,12 @@ func (c *Cluster) addMetaRecorder(partition *MetaPartition, addr string, volReco
 	partition.Lock()
 	defer partition.Unlock()
 	if partition.hasPeer(addr) {
-		err = fmt.Errorf("vol[%v],mp[%v] has contains host[%v]", partition.volName, partition.PartitionID, addr)
+		err = fmt.Errorf("vol[%v], mp[%v] has contains host[%v]", partition.volName, partition.PartitionID, addr)
+		return
+	}
+	if len(partition.Recorders) + 1 > len(partition.Hosts) {
+		err = fmt.Errorf("vol[%v], mp[%v] has recorders count[%v] can't larger than hosts count[%v]",
+			partition.volName, partition.PartitionID, len(partition.Recorders), len(partition.Hosts))
 		return
 	}
 	metaNode, err := c.metaNode(addr)

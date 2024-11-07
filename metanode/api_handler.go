@@ -218,6 +218,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	conf := mp.GetBaseConfig()
 	msg["peers"] = conf.Peers
 	msg["learners"] = conf.Learners
+	msg["recorders"] = conf.Recorders
 	msg["nodeId"] = conf.NodeId
 	msg["cursor"] = conf.Cursor
 	msg["inode_count"] = snap.Count(InodeType)
@@ -1299,6 +1300,11 @@ func (m *MetaNode) removePeerInRaftLog(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		resp.Code = http.StatusNotFound
 		resp.Msg = err.Error()
+		return
+	}
+	if mp.IsRecorder(peerID) {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = "unsupported peer type[Recorder]"
 		return
 	}
 
@@ -3227,6 +3233,9 @@ func (m *MetaNode) correctInodesAndDelInodesTotalSize(w http.ResponseWriter, r *
 	req := new(proto.CorrectMPInodesAndDelInodesTotalSizeReq)
 	if correctAll {
 		for _, peer := range partition.config.Peers {
+			if peer.IsRecorder() {
+				continue
+			}
 			req.NeedCorrectHosts = append(req.NeedCorrectHosts, peer.Addr)
 		}
 

@@ -986,6 +986,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 		optMetaDetail bool
 		optDataDetail bool
 		optEcDetail   bool
+		optPeerDetail bool
 	)
 
 	var cmd = &cobra.Command{
@@ -1005,7 +1006,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 			stdout("Summary:\n%s\n", formatSimpleVolView(svv))
 
 			// print metadata detail
-			if optMetaDetail {
+			if optMetaDetail || optPeerDetail {
 				var views []*proto.MetaPartitionView
 				if views, err = client.ClientAPI().GetMetaPartitions(volumeName); err != nil {
 					errout("Get volume metadata detail information failed:\n%v\n", err)
@@ -1036,6 +1037,13 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 				})
 				for _, view := range views {
 					stdout("%v\n", formatMetaPartitionTableRow(view))
+				}
+				if optPeerDetail {
+					stdout("\nMeta partitions peers:\n")
+					stdout("%v\n", metaPartitionPeerTableHeader)
+					for _, view := range views {
+						stdout("%v\n", formatMetaPartitionPeerTableRow(view))
+					}
 				}
 			}
 
@@ -1090,6 +1098,7 @@ func newVolInfoCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().BoolVarP(&optMetaDetail, "meta-partition", "m", false, "Display meta partition detail information")
 	cmd.Flags().BoolVarP(&optDataDetail, "data-partition", "d", false, "Display data partition detail information")
 	cmd.Flags().BoolVarP(&optEcDetail, "ec-partition", "e", false, "Display ec partition detail information")
+	cmd.Flags().BoolVarP(&optPeerDetail, "meta-peer", "p", false, "Display meta partition detail information of peers")
 	return cmd
 }
 

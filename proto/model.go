@@ -74,6 +74,7 @@ type MetaNodeInfo struct {
 	Threshold                 float32
 	ReportTime                time.Time
 	MetaPartitionCount        int
+	MetaRecorderCount		  int
 	NodeSetID                 uint64
 	PersistenceMetaPartitions []uint64
 	PersistenceMetaRecorders  []uint64

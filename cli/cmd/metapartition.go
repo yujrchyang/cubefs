@@ -304,7 +304,8 @@ func checkMetaPartition(pid uint64, client *master.MasterClient) (outPut string,
 	}
 	sb.WriteString(fmt.Sprintf("%v", formatMetaPartitionInfoRow(partition)))
 	sort.Strings(partition.Hosts)
-	if len(partition.MissNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum+partition.LearnerNum) {
+	if len(partition.MissNodes) > 0 || partition.Status == -1 || len(partition.Hosts) != int(partition.ReplicaNum+partition.LearnerNum) ||
+		len(partition.Recorders) != int(partition.RecorderNum) {
 		errorReports = append(errorReports, fmt.Sprintf("partition is unhealthy in master"))
 	}
 	for _, r := range partition.Replicas {
@@ -792,6 +793,9 @@ func newMetaPartitionCheckSnapshot(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			for index, peer := range partition.Peers {
+				if peer.IsRecorder() {
+					continue
+				}
 				addr := strings.Split(peer.Addr, ":")[0]
 				metaNodeProfPort := client.MetaNodeProfPort
 				resp, err = http.Get(fmt.Sprintf("http://%s:%d%s?pid=%v", addr, metaNodeProfPort, proto.ClientMetaPartitionSnapshotCheck, partitionID))

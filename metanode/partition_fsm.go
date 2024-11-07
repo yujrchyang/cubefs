@@ -481,7 +481,6 @@ func (mp *metaPartition) GetRecoverNodeVersion(nodeID uint64) (metaNodeVersion *
 		recoverPeer = &mp.config.Peers[index]
 		break
 	}
-	// todo 优化：发给recorder的快照空实现
 
 	if recoverPeer == nil {
 		err = fmt.Errorf("can not find node[%v]", nodeID)

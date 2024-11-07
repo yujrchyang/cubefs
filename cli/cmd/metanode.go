@@ -108,7 +108,7 @@ func newMetaNodeListCmd(client *master.MasterClient) *cobra.Command {
 				if optShowDp {
 					info = nodeInfoSlice[index]
 					row = fmt.Sprintf(metaNodeDetailViewTableRowPattern, node.ID, node.Addr, node.Version,
-						formatYesNo(node.IsWritable), formatNodeStatus(node.Status), formatSize(info.Used), formatFloat(info.Ratio), info.ZoneName, info.MetaPartitionCount)
+						formatYesNo(node.IsWritable), formatNodeStatus(node.Status), formatSize(info.Used), formatFloat(info.Ratio), info.ZoneName, info.MetaPartitionCount, info.MetaRecorderCount)
 				} else {
 					row = formatNodeView(&node, true)
 				}

@@ -1001,17 +1001,21 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	vol.updateViewCache(c, proto.JsonType)
 	vol.clearViewCachePb()
 
-	metaTasks, dataTasks, ecTasks, hasGeneratedTasks := vol.generateDeleteTasks(c)
+	metaTasks, metaRecorderTasks, dataTasks, ecTasks, hasGeneratedTasks := vol.generateDeleteTasks(c)
 	if !hasGeneratedTasks {
 		return
 	}
 
-	if len(metaTasks) == 0 && len(dataTasks) == 0 && len(ecTasks) == 0 {
+	if len(metaTasks) == 0 && len(metaRecorderTasks) == 0 && len(dataTasks) == 0 && len(ecTasks) == 0 {
 		vol.deleteVolFromStore(c)
 	}
 	go func() {
 		for _, metaTask := range metaTasks {
 			vol.deleteMetaPartitionFromMetaNode(c, metaTask)
+		}
+
+		for _, metaRecorderTask := range metaRecorderTasks {
+			vol.deleteMetaRecorderFromMetaNode(c, metaRecorderTask)
 		}
 
 		for _, dataTask := range dataTasks {
@@ -1027,23 +1031,23 @@ func (vol *Vol) checkStatus(c *Cluster) {
 	return
 }
 
-func (vol *Vol) generateDeleteTasks(c *Cluster) ([]*proto.AdminTask, []*proto.AdminTask, []*proto.AdminTask, bool) {
+func (vol *Vol) generateDeleteTasks(c *Cluster) ([]*proto.AdminTask, []*proto.AdminTask, []*proto.AdminTask, []*proto.AdminTask, bool) {
 	vol.Lock()
 	defer vol.Unlock()
 	if vol.Status != proto.VolStMarkDelete {
-		return nil, nil, nil, false
+		return nil, nil, nil, nil, false
 	}
 	if vol.RenameConvertStatus != proto.VolRenameConvertStatusFinish {
-		return nil, nil, nil, false
+		return nil, nil, nil, nil, false
 	}
 	if time.Now().Unix()-vol.MarkDeleteTime < c.cfg.DeleteMarkDelVolInterval {
-		return nil, nil, nil, false
+		return nil, nil, nil, nil, false
 	}
 	log.LogInfof("action[generateDeleteTasks] vol[%v],status[%v]", vol.Name, vol.Status)
-	metaTasks := vol.getTasksToDeleteMetaPartitions()
+	metaTasks, metaRecorderTasks := vol.getTasksToDeleteMetaPartitions()
 	dataTasks := vol.getTasksToDeleteDataPartitions()
 	ecTasks := vol.getTasksToDeleteEcDataPartitions()
-	return metaTasks, dataTasks, ecTasks, true
+	return metaTasks, metaRecorderTasks, dataTasks, ecTasks, true
 }
 
 func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTask) {
@@ -1062,6 +1066,28 @@ func (vol *Vol) deleteMetaPartitionFromMetaNode(c *Cluster, task *proto.AdminTas
 	}
 	mp.Lock()
 	mp.removeReplicaByAddr(metaNode.Addr)
+	mp.removeMissingReplica(metaNode.Addr)
+	mp.Unlock()
+	return
+}
+
+func (vol *Vol) deleteMetaRecorderFromMetaNode(c *Cluster, task *proto.AdminTask) {
+	mp, err := vol.metaPartition(task.PartitionID)
+	if err != nil {
+		return
+	}
+	var metaNode *MetaNode
+	metaNode, err = c.metaNode(task.OperatorAddr)
+	if err != nil {
+		return
+	}
+	_, err = metaNode.Sender.syncSendAdminTask(task)
+	if err != nil {
+		log.LogErrorf("action[deleteMetaRecorder] vol[%v],meta partition[%v],addr[%v],err[%v]", mp.volName, mp.PartitionID, task.OperatorAddr, err)
+		return
+	}
+	mp.Lock()
+	mp.removeRecorderByAddr(metaNode.Addr)
 	mp.removeMissingReplica(metaNode.Addr)
 	mp.Unlock()
 	return
@@ -1136,14 +1162,17 @@ func (vol *Vol) deleteDataPartitionsFromStore(c *Cluster) {
 
 }
 
-func (vol *Vol) getTasksToDeleteMetaPartitions() (tasks []*proto.AdminTask) {
+func (vol *Vol) getTasksToDeleteMetaPartitions() (replicaTasks, recorderTasks []*proto.AdminTask) {
 	vol.mpsLock.RLock()
 	defer vol.mpsLock.RUnlock()
-	tasks = make([]*proto.AdminTask, 0)
+	replicaTasks = make([]*proto.AdminTask, 0)
 
 	for _, mp := range vol.MetaPartitions {
 		for _, replica := range mp.Replicas {
-			tasks = append(tasks, replica.createTaskToDeleteReplica(mp.PartitionID))
+			replicaTasks = append(replicaTasks, replica.createTaskToDeleteReplica(mp.PartitionID))
+		}
+		for _, recorder := range mp.RecordersInfo {
+			recorderTasks = append(recorderTasks, recorder.createTaskToDeleteRecorder(mp.PartitionID))
 		}
 	}
 	return
@@ -1177,8 +1206,8 @@ func (vol *Vol) getWritableDataPartitionsCount() (count int) {
 }
 
 func (vol *Vol) String() string {
-	return fmt.Sprintf("name[%v],dpNum[%v],mpNum[%v],cap[%v],status[%v]",
-		vol.Name, vol.dpReplicaNum, vol.mpReplicaNum, vol.Capacity, vol.Status)
+	return fmt.Sprintf("name[%v],dpNum[%v],mpNum[%v],mpRecorderNum[%v],cap[%v],status[%v]",
+		vol.Name, vol.dpReplicaNum, vol.mpReplicaNum, vol.mpRecorderNum, vol.Capacity, vol.Status)
 }
 
 func (vol *Vol) doSplitMetaPartition(c *Cluster, mp *MetaPartition, end uint64) (nextMp *MetaPartition, err error) {
@@ -1308,6 +1337,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	)
 
 	learners = make([]proto.Learner, 0)
+	recorders = make([]string, 0)
 	storeMode = vol.DefaultStoreMode
 	errChannel := make(chan error, vol.mpReplicaNum+vol.mpLearnerNum+vol.mpRecorderNum)
 	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
@@ -1324,7 +1354,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		//mpLearnerNum of vol is always 0 for other type vols except cross region quorum vol.
 		//if it will be used in other vol, should choose new learner replica
 	}
-	log.LogInfof("target meta hosts:%v,peers:%v", hosts, peers)
+	log.LogInfof("target meta hosts:%v, recorders:%v, peers:%v", hosts, recorders, peers)
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
 		return nil, errors.NewError(err)
 	}

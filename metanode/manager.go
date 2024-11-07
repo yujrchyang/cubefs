@@ -668,7 +668,7 @@ func (m *metadataManager) onStop() {
 		wg.Add(1)
 		go func(recorder *metaRecorder) {
 			defer wg.Done()
-			recorder.Stop()
+			recorder.Stop(true)
 		}(mr)
 		return true
 	})

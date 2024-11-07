@@ -141,10 +141,6 @@ func (mp *MetaPartition) hostsToString() (hosts string) {
 	return strings.Join(mp.Hosts, underlineSeparator)
 }
 
-func (mp *MetaPartition) recordersToString() (recorders string) {
-	return strings.Join(mp.Recorders, underlineSeparator)
-}
-
 func (mp *MetaPartition) addReplica(mr *MetaReplica) {
 	for _, m := range mp.Replicas {
 		if m.Addr == mr.Addr {
@@ -496,7 +492,7 @@ func (mp *MetaPartition) hasMajorityLiveReplicas(nodeAddr string, replicaNum, re
 	}
 	liveAddrs := mp.getLiveReplicasAddr(liveReplicas)
 	liveAddrs = append(liveAddrs, mp.getLiveRecordersAddr(liveRecorders)...)
-	if len(liveReplicas) + len(liveRecorders) == ((replicaNum+recorderNum)/2+1) && contains(liveAddrs, nodeAddr) {
+	if (len(liveReplicas) + len(liveRecorders)) == ((replicaNum+recorderNum)/2+1) && contains(liveAddrs, nodeAddr) {
 		err = fmt.Errorf("live replicas num will be less than majority after offline nodeAddr: %v, liveReplicasNum(%v), liveRecordersNum(%v)",
 			nodeAddr, len(liveReplicas), len(liveRecorders))
 		return
@@ -543,6 +539,11 @@ func (mp *MetaPartition) hasMissingOneReplica(offlineAddr string, replicaNum, re
 		log.LogError(fmt.Sprintf("action[%v],partitionID:%v,err:%v",
 			"hasMissingOneReplica", mp.PartitionID, proto.ErrHasOneMissingReplica))
 		err = proto.ErrHasOneMissingReplica
+		return
+	}
+	if curHostCount < curRecorderCount || curReplicaCount < curRecorderInfoCount {
+		err = fmt.Errorf("hosts count[%v %v] less than recorders count[%v %v] after offline", curHostCount, curReplicaCount, curRecorderCount, curRecorderInfoCount)
+		return
 	}
 	return
 }
@@ -1283,7 +1284,6 @@ func (mp *MetaPartition) getLiveZones(offlineAddr string) (zones []string) {
 }
 
 func (mp *MetaPartition) isLatestReplica(addr string) (ok bool) {
-	// todo recorder?
 	hostsLen := len(mp.Hosts)
 	if hostsLen <= 1 {
 		return
@@ -1328,8 +1328,9 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		zoneList = masterRegionZoneName
 	}
 	normalReplicas := mp.getNormalReplicas()
-	if len(normalReplicas) != int(vol.mpReplicaNum) {
-		log.LogDebugf("action[RepairZone], meta replica normalReplicas[%v] not equal to mpReplicaNum[%v]", len(normalReplicas), vol.mpReplicaNum)
+	if len(normalReplicas) != int(vol.mpReplicaNum) || len(mp.RecordersInfo) != int(vol.mpRecorderNum) {
+		log.LogDebugf("action[RepairZone], meta replica normalReplicas[%v] not equal to mpReplicaNum[%v], or RecordersInfo[%v] not equal to mpRecorderNum[%v]",
+			len(normalReplicas), vol.mpReplicaNum, len(mp.RecordersInfo), vol.mpRecorderNum)
 		return
 	}
 	if mp.IsRecover {
@@ -1344,8 +1345,11 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 		return
 	}
 	rps := mp.getLiveReplicas()
-	if len(rps) < int(vol.mpReplicaNum) {
-		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than mpReplicaNum[%v], can not be automatically repaired", vol.Name, vol.zoneName, len(rps), vol.mpReplicaNum)
+	rcs := mp.getLiveRecorders()
+	if len(rps) < int(vol.mpReplicaNum) || len(rcs) < int(vol.mpRecorderNum) {
+		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than mpReplicaNum[%v], " +
+			"or live Recorders [%v] less than mpRecorderNum[%v], can not be automatically repaired",
+			vol.Name, vol.zoneName, len(rps), vol.mpReplicaNum, len(rcs), vol.mpRecorderNum)
 		return
 	}
 
@@ -1662,12 +1666,8 @@ func (mp *MetaPartition) allReplicaHasRecovered() bool {
 	mp.RLock()
 	defer mp.RUnlock()
 	replicaMap := make(map[string]*MetaReplica, 0)
-	recorderMap := make(map[string]*MetaRecorder, 0)
 	for _, mpReplica := range mp.Replicas {
 		replicaMap[mpReplica.Addr] = mpReplica
-	}
-	for _, mpRecorder := range mp.RecordersInfo {
-		recorderMap[mpRecorder.Addr] = mpRecorder
 	}
 	for _, host := range mp.Hosts {
 		replica, ok := replicaMap[host]
@@ -1677,6 +1677,17 @@ func (mp *MetaPartition) allReplicaHasRecovered() bool {
 		if replica.IsRecover {
 			return false
 		}
+	}
+	if !mp.allRecorderHasRecovered() {
+		return false
+	}
+	return true
+}
+
+func (mp *MetaPartition) allRecorderHasRecovered() bool {
+	recorderMap := make(map[string]*MetaRecorder, 0)
+	for _, mpRecorder := range mp.RecordersInfo {
+		recorderMap[mpRecorder.Addr] = mpRecorder
 	}
 	for _, addr := range mp.Recorders {
 		rInfo, ok := recorderMap[addr]
@@ -1688,6 +1699,15 @@ func (mp *MetaPartition) allReplicaHasRecovered() bool {
 		}
 	}
 	return true
+}
+
+func (mp *MetaPartition) isRecoveringRecorder(addr string) bool {
+	for _, mpRecorder := range mp.RecordersInfo {
+		if mpRecorder.Addr == addr {
+			return mpRecorder.IsRecover
+		}
+	}
+	return false
 }
 
 func (mp *MetaPartition) createRecorderView(nodeAddr string, c *Cluster) (err error) {

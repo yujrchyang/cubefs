@@ -4695,11 +4695,11 @@ func TestMpRecorderOp(t *testing.T) {
 	recorderVol, err = server.cluster.getVol(recorderVolName)
 	assert.NoError(t, err, "get recorder type vol err")
 
-	// delete recorder
 	mps := make([]*MetaPartition, 0)
 	for _, mp := range recorderVol.MetaPartitions {
 		mps = append(mps, mp)
 	}
+	// delete recorder
 	mp := mps[0]
 	opAddr := mp.Recorders[0]
 	reqURL := fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaRecorder, mp.PartitionID, opAddr)
@@ -4731,8 +4731,36 @@ func TestMpRecorderOp(t *testing.T) {
 	assert.Equal(t, true, mp.IsRecover, "mp should be recovering")
 	assert.Equal(t, ReadWrite, int(mp.Status), "mp should be ReadWrite")
 	assert.Truef(t, hasBadMetaPartitionIds(mp.PartitionID), "BadMetaPartitionIds should contain mp[%v]", mp.PartitionID)
-	// reset recorder
+
 	mp = mps[2]
+	// reset peer: 不允许重置为仅剩recorder
+	resetAddr1 := strings.Join(mp.Recorders, ",")
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminManualResetMetaPartition, mp.PartitionID, resetAddr1)
+	reply := processWithError(reqURL, t)
+	assert.NotZerof(t, reply.Code, "reset peer of (%v), reply(%v)", resetAddr1, reply)
+	// reset peer: 不允许重置后正常副本小于recorder副本
+	resetAddr2 := strings.Join(append(mp.Recorders, mp.Hosts[0]), ",")
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminManualResetMetaPartition, mp.PartitionID, resetAddr2)
+	reply = processWithError(reqURL, t)
+	assert.NotZerof(t, reply.Code, "reset peer of (%v), reply(%v)", resetAddr2, reply)
+	// 不允许删除副本后正常副本小于recorder副本
+	deleteHost1 := mp.Hosts[0]
+	deleteHost2 := mp.Hosts[1]
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, mp.PartitionID, deleteHost1)
+	process(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDeleteMetaReplica, mp.PartitionID, deleteHost2)
+	reply = processWithError(reqURL, t)
+	assert.NotZerof(t, reply.Code, "remove host(%v), reply(%v)", deleteHost2, reply)
+	// 不允许下线副本后正常副本小于recorder副本
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminDecommissionMetaPartition, mp.PartitionID, deleteHost2)
+	reply = processWithError(reqURL, t)
+	assert.NotZerof(t, reply.Code, "remove host(%v), reply(%v)", deleteHost2, reply)
+	// 不允许添加recorder后正常副本小于recorder副本
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v", hostAddr, proto.AdminAddMetaRecorder, mp.PartitionID, deleteHost1)
+	reply = processWithError(reqURL, t)
+	assert.NotZerof(t, reply.Code, "add recorder(%v), reply(%v)", deleteHost1, reply)
+
+	// reset peer: 重置为 1 host + 1 recorder
 	resetHost := mp.Hosts[0]
 	resetRecorder := mp.Recorders[0]
 	resetAddr := fmt.Sprintf("%v,%v", resetHost, resetRecorder)

@@ -109,7 +109,7 @@ func TestRecorder(t *testing.T) {
 func recorder_filterMsgs_2nodeDown(t *testing.T, name string, msgFilter raft.MsgFilterFunc) {
 	putDataStep := 200
 	servers := initTestServerWithMsgFilter(recorderPeers, true, true, 1, raft.StandardMode, msgFilter)
-	f, w := getLogFile("", fmt.Sprintf("TestRecorder_LeaderDown_%v.log", name))
+	f, w := getLogFile("", fmt.Sprintf("TestRecorder_2nodeDown_%v.log", name))
 	defer func() {
 		w.Flush()
 		f.Close()
@@ -222,9 +222,9 @@ func recorder_filterMsgs_leaderDown(t *testing.T, name string, msgFilter raft.Ms
 	waitForApply(servers, 1, w)
 	// start down server
 	_, servers = startServer(recorderPeers, servers, downServer, w)
-	waitForApply(servers, 1, w)
-	// check data
-	err = verifyStrictRestoreValue(dataLen, servers, w)
+	applyIndex := waitForApply(servers, 1, w)
+	// check data，减去2条选举产生的空白日志
+	err = verifyStrictRestoreValue(int(applyIndex-2), servers, w)
 	assert.Equal(t, nil, err, "verify data is inconsistent")
 }
 

@@ -143,7 +143,9 @@ func (p *Packet) isMasterRequest() bool {
 		p.Opcode == proto.OpUpdateMetaPartition || p.Opcode == proto.OpLoadMetaPartition || p.Opcode == proto.OpDecommissionMetaPartition ||
 		p.Opcode == proto.OpAddMetaPartitionRaftMember || p.Opcode == proto.OpRemoveMetaPartitionRaftMember ||
 		p.Opcode == proto.OpMetaPartitionTryToLeader || p.Opcode == proto.OpResetMetaPartitionRaftMember ||
-		p.Opcode == proto.OpAddMetaPartitionRaftLearner || p.Opcode == proto.OpPromoteMetaPartitionRaftLearner {
+		p.Opcode == proto.OpAddMetaPartitionRaftLearner || p.Opcode == proto.OpPromoteMetaPartitionRaftLearner ||
+		p.Opcode == proto.OpCreateMetaRecorder || p.Opcode == proto.OpDeleteMetaRecorder || p.Opcode == proto.OpResetMetaRecorderRaftMember ||
+		p.Opcode == proto.OpAddMetaPartitionRaftRecorder || p.Opcode == proto.OpRemoveMetaPartitionRaftRecorder {
 		return true
 	}
 	return false

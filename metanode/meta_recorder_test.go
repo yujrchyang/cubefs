@@ -56,6 +56,7 @@ func TestMetaLoadRecorder(t *testing.T)  {
 	manager := &metadataManager{
 		nodeId:  1,
 		rootDir: metadataDir,
+		metaNode: &MetaNode{clusterId: "test"},
 	}
 	var mr *metaRecorder
 	mr, err = manager.loadRecorder("recorder_111")

@@ -739,7 +739,7 @@ func (mp *metaPartition) IsLeader() (leaderAddr string, ok bool) {
 	}
 	ok = leaderID == mp.config.NodeId
 	for _, peer := range mp.config.Peers {
-		if leaderID == peer.ID {
+		if leaderID == peer.ID && !peer.IsRecorder() {
 			leaderAddr = peer.Addr
 			return
 		}
@@ -1352,7 +1352,7 @@ func (mp *metaPartition) ResetMemberInter(peerIDs []uint64) (err error) {
 	for _, peerID := range peerIDs {
 		findFLag := false
 		for _, peer := range mp.config.Peers {
-			if peer.ID == peerID {
+			if peer.ID == peerID && !peer.IsRecorder() {
 				findFLag = true
 				req.NewPeers = append(req.NewPeers, peer)
 				break

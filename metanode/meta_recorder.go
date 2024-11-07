@@ -72,7 +72,7 @@ func (mr *metaRecorder) start() (err error) {
 		if err == nil {
 			return
 		}
-		mr.Stop()
+		mr.Stop(false)
 	}()
 	fsm := &raftstore.FunctionalPartitionFsm{
 		ApplyFunc:              mr.Recorder().HandleApply,
@@ -125,6 +125,9 @@ func (mr *metaRecorder) startRecorderWorker() {
 				log.LogWarnf("recorder(%v) get truncate index err(%v)", mr.partitionID, err)
 				continue
 			}
+			if truncateIndex == 0 {
+				continue
+			}
 			mr.Recorder().RaftPartition().Truncate(truncateIndex)
 			log.LogInfof("recorder(%v) truncate WAL to index(%v)", mr.partitionID, truncateIndex)
 		}
@@ -168,14 +171,16 @@ func (mr *metaRecorder) checkRecoverAfterStart() {
 	}
 }
 
-func (mr *metaRecorder) Stop() {
+func (mr *metaRecorder) Stop(needPersist bool) {
 	mr.stopOnce.Do(func() {
 		if mr.stopC != nil {
 			close(mr.stopC)
 		}
 		mr.Recorder().StopRaft()
-		if err := mr.persist(); err != nil {
-			log.LogErrorf("persist recorder(%v) failed when stop: %v", mr.partitionID, err)
+		if needPersist {
+			if err := mr.persist(); err != nil {
+				log.LogErrorf("persist recorder(%v) failed when stop: %v", mr.partitionID, err)
+			}
 		}
 		mr.manager.detachRecorder(mr.partitionID)
 		return
@@ -183,7 +188,7 @@ func (mr *metaRecorder) Stop() {
 }
 
 func (mr *metaRecorder) Expired() (err error) {
-	mr.Stop()
+	mr.Stop(true)
 	currentPath := path.Clean(mr.Recorder().MetaPath())
 	var newPath = path.Join(path.Dir(currentPath),
 		ExpiredRecorderPrefix+path.Base(currentPath)+"_"+strconv.FormatInt(time.Now().Unix(), 10))

@@ -180,7 +180,7 @@ func (mp *metaPartition) confRemoveNode(req *proto.RemoveMetaPartitionRaftMember
 	log.LogInfof("Start RemoveRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
 	for i, peer := range mp.config.Peers {
-		if peer.ID == req.RemovePeer.ID {
+		if peer.ID == req.RemovePeer.ID && peer.Type == proto.PeerNormal {
 			updated = true
 			peerIndex = i
 			break
@@ -254,15 +254,16 @@ func (mp *metaPartition) confAddRecorder(req *proto.AddMetaPartitionRaftRecorder
 }
 
 func (mp *metaPartition) confRemoveRecorder(req *proto.RemoveMetaPartitionRaftRecorderRequest, index uint64) (updated bool, err error) {
-	if mp.config.NodeId == req.RemoveRecorder.ID {
-		return false, fmt.Errorf("mismatched peer type")
-	}
 	peerIndex, recorderIndex := -1, -1
 	data, _ := json.Marshal(req)
+	if mp.config.NodeId == req.RemoveRecorder.ID {
+		// 假如是本节点曾经是recorder副本，下线后又重新在本节点分配了mp副本，如果是从头回放日志的话，会走到这里，不能返错，否则无法启动，暂时先打印error日志观察情况
+		log.LogErrorf("RemoveRaftRecorder PartitionID(%v) nodeID(%v) remove recorder of self ID RaftLog(%v) ", req.PartitionId, mp.config.NodeId, string(data))
+	}
 	log.LogInfof("Start RemoveRaftRecorder  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
 		req.PartitionId, mp.config.NodeId, string(data))
 	for i, peer := range mp.config.Peers {
-		if peer.ID == req.RemoveRecorder.ID {
+		if peer.ID == req.RemoveRecorder.ID && peer.Type == proto.PeerRecorder {
 			updated = true
 			peerIndex = i
 			break

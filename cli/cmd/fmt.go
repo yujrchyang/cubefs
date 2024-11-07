@@ -98,7 +98,7 @@ func formatClusterStat(cs *proto.ClusterStatInfo) string {
 
 var nodeViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v"
 var dataNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v"
-var metaNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v"
+var metaNodeDetailViewTableRowPattern = "%-6v    %-18v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v    %-8v"
 
 func formatNodeViewTableHeader() string {
 	return fmt.Sprintf(nodeViewTableRowPattern, "ID", "ADDRESS", "VERSION", "WRITABLE", "STATUS")
@@ -109,7 +109,7 @@ func formatDataNodeViewTableHeader() string {
 }
 
 func formatMetaNodeViewTableHeader() string {
-	return fmt.Sprintf(metaNodeDetailViewTableRowPattern, "ID", "ADDRESS", "VERSION", "WRITABLE", "STATUS", "USED", "RATIO", "ZONE", "MP COUNT")
+	return fmt.Sprintf(metaNodeDetailViewTableRowPattern, "ID", "ADDRESS", "VERSION", "WRITABLE", "STATUS", "USED", "RATIO", "ZONE", "MP COUNT", "RECORDER COUNT")
 }
 
 func formatNodeView(view *proto.NodeView, tableRow bool) string {
@@ -349,12 +349,14 @@ func formatMetaPartitionInfoRow(partition *proto.MetaPartitionInfo) string {
 	sb.WriteString(fmt.Sprintf("Volume       : %v\n", partition.VolName))
 	sb.WriteString(fmt.Sprintf("Status       : %v\n", formatDataPartitionStatus(partition.Status)))
 	sb.WriteString(fmt.Sprintf("ReplicaNum   : %v\n", partition.ReplicaNum))
+	sb.WriteString(fmt.Sprintf("RecorderNum  : %v\n", partition.RecorderNum))
 	sb.WriteString(fmt.Sprintf("Learner      : %v\n", len(partition.Learners)))
 	sb.WriteString("\n")
 	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "master", "(hosts) "+strings.Join(partition.Hosts, ",")))
 	if len(partition.Learners) > 0 {
 		sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "master", "(learners) "+strings.Join(convertLearnersToArray(partition.Learners), ",")))
 	}
+	sb.WriteString(fmt.Sprintf(partitionInfoTablePattern+"\n", "master", "(recorders) "+strings.Join(partition.Recorders, ",")))
 	return sb.String()
 }
 
@@ -533,6 +535,16 @@ func formatMetaPartitionTableRow(view *proto.MetaPartitionView) string {
 	return fmt.Sprintf(metaPartitionTablePattern,
 		view.PartitionID, view.MaxInodeID, view.DentryCount, view.InodeCount, view.Start, rangeToString(view.End), view.MaxExistIno,
 		formatMetaPartitionStatus(view.Status), view.StoreMode.Str(), view.LeaderAddr, strings.Join(view.Members, ","))
+}
+
+var (
+	metaPartitionPeerTablePattern = "%-8v    %-20v    %-60v    %-20v"
+	metaPartitionPeerTableHeader  = fmt.Sprintf(metaPartitionPeerTablePattern, "ID", "LEADER", "MEMBERS", "RECORDERS")
+)
+
+func formatMetaPartitionPeerTableRow(view *proto.MetaPartitionView) string {
+	return fmt.Sprintf(metaPartitionPeerTablePattern,
+		view.PartitionID, view.LeaderAddr, strings.Join(view.Members, ","), strings.Join(view.Recorders, ","))
 }
 
 var (
@@ -821,6 +833,7 @@ func formatMetaNodeDetail(mn *proto.MetaNodeInfo, rowTable bool) string {
 	sb.WriteString(fmt.Sprintf("  Report time         : %v\n", formatTimeToString(mn.ReportTime)))
 	sb.WriteString(fmt.Sprintf("  Partition count     : %v\n", mn.MetaPartitionCount))
 	sb.WriteString(fmt.Sprintf("  Persist partitions  : %v\n", mn.PersistenceMetaPartitions))
+	sb.WriteString(fmt.Sprintf("  Recorder count      : %v\n", mn.MetaRecorderCount))
 	sb.WriteString(fmt.Sprintf("  Persist recorders   : %v\n", mn.PersistenceMetaRecorders))
 	return sb.String()
 }

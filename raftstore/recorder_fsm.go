@@ -340,17 +340,17 @@ func (r *Recorder) ApplyAddNode(partitionID uint64, addPeer proto.Peer, index ui
 }
 
 func (r *Recorder) ApplyRemoveNode(partitionID uint64, removePeer proto.Peer, index uint64) (isUpdated bool, err error) {
-	if r.config.NodeID == removePeer.ID {
-		err = fmt.Errorf("mismatch peer type")
-		return
-	}
-
 	peerIndex, learnerIndex := -1, -1
 	isUpdated = false
+	if r.config.NodeID == removePeer.ID {
+		// 假如是本节点曾经是mp副本，下线后又重新在本节点分配了recorder副本，如果是从头回放日志的话，会走到这里。不能返错，否则无法启动，暂时先打印error日志观察情况
+		log.LogErrorf("Recorder PartitionID(%v) nodeID(%v) remove replica of self ID (%v) ", partitionID, r.config.NodeID, removePeer)
+	}
+
 	log.LogInfof("DataRecorder start RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
 	curPeers := r.GetPeers()
 	for i, peer := range curPeers {
-		if peer.ID == removePeer.ID {
+		if peer.ID == removePeer.ID && peer.Type == proto.PeerNormal {
 			peerIndex = i
 			isUpdated = true
 			break
@@ -490,7 +490,7 @@ func (r *Recorder) ApplyRemoveRecorder(canRemoveSelf func(cfg *RecorderConfig) (
 	log.LogInfof("DataRecorder start RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
 	curPeers := r.GetPeers()
 	for i, peer := range curPeers {
-		if peer.ID == removePeer.ID {
+		if peer.ID == removePeer.ID && peer.Type == proto.PeerRecorder {
 			peerIndex = i
 			isUpdated = true
 			break

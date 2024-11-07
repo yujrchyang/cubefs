@@ -1262,6 +1262,7 @@ func NewMetaPartitionView(partitionID, start, end uint64, status int8) (mpView *
 	mpView.Status = status
 	mpView.Members = make([]string, 0)
 	mpView.Learners = make([]string, 0)
+	mpView.Recorders = make([]string, 0)
 	return
 }
 

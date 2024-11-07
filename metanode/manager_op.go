@@ -1119,6 +1119,12 @@ func (m *metadataManager) opRemoveMetaPartitionRaftMember(conn net.Conn,
 	}
 
 	if !req.RaftOnly && !mp.IsExistPeer(req.RemovePeer) {
+		if mp.IsExistPeerID(req.RemovePeer) {
+			log.LogErrorf("[opRemoveMetaPartitionRaftMember]: partitionID= %d, has different type of peer(%v)", req.PartitionId, req.RemovePeer)
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(proto.ErrMetaReplicaExists.Error()))
+			m.respondToClient(conn, p)
+			return err
+		}
 		p.PacketOkReply()
 		m.respondToClient(conn, p)
 		return
@@ -1375,6 +1381,12 @@ func (m *metadataManager) opRemoveMetaPartitionRaftRecorder(conn net.Conn, p *Pa
 	}
 
 	if !req.RaftOnly && !mp.IsExistPeer(req.RemoveRecorder) {
+		if mp.IsExistPeerID(req.RemoveRecorder) {
+			log.LogErrorf("[opRemoveMetaPartitionRaftRecorder]: partitionID= %d, has different type of peer(%v)", req.PartitionId, req.RemoveRecorder)
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(proto.ErrMetaReplicaExists.Error()))
+			m.respondToClient(conn, p)
+			return err
+		}
 		p.PacketOkReply()
 		m.respondToClient(conn, p)
 		return

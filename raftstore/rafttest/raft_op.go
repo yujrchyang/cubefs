@@ -368,7 +368,7 @@ func verifyRollbackValue(rollbackStart, rollbackEnd int, servers []*testServer, 
 	return nil
 }
 
-func waitForApply(ts []*testServer, raftId uint64, w *bufio.Writer) {
+func waitForApply(ts []*testServer, raftId uint64, w *bufio.Writer) uint64 {
 	printLog(w, "waiting apply....")
 	defer w.Flush()
 
@@ -392,6 +392,7 @@ redo:
 	}
 
 	printLog(w, fmt.Sprintf("waiting apply done: applyIndex(%v) commitIndex(%v) lastIndex(%v)", appliedIndex, commitIndex, lastIndex))
+	return appliedIndex
 }
 
 func waitElect(ts []*testServer, raftId uint64, w *bufio.Writer) *testServer {
