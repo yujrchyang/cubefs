@@ -1516,7 +1516,7 @@ func isSSD(host, zoneName string) bool {
 	if host == "cn.elasticdb.jd.local" {
 		return true
 	}
-	if host == "sparkchubaofs.jd.local" && strings.Contains(zoneName, "_ssd") {
+	if host == "cn.chubaofs.jd.local" && (strings.Contains(zoneName, "_ssd") || strings.Contains(zoneName, "_sfx")) {
 		return true
 	}
 	return false
