@@ -92,9 +92,11 @@ func (w *Wrapper) initDpSelector() (err error) {
 	}
 	var selector DataPartitionSelector
 	if selector, err = newDataPartitionSelector(selectorName, dpSelectorParam); err != nil {
-		log.LogErrorf("initDpSelector: dpSelector[%v] init failed caused by [%v], use default selector", w.dpSelectorName,
-			err)
-		return
+		log.LogErrorf("initDpSelector: dpSelector[%v] init failed caused by [%v], use default selector", w.dpSelectorName, err)
+		selectorName = DefaultRandomSelectorName
+		if selector, err = newDataPartitionSelector(selectorName, dpSelectorParam); err != nil {
+			return
+		}
 	}
 	w.dpSelector = selector
 	return

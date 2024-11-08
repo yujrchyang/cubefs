@@ -4,7 +4,15 @@ import (
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 )
+
+func TestDpSelectorInit_Illegal(t *testing.T) {
+	w := &Wrapper{dpSelectorName: "illegal"}
+	err := w.initDpSelector()
+	assert.NoErrorf(t, err, "init dp selector")
+	assert.Equalf(t, DefaultRandomSelectorName, w.dpSelector.Name(), "init default dp selector")
+}
 
 func TestKFaster(t *testing.T) {
 	//var selectorNil DataPartitionSelector
