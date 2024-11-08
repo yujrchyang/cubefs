@@ -192,6 +192,7 @@ func NewDataPartitionWrapper(volName string, masters []string, extentClientType 
 	}
 	if err = w.initDpSelector(); err != nil {
 		log.LogErrorf("NewDataPartitionWrapper: init initDpSelector failed, [%v]", err)
+		return
 	}
 	if err = w.updateDataPartition(true); err != nil {
 		err = errors.Trace(err, "NewDataPartitionWrapper:")
