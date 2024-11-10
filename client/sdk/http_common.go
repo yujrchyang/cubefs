@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -170,7 +171,10 @@ func downloadAndCheck(mc *master.MasterClient, tmpPath, version string, enableRe
 	if checkMap, err = readCheckfile(filepath.Join(tmpPath, CheckFile)); err != nil {
 		return nil, fmt.Errorf("Invalid checkfile: %v", err)
 	}
-	if err = checkVersionID(checkMap, enableReadDirPlus, notCacheNode, flock); err != nil {
+	libcVersion := getLibcVersion()
+	// old sdk version doesnot support dynamic upgrading before libc 2.14
+	oldLibc := libcVersion < 214
+	if err = checkVersionID(checkMap, enableReadDirPlus, notCacheNode, flock, oldLibc); err != nil {
 		return nil, err
 	}
 	if !checkFiles(fileNames, checkMap, tmpPath) {
@@ -180,7 +184,7 @@ func downloadAndCheck(mc *master.MasterClient, tmpPath, version string, enableRe
 	return fileNames, nil
 }
 
-func checkVersionID(checkMap map[string]string, enableReadDirPlus bool, notCacheNode bool, flock bool) error {
+func checkVersionID(checkMap map[string]string, enableReadDirPlus bool, notCacheNode bool, flock bool, oldLibc bool) error {
 	version, exist := checkMap[VersionID]
 	params := []struct {
 		Name    string
@@ -190,6 +194,7 @@ func checkVersionID(checkMap map[string]string, enableReadDirPlus bool, notCache
 		{"readDirPlus", enableReadDirPlus, proto.ReadDirPlusVersion},
 		{"notCacheNode", notCacheNode, proto.NotCacheNodeAndFlockVersion},
 		{"flock", flock, proto.NotCacheNodeAndFlockVersion},
+		{"old libc version compatibility", oldLibc, proto.CompatibleWithOldLibcVersion},
 	}
 	for _, param := range params {
 		if !param.Val {
@@ -484,4 +489,19 @@ func UnsetClientUpgrade(w http.ResponseWriter, r *http.Request) {
 	os.Unsetenv("RELOAD_CLIENT")
 	NextVersion = ""
 	buildSuccessResp(w, "Success")
+}
+
+func getLibcVersion() int64 {
+	version, err := exec.Command("bash", "-c", "ldd --version |awk 'NR==1{print}' |awk '{print $NF}'").Output()
+	if err != nil {
+		return 0
+	}
+
+	verStr := strings.Replace(string(version), "\n", "", -1)
+	verStr = strings.Replace(verStr, ".", "", -1)
+	ver, err := strconv.ParseInt(verStr, 10, 64)
+	if err != nil {
+		return 0
+	}
+	return ver
 }

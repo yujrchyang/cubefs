@@ -32,6 +32,11 @@ const (
 	ReadDirPlusVersion = "4.2.0"
 
 	/*
+		Client: support libc version before 2.14
+	*/
+	CompatibleWithOldLibcVersion = "4.2.2"
+
+	/*
 		MetaNode: retry op remove dup
 	*/
 	RemoveDupReq = "4.3.0"
