@@ -83,5 +83,6 @@ func (bufferP *BufferPool) Put(data []byte) {
 		bufferP.pools[5].Put(data[:size])
 	default:
 		return
+
 	}
 }
