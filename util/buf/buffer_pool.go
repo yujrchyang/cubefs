@@ -11,9 +11,9 @@ var (
 	bufferPoolSizes = []int{
 		unit.PacketHeaderSizeForDbbak,
 		unit.PacketHeaderSize,
-		unit.MySQLInnoDBBlockSize, +unit.RandomWriteRaftCommandHeaderSize,
 		unit.BlockSize,
 		unit.BlockSize + unit.RandomWriteRaftCommandHeaderSize,
+		unit.MySQLInnoDBBlockSize, +unit.RandomWriteRaftCommandHeaderSize,
 		unit.DefaultTinySizeLimit,
 	}
 )
@@ -44,22 +44,12 @@ func NewBufferPool() (bufferP *BufferPool) {
 
 // Get returns the data based on the given size. Different size corresponds to different object in the pool.
 func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
-	switch size {
-	case unit.PacketHeaderSizeForDbbak:
-		return bufferP.pools[0].Get().([]byte)[:size], nil
-	case unit.PacketHeaderSize:
-		return bufferP.pools[1].Get().([]byte)[:size], nil
-	case unit.MySQLInnoDBBlockSize, unit.RandomWriteRaftCommandHeaderSize:
-		return bufferP.pools[2].Get().([]byte)[:size], nil
-	case unit.BlockSize:
-		return bufferP.pools[3].Get().([]byte)[:size], nil
-	case unit.BlockSize + unit.RandomWriteRaftCommandHeaderSize:
-		return bufferP.pools[4].Get().([]byte)[:size], nil
-	case unit.DefaultTinySizeLimit:
-		return bufferP.pools[5].Get().([]byte)[:size], nil
-	default:
-		return nil, fmt.Errorf("can only support 45 or 65536 bytes")
+	for i := 0; i < len(bufferPoolSizes); i++ {
+		if size <= bufferPoolSizes[i] {
+			return bufferP.pools[i].Get().([]byte)[:size], nil
+		}
 	}
+	return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 }
 
 // Put puts the given data into the buffer pool.
@@ -67,21 +57,11 @@ func (bufferP *BufferPool) Put(data []byte) {
 	if data == nil {
 		return
 	}
-	size := len(data)
-	switch size {
-	case unit.PacketHeaderSizeForDbbak:
-		bufferP.pools[0].Put(data[:size])
-	case unit.PacketHeaderSize:
-		bufferP.pools[1].Put(data[:size])
-	case unit.MySQLInnoDBBlockSize, unit.RandomWriteRaftCommandHeaderSize:
-		bufferP.pools[2].Put(data[:size])
-	case unit.BlockSize:
-		bufferP.pools[3].Put(data[:size])
-	case unit.BlockSize + unit.RandomWriteRaftCommandHeaderSize:
-		bufferP.pools[4].Put(data[:size])
-	case unit.DefaultTinySizeLimit:
-		bufferP.pools[5].Put(data[:size])
-	default:
-		return
+	capacity := cap(data)
+	for i, bufferSize := range bufferPoolSizes {
+		if bufferSize == capacity {
+			bufferP.pools[i].Put(data[:bufferSize])
+			return
+		}
 	}
 }
