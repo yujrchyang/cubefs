@@ -686,15 +686,20 @@ func (mc *MetaHttpClient) GetDentry(pid uint64, name string) (den *proto.MetaDen
 	return
 }
 
-func (mc *MetaHttpClient) GetStatInfo() (respData []byte, err error) {
+func (mc *MetaHttpClient) GetStatInfo() (statInfo *proto.StatInfo, err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[GetStatInfo] err:%v", err)
 		}
 	}()
+	var respData []byte
 	req := newAPIRequest(http.MethodGet, "/stat/info")
 	respData, err = mc.serveRequest(req)
 	if err != nil {
+		return
+	}
+	statInfo = new(proto.StatInfo)
+	if err = json.Unmarshal(respData, statInfo); err != nil {
 		return
 	}
 	return

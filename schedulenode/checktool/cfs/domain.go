@@ -118,9 +118,9 @@ type DeadNode struct {
 func (dn *DeadNode) String() string {
 	lastReportTime := ""
 	if dn != nil {
-		lastReportTime = dn.LastReportTime.Format("20060102 15:04:05")
+		lastReportTime = dn.LastReportTime.Format("15:04:05")
 	}
-	return fmt.Sprintf("ID:%v,Addr:%v,lastReportTime:%v", dn.ID, dn.Addr, lastReportTime)
+	return fmt.Sprintf("Addr:%v,ReportT:%v", dn.Addr, lastReportTime)
 }
 
 type ClusterView struct {

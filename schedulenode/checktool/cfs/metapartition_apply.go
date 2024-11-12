@@ -154,7 +154,7 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartitio
 			}
 		}
 
-		time.Sleep(time.Second * time.Duration(2 * i)) //每次检查间隔等待时长梯度增长
+		time.Sleep(time.Second * time.Duration(2*i)) //每次检查间隔等待时长梯度增长
 	}
 	if err != nil {
 		return
@@ -173,7 +173,7 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartitio
 		if first.ApplyID == last.ApplyID && first.Addr == last.Addr {
 			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different apply id, min apply addr[%v] min apply id[%v]",
 				ch.host, volName, mp.PartitionID, first.Addr, first.ApplyID)
-			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr) {
+			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr, time.Minute*2) {
 				uploadMetaNodeStack(first.Addr)
 				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
 			} else {
@@ -189,7 +189,7 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartitio
 		last := minReplicas[dEntryIndex][len(minReplicas[dEntryIndex])-1]
 		if first.Addr == last.Addr {
 			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different dentry, min addr[%v] min dEntry[%v]", ch.host, volName, mp.PartitionID, first.Addr, first.DentryCount)
-			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr) {
+			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr, time.Minute*2) {
 				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
 			} else {
 				err = fmt.Errorf("check failed, metanode not start")
@@ -203,7 +203,7 @@ func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartitio
 		last := minReplicas[inoudeIndex][len(minReplicas[inoudeIndex])-1]
 		if first.Addr == last.Addr {
 			msg := fmt.Sprintf("Domain[%v] vol[%v] mp[%v] found different inode count, min addr[%v] min inode count[%v]", ch.host, volName, mp.PartitionID, first.Addr, first.InodeCount)
-			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr) {
+			if (ch.isReleaseCluster && isServerStartCompleted(first.Addr)) || isServerAlreadyStart(first.Addr, time.Minute*2) {
 				exporter.WarningBySpecialUMPKey(metaPartitionApplyWarningKey, msg)
 			} else {
 				err = fmt.Errorf("check failed, metanode not start")
@@ -285,7 +285,7 @@ func isServerStartCompleted(tcpAddr string) bool {
 	return stat.StartComplete
 }
 
-func isServerAlreadyStart(tcpAddr string) bool {
+func isServerAlreadyStart(tcpAddr string, startDuration time.Duration) bool {
 	client := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(tcpAddr, ":")[0], profPortMap[strings.Split(tcpAddr, ":")[1]]), false)
 	stat, err := client.GetStatInfo()
 	if err != nil {
@@ -300,7 +300,7 @@ func isServerAlreadyStart(tcpAddr string) bool {
 		log.LogErrorf("parse time %s failed, address: %v, err:%v", stat.StartTime, tcpAddr, err)
 		return false
 	}
-	if time.Since(sTime) > time.Minute*2 {
+	if time.Since(sTime) > startDuration {
 		return true
 	}
 	return false
