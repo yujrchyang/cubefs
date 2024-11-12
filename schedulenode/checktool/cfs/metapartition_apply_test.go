@@ -77,7 +77,7 @@ func TestServerStatCheck(t *testing.T) {
 		return
 	}
 
-	started := isServerAlreadyStart(addr)
+	started := isServerAlreadyStart(addr, time.Minute*2)
 	fmt.Printf("%v\n", started)
 }
 
@@ -89,7 +89,7 @@ func TestUploadMetaNodeStack(t *testing.T) {
 
 	var err error
 	httpClient := &http.Client{
-		Timeout: time.Minute*2,
+		Timeout: time.Minute * 2,
 	}
 	bucketSession, err = session.NewSession(&aws.Config{
 		Credentials:      credentials.NewStaticCredentials("", "", ""),

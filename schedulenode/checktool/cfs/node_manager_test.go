@@ -161,6 +161,35 @@ func TestConfirmCheckNodeAlive(t *testing.T) {
 	}
 }
 
+func TestCheckHeartbeatStuck(t *testing.T) {
+	initTestLog("storagebot")
+	defer func() {
+		log.LogFlush()
+	}()
+
+	t.Run("spark", func(t *testing.T) {
+		host := newClusterHost("test.chubaofs.jd.local")
+		host.isReleaseCluster = false
+		cv, err := getCluster(host)
+		if err != nil {
+			t.Errorf(err.Error())
+			return
+		}
+		cv.checkMetaNodeStuckHeartbeat(host, false)
+	})
+
+	t.Run("dbbak", func(t *testing.T) {
+		host := newClusterHost("test.dbbak.jd.local")
+		host.isReleaseCluster = true
+		cv, err := getCluster(host)
+		if err != nil {
+			t.Errorf(err.Error())
+			return
+		}
+		cv.checkMetaNodeStuckHeartbeat(host, false)
+	})
+}
+
 func TestGetClusterByMasterNodes(t *testing.T) {
 	initTestLog("storagebot")
 	defer func() {

@@ -7,11 +7,11 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/common/cfs"
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"io/ioutil"
+	"math"
 	"net"
 	"net/http"
 	"sort"
@@ -78,6 +78,42 @@ func (s *ChubaoFSMonitor) checkNodesAlive() {
 	checkNodeWg.Wait()
 }
 
+// 检查metanode心跳卡顿情况，如果某个go协程持锁时间过长，可能导致心跳失败，这种情况需要单独报警
+func (cv *ClusterView) checkMetaNodeStuckHeartbeat(host *ClusterHost, warn bool) {
+	stuckNodes := make([]MetaNodeView, 0)
+	deadNodes := make([]MetaNodeView, 0)
+	maxCheckCount := math.MaxInt
+	// TotalGB=0表示此时master可能正在切主，因此不需要检查所有节点是否卡顿，检查一部分即可
+	if cv.MetaNodeStat.TotalGB == 0 {
+		maxCheckCount = 16
+	}
+	for _, mn := range cv.MetaNodes {
+		if mn.Status == false {
+			if maxCheckCount == 0 {
+				break
+			}
+			if (host.isReleaseCluster && isServerStartCompleted(mn.Addr)) || isServerAlreadyStart(mn.Addr, time.Minute*10) {
+				stuckNodes = append(stuckNodes, mn)
+			} else {
+				deadNodes = append(deadNodes, mn)
+			}
+			maxCheckCount--
+		}
+	}
+	if len(stuckNodes) == 0 {
+		return
+	}
+	var masterLeaderChange string
+	if cv.MetaNodeStat.TotalGB == 0 {
+		masterLeaderChange = "master is changing leader,"
+	}
+	msg := fmt.Sprintf("%v %v has %v stuck heartbeat meta nodes, %v dead meta nodes, stuck nodes:%v, dead nodes:%v", host, masterLeaderChange, len(stuckNodes), len(deadNodes), stuckNodes, deadNodes)
+	log.LogWarnf(msg)
+	if len(stuckNodes) > 0 && warn {
+		checktool.WarnBySpecialUmpKey(UMPKeyStuckNodes, msg)
+	}
+}
+
 // confirmCheckMetaNodeAlive
 // 1. 当master视图有非存活节点，则报警。
 // 2. Master节点升级中常会误报，因此当非存活节点超过5个，需进行二次确认以避免误报
@@ -103,7 +139,7 @@ func (cv *ClusterView) confirmCheckMetaNodeAlive(host *ClusterHost, enableWarn b
 	if host.tokenMap[metaNodeAliveRetryToken] > 0 && len(deadNodes) >= confirmThreshold {
 		var confirmDeadCount int
 		for _, mn := range deadNodes[:confirmThreshold] {
-			if confirmMetaNodeActive(mn.Addr, host.isReleaseCluster) {
+			if (host.isReleaseCluster && isServerStartCompleted(mn.Addr)) || isServerAlreadyStart(mn.Addr, time.Minute*2) {
 				log.LogWarnf("action[confirmCheckMetaNodeAlive] domain[%v] metanode[%v] maybe active", host.host, mn.Addr)
 				continue
 			}
@@ -141,6 +177,7 @@ func (cv *ClusterView) confirmCheckMetaNodeAlive(host *ClusterHost, enableWarn b
 }
 
 func (cv *ClusterView) checkMetaNodeAlive(host *ClusterHost) {
+	cv.checkMetaNodeStuckHeartbeat(host, true)
 	inactiveMetaNodes := cv.confirmCheckMetaNodeAlive(host, true)
 	if len(inactiveMetaNodes) == 0 {
 		return
@@ -173,23 +210,19 @@ func (cv *ClusterView) checkMetaNodeAlive(host *ClusterHost) {
 }
 
 func (ch *ClusterHost) doProcessAlarm(nodes map[string]*DeadNode, msg string, nodeType int) {
-	var (
-		inOneCycle bool
-		needAlarm  bool
-	)
-	for _, dd := range nodes {
-		inOneCycle = time.Since(dd.LastReportTime) < checktool.DefaultWarnInternal*time.Second
-		if !inOneCycle {
-			needAlarm = true
-			msg = msg + dd.String() + "\n"
-			dd.LastReportTime = time.Now()
-		}
+	if len(nodes) == 0 {
+		return
 	}
+	msg = msg + "{\n"
+	for _, dd := range nodes {
+		msg = msg + "  " + dd.String() + "\n"
+	}
+	msg = msg + "\n"
 	// 荷兰CFS 存在故障节点就执行普通告警
-	if needAlarm && ch.host == "nl.chubaofs.jd.local" && len(nodes) > 0 {
+	if ch.host == "nl.chubaofs.jd.local" && len(nodes) > 0 {
 		checktool.WarnBySpecialUmpKey(UMPCFSNormalWarnKey, msg)
 	}
-	if needAlarm && len(nodes) >= defaultMaxInactiveNodes {
+	if len(nodes) >= defaultMaxInactiveNodes {
 		checktool.WarnBySpecialUmpKey(UMPKeyInactiveNodes, msg)
 	}
 	if len(nodes) == 1 {
@@ -202,8 +235,7 @@ func (ch *ClusterHost) doProcessAlarm(nodes map[string]*DeadNode, msg string, no
 }
 
 func (ch *ClusterHost) doProcessDangerousDp(nodes map[string]*DeadNode) {
-	inOneCycle := time.Since(ch.lastTimeAlarmDP) < checktool.DefaultWarnInternal*time.Second
-	if inOneCycle {
+	if time.Since(ch.lastTimeAlarmDP) < checktool.DefaultWarnInternal*time.Second {
 		return
 	}
 	sentryMap := make(map[uint64]int, 0)
@@ -353,43 +385,6 @@ func (cv *ClusterView) checkFlashNodeAlive(host *ClusterHost) {
 	}*/
 }
 
-func confirmDataNodeActive(addr string, isDbback bool) (active bool) {
-	var err error
-	defer func() {
-		if err != nil {
-			log.LogErrorf("action[confirmDataNodeActive] addr[%v] err:%v", addr, err)
-		}
-	}()
-	dataClient := http_client.NewDataClient(fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPortMap[strings.Split(addr, ":")[1]]), false)
-	if isDbback {
-		_, err = dataClient.GetDbbackDataNodeStats()
-		if err != nil {
-			return false
-		}
-	} else {
-		_, err = dataClient.GetDatanodeStats()
-		if err != nil {
-			return false
-		}
-	}
-	return true
-}
-
-func confirmMetaNodeActive(addr string, isDbback bool) (active bool) {
-
-	var metaClient *meta.MetaHttpClient
-	if isDbback {
-		metaClient = meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPortMap[strings.Split(addr, ":")[1]]), false)
-	} else {
-		metaClient = meta.NewDBBackMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPortMap[strings.Split(addr, ":")[1]]), false)
-	}
-	_, err := metaClient.GetStatInfo()
-	if err != nil {
-		return false
-	}
-	return true
-}
-
 // confirmCheckDataNodeAlive
 // 1. 当master视图有非存活节点，则报警。
 // 2. Master节点升级中常会误报，因此当非存活节点超过5个，需进行二次确认以避免误报
@@ -416,7 +411,7 @@ func (cv *ClusterView) confirmCheckDataNodeAlive(host *ClusterHost, enableWarn b
 	if host.tokenMap[dataNodeAliveRetryToken] > 0 && len(deadNodes) >= confirmThreshold {
 		var confirmDeadCount int
 		for _, dn := range deadNodes[:confirmThreshold] {
-			if confirmDataNodeActive(dn.Addr, host.isReleaseCluster) {
+			if (host.isReleaseCluster && isServerStartCompleted(dn.Addr)) || isServerAlreadyStart(dn.Addr, time.Minute*10) {
 				log.LogWarnf("action[confirmCheckDataNodeAlive] domain[%v] datanode[%v] maybe active", host.host, dn.Addr)
 				continue
 			}
@@ -1290,25 +1285,6 @@ func doCleanExpiredMetaPartitions(ip string, port string, days int, isReleaseDb 
 	return failedMpArr, returnErr
 }
 
-func (ch *ClusterHost) doProcessMetaNodeDiskStatAlarm(nodes map[string]*DeadNode, msg string) {
-	var (
-		inOneCycle bool
-		needAlarm  bool
-	)
-	for _, dd := range nodes {
-		inOneCycle = time.Since(dd.LastReportTime) < checktool.DefaultWarnInternal*time.Second
-		if !inOneCycle {
-			needAlarm = true
-			msg = msg + dd.String() + "\n"
-			dd.LastReportTime = time.Now()
-		}
-	}
-	if needAlarm {
-		checktool.WarnBySpecialUmpKey(UMPKeyMetaNodeDiskSpace, msg)
-	}
-	return
-}
-
 func isConnectionRefusedFailure(err error) bool {
 	if strings.Contains(strings.ToLower(err.Error()), strings.ToLower(errorConnRefused)) {
 		return true
@@ -1420,8 +1396,7 @@ func (ch *ClusterHost) doWarnInactiveNodesBySpecialUMPKey() {
 	if inactiveDataNodeCount == 0 && inactiveMetaNodeCount == 0 {
 		return
 	}
-	//如果有一台机器故障不告警, 两台需要判断是否是同一个机器
-	//检查是不是机器异常，如果是机器异常才可以忽略
+	//如果inactive为1并且这台机器是物理故障则不告警（注意，相同ip的meta和data故障时，inactive可能为2）
 	if len(nodes) == 0 {
 		return
 	}
@@ -1430,7 +1405,7 @@ func (ch *ClusterHost) doWarnInactiveNodesBySpecialUMPKey() {
 			log.LogInfo(fmt.Sprintf("doWarnInactiveNodesBySpecialUMPKey isPhysicalMachineFailure ignore warn,cluster:%v, nodes:%v", ch.host, nodes))
 			return
 		}
-		//一台机器，能连通的情况下，查询机器的启动时间，小于30分钟不进行告警
+		//一台机器，能连通的情况下，查询机器的启动时间，小于30分钟不进行告警。（为什么？因为旧版本有异步加载，启动慢？）
 		nodeIp := getIpFromIpPort(nodes[0])
 		totalStartupTime, err := GetNodeTotalStartupTime(nodeIp)
 		if err == nil && totalStartupTime < MinUptimeThreshold {
