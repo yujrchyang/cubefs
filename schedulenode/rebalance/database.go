@@ -50,12 +50,12 @@ type MigrateRecordTable struct {
 	PartitionID  uint64        `gorm:"column:partition_id;"`
 	SrcAddr      string        `gorm:"column:src_addr;"`
 	SrcDisk      string        `gorm:"column:src_disk"`
-	DstAddr      string        `gorm:"column:dst_addr;"`
+	DstAddr      string        `gorm:"column:dst_addr"`
 	OldUsage     float64       `gorm:"column:old_usage"`
 	NewUsage     float64       `gorm:"column:new_usage"`
 	OldDiskUsage float64       `gorm:"column:old_disk_usage"`
 	NewDiskUsage float64       `gorm:"column:new_disk_usage"`
-	TaskId       uint64        `gorm:"column:task_id;"`
+	TaskId       uint64        `gorm:"column:task_id"`
 	TaskType     TaskType      `gorm:"column:task_type"`
 	NeedDelete   int           `gorm:"column:need_delete"`   // 1- 需要删除  0-不需要删除
 	FinishDelete int           `gorm:"column:finish_delete"` // 0-默认值 1-成功 -1-失败
@@ -220,6 +220,11 @@ type RebalancedInfoTable struct {
 	DstNodes                     string        `gorm:"column:dst_nodes_list"`
 	CreatedAt                    time.Time     `gorm:"column:created_at"`
 	UpdatedAt                    time.Time     `gorm:"column:updated_at"`
+	// vols迁移, srcZone用zone_name字段
+	DstZone             string `gorm:"column:dst_zone"`
+	VolBatchCount       int    `gorm:"column:vol_batch_count"`
+	PartitionBatchCount int    `gorm:"column:partition_batch_count"`
+	RoundInterval       int    `gorm:"column:round_interval"`
 }
 
 func (RebalancedInfoTable) TableName() string {
@@ -376,19 +381,22 @@ func (rw *ReBalanceWorker) stopRebalanced(taskId uint64, isManualStop bool) (err
 	return
 }
 
-func (rw *ReBalanceWorker) GetRebalancedInfoTotalCount(cluster, zoneName string, rType RebalanceType, taskType TaskType, status int) (count int64, err error) {
+func (rw *ReBalanceWorker) GetRebalancedInfoTotalCount(cluster, zoneName, volume string, rType RebalanceType, taskType TaskType, status int) (count int64, err error) {
 	tx := rw.dbHandle.Table(RebalancedInfoTable{}.TableName())
 	if len(cluster) > 0 {
 		tx.Where("cluster = ?", cluster)
-	}
-	if len(zoneName) > 0 {
-		tx.Where("zone_name like ?", fmt.Sprintf("%v%%", zoneName))
 	}
 	if rType < MaxRebalanceType {
 		tx.Where("rebalance_type = ?", rType)
 	}
 	if taskType > 0 && taskType < MaxTaskType {
 		tx.Where("task_type = ?", taskType)
+	}
+	if len(zoneName) > 0 {
+		tx.Where("zone_name like ?", fmt.Sprintf("%%%s%%", zoneName))
+	}
+	if len(volume) > 0 {
+		tx.Where("vol_name like ?", fmt.Sprintf("%%%s%%", volume))
 	}
 	if status > 0 {
 		tx.Where("status = ?", status)
@@ -397,7 +405,7 @@ func (rw *ReBalanceWorker) GetRebalancedInfoTotalCount(cluster, zoneName string,
 	return
 }
 
-func (rw *ReBalanceWorker) GetRebalancedInfoList(cluster, zoneName string, rType RebalanceType, taskType TaskType, status, page, pageSize int) (rebalancedInfo []*RebalancedInfoTable, err error) {
+func (rw *ReBalanceWorker) GetRebalancedInfoList(cluster, zoneName, volume string, rType RebalanceType, taskType TaskType, status, page, pageSize int) (rebalancedInfo []*RebalancedInfoTable, err error) {
 	limit := pageSize
 	offset := (page - 1) * pageSize
 	tx := rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).
@@ -406,14 +414,17 @@ func (rw *ReBalanceWorker) GetRebalancedInfoList(cluster, zoneName string, rType
 	if len(cluster) > 0 {
 		tx.Where("cluster = ?", cluster)
 	}
-	if len(zoneName) > 0 {
-		tx.Where("zone_name like ?", fmt.Sprintf("%v%%", zoneName))
-	}
 	if rType < MaxRebalanceType {
 		tx.Where("rebalance_type = ?", rType)
 	}
 	if taskType > 0 && taskType < MaxTaskType {
 		tx.Where("task_type = ?", taskType)
+	}
+	if len(zoneName) > 0 {
+		tx.Where("zone_name like ?", fmt.Sprintf("%%%v%%", zoneName))
+	}
+	if len(volume) > 0 {
+		tx.Where("vol_name like ?", fmt.Sprintf("%%%s%%", volume))
 	}
 	if status > 0 {
 		tx.Where("status = ?", status)
@@ -451,4 +462,197 @@ func (rw *ReBalanceWorker) GetDstNodeInfoList(taskId uint64) ([]*RebalanceNodeIn
 		return nil, err
 	}
 	return records, nil
+}
+
+func (rw *ReBalanceWorker) updateMigrateControl(taskID uint64, clusterCurrency, volCurrency, partitionCurrency, roundInterval int) error {
+	err := rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).Where("id = ?", taskID).
+		Updates(map[string]interface{}{
+			"max_batch_count":       clusterCurrency,
+			"vol_batch_count":       volCurrency,
+			"partition_batch_count": partitionCurrency,
+			"round_interval":        roundInterval,
+			"updated_at":            time.Now(),
+		}).Error
+	if err != nil {
+		log.LogErrorf("updateMigrateControl: taskID(%v) err(%v)", taskID, err)
+	}
+	return err
+}
+
+func (rw *ReBalanceWorker) updateMigrateTaskStatus(taskID uint64, status int) error {
+	err := rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).Where("id = ?", taskID).
+		Updates(map[string]interface{}{
+			"status":     status,
+			"updated_at": time.Now(),
+		}).Error
+	if err != nil {
+		log.LogErrorf("updateMigrateTaskStatus: taskID(%v) status(%v) err(%v)", taskID, status, err)
+	}
+	return err
+}
+
+func (rw *ReBalanceWorker) insertMigrateTask(taskInfo *MigVolTask) (id uint64, err error) {
+	info := &RebalancedInfoTable{
+		Cluster:       taskInfo.cluster,
+		ZoneName:      taskInfo.srcZone,
+		DstZone:       taskInfo.dstZone,
+		VolName:       strings.Join(taskInfo.vols, ","),
+		TaskType:      VolsMigrate,
+		Status:        int(taskInfo.status),
+		MaxBatchCount: taskInfo.clusterCurrency,
+		VolBatchCount: taskInfo.volCurrency,
+		RoundInterval: taskInfo.roundInterval,
+		CreatedAt:     time.Now(),
+		UpdatedAt:     time.Now(),
+	}
+	switch taskInfo.module {
+	case "data":
+		info.RType = RebalanceData
+		info.PartitionBatchCount = taskInfo.volDpCurrency
+		info.HighRatio = taskInfo.maxDstDatanodeUsage
+	case "meta":
+		info.RType = RebalanceMeta
+		info.PartitionBatchCount = taskInfo.volMpCurrency
+		info.HighRatio = taskInfo.maxDstMetanodeUsage
+		info.DstMetaNodePartitionMaxCount = taskInfo.maxDstMetaPartitionCnt
+	}
+	err = rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).Create(&info).Error
+	if err != nil {
+		log.LogErrorf("insertMigrateTask failed: taskInfo(%v) err(%v)", taskInfo, err)
+	}
+	id = info.ID
+	return
+}
+
+type VolumeMigrateTable struct {
+	ID          uint64    `gorm:"column:id"`
+	ClusterName string    `gorm:"column:cluster_name"`
+	VolName     string    `gorm:"column:volume"`
+	SrcZone     string    `gorm:"column:src_zone"`
+	DstZone     string    `gorm:"column:dst_zone"`
+	Module      string    `gorm:"column:module"`
+	Partitions  int       `gorm:"column:partition_count"`
+	Status      Status    `gorm:"column:status"` // 1-完成 2-进行中 3-终止
+	TaskId      uint64    `gorm:"column:task_id"`
+	CreatedAt   time.Time `gorm:"column:created_at"`
+	UpdateAt    time.Time `gorm:"column:updated_at"`
+}
+
+func (VolumeMigrateTable) TableName() string {
+	return "volume_migrate"
+}
+
+func (rw *ReBalanceWorker) GetVolMigrateRecord(taskID uint64, volname string) (info *VolumeMigrateTable, err error) {
+	info = new(VolumeMigrateTable)
+	err = rw.dbHandle.Table(VolumeMigrateTable{}.TableName()).
+		Where("task_id = ? and volume = ?", taskID, volname).
+		First(&info).Error
+	if err != nil {
+		log.LogWarnf("GetVolMigrateRecord failed: taskID(%v) vol(%v) err(%v)", taskID, volname, err)
+	}
+	return
+}
+
+// 更新状态 进行中/完成/终止， for进度状态： 已完成的个数 进行中的个数  未开始
+// taskID-volname 建立索引
+// insert赋值create_time, update更新update_time
+func (rw *ReBalanceWorker) insertOrUpdateVolMigrateTask(taskID uint64, cluster, volName, srcZone, dstZone, module string, partitionsNum int, status Status) (id uint64, err error) {
+	var info *VolumeMigrateTable
+	info, err = rw.GetVolMigrateRecord(taskID, volName)
+	if err != nil {
+		if err.Error() != RECORD_NOT_FOUND {
+			return 0, err
+		} else {
+			info = new(VolumeMigrateTable)
+		}
+	}
+	info.Status = status
+	if info.ID > 0 {
+		info.Partitions = partitionsNum
+		info.UpdateAt = time.Now()
+		err = rw.dbHandle.Table(VolumeMigrateTable{}.TableName()).Updates(info).Error
+	} else {
+		info.Status = status
+		info.ClusterName = cluster
+		info.VolName = volName
+		info.SrcZone = srcZone
+		info.DstZone = dstZone
+		info.TaskId = taskID
+		info.Module = module
+		info.Partitions = partitionsNum
+		info.CreatedAt = time.Now()
+		info.UpdateAt = info.CreatedAt
+		err = rw.dbHandle.Table(VolumeMigrateTable{}.TableName()).Create(info).Error
+	}
+	return info.ID, err
+}
+
+// 没有状态，只是插入记录
+func (rw *ReBalanceWorker) insertPartitionMigRecords(record *MigrateRecordTable) error {
+	err := rw.dbHandle.Table(MigrateRecordTable{}.TableName()).Create(record).Error
+	if err != nil {
+		log.LogErrorf("insertPartitionMigRecords failed: record(%v) err(%v)", record, err)
+	}
+	return err
+}
+
+// 更新vol任务的状态
+func (rw *ReBalanceWorker) updateVolRecordStatus(id uint64, status Status) error {
+	err := rw.dbHandle.Table(VolumeMigrateTable{}.TableName()).
+		Where("id = ?", id).
+		Update("status", status).Error
+	if err != nil {
+		log.LogErrorf("updateVolRecordStatus failed: id(%v) err(%v)", id, err)
+	}
+	return err
+}
+
+// 批量更新vol任务的状态
+func (rw *ReBalanceWorker) updateVolRecordsStatus(ids []uint64, status Status) error {
+	err := rw.dbHandle.Table(VolumeMigrateTable{}.TableName()).
+		Where("id IN ?", ids).
+		Update("status", status).Error
+	if err != nil {
+		log.LogErrorf("updateVolRecordsStatus failed: err(%v)", err)
+	}
+	return err
+}
+
+// 查询vol迁移的dp迁移记录
+func (rw *ReBalanceWorker) queryVolMigPartitionRecords(taskID uint64, volName string) ([]*MigrateRecordTable, int, error) {
+	records := make([]*MigrateRecordTable, 0)
+	err := rw.dbHandle.Table(MigrateRecordTable{}.TableName()).
+		Where("task_id = ? and vol_name = ?", taskID, volName).
+		Find(&records).Error
+	if err != nil {
+		log.LogWarnf("queryVolMigPartitionRecords failed: taskID(%v) vol(%v)", taskID, volName)
+	}
+	return records, len(records), err
+}
+
+// 查询迁移了多少个dp
+func (rw *ReBalanceWorker) getVolMigPartitionCount(taskID uint64, volName string) (total int, err error) {
+	records := make([]*MigrateRecordTable, 0)
+	err = rw.dbHandle.Table(MigrateRecordTable{}.TableName()).
+		Where("task_id = ? and vol_name = ?", taskID, volName).
+		Group("partition_id").
+		Find(&records).Error
+	if err != nil {
+		log.LogErrorf("getVolMigPartitionCount failed: taskID(%v) vol(%v) err(%v)", taskID, volName, err)
+		return
+	}
+	total = len(records)
+	return
+}
+
+// 查询当前任务相关的vol记录
+func (rw *ReBalanceWorker) getVolRecordByStatus(taskId uint64, status Status) ([]*VolumeMigrateTable, error) {
+	records := make([]*VolumeMigrateTable, 0)
+	err := rw.dbHandle.Table(VolumeMigrateTable{}.TableName()).
+		Where("task_id = ? AND status = ?", taskId, status).
+		Find(&records).Error
+	if err != nil {
+		log.LogErrorf("getVolRecordByStatus failed: task(%v) err(%v)", taskId, err)
+	}
+	return records, err
 }

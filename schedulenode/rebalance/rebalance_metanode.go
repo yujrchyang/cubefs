@@ -174,7 +174,7 @@ func (mnCtrl *MetaNodeReBalanceController) doMigrate() error {
 	alreadyMigrateInodeCnt := uint64(0)
 
 	for alreadyMigrateInodeCnt < canBeMigrateInodeCnt {
-		inRecoveringMPMap, err := mnCtrl.zoneCtrl.isInRecoveringMoreThanMaxBatchCount(mnCtrl.zoneCtrl.clusterMaxBatchCount, mnCtrl.zoneCtrl.rType)
+		inRecoveringMPMap, err := IsInRecoveringMoreThanMaxBatchCount(mnCtrl.zoneCtrl.masterClient, mnCtrl.zoneCtrl.releaseClient, mnCtrl.zoneCtrl.rType, mnCtrl.zoneCtrl.clusterMaxBatchCount)
 		if err != nil {
 			log.LogWarnf("doMigrate err:%v", err.Error())
 			time.Sleep(defaultWaitClusterRecover)

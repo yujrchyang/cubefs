@@ -59,6 +59,59 @@ func hasHost(partition *proto.DataPartitionInfo, addr string) (ok bool) {
 	return
 }
 
+func IsInRecoveringMoreThanMaxBatchCount(mc *master.MasterClient, rc *releaseClient, rType RebalanceType, clusterConcurrency int) (inRecoveringMap map[uint64]int, err error) {
+	inRecoveringMap, err = getInRecoveringMapIgnoreMig(mc, rc, rType)
+	if err != nil {
+		return
+	}
+	if len(inRecoveringMap) >= clusterConcurrency {
+		err = fmt.Errorf("IsInRecoveringMoreThanMaxBatchCount:%v more than maxBatchCount:%v", len(inRecoveringMap), clusterConcurrency)
+	}
+	return
+}
+
+func getInRecoveringMapIgnoreMig(mc *master.MasterClient, rc *releaseClient, rType RebalanceType) (inRecoveringMap map[uint64]int, err error) {
+	inRecoveringMap = make(map[uint64]int)
+	if mc != nil {
+		clusterView, err := mc.AdminAPI().GetClusterNoCache(time.Now().Unix())
+		if err != nil {
+			return nil, err
+		}
+		switch rType {
+		case RebalanceData:
+			for _, badPartitionViews := range clusterView.BadPartitionIDs {
+				inRecoveringMap[badPartitionViews.PartitionID]++
+			}
+		case RebalanceMeta:
+			for _, badPartitionViews := range clusterView.BadMetaPartitionIDs {
+				inRecoveringMap[badPartitionViews.PartitionID]++
+			}
+		}
+	}
+	if rc != nil {
+		cv, err := rc.AdminGetCluster()
+		if err != nil {
+			return nil, err
+		}
+		switch rType {
+		case RebalanceData:
+			for _, badPartitionViews := range cv.BadPartitionIDs {
+				for _, partitionID := range badPartitionViews.PartitionIDs {
+					inRecoveringMap[partitionID]++
+				}
+			}
+		case RebalanceMeta:
+			for _, badPartitionViews := range cv.BadMetaPartitionIDs {
+				for _, partitionID := range badPartitionViews.PartitionIDs {
+					inRecoveringMap[partitionID]++
+				}
+			}
+		}
+	}
+	delete(inRecoveringMap, 0) // dpID == 0?
+	return
+}
+
 func getZoneDataNodesByClusterName(cluster, zoneName string) (zoneDataNodes []string, err error) {
 	if isRelease(cluster) {
 		return nil, nil
@@ -170,6 +223,65 @@ func getStatusStr(status Status) string {
 		return "Terminating"
 	default:
 		return "None"
+	}
+}
+
+type ReplicaOperation uint8
+
+const (
+	None ReplicaOperation = iota
+	AddReplica
+	DelReplica
+	Finished
+)
+
+func (ro ReplicaOperation) String() string {
+	switch ro {
+	case None:
+		return "None"
+	case AddReplica:
+		return "AddReplica"
+	case DelReplica:
+		return "DelReplica"
+	case Finished:
+		return "Finished"
+	}
+	return ""
+}
+
+// 2副本先加后减 会出现的情况
+// 3副本下线会出现的情况
+// 入参replicaNum用vol属性会有问题吗？
+func GetNextReplicaOperation(toBeMigratedDp *proto.DataPartitionInfo, srcZone, dstZone string, replicaNum int) ReplicaOperation {
+	if len(toBeMigratedDp.Zones) != len(toBeMigratedDp.Replicas) {
+		return None
+	}
+	if len(toBeMigratedDp.Zones) <= 1 {
+		// 一个副本就别动了
+		return None
+	}
+	if len(toBeMigratedDp.Replicas) < replicaNum {
+		// 迁移只会多加副本 不会少一个副本
+		return None
+	}
+	srcCount := 0
+	dstCount := 0
+	for _, zone := range toBeMigratedDp.Zones {
+		// 考虑跨机房， 只迁移其中一个zone的副本
+		if strings.Contains(zone, srcZone) {
+			srcCount += 1
+		} else if strings.Contains(zone, dstZone) {
+			dstCount += 1
+		}
+	}
+	if srcCount == 0 {
+		return Finished
+	} else if srcCount+dstCount == replicaNum+1 {
+		// 多一个副本
+		return DelReplica
+	} else {
+		// src > 0 && src + dst <= replicaNum
+		return AddReplica
 	}
 }
 

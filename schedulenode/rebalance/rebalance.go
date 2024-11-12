@@ -18,6 +18,7 @@ type ReBalanceWorker struct {
 	mcwRWMutex       sync.RWMutex
 	reBalanceCtrlMap sync.Map
 	clusterConfigMap sync.Map
+	volMigrateMap    sync.Map
 	dbHandle         *gorm.DB
 }
 
@@ -45,6 +46,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	}
 	rw.StopC = make(chan struct{}, 0)
 	rw.reBalanceCtrlMap = sync.Map{}
+	rw.volMigrateMap = sync.Map{}
 	if err = rw.parseConfig(cfg); err != nil {
 		log.LogErrorf("[doStart] parse config info failed, error(%v)", err)
 		return
@@ -103,6 +105,12 @@ func (rw *ReBalanceWorker) registerHandler() {
 	http.HandleFunc(RBList, pagingResponseHandler(rw.handleRebalancedList))
 	http.HandleFunc(ZoneUsageRatio, rw.handleZoneUsageRatio)
 	http.HandleFunc(RBRecordsQuery, pagingResponseHandler(rw.handleMigrateRecordsQuery))
+	// vol迁移
+	http.HandleFunc(VolMigrateCreate, responseHandler(rw.handleVolMigCreate))
+	http.HandleFunc(VolMigrateResetControl, responseHandler(rw.handleVolMigResetControl))
+	http.HandleFunc(VolMigrateStop, responseHandler(rw.handleVolMigStop))
+	http.HandleFunc(VolMigrateStatus, responseHandler(rw.handleVolMigTaskStatus))
+	//http.HandleFunc(VolMigrateQueryRecords)
 }
 
 func (rw *ReBalanceWorker) getClusterHost(cluster string) (host string) {
