@@ -15,4 +15,6 @@ var (
 	ErrInvalidWorkerType     = errors.New("invalid worker type")
 	ErrReachMaxInodeLimit    = errors.New("reach migrate inode count limit on single node")
 	ErrDataPartitionNotFound = errors.New("dataPartition not found")
+	ErrReachClusterCurrency  = errors.New("reach cluster bad partition limit")
+	ErrReachVolCurrency      = errors.New("reach vol bad partition limit")
 )

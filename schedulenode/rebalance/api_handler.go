@@ -3,14 +3,16 @@ package rebalance
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/log"
+	"io/ioutil"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 const (
@@ -304,6 +306,7 @@ func (rw *ReBalanceWorker) handleRebalancedList(w http.ResponseWriter, req *http
 	zoneName := req.URL.Query().Get(ParamZoneName)
 	taskTypeStr := req.URL.Query().Get(ParamTaskType)
 	statusStr := req.URL.Query().Get(ParamStatus)
+	volume := req.URL.Query().Get(ParamVolName)
 	var (
 		status   int                // 0, 查全部, 不指定某种任务类型
 		rType    = MaxRebalanceType // 查询时，max表示全部，不特指某种类型
@@ -337,11 +340,11 @@ func (rw *ReBalanceWorker) handleRebalancedList(w http.ResponseWriter, req *http
 		return http.StatusBadRequest, 0, nil, err
 	}
 
-	totalCount, err := rw.GetRebalancedInfoTotalCount(cluster, zoneName, rType, taskType, status)
+	totalCount, err := rw.GetRebalancedInfoTotalCount(cluster, zoneName, volume, rType, taskType, status)
 	if err != nil {
 		return http.StatusInternalServerError, 0, nil, err
 	}
-	infoList, err := rw.GetRebalancedInfoList(cluster, zoneName, rType, taskType, status, pageNum, pageSizeNum)
+	infoList, err := rw.GetRebalancedInfoList(cluster, zoneName, volume, rType, taskType, status, pageNum, pageSizeNum)
 	if err != nil {
 		return http.StatusInternalServerError, 0, nil, err
 	}
@@ -472,7 +475,10 @@ func loadMetaNodeUsageRatio(cluster, clusterHost, zoneName string) (metaNodeInfo
 				<-ch
 				wg.Done()
 			}()
-			var usedRatio float64
+			var (
+				usedRatio float64
+				mpCount   int
+			)
 			if isRelease(cluster) {
 				node, errForGet := rc.AdminGetMetaNode(metaNodeAddr)
 				if errForGet != nil {
@@ -481,6 +487,7 @@ func loadMetaNodeUsageRatio(cluster, clusterHost, zoneName string) (metaNodeInfo
 				}
 				// 获取zone节点使用率详情，没必要遍历分片，只需要大致的使用率
 				usedRatio = node.Ratio
+				mpCount = node.MetaPartitionCount
 			} else {
 				node, errForGet := mc.NodeAPI().GetMetaNode(metaNodeAddr)
 				if errForGet != nil {
@@ -488,12 +495,14 @@ func loadMetaNodeUsageRatio(cluster, clusterHost, zoneName string) (metaNodeInfo
 					return
 				}
 				usedRatio = node.Ratio
+				mpCount = node.MetaPartitionCount
 			}
 
 			mu.Lock()
 			metaNodeInfo = append(metaNodeInfo, &NodeUsageInfo{
-				Addr:       metaNodeAddr,
-				UsageRatio: usedRatio,
+				Addr:           metaNodeAddr,
+				PartitionCount: mpCount,
+				UsageRatio:     usedRatio,
 			})
 			mu.Unlock()
 		}(metaNodeAddr)
@@ -560,8 +569,9 @@ func loadDataNodeUsageRatio(cluster, host, zoneName string) (dataNodeInfo []*Nod
 
 			mu.Lock()
 			dataNodeInfo = append(dataNodeInfo, &NodeUsageInfo{
-				Addr:       dataNodeAddr,
-				UsageRatio: usedRatio,
+				Addr:           dataNodeAddr,
+				PartitionCount: len(nodeStats.PartitionReports),
+				UsageRatio:     usedRatio,
 			})
 			mu.Unlock()
 		}(dataNodeAddr)
@@ -570,21 +580,158 @@ func loadDataNodeUsageRatio(cluster, host, zoneName string) (dataNodeInfo []*Nod
 	return
 }
 
-func convertDiskView(diskMap map[string]*Disk) (diskView []DiskView) {
-	for _, disk := range diskMap {
-		diskView = append(diskView, DiskView{
-			Path:          disk.path,
-			Total:         disk.total,
-			Used:          disk.used,
-			MigratedSize:  disk.migratedSize,
-			MigratedCount: disk.migratedCount,
-			MigrateLimit:  disk.migrateLimit,
-		})
+// cluster string
+// type    string
+// vols: []string
+// srcZone string
+// dstZone string
+// clusterConcurrency   int: badDps
+// volConcurrency       int
+// partitionConcurrency int
+// waitSeconds          int
+// highRatio            float64
+// dstMetaNodeMaxPartitionCount int
+// 创建成功返回taskId
+func (rw *ReBalanceWorker) handleVolMigCreate(w http.ResponseWriter, r *http.Request) (code int, data interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return http.StatusBadRequest, data, err
 	}
-	sort.Slice(diskView, func(i, j int) bool {
-		return diskView[i].Path < diskView[j].Path
-	})
-	return
+	cluster := r.FormValue(ParamCluster)
+	module := r.FormValue(ParamRebalanceType)
+	srcZone := r.FormValue(ParamSrcZone)
+	dstZone := r.FormValue(ParamDstZone)
+	clusterConcurrencyStr := r.FormValue(ParamClusterConcurrency)
+	volConcurrencyStr := r.FormValue(ParamVolConcurrency)
+	partitionConcurrencyStr := r.FormValue(ParamPartitionConcurrency)
+	waitSecondStr := r.FormValue(ParamWaitSecond)
+	maxDstNodeUsageStr := r.FormValue(ParamHighRatio)
+	maxDstMetaPartitionCountStr := r.FormValue(ParamDstMetaNodePartitionMaxCount)
+
+	volListData, err := ioutil.ReadAll(r.Body)
+	if err != nil || len(volListData) == 0 {
+		return http.StatusBadRequest, data, err
+	}
+	if cluster == "" || srcZone == "" || dstZone == "" {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	if err = verifyCluster(cluster); err != nil {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+
+	volList := make([]string, 0)
+	if err = json.Unmarshal(volListData, &volList); err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+
+	taskID, err := rw.VolMigrateStart(cluster, module, srcZone, dstZone, volList,
+		parseInt(clusterConcurrencyStr), parseInt(volConcurrencyStr), parseInt(partitionConcurrencyStr), parseInt(waitSecondStr),
+		parseInt(maxDstMetaPartitionCountStr), parseFloat64(maxDstNodeUsageStr))
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusOK, taskID, nil
+}
+
+// taskID
+// 集群并发
+// vol并发
+// 分片并发
+// 每轮sleep时间
+func (rw *ReBalanceWorker) handleVolMigResetControl(w http.ResponseWriter, r *http.Request) (code int, data interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return http.StatusBadRequest, data, err
+	}
+	iDStr := r.FormValue(ParamQueryTaskId)
+	clusterConcurrencyStr := r.FormValue(ParamClusterConcurrency)
+	volConcurrencyStr := r.FormValue(ParamVolConcurrency)
+	partitionConcurrencyStr := r.FormValue(ParamPartitionConcurrency)
+	waitSecondStr := r.FormValue(ParamWaitSecond)
+	if iDStr == "" {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	var id uint64
+	if id, err = strconv.ParseUint(iDStr, 10, 64); err != nil {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	err = rw.resetMigrateControl(id, parseInt(clusterConcurrencyStr), parseInt(volConcurrencyStr), parseInt(partitionConcurrencyStr), parseInt(waitSecondStr))
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusOK, nil, nil
+}
+
+func (rw *ReBalanceWorker) handleVolMigStop(w http.ResponseWriter, r *http.Request) (code int, data interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return http.StatusBadRequest, data, err
+	}
+	iDStr := r.FormValue(ParamQueryTaskId)
+	if iDStr == "" {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	var id uint64
+	if id, err = strconv.ParseUint(iDStr, 10, 64); err != nil {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+
+	var ctrl *MigVolTask
+	if res, ok := rw.volMigrateMap.Load(id); !ok {
+		return http.StatusBadRequest, nil, fmt.Errorf("can't find task[%v]", id)
+	} else {
+		ctrl = res.(*MigVolTask)
+	}
+	if err = ctrl.StopVolTask(); err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	err = rw.stopVolMigrateTask(id, true)
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	rw.volMigrateMap.Delete(ctrl.taskId)
+	err = rw.updateRunningVolStatus(id)
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusOK, nil, nil
+}
+
+func (rw *ReBalanceWorker) handleVolMigTaskStatus(w http.ResponseWriter, r *http.Request) (code int, data interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return http.StatusBadRequest, data, err
+	}
+	iDStr := r.FormValue(ParamQueryTaskId)
+	if iDStr == "" {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	var id uint64
+	if id, err = strconv.ParseUint(iDStr, 10, 64); err != nil {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	status, err := rw.volMigTaskStatus(id)
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusOK, status, nil
+}
+
+func parseInt(val string) int {
+	if val == "" {
+		return 0
+	}
+	value, err := strconv.ParseInt(val, 10, 32)
+	if err != nil {
+		return 0
+	}
+	return int(value)
+}
+func parseFloat64(val string) float64 {
+	if val == "" {
+		return 0
+	}
+	value, err := strconv.ParseFloat(val, 64)
+	if err != nil {
+		return 0
+	}
+	return value
 }
 
 type handler func(w http.ResponseWriter, req *http.Request) (status int, data interface{}, err error)

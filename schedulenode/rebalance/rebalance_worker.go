@@ -107,25 +107,42 @@ func (rw *ReBalanceWorker) loadInRunningRebalanced() (err error) {
 func (rw *ReBalanceWorker) restartRunningTask(info *RebalancedInfoTable) (taskID uint64, err error) {
 	isRestart := true
 
-	var ctrl *ZoneReBalanceController
-	if info.TaskType == ZoneAutoReBalance {
+	var (
+		ctrl *ZoneReBalanceController
+		mt   *MigVolTask
+	)
+
+	switch info.TaskType {
+	case ZoneAutoReBalance:
 		ctrl, err = rw.newZoneRebalanceCtrl(info.Cluster, info.ZoneName, info.RType, info.MaxBatchCount, info.HighRatio, info.LowRatio, info.GoalRatio,
 			info.MigrateLimitPerDisk, info.DstMetaNodePartitionMaxCount, isRestart)
 		if err != nil {
 			rw.stopRebalanced(ctrl.Id, false)
 			return
 		}
-	}
-	if info.TaskType == NodesMigrate {
+		taskID = ctrl.Id
+		err = ctrl.ReBalanceStart()
+
+	case NodesMigrate:
 		ctrl, err = rw.newNodeMigrationCtrl(info.Cluster, info.RType, info.MaxBatchCount, info.DstMetaNodePartitionMaxCount,
 			strings.Split(info.SrcNodes, ","), strings.Split(info.DstNodes, ","), isRestart, info.ID)
 		if err != nil {
 			rw.stopRebalanced(ctrl.Id, false)
 			return
 		}
+		taskID = ctrl.Id
+		err = ctrl.ReBalanceStart()
+
+	case VolsMigrate:
+		mt, err = rw.newVolMigrateCtrl(info.Cluster, info.RType.String(), info.ZoneName, info.DstZone, strings.Split(info.VolName, ","),
+			info.MaxBatchCount, info.VolBatchCount, info.PartitionBatchCount, info.RoundInterval, info.DstMetaNodePartitionMaxCount, info.HighRatio, true, info.ID)
+		if err != nil {
+			rw.stopVolMigrateTask(mt.taskId, false)
+			return
+		}
+		taskID = mt.taskId
+		mt.VolMigrateStart()
 	}
-	taskID = ctrl.Id
-	err = ctrl.ReBalanceStart()
 	return
 }
 
@@ -389,8 +406,9 @@ func (rw *ReBalanceWorker) getRunningTaskStatus(rInfo *RebalancedInfoTable) (*Re
 	if rInfo.RType == RebalanceData {
 		for _, srcNode := range ctrl.srcDataNodes {
 			info := &RebalanceNodeInfo{
-				Addr:     srcNode.nodeInfo.Addr,
-				IsFinish: srcNode.isFinished,
+				Addr:       srcNode.nodeInfo.Addr,
+				UsageRatio: srcNode.nodeInfo.UsageRatio,
+				IsFinish:   srcNode.isFinished,
 			}
 			if rInfo.TaskType == ZoneAutoReBalance {
 				info.TotalCount = len(srcNode.disks) * srcNode.migrateLimitPerDisk
@@ -416,8 +434,9 @@ func (rw *ReBalanceWorker) getRunningTaskStatus(rInfo *RebalancedInfoTable) (*Re
 	if rInfo.RType == RebalanceMeta {
 		for _, srcNode := range ctrl.srcMetaNodes {
 			info := &RebalanceNodeInfo{
-				Addr:     srcNode.nodeInfo.Addr,
-				IsFinish: srcNode.isFinished,
+				Addr:       srcNode.nodeInfo.Addr,
+				UsageRatio: srcNode.nodeInfo.Ratio,
+				IsFinish:   srcNode.isFinished,
 			}
 			if rInfo.TaskType == ZoneAutoReBalance {
 				info.MigratedCount = len(srcNode.alreadyMigrateFinishedPartitions)

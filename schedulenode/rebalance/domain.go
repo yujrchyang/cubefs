@@ -23,9 +23,10 @@ type DiskView struct {
 }
 
 type NodeUsageInfo struct {
-	Addr       string     `json:"addr"`
-	UsageRatio float64    `json:"usage_ratio"`
-	Disk       []DiskView `json:"disks,omitempty"`
+	Addr           string     `json:"addr"`
+	UsageRatio     float64    `json:"usage_ratio"`
+	PartitionCount int        `json:"partition_count"`
+	Disk           []DiskView `json:"disks,omitempty"`
 }
 
 type ReBalanceInfo struct {
@@ -37,8 +38,9 @@ type ReBalanceInfo struct {
 type RebalanceNodeInfo struct {
 	Addr          string
 	IsFinish      bool
-	TotalCount    int // 待迁移总数(估)
-	MigratedCount int // 已迁移
+	TotalCount    int     // 待迁移总数(估)
+	MigratedCount int     // 已迁移
+	UsageRatio    float64 // 节点使用率
 }
 
 type RebalanceStatusInfo struct {
@@ -86,4 +88,29 @@ func NewDataNodeStatsWithAddr(nodeStats *proto.DataNodeStats, addr string) *Data
 		Addr:          addr,
 		UsageRatio:    convertActualUsageRatio(nodeStats),
 	}
+}
+
+type VolMigrateRequest struct {
+	Cluster         string
+	SrcZone         string
+	DstZone         string
+	ClusterCurrency int
+	VolCurrency     int
+	VolDpCurrency   int
+	WaitSecond      int
+}
+
+type VolMigrateInfo struct {
+	Name                  string // 卷名
+	Status                Status // 已完成/进行中/已终止
+	UpdateTime            string // 完成(或更新)时间
+	MigratePartitionCount int    // 迁移完成的分片个数(0: 1.删卷了)
+	TotalCount            int    // 需要迁移分片数，预估（vol分片数，不一定都满足迁移条件）
+}
+
+// 任务状态：***
+// 卷名   已迁移/dp总数 状态  更新时间   -- 完成的排在前面
+type VolMigrateTaskStatus struct {
+	Status          int               // 任务状态
+	VolMigrateInfos []*VolMigrateInfo // 所有vol的迁移情况，已完成的顺序在前面
 }
