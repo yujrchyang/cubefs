@@ -46,7 +46,7 @@ const (
 	replicaNumKey                       = "replicaNum"
 	mpReplicaNumKey                     = "mpReplicaNum"
 	mpRecorderNumKey                    = "mpRecorderNum"
-	autoAddrKey                    		= "autoAddr"
+	autoAddrKey                         = "autoAddr"
 	dpHostDelayIntervalKey              = "hostDelayInterval"
 	dpFollReadHostWeightKey             = "follReadHostWeight"
 	followerReadKey                     = "followerRead"
@@ -278,7 +278,7 @@ const (
 	defaultDataNodeFlushFDParallelismOnDisk                = 5
 	defaultAutoCreateDPAfterVolCreateSecond                = 60
 	defaultHeartbeatHandleChanCap                          = 4096
-	defaultHeartbeatHandleGoRoutineCount                   = 20
+	defaultHeartbeatHandleGoRoutineCount                   = 10
 	volDefaultMaxCapacityRatioForReservedTrashSpace        = 1.5
 	volLowCapThresholdForReservedTrashSpace                = 20 * 1024 // GB
 	volLowCapMaxCapacityRatioForReservedTrashSpace         = 2
@@ -288,10 +288,10 @@ const (
 	minBw                                                  = 500 * 1024 * 1024
 	minInodeCountThreshold                                 = 10000000
 	minDeleteMarkDelVolInterval                            = 60 * 60 * 2
-	defaultReadAheadMemMB								   = 0
-	defaultReadAheadWindowMB							   = 0
-	maxReadAheadMemMB									   = 8192
-	maxReadAheadWindowMB								   = 64
+	defaultReadAheadMemMB                                  = 0
+	defaultReadAheadWindowMB                               = 0
+	maxReadAheadMemMB                                      = 8192
+	maxReadAheadWindowMB                                   = 64
 )
 
 const (
