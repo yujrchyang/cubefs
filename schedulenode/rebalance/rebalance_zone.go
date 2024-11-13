@@ -337,6 +337,7 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 		}
 		srcNode.isFinished = true
 		log.LogInfof("doDataReBalance: taskID(%v) zone(%v) srcNode(%v) finished", zoneCtrl.Id, zoneCtrl.zoneName, srcNode.nodeInfo.Addr)
+		time.Sleep(defaultMigNodeInterval)
 	}
 }
 
@@ -434,6 +435,7 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 		}
 		srcMetaNode.isFinished = true
 		log.LogInfof("doMetaReBalance cluster:%v zoneName:%v srcMetaNode:%v finished", zoneCtrl.cluster, zoneCtrl.zoneName, srcMetaNode.nodeInfo.Addr)
+		time.Sleep(defaultMigNodeInterval)
 	}
 }
 

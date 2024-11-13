@@ -14,6 +14,7 @@ const (
 	defaultClusterMaxBatchCount         = 50
 	defaultMigrateLimitPerDisk          = 10
 	defaultWaitClusterRecover           = time.Second * 30
+	defaultMigNodeInterval              = time.Minute * 1
 	defaultDstMetaNodePartitionMaxCount = 10000
 	defaultRefreshNodeInterval          = time.Minute * 2
 	defaultDeletedTaskInterval          = time.Minute * 10

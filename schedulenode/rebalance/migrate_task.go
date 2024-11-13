@@ -147,6 +147,7 @@ func (mt *MigVolTask) startVolDpMigrateTask(vols []string) {
 				log.LogInfof("wait for next round: taskID(%v) actualMaxClusterCount(%v) reach the limit\n", mt.taskId, availableClusterCurrency)
 				break
 			}
+			time.Sleep(defaultMigNodeInterval)
 		}
 		rest := len(vols) - len(mt.finishVols)
 		if rest > 0 {
@@ -500,6 +501,7 @@ func (mt *MigVolTask) startVolMpMigrateTask(vols []string) {
 				log.LogInfof("wait for next round: taskID(%v) actualMaxClusterCount(%v) reach the limit\n", mt.taskId, availableClusterCurrency)
 				break
 			}
+			time.Sleep(defaultMigNodeInterval)
 		}
 		rest := len(vols) - len(mt.finishVols)
 		if rest > 0 {
