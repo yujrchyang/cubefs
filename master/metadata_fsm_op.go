@@ -200,6 +200,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		APIReqBwRateLimitMap:                c.cfg.APIReqBwRateLimitMap,
 		DisableClusterCheckDelEK:            c.cfg.DisableClusterCheckDeleteEK,
 		DelayMinutesReduceReplicaNum:        c.cfg.delayMinutesReduceReplicaNum,
+		MqProducerState:                     c.cfg.MqProducerState,
 	}
 	return cv
 }
@@ -702,6 +703,8 @@ func (c *Cluster) buildTokenRaftCmd(opType uint32, token *bsProto.Token) (metada
 
 // key=#c#name
 func (c *Cluster) syncPutCluster() (err error) {
+	c.clusterConfMutex.Lock()
+	defer c.clusterConfMutex.Unlock()
 	metadata := new(RaftCmd)
 	metadata.Op = opSyncPutCluster
 	metadata.K = clusterPrefix + c.Name
@@ -1057,6 +1060,20 @@ func (c *Cluster) syncPutIFrozenDP(opType uint32, partitionID uint64) (err error
 	metadata.V, err = json.Marshal(&dpv)
 	if err != nil {
 		return errors.New(err.Error())
+	}
+	return c.submit(metadata)
+}
+
+func (c *Cluster) syncSetMqProducerState() (err error) {
+	c.clusterConfMutex.Lock()
+	defer c.clusterConfMutex.Unlock()
+	metadata := new(RaftCmd)
+	metadata.Op = opSyncSetMqProducerState
+	metadata.K = clusterPrefix + c.Name
+	cv := newClusterValue(c)
+	metadata.V, err = json.Marshal(cv)
+	if err != nil {
+		return
 	}
 	return c.submit(metadata)
 }

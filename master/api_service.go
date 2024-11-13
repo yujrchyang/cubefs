@@ -7497,11 +7497,18 @@ func (m *Server) setMetadataMqProducerState(w http.ResponseWriter, r *http.Reque
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+
+	// check mq producer or producer config when turning on mq producer switch
+	if status && m.mqProducer == nil {
+		err = fmt.Errorf("mq producer not initilized when tuen on producer state")
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeInvalidCfg, Msg: err.Error()})
+		return
+	}
 	if err = m.cluster.setMqProducerState(status); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set EnableMysqlEngine to %v successfully", status)))
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set MqProducerState to %v successfully", status)))
 }
 
 func parseRequestToSetVolDisableState(r *http.Request) (volName, authKey, disableState string, err error) {

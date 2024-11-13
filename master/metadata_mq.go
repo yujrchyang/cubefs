@@ -6,6 +6,14 @@ import (
 	"github.com/Shopify/sarama"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
+	"strconv"
+	"time"
+)
+
+const (
+	MsgChanLength       = 1000000
+	WarnChanLength      = 10000
+	ProducerSendTimeout = 5 // unit: second
 )
 
 type MetadataMQProducer struct {
@@ -13,12 +21,16 @@ type MetadataMQProducer struct {
 	topic     string
 	mqAddr    string
 	mqAppName string
+	msgChan   chan *RaftCmdWithIndex
 	producer  sarama.SyncProducer
 }
 
 type RaftCmdWithIndex struct {
-	Cmd   *RaftCmd
-	Index uint64
+	Cmd          *RaftCmd
+	Index        uint64
+	IsLeader     bool
+	ClusterName  string
+	MasterNodeIp string
 }
 
 func (m *Server) initMetadataMqProducer(cfg *config.Config) (err error) {
@@ -33,6 +45,7 @@ func (m *Server) initMetadataMqProducer(cfg *config.Config) (err error) {
 	mqConfig.Producer.RequiredAcks = sarama.WaitForAll
 	mqConfig.Producer.Return.Successes = true
 	mqConfig.Producer.Partitioner = sarama.NewRandomPartitioner
+	mqConfig.Producer.Timeout = time.Second * ProducerSendTimeout
 	mqConfig.ClientID = mqAppName
 
 	producer, err := sarama.NewSyncProducer([]string{mqAddr}, mqConfig)
@@ -45,12 +58,88 @@ func (m *Server) initMetadataMqProducer(cfg *config.Config) (err error) {
 		mqAppName: mqAppName,
 		topic:     mqTopic,
 		producer:  producer,
+		msgChan:   make(chan *RaftCmdWithIndex, MsgChanLength),
 	}
 	m.mqProducer = mqProducer
+	m.mqProducer.startMQSendingTask()
 	return nil
 }
 
-func (mp *MetadataMQProducer) SendMessage(cmd *RaftCmd, index uint64) {
+func (mp *MetadataMQProducer) startMQSendingTask() {
+	go func() {
+		for {
+			select {
+			case msg, closed := <-mp.msgChan:
+				if closed {
+					log.LogWarnf("[MQSendingTask] message channel closed.")
+					return
+				}
+				if msg == nil {
+					log.LogWarnf("[MQSendingTask] received invalid message from message channel.")
+					continue
+				}
+				mp.SendMessage(msg)
+			default:
+				time.Sleep(10 * time.Millisecond)
+			}
+		}
+	}()
+}
+
+func (mp *MetadataMQProducer) shutdown() {
+	log.LogInfof("[MetadataMQProducer shutdown] receive kill signal, msgChanLength(%v)", len(mp.msgChan))
+	for {
+		if len(mp.msgChan) > 0 {
+			log.LogWarnf("[MetadataMQProducer shutdown] message channel still has message, msgChanLength(%v)", len(mp.msgChan))
+			time.Sleep(time.Second)
+			continue
+		}
+		break
+	}
+	if mp.producer != nil {
+		_ = mp.producer.Close()
+	}
+	if mp.msgChan != nil {
+		close(mp.msgChan)
+	}
+}
+
+func (m *Server) getMqProducerState(cfg *config.Config) (res bool, err error) {
+	cfgMqProducerState := cfg.GetString(CfgKeyMQProducerState)
+	if len(cfgMqProducerState) == 0 {
+		return true, nil
+	}
+	return strconv.ParseBool(cfgMqProducerState)
+}
+
+func (mp *MetadataMQProducer) addCommandMessage(cmd *RaftCmd, index uint64, clusterName, ip string, isLeader bool) {
+	cmdIndex := &RaftCmdWithIndex{
+		Cmd:          cmd,
+		Index:        index,
+		IsLeader:     isLeader,
+		ClusterName:  clusterName,
+		MasterNodeIp: ip,
+	}
+
+	for {
+		select {
+		case mp.msgChan <- cmdIndex:
+			log.LogDebugf("[addCommandMessage] add new command to channel, cmdOp(%v), cmdKey(%v), index(%v), isLeader(%v), msgChanLength(%v)",
+				cmd.Op, cmd.K, index, isLeader, len(mp.msgChan))
+			if len(mp.msgChan) >= WarnChanLength {
+				warnMsg := fmt.Sprintf("message channel watermark has been reached %v", WarnChanLength)
+				log.LogWarnf(warnMsg)
+				WarnBySpecialKey(fmt.Sprintf("%v_%v_mqProducer", mp.s.clusterName, ModuleName), warnMsg)
+			}
+		default:
+			warnMsg := fmt.Sprintf("message channel has been full, chanelLength(%v)", len(mp.msgChan))
+			log.LogErrorf(warnMsg)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_mqProducer", mp.s.clusterName, ModuleName), warnMsg)
+		}
+	}
+}
+
+func (mp *MetadataMQProducer) SendMessage(cmdWithIndex *RaftCmdWithIndex) {
 	var err error
 	var cmdData []byte
 
@@ -65,11 +154,7 @@ func (mp *MetadataMQProducer) SendMessage(cmd *RaftCmd, index uint64) {
 		}
 	}()
 
-	cmdIndex := RaftCmdWithIndex{
-		Cmd:   cmd,
-		Index: index,
-	}
-	if cmdData, err = json.Marshal(cmdIndex); err != nil {
+	if cmdData, err = json.Marshal(cmdWithIndex); err != nil {
 		log.LogErrorf("[SendMessage] unmarshall raft command failed, err(%v)", err.Error())
 		return
 	}
@@ -81,4 +166,6 @@ func (mp *MetadataMQProducer) SendMessage(cmd *RaftCmd, index uint64) {
 	if e != nil {
 		log.LogErrorf("[SendMessage] send message has exception, msg(%v), pid(%v), offset(%v), error(%v)", msg, pid, offset, e.Error())
 	}
+	log.LogDebugf("[SendMessage] send message success, cmdOp(%v), cmdKey(%v), index(%v), isLeader(%v), msgChanLength(%v)",
+		cmdWithIndex.Cmd.Op, cmdWithIndex.Cmd.K, cmdWithIndex.Index, cmdWithIndex.IsLeader, len(mp.msgChan))
 }
