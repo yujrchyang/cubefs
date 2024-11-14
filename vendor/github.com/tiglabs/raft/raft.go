@@ -574,6 +574,9 @@ func (s *raft) run() {
 			}(truncIndex)
 
 		case truncIndex := <-s.getIndexForTrunC:
+			if truncIndex < s.raftFsm.raftLog.firstIndex() {
+				continue
+			}
 			if s.raftFsm.state == stateRecorder {
 				s.raftFsm.bcastGetApplyIndex(truncIndex)
 			}

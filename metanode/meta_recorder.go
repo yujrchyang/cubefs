@@ -100,11 +100,8 @@ func (mr *metaRecorder) startRecorderWorker() {
 			log.LogCriticalf("recorder worker panic(%v) stack: %v", r, string(debug.Stack()))
 		}
 	}()
-	persistTicker := time.NewTicker(5 * time.Second)
+	persistTicker := time.NewTicker(3 * time.Minute)
 	defer persistTicker.Stop()
-
-	truncateTicker := time.NewTicker(1 * time.Minute)
-	defer truncateTicker.Stop()
 
 	ctx := context.Background()
 	log.LogInfof("recorder(%v) start recorder worker", mr.partitionID)
@@ -115,11 +112,11 @@ func (mr *metaRecorder) startRecorderWorker() {
 			return
 
 		case <- persistTicker.C:
-			if index, err := mr.Recorder().PersistApplyIndex(); err != nil {
-				log.LogWarnf("recorder(%v) persist apply index(%v) err(%v)", mr.partitionID, index, err)
+			applyIndex, err := mr.Recorder().PersistApplyIndex()
+			if err != nil {
+				log.LogWarnf("recorder(%v) persist apply index(%v) err(%v)", mr.partitionID, applyIndex, err)
+				continue
 			}
-
-		case <- truncateTicker.C:
 			truncateIndex, err := mr.GetMinTruncateIndex(ctx)
 			if err != nil {
 				log.LogWarnf("recorder(%v) get truncate index err(%v)", mr.partitionID, err)
@@ -129,7 +126,7 @@ func (mr *metaRecorder) startRecorderWorker() {
 				continue
 			}
 			mr.Recorder().RaftPartition().Truncate(truncateIndex)
-			log.LogInfof("recorder(%v) truncate WAL to index(%v)", mr.partitionID, truncateIndex)
+			log.LogInfof("recorder(%v) persist apply index to(%v) and truncate WAL to index(%v)", mr.partitionID, applyIndex, truncateIndex)
 		}
 	}
 }
@@ -212,6 +209,12 @@ func (mr *metaRecorder) ApplyMemberChange(confChange *raftproto.ConfChange, inde
 	var (
 		updated bool
 	)
+	defer func() {
+		if err == nil {
+			mr.Recorder().ApplyTo(index)
+			mr.Recorder().PersistApplyIndex()
+		}
+	}()
 	switch confChange.Type {
 	case raftproto.ConfAddNode:
 		req := &proto.AddMetaPartitionRaftMemberRequest{}
@@ -255,7 +258,6 @@ func (mr *metaRecorder) ApplyMemberChange(confChange *raftproto.ConfChange, inde
 	if err != nil {
 		return
 	}
-	mr.Recorder().ApplyTo(index)
 	if updated {
 		if err = mr.persist(); err != nil {
 			log.LogErrorf("action[ApplyMemberChange] err[%v].", err)

@@ -1127,13 +1127,25 @@ func formatDataPartitionRaftTableInfo(dnView *proto.DNDataPartitionInfo, nodeId 
 	return sb.String()
 }
 
-var metaRaftInfoTableHeader = "%-6v  %-18v  %-15v  %-9v  %-10v  %-10v  %-10v  %-10v  %-10v  %-8v  %-16v  %-10v  %-v"
-var metaPartitionRaftTableHeaderInfo = fmt.Sprintf(metaRaftInfoTableHeader, "ID", "ADDRESS", "TYPE", "IS_LEADER", "COMMIT", "INDEX", "APPLIED", "LOG_FIRST", "LOG_LAST", "PEND_QUE", "STATE", "STOPED", "PEERS")
+var metaRaftInfoTableHeader = "%-6v  %-18v  %-15v  %-9v  %-10v  %-10v  %-10v  %-10v  %-10v  %-8v  %-16v  %-10v  %-20v  %-10v"
+var metaPartitionRaftTableHeaderInfo = fmt.Sprintf(metaRaftInfoTableHeader, "ID", "ADDRESS", "TYPE", "IS_LEADER", "COMMIT", "INDEX", "APPLIED", "LOG_FIRST", "LOG_LAST", "PEND_QUE", "STATE", "STOPED", "PEERS", "PEER_CHECK")
 
-func formatMetaRaftTableInfo(raftStatus *proto.Status, peer proto.Peer) string {
+func formatMetaRaftTableInfo(raftStatus *proto.Status, peer proto.Peer, masterPeers, metaPeers []proto.Peer) string {
 	var sb = strings.Builder{}
+	peerConsistent := false
+	sort.SliceStable(metaPeers, func(i, j int) bool {
+		return metaPeers[i].ID < metaPeers[j].ID
+	})
+	if len(masterPeers) == len(metaPeers) {
+		peerConsistent = true
+		for i := 0; i < len(masterPeers); i++ {
+			if !masterPeers[i].IsEqual(metaPeers[i]) {
+				peerConsistent = false
+			}
+		}
+	}
 	if raftStatus == nil{
-		sb.WriteString(fmt.Sprintf(metaRaftInfoTableHeader, peer.ID, peer.Addr, peer.Type, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
+		sb.WriteString(fmt.Sprintf(metaRaftInfoTableHeader, peer.ID, peer.Addr, peer.Type, "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A", "N/A"))
 		return sb.String()
 	}
 	isLeader := raftStatus.Leader == raftStatus.NodeID
@@ -1150,7 +1162,7 @@ func formatMetaRaftTableInfo(raftStatus *proto.Status, peer proto.Peer) string {
 		}(), ",")
 	}
 	sb.WriteString(fmt.Sprintf(metaRaftInfoTableHeader, peer.ID, peer.Addr, peer.Type, isLeader, raftStatus.Commit, raftStatus.Index, raftStatus.Applied,
-		raftStatus.Log.FirstIndex, raftStatus.Log.LastIndex, raftStatus.PendQueue, raftStatus.State, raftStatus.Stopped, formatRaftPeers(raftStatus.Peers)))
+		raftStatus.Log.FirstIndex, raftStatus.Log.LastIndex, raftStatus.PendQueue, raftStatus.State, raftStatus.Stopped, formatRaftPeers(raftStatus.Peers), peerConsistent))
 	return sb.String()
 }
 

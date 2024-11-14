@@ -4815,6 +4815,17 @@ func TestRecorderTransferVol(t *testing.T) {
 	assert.Equal(t, true, mp.IsRecover, "mp should be recover")
 	assert.Equal(t, ReadWrite, int(mp.Status), "mp should be ReadWrite")
 	assert.Truef(t, hasBadMetaPartitionIds(mp.PartitionID), "BadMetaPartitionIds should contain mp[%v]", mp.PartitionID)
+	// reduce recorder num
+	deleteAddr := newRecorderAddr[0]
+	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=%v&mpRecorderNum=%v", hostAddr, proto.AdminUpdateVol, testVolName, buildAuthKey("cfs"), 0)
+	process(reqURL, t)
+	assert.Equalf(t, uint8(0), recorderTransferVol.mpRecorderNum, "get recorder transfer vol err")
+	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v&reduceNum=%v", hostAddr, proto.AdminDeleteMetaRecorder, mp.PartitionID, deleteAddr, "true")
+	process(reqURL, t)
+	assert.Equalf(t, uint8(0), mp.RecorderNum, "mp[%v] should be 0 after delete", mp.PartitionID)
+	assert.Equalf(t, 0, len(mp.Recorders), "mp[%v] recorders[%v] should be len 0 after delete", mp.PartitionID, mp.Recorders)
+	assert.Equalf(t, 0, len(mp.RecordersInfo), "mp[%v] recordersInfo[%v] should be len 0 after delete", mp.PartitionID, mp.RecordersInfo)
+	assert.Equalf(t, 3, len(mp.Peers), "mp[%v] peers[%v] should be len 3 after delete", mp.PartitionID, mp.Peers)
 }
 
 func hasBadMetaPartitionIds(pid uint64) (exist bool) {

@@ -1338,6 +1338,7 @@ func (m *metadataManager) createRecorder(request *proto.CreateMetaRecorderReques
 		ClusterID:		m.metaNode.clusterId,
 		NodeID:         m.nodeId,
 		RaftStore:      m.raftStore,
+		CreateTime: 	time.Now().Format("2006-01-02 15:04:05"),
 	}
 	if mr, err = NewMetaRecorder(cfg, m); err != nil {
 		err = errors.NewErrorf("[newRecorder]->%s", err.Error())

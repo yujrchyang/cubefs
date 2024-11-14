@@ -860,12 +860,13 @@ func (m *Server) deleteMetaRecorder(w http.ResponseWriter, r *http.Request) {
 		addr        string
 		mp          *MetaPartition
 		partitionID uint64
+		reduceNum	bool
 		err         error
 	)
 
 	metrics := exporter.NewModuleTP(proto.AdminDeleteMetaRecorderUmpKey)
 	defer func() { metrics.Set(err) }()
-	if partitionID, addr, err = parseRequestToDeleteMetaRecorder(r); err != nil {
+	if partitionID, addr, reduceNum, err = parseRequestToDeleteMetaRecorder(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -876,7 +877,7 @@ func (m *Server) deleteMetaRecorder(w http.ResponseWriter, r *http.Request) {
 	}
 	mp.offlineMutex.Lock()
 	defer mp.offlineMutex.Unlock()
-	if err = m.cluster.deleteMetaRecorder(mp, addr, true, false); err != nil {
+	if err = m.cluster.deleteMetaRecorder(mp, addr, reduceNum, true, false); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -5014,7 +5015,19 @@ func extractAutoAddr(r *http.Request) (autoAddr bool, err error) {
 	return
 }
 
-func parseRequestToDeleteMetaRecorder(r *http.Request) (ID uint64, addr string, err error) {
+func extractReduceNum(r *http.Request) (reduceNum bool, err error) {
+	var value string
+	if value = r.FormValue(reduceNumKey); value == "" {
+		reduceNum = false
+		return
+	}
+	if reduceNum, err = strconv.ParseBool(value); err != nil {
+		return
+	}
+	return
+}
+
+func parseRequestToDeleteMetaRecorder(r *http.Request) (ID uint64, addr string, reduceNum bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -5022,6 +5035,9 @@ func parseRequestToDeleteMetaRecorder(r *http.Request) (ID uint64, addr string, 
 		return
 	}
 	if addr, err = extractNodeAddr(r); err != nil {
+		return
+	}
+	if reduceNum, err = extractReduceNum(r); err != nil {
 		return
 	}
 	return

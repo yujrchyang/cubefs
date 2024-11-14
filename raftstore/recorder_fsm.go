@@ -17,6 +17,7 @@ import (
 	"github.com/cubefs/cubefs/util/async"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 	raftproto "github.com/tiglabs/raft/proto"
 )
 
@@ -25,6 +26,8 @@ const (
 	TempMetadataFileName	= ".meta"
 	ApplyIndexFileName      = "APPLY"
 	TempApplyIndexFile      = ".apply"
+
+	defRaftLogSize        	= 8 * unit.MB
 
 	RecorderCriticalUmpKey	= "recorder_critical"
 )
@@ -49,6 +52,7 @@ type Recorder struct {
 	config   		*RecorderConfig
 	raftPartition	Partition
 	applyID			uint64
+	persistApplyID	uint64
 }
 
 type RecorderConfig struct {
@@ -76,12 +80,12 @@ func LoadRecorderConfig(clusterID, recorderDir string, nodeID uint64, rs RaftSto
 	if err = json.Unmarshal(metaFileData, cfg); err != nil {
 		return
 	}
-	if err = cfg.CheckValidate(); err != nil {
-		return
-	}
 	cfg.ClusterID = clusterID
 	cfg.NodeID = nodeID
 	cfg.RaftStore = rs
+	if err = cfg.CheckValidate(); err != nil {
+		return
+	}
 
 	log.LogInfof("load recorder config(%s) from dir(%v)", string(metaFileData), recorderDir)
 	return
@@ -94,16 +98,30 @@ func (cfg *RecorderConfig) CheckValidate() (err error) {
 		return
 	}
 	if cfg.PartitionID <= 0 {
-		err = fmt.Errorf("invalid partition ID: %d", cfg.PartitionID)
+		err = fmt.Errorf("invalid partition ID: %v", cfg.PartitionID)
 		return
 	}
 	if len(cfg.Peers) <= 0 {
-		err = fmt.Errorf("invalid peers: %d", cfg.Peers)
+		err = fmt.Errorf("invalid peers: %v", cfg.Peers)
 		return
 	}
 	if len(cfg.Recorders) <= 0 {
-		err = fmt.Errorf("invalid recorders: %d", cfg.Recorders)
+		err = fmt.Errorf("invalid recorders: %v", cfg.Recorders)
 		return
+	}
+	for _, p := range cfg.Peers {
+		if p.ID == cfg.NodeID && !p.IsRecorder() {
+			err = fmt.Errorf("mismatch peer(%v) peers: %v", p, cfg.Peers)
+			return
+		}
+		if p.IsRecorder() && !contains(cfg.Recorders, p.Addr) {
+			err = fmt.Errorf("mismatch peer(%v) recorders: %v", p, cfg.Recorders)
+			return
+		}
+		if !p.IsRecorder() && contains(cfg.Recorders, p.Addr) {
+			err = fmt.Errorf("mismatch peer(%v) recorders: %v", p, cfg.Recorders)
+			return
+		}
 	}
 	return
 }
@@ -179,6 +197,11 @@ func (r *Recorder) Persist() (err error) {
 		Learners:    r.GetLearners(),
 		Recorders: 	 r.GetRecorders(),
 		CreateTime:  r.config.CreateTime,
+		NodeID: 	 r.NodeID(),
+	}
+	if err = meta.CheckValidate(); err != nil {
+		log.LogErrorf("mp recorder(%v) invalid config: %v", r.config.PartitionID, err)
+		return
 	}
 
 	var newData []byte
@@ -280,16 +303,14 @@ func (r *Recorder) StartRaft(fsm *FunctionalPartitionFsm) (err error) {
 		WalPath:            r.walPath,
 		StartCommit:        0,
 		GetStartIndex: 		func(firstIndex, lastIndex uint64) (startIndex uint64) { return r.applyID },
+		LogIndexCheck: 		true,
 		WALContinuityCheck: false,
 		WALContinuityFix:   false,
 		Mode:               proto.StandardMode,
 		StorageListener: 	nil,
 	}
 	r.raftPartition = r.config.RaftStore.CreatePartition(pc)
-
-	// todo set
-	//r.raftPartition.SetWALFileSize()
-	//r.raftPartition.SetWALFileCacheCapacity()
+	r.raftPartition.SetWALFileSize(defRaftLogSize)
 
 	if err = r.raftPartition.Start(); err != nil {
 		return
@@ -347,7 +368,7 @@ func (r *Recorder) ApplyRemoveNode(partitionID uint64, removePeer proto.Peer, in
 		log.LogErrorf("Recorder PartitionID(%v) nodeID(%v) remove replica of self ID (%v) ", partitionID, r.config.NodeID, removePeer)
 	}
 
-	log.LogInfof("DataRecorder start RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
+	log.LogInfof("Recorder RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
 	curPeers := r.GetPeers()
 	for i, peer := range curPeers {
 		if peer.ID == removePeer.ID && peer.Type == proto.PeerNormal {
@@ -365,7 +386,7 @@ func (r *Recorder) ApplyRemoveNode(partitionID uint64, removePeer proto.Peer, in
 		}
 	}
 	if !isUpdated {
-		log.LogInfof("DataRecorder NoUpdate RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
+		log.LogInfof("Recorder NoUpdate RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
 		return
 	}
 	if peerIndex != -1 {
@@ -394,6 +415,10 @@ func (r *Recorder) ApplyAddLearner(partitionID uint64, addLearner proto.Learner,
 			break
 		}
 	}
+	isUpdated = !existedPeer
+	if !isUpdated {
+		return
+	}
 	if !existedPeer {
 		peer := proto.Peer{ID: addLearner.ID, Addr: addLearner.Addr}
 		r.SetPeers(append(curPeers, peer))
@@ -409,10 +434,6 @@ func (r *Recorder) ApplyAddLearner(partitionID uint64, addLearner proto.Learner,
 	}
 	if !existedLearner {
 		r.SetLearners(append(curLearners, addLearner))
-	}
-	isUpdated = !existedPeer || !existedLearner
-	if !isUpdated {
-		return
 	}
 	addr := strings.Split(addLearner.Addr, ":")[0]
 	r.config.RaftStore.AddNodeWithPort(addLearner.ID, addr, heartbeatPort, replicaPort)
@@ -452,7 +473,7 @@ func (r *Recorder) ApplyAddRecorder(partitionID uint64, addRecorder proto.Peer, 
 			recorderExisted = true
 		}
 	}
-	if peerExisted && recorderExisted {
+	if peerExisted {
 		log.LogInfof("recorder ApplyAddRecorder: recorderID(%v) nodeID(%v) index(%v) existed peer(%v) ", partitionID, r.config.NodeID, index, addRecorder)
 		return
 	}
@@ -487,7 +508,7 @@ func (r *Recorder) ApplyRemoveRecorder(canRemoveSelf func(cfg *RecorderConfig) (
 
 	peerIndex, recorderIndex := -1, -1
 	isUpdated = false
-	log.LogInfof("DataRecorder start RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
+	log.LogInfof("Recorder start RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
 	curPeers := r.GetPeers()
 	for i, peer := range curPeers {
 		if peer.ID == removePeer.ID && peer.Type == proto.PeerRecorder {
@@ -505,7 +526,7 @@ func (r *Recorder) ApplyRemoveRecorder(canRemoveSelf func(cfg *RecorderConfig) (
 		}
 	}
 	if !isUpdated {
-		log.LogInfof("DataRecorder NoUpdate RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
+		log.LogInfof("Recorder NoUpdate RemoveRaftNode PartitionID(%v) nodeID(%v) removePeer(%v) ", partitionID, r.config.NodeID, removePeer)
 		return
 	}
 
@@ -672,6 +693,10 @@ func (r *Recorder) loadApplyIndex() (index uint64, err error) {
 }
 
 func (r *Recorder) PersistApplyIndex() (index uint64, err error) {
+	index = atomic.LoadUint64(&r.applyID)
+	if index == atomic.LoadUint64(&r.persistApplyID) {
+		return
+	}
 	originFileName := path.Join(r.metaPath, ApplyIndexFileName)
 	tempFileName := path.Join(r.metaPath, TempApplyIndexFile)
 	var tempFile *os.File
@@ -682,9 +707,10 @@ func (r *Recorder) PersistApplyIndex() (index uint64, err error) {
 		_ = tempFile.Close()
 		if err != nil {
 			_ = os.Remove(tempFileName)
+		} else {
+			atomic.StoreUint64(&r.persistApplyID, index)
 		}
 	}()
-	index = atomic.LoadUint64(&r.applyID)
 	if _, err = tempFile.WriteString(fmt.Sprintf("%d", index)); err != nil {
 		return
 	}
@@ -758,4 +784,18 @@ func (r *Recorder) IsEqualCreateRecorderRequest(volName string, peers []proto.Pe
 		return false
 	}
 	return true
+}
+
+func contains(arr []string, element string) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
+		}
+	}
+	return
 }

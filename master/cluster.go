@@ -5150,17 +5150,20 @@ func (c *Cluster) chooseTargetMetaNodeForAddRecorder(mp *MetaPartition) (addr st
 		if zoneCountMap, err = mp.getMetaZoneMapByHosts(c, peerHosts); err != nil {
 			return
 		}
+		var targetZones []string
 		minCount := len(peerHosts)
 		for _, zoneName := range volZones {
 			zoneCount := zoneCountMap[zoneName]
 			if int(zoneCount) < minCount {
-				targetZone = zoneName
+				targetZones = make([]string, 0)
+				targetZones = append(targetZones, zoneName)
 				minCount = int(zoneCount)
+			} else if int(zoneCount) == minCount {
+				targetZones = append(targetZones, zoneName)
 			}
 		}
-		if targetZone == "" {
-			targetZone = volZones[0]
-		}
+		targetZone = strings.Join(targetZones, ",")
+		log.LogInfof("vol(%v) mp(%v) choose target zone(%v) to create recorder, volZone(%v) curZoneCount(%v)", mp.volName, mp.PartitionID, targetZone, vol.zoneName, zoneCountMap)
 	}
 
 	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZone, true, vol.DefaultStoreMode); err != nil {

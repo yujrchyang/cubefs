@@ -238,7 +238,7 @@ func (mp *metaPartition) confAddRecorder(req *proto.AddMetaPartitionRaftRecorder
 			hasRecorder = true
 		}
 	}
-	updated = !hasPeer || !hasRecorder
+	updated = !hasPeer
 	if !updated {
 		return
 	}
@@ -311,7 +311,7 @@ func (mp *metaPartition) ApplyResetMember(req *proto.ResetMetaPartitionRaftMembe
 		return false
 	}
 
-	newPeers = make([]proto.Peer, len(req.NewPeers))
+	newPeers = make([]proto.Peer, 0, len(req.NewPeers))
 	newLearners = make([]proto.Learner, 0, len(req.NewPeers))
 	newRecorders = make([]string, 0, len(req.NewPeers))
 	for _, p := range mp.config.Peers {

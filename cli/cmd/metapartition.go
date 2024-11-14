@@ -105,21 +105,24 @@ func newMetaPartitionGetCmd(client *master.MasterClient) *cobra.Command {
 				stdout("\n")
 				stdout("RaftInfo :\n")
 				stdout(fmt.Sprintf("%v\n", metaPartitionRaftTableHeaderInfo))
+				sort.SliceStable(partition.Peers, func(i, j int) bool {
+					return partition.Peers[i].ID < partition.Peers[j].ID
+				})
 				for _, p := range partition.Peers {
 					if p.IsRecorder() {
 						var mnRecorder *proto.MNMetaRecorderInfo
 						if mnRecorder, err = client.NodeAPI().MetaNodeGetRecorder(strings.Split(p.Addr, ":")[0], partition.PartitionID); err != nil {
-							stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(nil, p)))
+							stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(nil, p, nil, nil)))
 							continue
 						}
-						stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(mnRecorder.RaftStatus, p)))
+						stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(mnRecorder.RaftStatus, p, partition.Peers, mnRecorder.Peers)))
 					} else {
 						var mnPartition *proto.MNMetaPartitionInfo
 						if mnPartition, err = client.NodeAPI().MetaNodeGetPartition(strings.Split(p.Addr, ":")[0], partition.PartitionID); err != nil {
-							stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(nil, p)))
+							stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(nil, p, nil, nil)))
 							continue
 						}
-						stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(mnPartition.RaftStatus, p)))
+						stdout(fmt.Sprintf("%v\n", formatMetaRaftTableInfo(mnPartition.RaftStatus, p, partition.Peers, mnPartition.Peers)))
 					}
 				}
 			}

@@ -216,7 +216,7 @@ func (c *Cluster) decommissionMetaReplica(mp *MetaPartition, crossRegionHAType p
 }
 
 func (c *Cluster) decommissionMetaRecorder(mp *MetaPartition, nodeAddr, addAddr string, strictMode bool) (err error) {
-	if err = c.deleteMetaRecorder(mp, nodeAddr, false, strictMode); err != nil {
+	if err = c.deleteMetaRecorder(mp, nodeAddr, false, false, strictMode); err != nil {
 		return
 	}
 	if err = c.addMetaRecorder(mp, addAddr, mp.RecorderNum, false); err != nil {
@@ -1093,7 +1093,7 @@ func (c *Cluster) addMetaRecorder(partition *MetaPartition, addr string, volReco
 	return
 }
 
-func (c *Cluster) deleteMetaRecorder(partition *MetaPartition, addr string, validate, migrationMode bool) (err error) {
+func (c *Cluster) deleteMetaRecorder(partition *MetaPartition, addr string, reduceNum, validate, migrationMode bool) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[deleteMetaRecorder],vol[%v], meta partition[%v],err[%v]", partition.volName, partition.PartitionID, err)
@@ -1113,7 +1113,7 @@ func (c *Cluster) deleteMetaRecorder(partition *MetaPartition, addr string, vali
 		return
 	}
 	removePeer := proto.Peer{ID: metaNode.ID, Addr: addr, Type: proto.PeerRecorder}
-	if err = c.removeMetaPartitionRaftRecorder(partition, removePeer, migrationMode); err != nil {
+	if err = c.removeMetaPartitionRaftRecorder(partition, removePeer, reduceNum, migrationMode); err != nil {
 		return
 	}
 	if err = c.deleteMetaRecorderFromNode(partition, metaNode, migrationMode); err != nil {
@@ -1122,7 +1122,7 @@ func (c *Cluster) deleteMetaRecorder(partition *MetaPartition, addr string, vali
 	return
 }
 
-func (c *Cluster) removeMetaPartitionRaftRecorder(partition *MetaPartition, removePeer proto.Peer, migrationMode bool) (err error) {
+func (c *Cluster) removeMetaPartitionRaftRecorder(partition *MetaPartition, removePeer proto.Peer, reduceNum, migrationMode bool) (err error) {
 	defer func() {
 		if err1 := c.updateMetaPartitionOfflinePeerIDWithLock(partition, 0); err1 != nil {
 			err = errors.Trace(err, "updateMetaPartitionOfflinePeerIDWithLock failed, err[%v]", err1)
@@ -1169,8 +1169,15 @@ func (c *Cluster) removeMetaPartitionRaftRecorder(partition *MetaPartition, remo
 		}
 		newRecorders = append(newRecorders, recorder)
 	}
+	vol, _ := c.getVol(partition.volName)
 	partition.Lock()
+	oldRecorderNum := partition.RecorderNum
+	newRecorderNum := uint8(len(newRecorders))
+	if reduceNum && vol != nil && vol.mpRecorderNum == 0 && oldRecorderNum > 0 && newRecorderNum < oldRecorderNum {
+		partition.RecorderNum = newRecorderNum
+	}
 	if err = partition.persistToRocksDB("removeMetaPartitionRaftRecorder", partition.volName, partition.Hosts, newPeers, partition.Learners, newRecorders, c); err != nil {
+		partition.RecorderNum = oldRecorderNum
 		partition.Unlock()
 		return
 	}
