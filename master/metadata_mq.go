@@ -69,8 +69,8 @@ func (mp *MetadataMQProducer) startMQSendingTask() {
 	go func() {
 		for {
 			select {
-			case msg, closed := <-mp.msgChan:
-				if closed {
+			case msg, ok := <-mp.msgChan:
+				if !ok {
 					log.LogWarnf("[MQSendingTask] message channel closed.")
 					return
 				}
@@ -121,21 +121,19 @@ func (mp *MetadataMQProducer) addCommandMessage(cmd *RaftCmd, index uint64, clus
 		MasterNodeIp: ip,
 	}
 
-	for {
-		select {
-		case mp.msgChan <- cmdIndex:
-			log.LogDebugf("[addCommandMessage] add new command to channel, cmdOp(%v), cmdKey(%v), index(%v), isLeader(%v), msgChanLength(%v)",
-				cmd.Op, cmd.K, index, isLeader, len(mp.msgChan))
-			if len(mp.msgChan) >= WarnChanLength {
-				warnMsg := fmt.Sprintf("message channel watermark has been reached %v", WarnChanLength)
-				log.LogWarnf(warnMsg)
-				WarnBySpecialKey(fmt.Sprintf("%v_%v_mqProducer", mp.s.clusterName, ModuleName), warnMsg)
-			}
-		default:
-			warnMsg := fmt.Sprintf("message channel has been full, chanelLength(%v)", len(mp.msgChan))
-			log.LogErrorf(warnMsg)
+	select {
+	case mp.msgChan <- cmdIndex:
+		log.LogDebugf("[addCommandMessage] add new command to channel, cmdOp(%v), cmdKey(%v), index(%v), isLeader(%v), msgChanLength(%v)",
+			cmd.Op, cmd.K, index, isLeader, len(mp.msgChan))
+		if len(mp.msgChan) >= WarnChanLength {
+			warnMsg := fmt.Sprintf("message channel watermark has been reached %v", WarnChanLength)
+			log.LogWarnf(warnMsg)
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_mqProducer", mp.s.clusterName, ModuleName), warnMsg)
 		}
+	default:
+		warnMsg := fmt.Sprintf("message channel has been full, chanelLength(%v)", len(mp.msgChan))
+		log.LogErrorf(warnMsg)
+		WarnBySpecialKey(fmt.Sprintf("%v_%v_mqProducer", mp.s.clusterName, ModuleName), warnMsg)
 	}
 }
 
