@@ -35,9 +35,8 @@ type VolumeInfo struct {
 	ClusterName        string
 	State              uint32
 	LastUpdate         int64
-	RunningMPCnt       uint32
 	RunningMpIds       map[uint64]struct{}
-	RunningInoCnt      uint32
+	RunningInodes      map[uint64]struct{}
 	Mcc                *ControlConfig
 	MetaClient         *meta.MetaWrapper
 	DataClient         *data.ExtentClient
@@ -76,6 +75,7 @@ func (vol *VolumeInfo) Init(clusterName, volName string, nodes []string, mcc *Co
 	vol.ClusterName = clusterName
 	vol.Mcc = mcc
 	vol.RunningMpIds = make(map[uint64]struct{}, 0)
+	vol.RunningInodes = make(map[uint64]struct{}, 0)
 	var metaConfig = &meta.MetaConfig{
 		Volume:        volName,
 		Masters:       nodes,
@@ -154,7 +154,7 @@ func (vol *VolumeInfo) ReleaseResourceMeetCondition() bool {
 	vol.Lock()
 	defer vol.Unlock()
 	curTime := time.Now().Unix()
-	if !(vol.RunningMPCnt == 0 && vol.RunningInoCnt == 0 && curTime-vol.LastUpdate > VolLastUpdateIntervalTime) {
+	if !(len(vol.RunningMpIds) == 0 && len(vol.RunningInodes) == 0 && curTime-vol.LastUpdate > VolLastUpdateIntervalTime) {
 		return false
 	}
 	vol.ReleaseResource()
@@ -194,7 +194,6 @@ func (vol *VolumeInfo) AddMPRunningCnt(mpId uint64) bool {
 	vol.Lock()
 	defer vol.Unlock()
 	if vol.State == VolRunning || vol.State == VolInit {
-		vol.RunningMPCnt += 1
 		vol.RunningMpIds[mpId] = struct{}{}
 		return true
 	}
@@ -204,31 +203,24 @@ func (vol *VolumeInfo) AddMPRunningCnt(mpId uint64) bool {
 func (vol *VolumeInfo) DelMPRunningCnt(mpId uint64) {
 	vol.Lock()
 	defer vol.Unlock()
-	if vol.RunningMPCnt == 0 {
-		return
-	}
-	vol.RunningMPCnt -= 1
 	delete(vol.RunningMpIds, mpId)
 	vol.LastUpdate = time.Now().Unix()
 }
 
-func (vol *VolumeInfo) AddInodeRunningCnt() bool {
+func (vol *VolumeInfo) AddInodeRunningCnt(inoId uint64) bool {
 	vol.Lock()
 	defer vol.Unlock()
 	if vol.State == VolRunning || vol.State == VolInit {
-		vol.RunningInoCnt += 1
+		vol.RunningInodes[inoId] = struct{}{}
 		return true
 	}
 	return false
 }
 
-func (vol *VolumeInfo) DelInodeRunningCnt() {
+func (vol *VolumeInfo) DelInodeRunningCnt(inoId uint64) {
 	vol.Lock()
 	defer vol.Unlock()
-	if vol.RunningInoCnt == 0 {
-		return
-	}
-	vol.RunningInoCnt -= 1
+	delete(vol.RunningInodes, inoId)
 }
 
 func (vol *VolumeInfo) GetInodeCheckStep() int {
@@ -266,19 +258,27 @@ func (vol *VolumeInfo) GetName() string {
 func (vol *VolumeInfo) GetVolumeView() *proto.VolumeDataMigView {
 	vol.RLock()
 	defer vol.RUnlock()
-	var mpIds = make([]uint64, 0, len(vol.RunningMpIds))
+	var (
+		mpIds = make([]uint64, 0, len(vol.RunningMpIds))
+		inodes = make([]uint64, 0, len(vol.RunningInodes))
+	)
 	for mpId := range vol.RunningMpIds {
 		mpIds = append(mpIds, mpId)
 	}
 	sort.Slice(mpIds, func(i, j int) bool { return mpIds[i] < mpIds[j] })
+	for inode := range vol.RunningInodes {
+		inodes = append(inodes, inode)
+	}
+	sort.Slice(inodes, func(i, j int) bool { return inodes[i] < inodes[j] })
 	return &proto.VolumeDataMigView{
 		ClusterName:   vol.ClusterName,
 		Name:          vol.Name,
 		State:         vol.State,
 		LastUpdate:    vol.LastUpdate,
-		RunningMPCnt:  vol.RunningMPCnt,
+		RunningMpCnt:  len(mpIds),
 		RunningMpIds:  mpIds,
-		RunningInoCnt: vol.RunningInoCnt,
+		RunningInodeCnt: len(inodes),
+		RunningInodes: inodes,
 	}
 }
 

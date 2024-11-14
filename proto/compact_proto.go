@@ -32,9 +32,10 @@ type VolumeDataMigView struct {
 	Name          string   `json:"volName"`
 	State         uint32   `json:"state"`
 	LastUpdate    int64    `json:"lastUpdate"`
-	RunningMPCnt  uint32   `json:"runningMPCnt"`
+	RunningMpCnt  int      `json:"runningMpCnt"`
 	RunningMpIds  []uint64 `json:"runningMpIds"`
-	RunningInoCnt uint32   `json:"runningInoCnt"`
+	RunningInodeCnt int    `json:"runningInodeCnt"`
+	RunningInodes []uint64 `json:"runningInodes"`
 }
 
 type ClusterDataMigView struct {

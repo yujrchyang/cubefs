@@ -82,9 +82,9 @@ func (migInode *MigrateInode) RunOnce() (finished bool, err error) {
 	defer metrics.Set(err)
 
 	defer func() {
-		migInode.vol.DelInodeRunningCnt()
+		migInode.vol.DelInodeRunningCnt(migInode.inodeInfo.Inode)
 	}()
-	if !migInode.vol.AddInodeRunningCnt() {
+	if !migInode.vol.AddInodeRunningCnt(migInode.inodeInfo.Inode) {
 		return
 	}
 	defer func() {

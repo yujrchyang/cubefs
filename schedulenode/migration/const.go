@@ -28,6 +28,7 @@ const (
 	LimitSizeKey = "limit"
 	MpIdKey      = "mp"
 	InodeIdKey   = "inode"
+	TypeKey      = "type"
 )
 
 const (

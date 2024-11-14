@@ -2,6 +2,7 @@ package migration
 
 import (
 	"fmt"
+	cm "github.com/cubefs/cubefs/schedulenode/common"
 	"strings"
 	"sync"
 	"time"
@@ -17,7 +18,6 @@ import (
 
 type MigrateTask struct {
 	sync.RWMutex
-	wg          sync.WaitGroup
 	mpId        uint64
 	name        string
 	stage       MigrateTaskStage
@@ -36,13 +36,36 @@ type MigrateTask struct {
 	migErrMsg   map[int]string
 	inodes      []uint64
 	last        int
+
+	stopC       chan struct{}
+	migInodeLimiter *cm.ConcurrencyLimiter
 }
 
 func NewMigrateTask(task *proto.Task, masterClient *master.MasterClient, vol *VolumeInfo) (mpOp *MigrateTask) {
 	mpOp = &MigrateTask{mpId: task.MpId, mc: masterClient, vol: vol, task: task}
 	mpOp.name = fmt.Sprintf("%s#%s#%d", task.Cluster, task.VolName, task.MpId)
 	mpOp.migErrMsg = make(map[int]string, 0)
+	mpOp.stopC = make(chan struct{})
+	mpOp.migInodeLimiter = cm.NewConcurrencyLimiter(DefaultInodeConcurrent)
 	return
+}
+
+func (migTask *MigrateTask) updateInodeMigParallel(num *int32) {
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		for {
+			select {
+			case <- ticker.C:
+				if *num <= 0 || *num == migTask.migInodeLimiter.Limit() {
+					continue
+				}
+				migTask.migInodeLimiter.Reset(*num)
+				log.LogInfof("migInodeLimiter reset to %v", *num)
+			case <- migTask.stopC:
+				return
+			}
+		}
+	}()
 }
 
 func (migTask *MigrateTask) RunOnce() (finished bool, err error) {
@@ -50,6 +73,7 @@ func (migTask *MigrateTask) RunOnce() (finished bool, err error) {
 	defer metrics.Set(err)
 
 	defer func() {
+		close(migTask.stopC)
 		migTask.vol.DelMPRunningCnt(migTask.mpId)
 	}()
 	if !migTask.vol.AddMPRunningCnt(migTask.mpId) {
@@ -230,6 +254,7 @@ func (migTask *MigrateTask) MigrateInode() (err error) {
 		log.LogErrorf("[MigInodes] migTask.vol.metaClient.GetInodeExtents_ll: mpName(%v) mpId(%v) state(%v) err(%v)", migTask.name, migTask.mpId, migTask.stage, err)
 		return
 	}
+	log.LogDebugf("migrate inode range mpName(%v) mpId(%v) last:end[%v:%v]", migTask.name, migTask.mpId, migTask.last, end)
 	for _, migInode := range migInodes {
 		isMatch := migTask.checkMatchMigDir(migInode.Inode.Inode)
 		log.LogDebugf("check match migration dir, migTask.Name(%v) taskType(%v) inode(%v) isMatch(%v)", migTask.name, migTask.task.TaskType, migInode.Inode, isMatch)
@@ -241,9 +266,11 @@ func (migTask *MigrateTask) MigrateInode() (err error) {
 			log.LogErrorf("NewMigrateInode migTask.Name(%v) inode(%v) err(%v)", migTask.name, migInode.Inode, err)
 			continue
 		}
-		migTask.wg.Add(1)
+		migTask.migInodeLimiter.Add()
 		go func(inodeOp *MigrateInode) {
-			defer migTask.wg.Done()
+			defer func() {
+				migTask.migInodeLimiter.Done()
+			}()
 			_, subTaskErr := inodeOp.RunOnce()
 			if subTaskErr != nil {
 				log.LogErrorf("[subTask] RunOnce, mpName(%v) mpId(%v) state(%v) err(%v)", migTask.name, migTask.mpId, migTask.stage, subTaskErr)
@@ -254,7 +281,6 @@ func (migTask *MigrateTask) MigrateInode() (err error) {
 			maxIno = migInode.Inode.Inode
 		}
 	}
-	migTask.wg.Wait()
 	migTask.setLastCursor(len(migInodes), end, maxIno)
 	return
 }

@@ -98,6 +98,7 @@ type Worker struct {
 	controlConfig         *ControlConfig
 	limiter               *cm.ConcurrencyLimiter
 	volumeInfoCheckMutex  sync.Mutex
+	inodeMigParallelNum   int32
 }
 
 func NewWorker(workerType proto.WorkerType) (w *Worker) {
@@ -119,6 +120,7 @@ func doStartWorker(s common.Server, cfg *config.Config) (err error) {
 	w.StopC = make(chan struct{}, 0)
 	w.TaskChan = make(chan *proto.Task, worker.DefaultTaskChanLength)
 	w.limiter = cm.NewConcurrencyLimiter(DefaultMpConcurrency)
+	w.inodeMigParallelNum = DefaultInodeConcurrent
 	if err = w.parseConfig(cfg); err != nil {
 		log.LogErrorf("[doStart] parse config info failed, error(%v)", err)
 		return
@@ -269,6 +271,7 @@ func (w *Worker) execMigrationTask(task *proto.Task) (isFinished bool, err error
 		return true, nil
 	}
 	migTask := NewMigrateTask(task, masterClient, volumeInfo)
+	migTask.updateInodeMigParallel(&w.inodeMigParallelNum)
 	isFinished, err = migTask.RunOnce()
 	if err == nil {
 		return true, nil
@@ -722,6 +725,7 @@ func (w *Worker) setLimit(res http.ResponseWriter, r *http.Request) {
 		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
+	setType := r.FormValue(TypeKey)
 	limit := r.FormValue(LimitSizeKey)
 	var limitNum int64
 	var err error
@@ -735,12 +739,30 @@ func (w *Worker) setLimit(res http.ResponseWriter, r *http.Request) {
 		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 		return
 	}
-	w.limiter.Reset(int32(limitNum))
+	switch setType {
+	case InodeIdKey:
+		w.inodeMigParallelNum = int32(limitNum)
+	case MpIdKey:
+		w.limiter.Reset(int32(limitNum))
+	default:
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "type invalid"})
+		return
+	}
 	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success"})
 }
 
 func (w *Worker) getLimit(res http.ResponseWriter, r *http.Request) {
-	limit := w.limiter.Limit()
+	setType := r.FormValue(TypeKey)
+	var limit int32
+	switch setType {
+	case InodeIdKey:
+		limit = w.inodeMigParallelNum
+	case MpIdKey:
+		limit = w.limiter.Limit()
+	default:
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "type invalid"})
+		return
+	}
 	SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: limit})
 }
 
