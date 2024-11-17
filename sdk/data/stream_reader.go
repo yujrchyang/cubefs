@@ -126,7 +126,11 @@ func (s *Streamer) IssueWithoutServer(f func() error) (done bool, err error) {
 
 // TODO should we call it RefreshExtents instead?
 func (s *Streamer) GetExtents(ctx context.Context) error {
-	return s.extents.Refresh(ctx, s.inode, s.client.getExtents)
+	return s.extents.Refresh(ctx, s.inode, s.client.getExtents, false)
+}
+
+func (s *Streamer) ForceRefreshExtentsCache(ctx context.Context) error {
+	return s.extents.Refresh(ctx, s.inode, s.client.getExtents, true)
 }
 
 func (s *Streamer) InitExtents(ctx context.Context) bool {

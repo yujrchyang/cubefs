@@ -321,6 +321,14 @@ func (client *ExtentClient) RefreshExtentsCache(ctx context.Context, inode uint6
 	return s.GetExtents(ctx)
 }
 
+func (client *ExtentClient) ForceRefreshExtentsCache(ctx context.Context, inode uint64) error {
+	s := client.GetStreamer(inode)
+	if s == nil {
+		return nil
+	}
+	return s.ForceRefreshExtentsCache(ctx)
+}
+
 // FileSize returns the file size.
 func (client *ExtentClient) FileSize(inode uint64) (size uint64, gen uint64, valid bool) {
 	s := client.GetStreamer(inode)

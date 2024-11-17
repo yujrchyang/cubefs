@@ -80,7 +80,7 @@ func NewExtentCache(inode uint64) *ExtentCache {
 }
 
 // Refresh refreshes the extent cache.
-func (cache *ExtentCache) Refresh(ctx context.Context, inode uint64, getExtents GetExtentsFunc) error {
+func (cache *ExtentCache) Refresh(ctx context.Context, inode uint64, getExtents GetExtentsFunc, force bool) error {
 	cache.UpdateRefreshTime()
 
 	gen, size, extents, err := getExtents(ctx, inode)
@@ -88,20 +88,20 @@ func (cache *ExtentCache) Refresh(ctx context.Context, inode uint64, getExtents 
 		return err
 	}
 	//log.LogDebugf("Local ExtentCache before update: gen(%v) size(%v) extents(%v)", cache.gen, cache.size, cache.List())
-	cache.update(gen, size, extents)
+	cache.update(gen, size, extents, force)
 	//log.LogDebugf("Local ExtentCache after update: gen(%v) size(%v) extents(%v)", cache.gen, cache.size, cache.List())
 	return nil
 }
 
-func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
+func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey, force bool) {
 	cache.Lock()
 	defer cache.Unlock()
 
-	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) gen(%v) size(%v) ekLen(%v)",
-		cache.inode, cache.gen, cache.size, gen, size, len(eks))
+	log.LogDebugf("ExtentCache update: ino(%v) cache.gen(%v) cache.size(%v) gen(%v) size(%v) ekLen(%v) force(%v)",
+		cache.inode, cache.gen, cache.size, gen, size, len(eks), force)
 
 	cache.initialized = true
-	if cache.gen != 0 && cache.gen >= gen {
+	if !force && cache.gen != 0 && cache.gen >= gen {
 		log.LogDebugf("ExtentCache update: no need to update, ino(%v) gen(%v) size(%v)", cache.inode, gen, size)
 		return
 	}
@@ -113,6 +113,10 @@ func (cache *ExtentCache) update(gen, size uint64, eks []proto.ExtentKey) {
 	cache.root = newRoot
 	cache.gen = gen
 	cache.size = size
+	if force {
+		return
+	}
+
 	// insert temporary ek to prevent read unconsistency
 	oldRoot.Range(func(ek proto.ExtentKey) bool {
 		if ek.PartitionId == 0 || ek.ExtentId == 0 {
