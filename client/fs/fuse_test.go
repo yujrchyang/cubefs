@@ -1,7 +1,9 @@
 package fs
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -46,6 +48,39 @@ func TestInodeReuse(t *testing.T) {
 	exec.Command("curl", "http://192.168.0.10:17410/clearCache").Run()
 	_, err = os.ReadDir(dirPath)
 	assert.Nil(t, err)
+}
+
+func TestInodeReuse_MultiFD(t *testing.T) {
+	fileName := "TestInodeReuse_MultiFD"
+	filePath := "/cfs/mnt/" + fileName
+	os.Create(filePath)
+	fInfo, _ := os.Stat(filePath)
+	ino := fInfo.Sys().(*syscall.Stat_t).Ino
+	data := make([]byte, 1024)
+	ctx := context.Background()
+	err := ec.OpenStream(ino, false)
+	assert.Nil(t, err)
+	_, _, err = ec.Write(ctx, ino, 0, data, false)
+	assert.Nil(t, err)
+	err = ec.Flush(ctx, ino)
+	assert.Nil(t, err)
+	_, err = mw.Delete_ll(nil, proto.RootIno, fileName, false)
+	assert.Nil(t, err)
+	err = mw.Evict(nil, ino, true)
+	assert.Nil(t, err)
+
+	mc := masterSDK.NewMasterClient(ltptestMaster, false)
+	mps, err := mc.ClientAPI().GetMetaPartitions(ltptestVolume)
+	assert.Nil(t, err)
+	mp := getMpByInode(mps, ino)
+	metaClient := meta.NewMetaHttpClient(fmt.Sprintf("%v:%v", strings.Split(mp.LeaderAddr, ":")[0], 17220), false)
+	mode := uint32(fs.ModePerm)
+	err = metaClient.CreateInode(mp.PartitionID, ino, mode)
+	assert.Nil(t, err)
+	ec.ForceRefreshExtentsCache(ctx, ino)
+
+	read, _, err := ec.Read(ctx, ino, data, 0, 1024)
+	assert.True(t, read == 0 && err == io.EOF)
 }
 
 func getMpByInode(mps []*proto.MetaPartitionView, inode uint64) *proto.MetaPartitionView {

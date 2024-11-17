@@ -58,6 +58,7 @@ func (d *Node) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.C
 	resp.EntryValid = LookupValidDuration
 
 	Sup.ic.Delete(ctx, d.inode)
+	Sup.ec.ForceRefreshExtentsCache(ctx, d.inode)
 
 	log.LogDebugf("TRACE Create: parent(%v) req(%v) resp(%v) ino(%v) time(%v)", d.inode, req, resp, info.Inode, time.Since(start))
 	return child, child, nil
