@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/schedulenode/blck"
+	"github.com/cubefs/cubefs/schedulenode/fsck"
+	"github.com/cubefs/cubefs/schedulenode/mdck"
+	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
 	"github.com/cubefs/cubefs/schedulenode/smart"
 	"github.com/cubefs/cubefs/sdk/mysql"
 	"github.com/cubefs/cubefs/util/buf"
@@ -55,6 +59,7 @@ const (
 	ScheduleNodeAPIConfigDelete       = "/config/delete"
 	ScheduleNodeAPIConfigSelect       = "/config/select"
 	ScheduleNodeAPIMigrateUsing       = "/migrate/using"
+	ScheduleNodeAPIHandleCheckRule    = "/handle/checkRuleTable"
 )
 
 func (s *ScheduleNode) getScheduleStatus(w http.ResponseWriter, r *http.Request) {
@@ -568,6 +573,130 @@ func (s *ScheduleNode) selectMigrateThresholdUsing(w http.ResponseWriter, r *htt
 		return
 	}
 	s.buildSuccessResp(w, sv.MigrateThreshold())
+}
+
+func (s *ScheduleNode) handleCheckRuleTable(w http.ResponseWriter, r *http.Request) {
+	//parse handle type
+	var respCode = http.StatusOK
+	var respMsg = "OK"
+	var err error
+	defer func() {
+		if err != nil {
+			s.buildFailureResp(w, respCode, respMsg)
+		} else {
+			s.buildSuccessResp(w, nil)
+		}
+	}()
+	err = r.ParseForm()
+	if err != nil {
+		respMsg = fmt.Sprintf("parseForm faile: %v", err)
+		return
+	}
+
+	workerTypeStr := r.FormValue("taskType")
+	if workerTypeStr == "" {
+		respMsg = fmt.Sprintf("lack of taskType")
+		return
+	}
+	var workerType int64
+	workerType, err = strconv.ParseInt(workerTypeStr, 10, 32)
+	if err != nil {
+		respMsg = err.Error()
+		return
+	}
+
+	var tableName string
+	switch proto.WorkerType(workerType) {
+	case proto.WorkerTypeFSCheck:
+		tableName = fsck.CheckRuleTableName
+	case proto.WorkerTypeBlockCheck:
+		tableName = blck.CheckRuleTableName
+	case proto.WorkerTypeNormalExtentMistakeDelCheck:
+		tableName = normalextentcheck.CheckRuleTableName
+	case proto.WorkerTypeMetaDataCrcCheck:
+		tableName = mdck.CheckRuleTableName
+	default:
+		err = fmt.Errorf("error worker type: %s", workerTypeStr)
+		respMsg = err.Error()
+		return
+	}
+
+	if tableName == "" {
+		err = fmt.Errorf("table name is needed")
+		respMsg = err.Error()
+		return
+	}
+
+	handleType := r.FormValue("handleType")
+	switch handleType{
+	case "add":
+		clusterID := r.FormValue("clusterID")
+		if clusterID == "" {
+			respMsg = fmt.Sprintf("lack of clusterID")
+			return
+		}
+		ruleType := r.FormValue("ruleType")
+		if ruleType == "" {
+			respMsg = fmt.Sprintf("lack of ruleType")
+			return
+		}
+		ruleValue := r.FormValue("ruleValue")
+		if ruleValue == "" {
+			respMsg = fmt.Sprintf("lack of ruleValue")
+			return
+		}
+		err = mysql.AddCheckRule(tableName, &proto.CheckRule{
+			WorkerType: proto.WorkerType(workerType),
+			ClusterID:  clusterID,
+			RuleType:   ruleType,
+			RuleValue:  ruleValue,
+		})
+		if err != nil {
+			respMsg = err.Error()
+		}
+		return
+	case "delete":
+		idStr := r.FormValue("id")
+		if idStr == "" {
+			respMsg = fmt.Sprintf("lack of id")
+			return
+		}
+		var id int64
+		id, err = strconv.ParseInt(idStr, 10, 32)
+		if err != nil {
+			respMsg = err.Error()
+			return
+		}
+		if err = mysql.DeleteCheckRule(tableName, int(id)); err != nil {
+			respMsg = err.Error()
+		}
+		return
+	case "update":
+		idStr := r.FormValue("id")
+		if idStr == "" {
+			respMsg = fmt.Sprintf("lack of id")
+			return
+		}
+		var id int64
+		id, err = strconv.ParseInt(idStr, 10, 32)
+		if err != nil {
+			respMsg = err.Error()
+			return
+		}
+		ruleValue := r.FormValue("ruleValue")
+		if ruleValue == "" {
+			respMsg = fmt.Sprintf("lack of ruleValue")
+			return
+		}
+		if err = mysql.UpdateCheckRule(tableName, int(id), ruleValue); err != nil {
+			respMsg = err.Error()
+		}
+		return
+	default:
+		err = fmt.Errorf("error handleType")
+		respMsg = fmt.Sprintf("error handleType: %v, [handleType:add/delete/update]", handleType)
+	}
+	return
 }
 
 func (s *ScheduleNode) newProxy() *httputil.ReverseProxy {

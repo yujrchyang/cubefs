@@ -11,6 +11,7 @@ import (
 	"github.com/cubefs/cubefs/util/bitset"
 	"github.com/cubefs/cubefs/util/log"
 	"io"
+	"io/ioutil"
 	"math"
 	"net/http"
 	"os"
@@ -229,6 +230,33 @@ func (t *FSCheckTask) getVolumeAllInodeID(endTime int64) (err error) {
 	return
 }
 
+func (t *FSCheckTask) metaNodeStartComplete(addr string) (startComplete bool) {
+	client := &http.Client{}
+	client.Timeout = time.Second * 60
+	url := fmt.Sprintf("http://%s:%v/status", strings.Split(addr, ":")[0], t.masterClient.MetaNodeProfPort)
+	resp, err := client.Get(url)
+	if err != nil {
+		log.LogErrorf("get url(%s) failed, cluster:%s, error:%v", url, t.Cluster, err)
+		return
+	}
+	defer resp.Body.Close()
+	var respData []byte
+	respData, err = ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.LogErrorf("read all response body failed: %v", err)
+		return
+	}
+	body := &struct {
+		StartComplete bool `json:"StartComplete"`
+	}{}
+	if err = json.Unmarshal(respData, &body); err != nil {
+		log.LogErrorf("Unmarshal resp data failed, cluster(%s), url(%s) err(%v)", t.Cluster, url, err)
+		return
+	}
+	startComplete = body.StartComplete
+	return
+}
+
 func (t *FSCheckTask) getVolumeAllDentryInodeID() (err error) {
 	var (
 		mpCh            = make(chan *proto.MetaPartitionView, 10)
@@ -267,6 +295,14 @@ func (t *FSCheckTask) getVolumeAllDentryInodeID() (err error) {
 				if !ok {
 					break
 				}
+
+				if !t.metaNodeStartComplete(mp.LeaderAddr) {
+					log.LogErrorf("getVolumeAllDentryInodeID meta node %s not start, task: %v, partitionID: %v",
+						mp.LeaderAddr, t, mp.PartitionID)
+					errCh <- fmt.Errorf("metanode %s not start, skip check %s", mp.LeaderAddr, t.VolName)
+					continue
+				}
+
 				errGetInode := t.GetMetaPartitionAllDentryInodeID(mp.PartitionID, mp.LeaderAddr, dentryInodeIDCh)
 				if errGetInode != nil {
 					log.LogErrorf("getVolumeAllDentryInodeID get error, task: %v, partitionID: %v, error: %v", t, mp.PartitionID, errGetInode)
@@ -460,7 +496,8 @@ func (t *FSCheckTask) dumpObsoleteInode() {
 		}
 		t.exportObsoleteInodeToFile(inodeInfo)
 		t.obsoleteSize += inodeInfo.Size
-		if inodeInfo.Nlink != 0 || time.Since(time.Unix(int64(inodeInfo.ModifyTime), 0)) < t.safeCleanInterval || !proto.IsRegular(inodeInfo.Mode) {
+		if inodeInfo.Nlink != 0 || int64(inodeInfo.ModifyTime) == 0 || !proto.IsRegular(inodeInfo.Mode) ||
+			time.Since(time.Unix(int64(inodeInfo.ModifyTime), 0)) < t.safeCleanInterval {
 			continue
 		}
 		t.safeCleanSize += inodeInfo.Size

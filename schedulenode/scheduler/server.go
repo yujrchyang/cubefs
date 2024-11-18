@@ -177,6 +177,7 @@ func (s *ScheduleNode) registerHandler() {
 	http.HandleFunc(ScheduleNodeAPIConfigDelete, s.deleteScheduleConfig)
 	http.HandleFunc(ScheduleNodeAPIConfigSelect, s.selectScheduleConfig)
 	http.HandleFunc(ScheduleNodeAPIMigrateUsing, s.selectMigrateThresholdUsing)
+	http.HandleFunc(ScheduleNodeAPIHandleCheckRule, s.handleCheckRuleTable)
 }
 
 func (s *ScheduleNode) identityMonitor() {
@@ -326,7 +327,7 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	}
 	if cfg.GetBool(config.ConfigKeyEnableFsCheck) {
 		var fsckTaskSchedule *fsck.FSCheckTaskSchedule
-		if fsckTaskSchedule, err = fsck.NewFSCheckTaskSchedule(cfg); err != nil {
+		if fsckTaskSchedule, err = fsck.NewFSCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
 			log.LogErrorf("[registerWorker] create fsck task schedule failed, err(%v)", err)
 			return
 		}
@@ -334,7 +335,7 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	}
 	if cfg.GetBool(config.ConfigKeyEnableBlockCheck) {
 		var blckTaskSchedule *blck.BlockCheckTaskSchedule
-		if blckTaskSchedule, err = blck.NewBlockCheckTaskSchedule(cfg); err != nil {
+		if blckTaskSchedule, err = blck.NewBlockCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
 			log.LogErrorf("[registerWorker] create blck task schedule failed, err(%v)", err)
 			return
 		}
@@ -342,7 +343,7 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	}
 	if cfg.GetBool(config.ConfigKeyEnableMetaDataCheck) {
 		var mdckTaskSchedule *mdck.MetaDataCheckTaskSchedule
-		if mdckTaskSchedule, err = mdck.NewMetaDataCheckTaskSchedule(cfg); err != nil {
+		if mdckTaskSchedule, err = mdck.NewMetaDataCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
 			log.LogErrorf("[registerWorker] create mdck task schedule failed, err(%v)", err)
 			return
 		}
@@ -350,7 +351,7 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	}
 	if cfg.GetBool(config.ConfigKeyEnableNormalEKCheck) {
 		var normalExtentCheckTaskSchedule *normalextentcheck.NormalExtentCheckTaskSchedule
-		if normalExtentCheckTaskSchedule, err = normalextentcheck.NewNormalExtentCheckTaskSchedule(cfg); err != nil {
+		if normalExtentCheckTaskSchedule, err = normalextentcheck.NewNormalExtentCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
 			log.LogErrorf("[registerWorker] create normal extent check task schedule failed, err(%v)", err)
 			return
 		}
@@ -440,6 +441,14 @@ func (s *ScheduleNode) storeTasks(wt proto.WorkerType, tasks []*proto.Task) {
 		}
 	}
 }
+
+func (s *ScheduleNode) storeClusterTask(wt proto.WorkerType, cluster string, task *proto.Task) {
+	s.taskLock.Lock()
+	defer s.taskLock.Unlock()
+	key := flowControlKey(wt, proto.FlowTypeCluster, cluster)
+	s.tasks[key] = append(s.tasks[key], task)
+}
+
 
 func (s *ScheduleNode) storeClusterTasks(wt proto.WorkerType, cluster string, newTasks []*proto.Task) {
 	s.taskLock.Lock()
@@ -830,6 +839,14 @@ func (s *ScheduleNode) taskManager() {
 	}
 }
 
+func isScheduleCheckTask(wt proto.WorkerType) bool {
+	if wt == proto.WorkerTypeFSCheck || wt == proto.WorkerTypeBlockCheck || wt == proto.WorkerTypeNormalExtentMistakeDelCheck ||
+		wt == proto.WorkerTypeTinyExtentPunchHoleCheck || wt == proto.WorkerTypeMetaDataCrcCheck || wt == proto.WorkerTypeExtentDoubleAllocateCheck {
+		return true
+	}
+	return false
+}
+
 func (s *ScheduleNode) exceptionTaskManager() {
 	timer := time.NewTimer(0)
 	for {
@@ -873,6 +890,11 @@ func (s *ScheduleNode) exceptionTaskManager() {
 							log.LogErrorf("[exceptionTaskManager] move tasks to history failed, taskType(%v), longExcTasks(%v), err(%v)", proto.WorkerTypeToName(wt), longExcTasks, err)
 							continue
 						}
+					}
+
+					if isScheduleCheckTask(wt) {
+						//skip handle not modify too long task for schedule check task
+						continue
 					}
 
 					// select not modified tasks for a long time, task is regarded as failed if not be modified in 24 hours

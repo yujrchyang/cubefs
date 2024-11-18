@@ -13,16 +13,22 @@ import (
 	"time"
 )
 
+const (
+	CheckRuleTableName = "blck_check_rules"
+)
+
 type BlockCheckTaskSchedule struct {
 	sync.RWMutex
 	worker.BaseWorker
 	port          string
 	masterAddr    map[string][]string
 	mcw           map[string]*master.MasterClient
+	storeTaskFunc func(workerType proto.WorkerType, clusterName string, task *proto.Task)
 	mcwRWMutex    sync.RWMutex
 }
 
-func NewBlockCheckTaskSchedule(cfg *config.Config) (blckTaskSchedule *BlockCheckTaskSchedule, err error) {
+func NewBlockCheckTaskSchedule(cfg *config.Config, storeFunc func(workerType proto.WorkerType, clusterName string,
+	task *proto.Task)) (blckTaskSchedule *BlockCheckTaskSchedule, err error) {
 	blckTaskSchedule = &BlockCheckTaskSchedule{}
 	if err = blckTaskSchedule.parseConfig(cfg); err != nil {
 		log.LogErrorf("[NewBlockCheckTaskSchedule] parse config info failed, error(%v)", err)
@@ -32,6 +38,7 @@ func NewBlockCheckTaskSchedule(cfg *config.Config) (blckTaskSchedule *BlockCheck
 		log.LogErrorf("[NewBlockCheckTaskSchedule] init compact worker failed, error(%v)", err)
 		return
 	}
+	blckTaskSchedule.storeTaskFunc = storeFunc
 	return
 }
 
@@ -111,37 +118,46 @@ func (blckTaskSchedule *BlockCheckTaskSchedule) CreateTask(clusterID string, tas
 	}
 	masterClient := blckTaskSchedule.mcw[clusterID]
 
-	var checkRules []*proto.CheckRule
-	checkRules, err = mysql.SelectCheckRule(int(blckTaskSchedule.WorkerType), clusterID)
+	var vols []*proto.VolInfo
+	vols, err = masterClient.AdminAPI().ListVols("")
 	if err != nil {
 		return
 	}
-	ruleMap := make(map[string]string, len(checkRules))
-	for _, rule := range checkRules {
-		ruleMap[rule.RuleType] = rule.RuleValue
+
+	var checkRules []*proto.CheckRule
+	checkRules, err = mysql.SelectCheckRule(CheckRuleTableName, clusterID)
+	if err != nil {
+		return
 	}
 
 	var needCheckVols []string
-	checkAll, checkVolumes, skipVolumes := common.ParseCheckAllRules(ruleMap)
+	checkAll, checkVolumes, enableCheckOwners, disableCheckOwners, skipVolumes := common.ParseCheckAllRules(checkRules)
 	if checkAll {
-		var vols []*proto.VolInfo
-		vols, err = masterClient.AdminAPI().ListVols("")
-		if err != nil {
-			return
-		}
 		for _, vol := range vols {
 			if _, ok = skipVolumes[vol.Name]; ok {
+				continue
+			}
+			if _, ok = disableCheckOwners[vol.Owner]; ok {
 				continue
 			}
 			needCheckVols = append(needCheckVols, vol.Name)
 		}
 	} else {
-		for volName := range checkVolumes {
-			needCheckVols = append(needCheckVols, volName)
+		needCheckVols = append(needCheckVols, checkVolumes...)
+		if len(enableCheckOwners) != 0 {
+			for _, vol := range vols {
+				if _, ok = enableCheckOwners[vol.Owner]; !ok {
+					continue
+				}
+				needCheckVols = append(needCheckVols, vol.Name)
+			}
 		}
 	}
 
 	for _, volName := range needCheckVols {
+		if volName == "" {
+			continue
+		}
 		newTask := proto.NewDataTask(proto.WorkerTypeBlockCheck, clusterID, volName, 0, 0, "")
 		if alreadyExist, _, _ := blckTaskSchedule.ContainTask(newTask, runningTasks); alreadyExist {
 			continue

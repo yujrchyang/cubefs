@@ -1,6 +1,7 @@
 package common
 
 import (
+	"github.com/cubefs/cubefs/proto"
 	"strconv"
 	"strings"
 )
@@ -10,17 +11,17 @@ type SpecialOwnerCheckRule struct {
 	SafeCleanIntervalMin uint64
 }
 
-func ParseSpecialOwnerRules(ruleMap map[string]string) (rules map[string]*SpecialOwnerCheckRule)  {
+func ParseSpecialOwnerRules(rules []*proto.CheckRule) (specialCheckRules map[string]*SpecialOwnerCheckRule)  {
+	specialCheckRules = make(map[string]*SpecialOwnerCheckRule)
 	var err error
-	ruleValue, ok := ruleMap["check_special_owner"]
-	if !ok {
-		return
-	}
-
-	specialOwnerRulesStr := strings.Split(ruleValue, ";")
-	rules = make(map[string]*SpecialOwnerCheckRule, len(specialOwnerRulesStr))
-	for _, specialOwnerRuleStr := range specialOwnerRulesStr {
-		ruleInfoArr := strings.Split(specialOwnerRuleStr, "_")
+	for _, rule := range rules {
+		if rule.RuleType != "check_special_owner" { //对一些owner的volume配置特殊的检查逻辑
+			continue
+		}
+		if rule.RuleValue == "" {
+			continue
+		}
+		ruleInfoArr := strings.Split(rule.RuleValue, "_")
 		if len(ruleInfoArr) != 3 {
 			continue
 		}
@@ -34,43 +35,32 @@ func ParseSpecialOwnerRules(ruleMap map[string]string) (rules map[string]*Specia
 		if checkRule.SafeCleanIntervalMin, err = strconv.ParseUint(ruleInfoArr[2], 10, 64); err != nil {
 			continue
 		}
-		rules[specialOwner] = checkRule
+		specialCheckRules[specialOwner] = checkRule
 	}
 	return
 }
 
-func ParseCheckAllRules(ruleMap map[string]string) (checkAll bool, checkVolumes map[string]byte, skipVolumes map[string]byte) {
-	checkAll = true
-	ruleValue, ok := ruleMap["check_all"]
-	if !ok {
-		return
-	}
-
-	ruleInfoArr := strings.Split(ruleValue, ":")
-	if len(ruleInfoArr) == 0 {
-		return
-	}
-
-	parseValue, err := strconv.ParseBool(ruleInfoArr[0])
-	if err != nil {
-		return
-	}
-
-	checkAll = parseValue
-	if len(ruleInfoArr) < 2 {
-		return
-	}
-
-	volumes := strings.Split(ruleInfoArr[1], ",")
-	if checkAll {
-		skipVolumes = make(map[string]byte, len(volumes))
-		for _, volume := range volumes {
-			skipVolumes[volume] = 0
-		}
-	} else {
-		checkVolumes = make(map[string]byte, len(volumes))
-		for _, volume := range volumes {
-			checkVolumes[volume] = 0
+func ParseCheckAllRules(rules []*proto.CheckRule) (checkAll bool, checkVolumes []string,
+	enableCheckOwners, disableCheckOwners map[string]byte, skipVolumes map[string]byte) {
+	skipVolumes = make(map[string]byte, 0)
+	enableCheckOwners = make(map[string]byte, 0)
+	disableCheckOwners = make(map[string]byte, 0)
+	for _, rule := range rules {
+		switch rule.RuleType {
+		case "check_all": //是否检查所有的volume
+			parseValue, err := strconv.ParseBool(rule.RuleValue)
+			if err != nil {
+				return
+			}
+			checkAll = parseValue
+		case "enable_check":
+			checkVolumes = append(checkVolumes, rule.RuleValue)
+		case "enable_check_owner":
+			enableCheckOwners[rule.RuleValue] = 0
+		case "disable_check":
+			skipVolumes[rule.RuleValue] = 0
+		case "disable_check_owner":
+			disableCheckOwners[rule.RuleValue] = 0
 		}
 	}
 	return
