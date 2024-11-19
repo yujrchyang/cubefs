@@ -412,11 +412,17 @@ func TestGetVol(t *testing.T) {
 
 	mpsJson := make(map[uint64]*proto.MetaPartitionView, len(vv.MetaPartitions))
 	for _, v := range vv.MetaPartitions {
+		if len(v.Recorders) == 0 {
+			v.Recorders = nil
+		}
 		mpsJson[v.PartitionID] = v
 	}
 	vv.MetaPartitions = nil
 	mpsPb := make(map[uint64]*proto.MetaPartitionView, len(volView.MetaPartitions))
 	for _, v := range volView.MetaPartitions {
+		if len(v.Recorders) == 0 {
+			v.Recorders = nil
+		}
 		mpsPb[v.PartitionID] = v
 	}
 	volView.MetaPartitions = nil
@@ -4922,5 +4928,27 @@ func TestCreateAndUpdateVolWithMetaOutFlag(t *testing.T) {
 	err = mc.AdminAPI().DeleteVolume(name, buildAuthKey("cfstest"))
 	if !assert.NoError(t, err) {
 		return
+	}
+}
+
+func TestCreateHddDataPartitionForSmartVolume(t *testing.T) {
+	name := "createHddDpsForSmartVolume"
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v", hostAddr, proto.AdminCreateVol, name, testZone2)
+	process(reqURL, t)
+	_, err := server.cluster.getVol(name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	dps, err := server.createHddDataPartition(name, testZone6, 1)
+	if !assert.NoError(t, err) {
+		return
+	}
+	for _, dp := range dps {
+		for _, replica := range dp.Replicas {
+			if replica.dataNode.ZoneName != testZone6 {
+				t.Errorf("dpsLen:%v,dp:%v,replica %v should be in zone %v,but zoneName:%v", len(dps), dp.PartitionID, replica.Addr, testZone1, replica.dataNode.ZoneName)
+				return
+			}
+		}
 	}
 }
