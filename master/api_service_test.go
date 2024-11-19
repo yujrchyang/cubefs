@@ -4973,6 +4973,9 @@ func TestCreateAndUpdateVolWithMetaOutFlag(t *testing.T) {
 	}
 }
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> 898b0ca64 (feature: Creating hdd data partitions for smart volume use specified zones.)
 
 func TestCreateHddDataPartitionForSmartVolume(t *testing.T) {
 	name := "createHddDpsForSmartVolume"
@@ -4995,6 +4998,7 @@ func TestCreateHddDataPartitionForSmartVolume(t *testing.T) {
 		}
 	}
 }
+<<<<<<< HEAD
 
 func TestTwoZoneHA(t *testing.T) {
 	//1 create region
