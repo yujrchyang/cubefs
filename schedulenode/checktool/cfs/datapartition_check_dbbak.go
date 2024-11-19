@@ -5,6 +5,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/common/cfs"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/unit"
 	"math"
 	"sync"
 	"time"
@@ -107,7 +108,7 @@ func checkDpRecover(host *ClusterHost, cv *ClusterView, dpr *DataPartitionRespon
 
 	host.tokenLock.Lock()
 	defer host.tokenLock.Unlock()
-	if host.tokenMap[resetDbBackRecoverToken] > 0 && maxSize == minSize {
+	if host.tokenMap[resetDbBackRecoverToken] > 0 && ((maxSize-minSize == 0) || (minSize > unit.GB && maxSize-minSize < unit.MB)) {
 		err = cfs.ResetDataPartitionRecover(host.host, dpr.PartitionID, true)
 		if err != nil {
 			log.LogErrorf("action[checkDpRecover] reset recover err:%v", err)
