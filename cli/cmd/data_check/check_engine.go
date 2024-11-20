@@ -52,7 +52,7 @@ type BadExtentInfo struct {
 	ExtentOffset uint64
 	FileOffset   uint64
 	Size         uint64
-	Hosts        []string
+	Hosts        [][2]string
 	Inode        uint64
 	Volume       string
 }

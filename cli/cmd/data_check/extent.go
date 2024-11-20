@@ -20,6 +20,8 @@ type ErrorEntry struct {
 	BadHosts    []string
 }
 
+var zeroBytes = make([]byte, unit.MB)
+
 func (entry *ErrorEntry) String() string {
 	return fmt.Sprintf("BlockOffset:%v, BlockSize:%v, ErrorMessage:\n%v", entry.BlockOffset, entry.BlockSize, entry.ErrMessage)
 }
@@ -119,7 +121,7 @@ func quickCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataR
 		return
 	}
 	badExtent = true
-	repairHost := make([]string, 0)
+	repairHost := make([][2]string, 0)
 	repairHostMap := make(map[string]bool, 0)
 	for _, entry := range errEntryMap {
 		for _, h := range entry.BadHosts {
@@ -127,7 +129,7 @@ func quickCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataR
 		}
 	}
 	for h := range repairHostMap {
-		repairHost = append(repairHost, h)
+		repairHost = append(repairHost, [2]string{h, "N/A"})
 	}
 	log.LogWarnf("cluster:%s found bad extent: pid(%v) eid(%v) eOff(%v) fOff(%v) size(%v) host(%v) ino(%v) vol(%v)",
 		cluster, ek.PartitionId, ek.ExtentId, ek.ExtentOffset, ek.FileOffset, ek.Size, repairHost, ino, volume)
@@ -145,7 +147,7 @@ func quickCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataR
 }
 
 func slowCheckExtent(cluster string, dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey, ino uint64, volume string) (badExtent bool, badExtentInfo BadExtentInfo, err error) {
-	var badAddrs []string
+	var badAddrs [][2]string
 	var output string
 	var same bool
 	var firstAddrCrc string
@@ -357,51 +359,52 @@ func CheckBlockCrc(dataReplicas []*proto.DataReplica, dnProf uint16, partitionId
 	return
 }
 
-func checkExtentMd5(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey) (badAddrs []string, output string, same bool, firstAddrCrc string, err error) {
+func checkExtentMd5(dnProf uint16, dataReplicas []*proto.DataReplica, ek *proto.ExtentKey) (badAddrs [][2]string, output string, same bool, firstAddrCrc string, err error) {
 	var (
 		ok       bool
 		replicas = make([]struct {
 			partitionId uint64
 			extentId    uint64
 			datanode    string
-			md5OrCrc    string
+			md5         string
 		}, len(dataReplicas))
-		md5Map         = make(map[string]int)
-		extentMd5orCrc string
+		md5Map    = make(map[string]int)
+		extentMd5 string
 	)
-	badAddrs = make([]string, 0)
+	badAddrs = make([][2]string, 0)
 	for idx, replica := range dataReplicas {
 		datanode := fmt.Sprintf("%s:%d", strings.Split(replica.Addr, ":")[0], dnProf)
 		dataClient := http_client.NewDataClient(datanode, false)
-		extentMd5orCrc, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, ek.ExtentOffset, uint64(ek.Size))
+		extentMd5, err = dataClient.ComputeExtentMd5(ek.PartitionId, ek.ExtentId, ek.ExtentOffset, uint64(ek.Size))
 		if err != nil {
 			log.LogErrorf("action[checkExtentMd5]: datanode(%v) PartitionId(%v) ExtentId(%v) err(%v)\n", datanode, ek.PartitionId, ek.ExtentId, err)
 			return
 		}
 		if idx == 0 {
-			firstAddrCrc = extentMd5orCrc
+			firstAddrCrc = extentMd5
 		}
 		replicas[idx].partitionId = ek.PartitionId
 		replicas[idx].extentId = ek.ExtentId
 		replicas[idx].datanode = datanode
-		replicas[idx].md5OrCrc = extentMd5orCrc
-		if _, ok = md5Map[extentMd5orCrc]; ok {
-			md5Map[extentMd5orCrc]++
+		replicas[idx].md5 = extentMd5
+		if _, ok = md5Map[extentMd5]; ok {
+			md5Map[extentMd5]++
 		} else {
-			md5Map[extentMd5orCrc] = 1
+			md5Map[extentMd5] = 1
 		}
 	}
 
 	if len(md5Map) == 1 {
-		return badAddrs, "", true, "", nil
+		same = true
+		return
 	}
 	for _, r := range replicas {
 		addr := strings.Split(r.datanode, ":")[0] + ":6000"
-		if _, ok = md5Map[r.md5OrCrc]; ok && md5Map[r.md5OrCrc] > len(dataReplicas)/2 {
-			output += fmt.Sprintf("dp: %d, extent: %d, datanode: %s, MD5: %s\n", r.partitionId, r.extentId, addr, r.md5OrCrc)
+		if _, ok = md5Map[r.md5]; ok && md5Map[r.md5] > len(dataReplicas)/2 {
+			output += fmt.Sprintf("dp: %d, extent: %d, datanode: %s, MD5: %s\n", r.partitionId, r.extentId, addr, r.md5)
 		} else {
-			output += fmt.Sprintf("dp: %d, extent: %d, datanode: %s, MD5: %s, Error Replica\n", r.partitionId, r.extentId, addr, r.md5OrCrc)
-			badAddrs = append(badAddrs, addr)
+			output += fmt.Sprintf("dp: %d, extent: %d, datanode: %s, MD5: %s, Error Replica\n", r.partitionId, r.extentId, addr, r.md5)
+			badAddrs = append(badAddrs, [2]string{addr, r.md5})
 		}
 	}
 	return
