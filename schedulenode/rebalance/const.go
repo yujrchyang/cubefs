@@ -14,9 +14,11 @@ const (
 	defaultClusterMaxBatchCount         = 50
 	defaultMigrateLimitPerDisk          = 10
 	defaultWaitClusterRecover           = time.Second * 30
+	defaultMigNodeInterval              = time.Minute * 1
 	defaultDstMetaNodePartitionMaxCount = 10000
 	defaultRefreshNodeInterval          = time.Minute * 2
 	defaultDeletedTaskInterval          = time.Minute * 10
+	defaultDstDatanodeUsage             = 0.8
 )
 
 const (
@@ -28,6 +30,13 @@ const (
 	RBResetControl = "/rebalance/resetControl"
 	RBList         = "/rebalance/list"
 	RBRecordsQuery = "/rebalance/queryRecords"
+
+	VolMigrateCreate       = "/volMig/create"
+	VolMigrateResetControl = "/volMig/resetCtrl"
+	VolMigrateStop         = "/volMig/stop"
+	VolMigrateStatus       = "/volMig/status"
+	VolMigrateQueryRecords = "/volMig/queryRecords"
+
 	ZoneUsageRatio = "/zone/UsageRatio"
 )
 
@@ -55,6 +64,13 @@ const (
 	ParamQueryDate     = "date"
 	ParamQueryTaskId   = "taskId"
 	ParamTaskType      = "taskType"
+
+	ParamSrcZone              = "srcZone"
+	ParamDstZone              = "dstZone"
+	ParamClusterConcurrency   = "clusterConcurrency"
+	ParamVolConcurrency       = "volConcurrency"
+	ParamPartitionConcurrency = "partitionConcurrency"
+	ParamWaitSecond           = "waitSecond"
 )
 
 type Status int
@@ -109,6 +125,7 @@ const (
 	_ TaskType = iota
 	ZoneAutoReBalance
 	NodesMigrate
+	VolsMigrate
 	MaxTaskType
 )
 
@@ -118,6 +135,8 @@ func (t TaskType) String() string {
 		return "ZoneAutoRebalance"
 	case NodesMigrate:
 		return "NodesMigrate"
+	case VolsMigrate:
+		return "VolsMigrate"
 	default:
 		return fmt.Sprintf("unknown_type_%d", t)
 	}
@@ -129,6 +148,8 @@ func ConvertRebalanceTaskTypeStr(rTypeStr string) (tType TaskType, err error) {
 		tType = ZoneAutoReBalance
 	case "NodesMigrate":
 		tType = NodesMigrate
+	case "VolsMigrate":
+		tType = VolsMigrate
 	default:
 		err = fmt.Errorf("error rebalance task type: %v", rTypeStr)
 	}

@@ -87,7 +87,7 @@ func (dnCtrl *DNReBalanceController) selectDstNode(dpInfo *proto.DataPartitionIn
 	for offset < len(dnCtrl.zoneCtrl.dstDataNodes) {
 		index := (dnCtrl.zoneCtrl.dstIndex + offset) % len(dnCtrl.zoneCtrl.dstDataNodes)
 		node = dnCtrl.zoneCtrl.dstDataNodes[index]
-		if node.UsageRatio < 0.8 && !utils.Contains(dpInfo.Hosts, node.Addr) {
+		if node.UsageRatio < dnCtrl.zoneCtrl.goalRatio && !utils.Contains(dpInfo.Hosts, node.Addr) {
 			break
 		}
 		offset++

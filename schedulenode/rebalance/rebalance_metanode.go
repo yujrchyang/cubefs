@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm/utils"
 	"math"
 	"sort"
+	"time"
 )
 
 type MetaNodeReBalanceController struct {
@@ -65,8 +66,12 @@ func (mnCtrl *MetaNodeReBalanceController) updateInodeTotalCnt(totalCount uint64
 }
 
 func (mnCtrl *MetaNodeReBalanceController) getCanBeMigrateInodeCnt() uint64 {
+	if mnCtrl.nodeInfo.Ratio <= 0 || mnCtrl.nodeInfo.Ratio <= mnCtrl.zoneCtrl.goalRatio {
+		return 0
+	}
+
 	count := math.Ceil(float64(mnCtrl.inodeTotalCnt) * (1 - mnCtrl.zoneCtrl.goalRatio/mnCtrl.nodeInfo.Ratio))
-	log.LogInfof("getCanBeMigrateInodeCnt: node(%v) count(%v)", mnCtrl.nodeInfo.Addr, uint64(count))
+	log.LogInfof("getCanBeMigrateInodeCnt: node(%v) total(%v) count(%v)", mnCtrl.nodeInfo.Addr, mnCtrl.inodeTotalCnt, uint64(count))
 	return uint64(count)
 }
 
@@ -82,12 +87,12 @@ func (mnCtrl *MetaNodeReBalanceController) selectDstMetaNodes(mpID uint64, hosts
 	for offset < len(mnCtrl.zoneCtrl.dstMetaNodes) {
 		index := (mnCtrl.zoneCtrl.dstIndex + offset) % len(mnCtrl.zoneCtrl.dstMetaNodes)
 		dstMetaNode := mnCtrl.zoneCtrl.dstMetaNodes[index]
+		offset++
 		if canBeSelectedForMigrate(dstMetaNode, mnCtrl.zoneCtrl.goalRatio, hosts, mnCtrl.zoneCtrl.dstMetaNodeMaxPartitionCount) {
 			dstMetaNodeAddr = dstMetaNode.Addr
 			mnCtrl.zoneCtrl.dstIndex += offset
 			return
 		}
-		offset++
 	}
 	err = ErrNoSuitableDstNode
 	log.LogErrorf("select dst meta node failed, task info: %v, mp id: %v, err: %v", mnCtrl.zoneCtrl.String(), mpID, err)
@@ -147,43 +152,64 @@ func (mnCtrl *MetaNodeReBalanceController) selectMP() (metaPartition *proto.Meta
 		if !utils.Contains(metaPartition.Hosts, mnCtrl.nodeInfo.Addr) {
 			continue
 		}
+
+		var dstStoreMode = proto.StoreModeDef
+		for _, replica := range metaPartition.Replicas {
+			if replica.Addr == mnCtrl.nodeInfo.Addr {
+				dstStoreMode = replica.StoreMode
+				break
+			}
+		}
+		if dstStoreMode == proto.StoreModeDef {
+			continue
+		}
 		return
 	}
 	return nil, ErrNoSuitablePartition
 }
 
 // 里面不迁移了 但是跳不到下一个节点
-func (mnCtrl *MetaNodeReBalanceController) doMigrate(clusterMpCurrency int) (err error) {
+func (mnCtrl *MetaNodeReBalanceController) doMigrate() error {
 	canBeMigrateInodeCnt := mnCtrl.getCanBeMigrateInodeCnt()
-	for clusterMpCurrency > 0 {
-		select {
-		case <-mnCtrl.zoneCtrl.ctx.Done():
-			mnCtrl.zoneCtrl.SetIsManualStop(true)
-			log.LogInfof("doMigrate stop: taskID(%v) cluster(%v) zone(%v) srcMetaNode(%v)", mnCtrl.zoneCtrl.Id, mnCtrl.zoneCtrl.cluster, mnCtrl.zoneCtrl.zoneName, mnCtrl.nodeInfo.Addr)
-			return nil
-		default:
-		}
-		if canBeMigrateInodeCnt <= 0 {
-			return ErrReachMaxInodeLimit
-		}
-		var migratePartitionInfo *proto.MetaPartitionInfo
-		migratePartitionInfo, err = mnCtrl.selectMP()
-		if err != nil {
-			log.LogErrorf("doMigrate: no migrate partition be selected, taskID(%v) node(%v) err(%v)", mnCtrl.zoneCtrl.String(), mnCtrl.nodeInfo.Addr, err)
-			return
-		}
+	alreadyMigrateInodeCnt := uint64(0)
 
-		//select dst meta node
-		var dstMetaNodeAddr string
-		dstMetaNodeAddr, err = mnCtrl.selectDstMetaNodes(migratePartitionInfo.PartitionID, migratePartitionInfo.Hosts)
+	for alreadyMigrateInodeCnt < canBeMigrateInodeCnt {
+		inRecoveringMPMap, err := IsInRecoveringMoreThanMaxBatchCount(mnCtrl.zoneCtrl.masterClient, mnCtrl.zoneCtrl.releaseClient, mnCtrl.zoneCtrl.rType, mnCtrl.zoneCtrl.clusterMaxBatchCount)
 		if err != nil {
+			log.LogWarnf("doMigrate err:%v", err.Error())
+			time.Sleep(defaultWaitClusterRecover)
 			continue
 		}
-		clusterMpCurrency--
-		canBeMigrateInodeCnt -= migratePartitionInfo.InodeCount
-		mnCtrl.updateInodeTotalCnt(mnCtrl.inodeTotalCnt - migratePartitionInfo.InodeCount)
-		//do migrate
-		mnCtrl.migrate(migratePartitionInfo, dstMetaNodeAddr)
+		clusterMPCurrency := mnCtrl.zoneCtrl.clusterMaxBatchCount - len(inRecoveringMPMap)
+		for clusterMPCurrency > 0 {
+			select {
+			case <-mnCtrl.zoneCtrl.ctx.Done():
+				mnCtrl.zoneCtrl.SetIsManualStop(true)
+				log.LogInfof("doMigrate stop: taskID(%v) cluster(%v) zone(%v) srcMetaNode(%v)", mnCtrl.zoneCtrl.Id, mnCtrl.zoneCtrl.cluster, mnCtrl.zoneCtrl.zoneName, mnCtrl.nodeInfo.Addr)
+				return nil
+			default:
+			}
+
+			if alreadyMigrateInodeCnt >= canBeMigrateInodeCnt {
+				return ErrReachMaxInodeLimit
+			}
+
+			migratePartitionInfo, err := mnCtrl.selectMP()
+			if err != nil {
+				log.LogErrorf("doMigrate: mo metaPartition be selected, taskID(%v) srcMetaNode(%v) err(%v)", mnCtrl.zoneCtrl.String(), mnCtrl.nodeInfo.Addr, err)
+				return err
+			}
+
+			dstMetaNodeAddr, err := mnCtrl.selectDstMetaNodes(migratePartitionInfo.PartitionID, migratePartitionInfo.Hosts)
+			if err != nil {
+				// only for this mp unsuitable, continue
+				continue
+			}
+			clusterMPCurrency--
+			alreadyMigrateInodeCnt += migratePartitionInfo.InodeCount
+			//do migrate
+			mnCtrl.migrate(migratePartitionInfo, dstMetaNodeAddr)
+		}
 	}
 	return nil
 }
@@ -198,17 +224,7 @@ func (mnCtrl *MetaNodeReBalanceController) migrate(mp *proto.MetaPartitionInfo, 
 		}
 	}()
 	if mnCtrl.zoneCtrl.masterClient != nil {
-		var dstStoreMode = proto.StoreModeDef
-		for _, replica := range mp.Replicas {
-			if replica.Addr == mnCtrl.nodeInfo.Addr {
-				dstStoreMode = replica.StoreMode
-				break
-			}
-		}
-		if dstStoreMode == proto.StoreModeDef {
-			return
-		}
-		err = mnCtrl.zoneCtrl.masterClient.AdminAPI().DecommissionMetaPartition(mp.PartitionID, mnCtrl.nodeInfo.Addr, destAddr, int(dstStoreMode))
+		err = mnCtrl.zoneCtrl.masterClient.AdminAPI().DecommissionMetaPartition(mp.PartitionID, mnCtrl.nodeInfo.Addr, destAddr, int(mp.Replicas[0].StoreMode))
 	}
 	if mnCtrl.zoneCtrl.releaseClient != nil {
 		err = mnCtrl.zoneCtrl.releaseClient.MetaPartitionOffline(mp.PartitionID, mnCtrl.nodeInfo.Addr, destAddr, mp.VolName)
@@ -227,6 +243,8 @@ func (mnCtrl *MetaNodeReBalanceController) migrate(mp *proto.MetaPartitionInfo, 
 		SrcAddr:     mnCtrl.nodeInfo.Addr,
 		DstAddr:     destAddr,
 		TaskId:      mnCtrl.zoneCtrl.Id,
+		CreatedAt:   time.Now(),
+		UpdateAt:    time.Now(),
 	})
 	return
 }

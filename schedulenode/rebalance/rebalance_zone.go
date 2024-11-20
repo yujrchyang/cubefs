@@ -299,21 +299,11 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 		zoneCtrl.mutex.Unlock()
 	}()
 
-	// 更新源、目标节点(meta，data)
-	switch zoneCtrl.rType {
-	case RebalanceData:
-		zoneCtrl.separateDataNodesByRatio()
-		if len(zoneCtrl.dstDataNodes) == 0 || len(zoneCtrl.srcDataNodes) == 0 {
-			log.LogWarnf("no available nodes: len(dst)= %v, len(src)= %v", len(zoneCtrl.dstDataNodes), len(zoneCtrl.srcDataNodes))
-			return
-		}
-
-	case RebalanceMeta:
-		zoneCtrl.separateMetaNodesByRatio()
-		if len(zoneCtrl.dstMetaNodes) == 0 || len(zoneCtrl.srcMetaNodes) == 0 {
-			log.LogWarnf("no available nodes: len(dst)= %v, len(src)= %v", len(zoneCtrl.dstMetaNodes), len(zoneCtrl.srcMetaNodes))
-			return
-		}
+	// 更新源、目标节点
+	zoneCtrl.separateDataNodesByRatio()
+	if len(zoneCtrl.dstDataNodes) == 0 || len(zoneCtrl.srcDataNodes) == 0 {
+		log.LogWarnf("no available nodes: len(dst)= %v, len(src)= %v", len(zoneCtrl.dstDataNodes), len(zoneCtrl.srcDataNodes))
+		return
 	}
 
 	for _, srcNode := range zoneCtrl.srcDataNodes {
@@ -330,7 +320,7 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 			default:
 			}
 
-			inRecoveringDPMap, err := zoneCtrl.isInRecoveringMoreThanMaxBatchCount(zoneCtrl.clusterMaxBatchCount, zoneCtrl.rType)
+			inRecoveringDPMap, err := IsInRecoveringMoreThanMaxBatchCount(zoneCtrl.masterClient, zoneCtrl.releaseClient, zoneCtrl.rType, zoneCtrl.clusterMaxBatchCount)
 			if err != nil {
 				log.LogWarnf("doDataReBalance: %v", err.Error())
 				// 等cluster中badPartition恢复
@@ -345,9 +335,9 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 				break
 			}
 		}
-		time.Sleep(time.Minute * 1)
 		srcNode.isFinished = true
 		log.LogInfof("doDataReBalance: taskID(%v) zone(%v) srcNode(%v) finished", zoneCtrl.Id, zoneCtrl.zoneName, srcNode.nodeInfo.Addr)
+		time.Sleep(defaultMigNodeInterval)
 	}
 }
 
@@ -416,52 +406,36 @@ func (zoneCtrl *ZoneReBalanceController) doMetaReBalance() {
 		zoneCtrl.mutex.Unlock()
 	}()
 
-	// 更新源、目标节点(meta，data)
-	switch zoneCtrl.rType {
-	case RebalanceData:
-		zoneCtrl.separateDataNodesByRatio()
-		if len(zoneCtrl.dstDataNodes) == 0 || len(zoneCtrl.srcDataNodes) == 0 {
-			log.LogWarnf("no available nodes: len(dst)= %v, len(src)= %v", len(zoneCtrl.dstDataNodes), len(zoneCtrl.srcDataNodes))
-			return
-		}
-
-	case RebalanceMeta:
-		zoneCtrl.separateMetaNodesByRatio()
-		if len(zoneCtrl.dstMetaNodes) == 0 || len(zoneCtrl.srcMetaNodes) == 0 {
-			log.LogWarnf("no available nodes: len(dst)= %v, len(src)= %v", len(zoneCtrl.dstMetaNodes), len(zoneCtrl.srcMetaNodes))
-			return
-		}
+	// 更新源、目标节点
+	zoneCtrl.separateMetaNodesByRatio()
+	if len(zoneCtrl.dstMetaNodes) == 0 || len(zoneCtrl.srcMetaNodes) == 0 {
+		log.LogWarnf("no available nodes: len(dst)= %v, len(src)= %v", len(zoneCtrl.dstMetaNodes), len(zoneCtrl.srcMetaNodes))
+		return
 	}
 
 	for _, srcMetaNode := range zoneCtrl.srcMetaNodes {
+		select {
+		case <-zoneCtrl.ctx.Done():
+			zoneCtrl.SetIsManualStop(true)
+			log.LogInfof("doMetaReBalance: stop: %v", zoneCtrl.String())
+			return
+		default:
+		}
+
 		err := srcMetaNode.updateSortedMetaPartitions()
 		if err != nil {
 			log.LogWarnf("doMetaReBalance: updateSortedMetaPartitions failed, err(%v)", err)
 			continue
 		}
-		for srcMetaNode.NeedReBalance(zoneCtrl.goalRatio) {
-			select {
-			case <-zoneCtrl.ctx.Done():
-				zoneCtrl.SetIsManualStop(true)
-				log.LogInfof("doMetaReBalance: stop: %v", zoneCtrl.String())
-				return
-			default:
-			}
-
-			inRecoveringMPMap, err := zoneCtrl.isInRecoveringMoreThanMaxBatchCount(zoneCtrl.clusterMaxBatchCount, zoneCtrl.rType)
-			if err != nil {
-				log.LogWarnf("doMetaReBalance err:%v", err.Error())
-				time.Sleep(defaultWaitClusterRecover)
-				continue
-			}
-			clusterMPCurrency := zoneCtrl.clusterMaxBatchCount - len(inRecoveringMPMap)
-			if err := srcMetaNode.doMigrate(clusterMPCurrency); err != nil {
+		needRebalance := srcMetaNode.NeedReBalance(zoneCtrl.goalRatio)
+		if needRebalance {
+			if err = srcMetaNode.doMigrate(); err != nil {
 				log.LogErrorf("doMetaReBalance: doMigrate failed, taskID(%v) node(%v) err(%v)", zoneCtrl.Id, srcMetaNode.nodeInfo.Addr, err)
-				break
 			}
 		}
 		srcMetaNode.isFinished = true
 		log.LogInfof("doMetaReBalance cluster:%v zoneName:%v srcMetaNode:%v finished", zoneCtrl.cluster, zoneCtrl.zoneName, srcMetaNode.nodeInfo.Addr)
+		time.Sleep(defaultMigNodeInterval)
 	}
 }
 
@@ -507,58 +481,6 @@ func (zoneCtrl *ZoneReBalanceController) refreshDstMetaNodes() {
 			return
 		}
 	}
-}
-
-func (zoneCtrl *ZoneReBalanceController) isInRecoveringMoreThanMaxBatchCount(maxBatchCount int, rType RebalanceType) (inRecoveringMap map[uint64]int, err error) {
-	inRecoveringMap, err = zoneCtrl.getInRecoveringMapIgnoreMig(rType)
-	if err != nil {
-		return
-	}
-	if len(inRecoveringMap) >= maxBatchCount {
-		err = fmt.Errorf("inRecoveringCount:%v more than maxBatchCount:%v", len(inRecoveringMap), maxBatchCount)
-	}
-	return
-}
-
-func (zoneCtrl *ZoneReBalanceController) getInRecoveringMapIgnoreMig(rType RebalanceType) (inRecoveringMap map[uint64]int, err error) {
-	inRecoveringMap = make(map[uint64]int)
-	if isRelease(zoneCtrl.cluster) {
-		cv, err := zoneCtrl.releaseClient.AdminGetCluster()
-		if err != nil {
-			return nil, err
-		}
-		switch rType {
-		case RebalanceData:
-			for _, badPartitionViews := range cv.BadPartitionIDs {
-				for _, partitionID := range badPartitionViews.PartitionIDs {
-					inRecoveringMap[partitionID]++
-				}
-			}
-		case RebalanceMeta:
-			for _, badPartitionViews := range cv.BadMetaPartitionIDs {
-				for _, partitionID := range badPartitionViews.PartitionIDs {
-					inRecoveringMap[partitionID]++
-				}
-			}
-		}
-	} else {
-		clusterView, err := zoneCtrl.masterClient.AdminAPI().GetCluster()
-		if err != nil {
-			return nil, err
-		}
-		switch rType {
-		case RebalanceData:
-			for _, badPartitionViews := range clusterView.BadPartitionIDs {
-				inRecoveringMap[badPartitionViews.PartitionID]++
-			}
-		case RebalanceMeta:
-			for _, badPartitionViews := range clusterView.BadMetaPartitionIDs {
-				inRecoveringMap[badPartitionViews.PartitionID]++
-			}
-		}
-	}
-	delete(inRecoveringMap, 0)
-	return
 }
 
 // 读取当前zone中的dataNode列表，根据使用率划分为srcNode和dstNode
@@ -782,23 +704,6 @@ func (zoneCtrl *ZoneReBalanceController) getCommonMetaNodeInfo(addr string) (nod
 	return nodeInfo, nil
 }
 
-func convertActualUsageRatio(node *proto.DataNodeStats) (usage float64) {
-	if node == nil {
-		return
-	}
-	var used uint64
-	for _, dpReport := range node.PartitionReports {
-		diskInfo := node.DiskInfos[dpReport.DiskPath]
-		if dpReport.IsSFX && diskInfo.CompressionRatio != 0 {
-			used += dpReport.Used * 100 / uint64(diskInfo.CompressionRatio)
-		} else {
-			used += dpReport.Used
-		}
-	}
-	usage = float64(used) / float64(node.Total)
-	return
-}
-
 func (zoneCtrl *ZoneReBalanceController) HasMigrateRecordForDp(pid uint64) bool {
 	count, err := zoneCtrl.rw.GetPartitionMigCount(zoneCtrl.Id, pid)
 	if err != nil {
@@ -824,4 +729,38 @@ func (zoneCtrl *ZoneReBalanceController) HasBeenMigratedTenMinutes(pid uint64) b
 
 func (zoneCtrl *ZoneReBalanceController) RecordMigratePartition(pid uint64) {
 	zoneCtrl.partitionLastMigTime.Store(pid, time.Now())
+}
+
+func convertActualUsageRatio(node *proto.DataNodeStats) (usage float64) {
+	if node == nil {
+		return
+	}
+	var used uint64
+	for _, dpReport := range node.PartitionReports {
+		diskInfo := node.DiskInfos[dpReport.DiskPath]
+		if dpReport.IsSFX && diskInfo.CompressionRatio != 0 {
+			used += dpReport.Used * 100 / uint64(diskInfo.CompressionRatio)
+		} else {
+			used += dpReport.Used
+		}
+	}
+	usage = float64(used) / float64(node.Total)
+	return
+}
+
+func convertDiskView(diskMap map[string]*Disk) (diskView []DiskView) {
+	for _, disk := range diskMap {
+		diskView = append(diskView, DiskView{
+			Path:          disk.path,
+			Total:         disk.total,
+			Used:          disk.used,
+			MigratedSize:  disk.migratedSize,
+			MigratedCount: disk.migratedCount,
+			MigrateLimit:  disk.migrateLimit,
+		})
+	}
+	sort.Slice(diskView, func(i, j int) bool {
+		return diskView[i].Path < diskView[j].Path
+	})
+	return
 }
