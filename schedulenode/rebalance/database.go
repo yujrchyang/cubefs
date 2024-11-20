@@ -260,7 +260,7 @@ func (rw *ReBalanceWorker) GetRebalancedInfoByID(id uint64) (info *RebalancedInf
 func (rw *ReBalanceWorker) GetRebalancedInfoByZone(cluster, zoneName string, rType RebalanceType) (rebalancedInfo *RebalancedInfoTable, err error) {
 	rebalancedInfo = &RebalancedInfoTable{}
 	err = rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).
-		Where("cluster = ? and zone_name=? and rebalance_type=?", cluster, zoneName, rType).
+		Where("cluster = ? and zone_name=? and rebalance_type=? and task_type=?", cluster, zoneName, rType, ZoneAutoReBalance).
 		First(rebalancedInfo).Error
 	return
 }
@@ -475,6 +475,19 @@ func (rw *ReBalanceWorker) updateMigrateControl(taskID uint64, clusterCurrency, 
 		}).Error
 	if err != nil {
 		log.LogErrorf("updateMigrateControl: taskID(%v) err(%v)", taskID, err)
+	}
+	return err
+}
+
+func (rw *ReBalanceWorker) stopMigrateTaskStatus(taskZone string, taskID uint64, status int) error {
+	err := rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).Where("id = ?", taskID).
+		Updates(map[string]interface{}{
+			"zone_name":  fmt.Sprintf("%v#%v", taskZone, taskID),
+			"status":     status,
+			"updated_at": time.Now(),
+		}).Error
+	if err != nil {
+		log.LogErrorf("updateMigrateTaskStatus: taskID(%v) status(%v) err(%v)", taskID, status, err)
 	}
 	return err
 }

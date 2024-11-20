@@ -3,6 +3,7 @@ package rebalance
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/sdk/master"
+	"time"
 )
 
 func (rw *ReBalanceWorker) VolMigrateStart(cluster, module, srcZone, dstZone string, volList []string, clusterCurrency,
@@ -111,7 +112,12 @@ func (rw *ReBalanceWorker) stopVolMigrateTask(taskID uint64, isManualStop bool) 
 	} else {
 		taskInfo.Status = int(StatusStop)
 	}
-	err = rw.updateMigrateTaskStatus(taskID, taskInfo.Status)
+	err = rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).Where("id = ?", taskID).
+		Updates(map[string]interface{}{
+			"zone_name":  fmt.Sprintf("%v#%v", taskInfo.ZoneName, taskID),
+			"status":     taskInfo.Status,
+			"updated_at": time.Now(),
+		}).Error
 	return err
 }
 

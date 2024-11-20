@@ -110,7 +110,7 @@ func (rw *ReBalanceWorker) registerHandler() {
 	http.HandleFunc(VolMigrateResetControl, responseHandler(rw.handleVolMigResetControl))
 	http.HandleFunc(VolMigrateStop, responseHandler(rw.handleVolMigStop))
 	http.HandleFunc(VolMigrateStatus, responseHandler(rw.handleVolMigTaskStatus))
-	//http.HandleFunc(VolMigrateQueryRecords)
+	http.HandleFunc("/offline", responseHandler(rw.offlineStopTask))
 }
 
 func (rw *ReBalanceWorker) getClusterHost(cluster string) (host string) {

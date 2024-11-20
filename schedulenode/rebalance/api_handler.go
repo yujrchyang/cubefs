@@ -694,6 +694,30 @@ func (rw *ReBalanceWorker) handleVolMigStop(w http.ResponseWriter, r *http.Reque
 	return http.StatusOK, nil, nil
 }
 
+func (rw *ReBalanceWorker) offlineStopTask(w http.ResponseWriter, r *http.Request) (code int, data interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return http.StatusBadRequest, data, err
+	}
+	iDStr := r.FormValue(ParamQueryTaskId)
+	if iDStr == "" {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	var id uint64
+	if id, err = strconv.ParseUint(iDStr, 10, 64); err != nil {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	var taskInfo *RebalancedInfoTable
+	taskInfo, err = rw.GetRebalancedInfoByID(id)
+	if err != nil {
+		return
+	}
+	err = rw.stopMigrateTaskStatus(taskInfo.ZoneName, taskInfo.ID, int(StatusTerminating))
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusOK, nil, nil
+}
+
 func (rw *ReBalanceWorker) handleVolMigTaskStatus(w http.ResponseWriter, r *http.Request) (code int, data interface{}, err error) {
 	if err = r.ParseForm(); err != nil {
 		return http.StatusBadRequest, data, err
