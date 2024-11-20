@@ -335,6 +335,7 @@ func (mp *metaPartition) internalDeleteInode(dbHandle interface{}, ino *Inode) (
 	_, err = mp.inodeTree.Delete(dbHandle, ino.Inode)
 	mp.freeList.Remove(ino.Inode)
 	_, err = mp.extendTree.Delete(dbHandle, ino.Inode) // Also delete extend attribute.
+	mp.clearAllocatorIno(ino.Inode)
 	return
 }
 
