@@ -30,20 +30,27 @@ func (checkEngine *CheckEngine) checkVols() (err error) {
 	if err != nil {
 		return
 	}
-	var count int
+	checkEngine.volCheckStat = &VolCheckStat{
+		StartTime: time.Now(),
+		Total:     len(checkVols),
+		Remain:    len(checkVols),
+	}
 	for _, v := range checkVols {
 		if checkEngine.closed {
 			log.LogWarnf("check engine closed")
 			break
 		}
-		log.LogInfof("checkVols, currentVol[%v] total[%v] checked[%v] remain[%v]", v, len(checkVols), count, len(checkVols)-count)
+		checkEngine.volCheckStat.Current = v
+		log.LogInfof("checkVols, current[%v] total[%v] checked[%v] remain[%v]", v, checkEngine.volCheckStat.Total, checkEngine.volCheckStat.Checked, checkEngine.volCheckStat.Remain)
 		checkEngine.currentVol = v
 		if !checkEngine.filterByZone() {
-			count++
+			checkEngine.volCheckStat.Checked++
+			checkEngine.volCheckStat.Remain--
 			return
 		}
 		checkEngine.checkVol()
-		count++
+		checkEngine.volCheckStat.Checked++
+		checkEngine.volCheckStat.Remain--
 	}
 	return
 }

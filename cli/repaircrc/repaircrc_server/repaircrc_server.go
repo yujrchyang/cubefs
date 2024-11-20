@@ -180,7 +180,7 @@ func (s *RepairServer) parseConfig(cfg *config.Config) (err error) {
 func (s *RepairServer) registerHandler() (err error) {
 	http.HandleFunc("/addTask", s.handleAddTask)
 	http.HandleFunc("/delTask", s.handleDelTask)
-	http.HandleFunc("/taskList", s.handleTaskList)
+	http.HandleFunc("/stat", s.handleStat)
 	return
 }
 
@@ -191,8 +191,24 @@ func getRequestBody(r *http.Request) (body []byte, err error) {
 	return
 }
 
-func (s *RepairServer) handleTaskList(w http.ResponseWriter, r *http.Request) {
-	buildSuccessResp(w, s.repairTaskMap)
+type TaskStat struct {
+	Executed     uint32                   `json:"executed"`
+	TaskInfo     *RepairCrcTask           `json:"taskInfo"`
+	VolCheckStat *data_check.VolCheckStat `json:"volCheckStat"`
+}
+
+func (s *RepairServer) handleStat(w http.ResponseWriter, r *http.Request) {
+	statMap := make(map[int64]*TaskStat, 0)
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	for _, task := range s.repairTaskMap {
+		statMap[task.TaskId] = &TaskStat{
+			Executed:     task.executed,
+			VolCheckStat: task.checkEngine.Stat(),
+			TaskInfo:     task,
+		}
+	}
+	buildSuccessResp(w, statMap)
 	return
 }
 
@@ -319,16 +335,16 @@ func (s *RepairServer) executeTask(t *RepairCrcTask) {
 		t.Frequency.Interval = defaultIntervalHour
 	}
 	timer := time.NewTimer(time.Second)
+	t.executed = 0
 	defer timer.Stop()
-	var execCount uint32
 	for {
 		select {
 		case <-timer.C:
-			log.LogInfof("executeTask begin, taskID:%v, cluster:%v, execCount:%v", t.TaskId, t.ClusterInfo.Master, execCount)
+			log.LogInfof("executeTask begin, taskID:%v, cluster:%v, execCount:%v", t.TaskId, t.ClusterInfo.Master, t.executed)
 			var exec = func() {
 				defer func() {
 					if err != nil {
-						log.LogErrorf("execute task failed, taskID:%v, cluster:%v, execCount:%v, err:%v", t.TaskId, t.ClusterInfo.Master, execCount, err)
+						log.LogErrorf("execute task failed, taskID:%v, cluster:%v, execCount:%v, err:%v", t.TaskId, t.ClusterInfo.Master, t.executed, err)
 					}
 				}()
 				var checkEngine *data_check.CheckEngine
@@ -336,26 +352,27 @@ func (s *RepairServer) executeTask(t *RepairCrcTask) {
 				if err != nil {
 					return
 				}
+				t.checkEngine = checkEngine
 				defer func() {
-					checkEngine.Close()
+					t.checkEngine.Close()
 				}()
 				go func() {
 					select {
 					case <-t.stopC:
-						checkEngine.Close()
+						t.checkEngine.Close()
 					}
 				}()
-				err = checkEngine.Start()
+				err = t.checkEngine.Start()
 				if err != nil {
 					return
 				}
-				checkEngine.Reset()
-				checkEngine.CheckFailedVols()
+				t.checkEngine.Reset()
+				t.checkEngine.CheckFailedVols()
 			}
 			exec()
-			log.LogInfof("executeTask end, taskID:%v, execCount:%v", t.TaskId, execCount)
-			execCount++
-			if t.Frequency.ExecuteCount > 0 && execCount >= t.Frequency.ExecuteCount {
+			log.LogInfof("executeTask end, taskID:%v, execCount:%v", t.TaskId, t.executed)
+			t.executed++
+			if t.Frequency.ExecuteCount > 0 && t.executed >= t.Frequency.ExecuteCount {
 				return
 			}
 			timer.Reset(time.Duration(t.Frequency.Interval) * time.Hour)
