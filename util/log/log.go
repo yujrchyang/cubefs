@@ -248,7 +248,10 @@ func (ob *LogObject) Flush() {
 }
 
 func (ob *LogObject) SetRotation() {
-	ob.object.rotateDay <- struct{}{}
+	// only send rotate signal to initiated writer
+	if ob.object.buffer != nil {
+		ob.object.rotateDay <- struct{}{}
+	}
 }
 
 func newLogObject(writer *asyncWriter, prefix string, flag int) *LogObject {
