@@ -16,6 +16,7 @@
 
 //LD_PRELOAD=libcfsclient.so MOUNT_POINT=/export/data/mysql ./a.out
 
+const int CFS_FD_MASK = 1 << (sizeof(int)*8 - 2);
 #define clean_errno() (errno == 0 ? "None" : strerror(errno))
 #define log_error(M, ...) fprintf(stderr, "[ERROR] (%s:%d: errno: %s) " M "\n", __FILE__, __LINE__, clean_errno(), ##__VA_ARGS__)
 #define assertf(A, M, ...) if(!(A)) {log_error(M, ##__VA_ARGS__); assert(A); }
@@ -25,6 +26,7 @@ void testReload();
 void testDup();
 void testUnlinkAndRename();
 void testSymlink();
+void testUnlinkat();
 
 #define PATH_LEN 100
 bool is_cfs;
@@ -77,6 +79,8 @@ int main(int argc, char **argv) {
     printf("Finish test unlink and rename\n");
     testSymlink();
     printf("Finish test symlink\n");
+    testUnlinkat();
+    printf("Finish test unlinkat\n");
     printf("Finish all tests.\n");
     return 0;
 }
@@ -464,4 +468,77 @@ void testSymlink() {
     unlink(filepath2);
     unlink(filepath1);
     rmdir(dir);
+}
+
+void testUnlinkat() {
+    #define PATH_LEN 100
+    char *mount = getenv("CFS_MOUNT_POINT");
+    char ignore_path[PATH_LEN] = {0};
+    char ignore_file[PATH_LEN] = {0};
+    char cfs_path[PATH_LEN] = {0};
+    char cfs_file[PATH_LEN] = {0};
+    int ret;
+    int fd;
+
+    sprintf(ignore_path, "%s/tmp", mount);
+    sprintf(ignore_file, "%s/file1", ignore_path);
+    sprintf(cfs_path, "%s/dir", mount);
+    sprintf(cfs_file, "%s/file2", cfs_path);
+
+    rmdir(cfs_path);
+    rmdir(ignore_path);
+
+    ret = chdir(mount);
+    assert(ret == 0);
+    ret = mkdirat(AT_FDCWD, "tmp", 0775);
+    assert(ret == 0);
+    ret = mkdirat(AT_FDCWD, "dir", 0775);
+    assert(ret == 0);
+
+    fd = openat(AT_FDCWD, ignore_file, O_CREAT | O_WRONLY, 0644);
+    assertf(fd > 0 && (fd & CFS_FD_MASK) == 0, "expect openat %s in local fs, actual return fd: %d", ignore_file, fd);
+    write(fd, "Test content\n", 13);
+    close(fd);
+    ret = unlinkat(AT_FDCWD, ignore_file, 0);
+    assertf(ret == 0, "unlinkat %s return %d, expect return 0", ignore_file, ret);
+
+    fd = openat(AT_FDCWD, cfs_file, O_CREAT | O_WRONLY, 0644);
+    assertf(fd > 0 && (fd & CFS_FD_MASK) > 0, "expect openat %s in cfs fs, actual return fd: %d", ignore_file, fd);
+    write(fd, "Test content\n", 13);
+    close(fd);
+    ret = unlinkat(AT_FDCWD, cfs_file, 0);
+    assertf(ret == 0, "unlinkat %s return %d, expect return 0", cfs_file, ret);
+
+
+    fd = openat(AT_FDCWD, "tmp/file1", O_CREAT | O_WRONLY, 0644);
+    assertf(fd > 0 && (fd & CFS_FD_MASK) == 0, "expect openat %s in local fs, actual return fd: %d", ignore_file, fd);
+    write(fd, "Test content\n", 13);
+    close(fd);
+    ret = unlinkat(AT_FDCWD, "tmp/file1", 0);
+    assertf(ret == 0, "unlinkat %s return %d, expect return 0", ignore_file, ret);
+
+    fd = openat(AT_FDCWD, "dir/file2", O_CREAT | O_WRONLY, 0644);
+    assertf(fd > 0 && (fd & CFS_FD_MASK) > 0, "expect openat %s in cfs fs, actual return fd: %d", ignore_file, fd);
+    write(fd, "Test content\n", 13);
+    close(fd);
+    ret = unlinkat(AT_FDCWD, "dir/file2", 0);
+    assertf(ret == 0, "unlinkat %s return %d, expect return 0", cfs_file, ret);
+
+    int dir_fd = open(mount, O_RDONLY|O_DIRECTORY);
+    fd = openat(dir_fd, "tmp/file1", O_CREAT | O_WRONLY, 0644);
+    assertf(fd > 0 && (fd & CFS_FD_MASK) == 0, "expect openat %s in local fs, actual return fd: %d", ignore_file, fd);
+    write(fd, "Test content\n", 13);
+    close(fd);
+    ret = unlinkat(dir_fd, "tmp/file1", 0);
+    assertf(ret == 0, "unlinkat %s return %d, expect return 0", ignore_file, ret);
+
+    fd = openat(dir_fd, "dir/file2", O_CREAT | O_WRONLY, 0644);
+    assertf(fd > 0 && (fd & CFS_FD_MASK) > 0, "expect openat %s in cfs fs, actual return fd: %d", ignore_file, fd);
+    write(fd, "Test content\n", 13);
+    close(fd);
+    ret = unlinkat(dir_fd, "dir/file2", 0);
+    assertf(ret == 0, "unlinkat %s return %d, expect return 0", cfs_file, ret);
+
+    rmdir(cfs_path);
+    rmdir(ignore_path);
 }

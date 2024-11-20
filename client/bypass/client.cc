@@ -190,6 +190,8 @@ int real_openat(int dirfd, const char *pathname, int flags, ...) {
     bool is_cfs = false;
     char *path = NULL;
     char *local_path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
         local_path = cat_path(g_client_info.replicate_path, path);
@@ -254,6 +256,7 @@ log:
     flags&O_WRONLY?"O_WRONLY|":"", flags&O_RDWR?"O_RDWR|":"", flags&O_CREAT?"O_CREAT|":"",
     flags&O_DIRECT?"O_DIRECT|":"", flags&O_SYNC?"O_SYNC|":"", flags&O_DSYNC?"O_DSYNC":"", fd_origin);
     #endif
+    free(absolute_path);
     return fd;
 }
 
@@ -472,6 +475,8 @@ int real_mkdirat(int dirfd, const char *pathname, mode_t mode) {
     bool is_cfs = false;
     char *path = NULL;
     char *local_path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
         local_path = cat_path(g_client_info.replicate_path, path);
@@ -503,6 +508,7 @@ log:
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd: %d, pathname:%s, mode:%d, re:%d\n", __func__, is_cfs, dirfd, pathname == NULL ? "" : pathname, mode, re);
     #endif
+    free(absolute_path);
     return re;
 }
 
@@ -1047,6 +1053,8 @@ int real_unlinkat(int dirfd, const char *pathname, int flags) {
     bool is_cfs = false;
     char *path = NULL;
     char *local_path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
         local_path = cat_path(g_client_info.replicate_path, path);
@@ -1073,11 +1081,12 @@ int real_unlinkat(int dirfd, const char *pathname, int flags) {
     }
 
 log:
-    free(path);
-    free(local_path);
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, flags:%#x, re:%d\n", __func__, is_cfs, dirfd, pathname, flags, re);
     #endif
+    free(path);
+    free(local_path);
+    free(absolute_path);
     return re;
 }
 
@@ -1087,6 +1096,8 @@ ssize_t real_readlinkat(int dirfd, const char *pathname, char *buf, size_t size)
     #endif
     bool is_cfs = false;
     char *cfs_path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         cfs_path = get_cfs_path(pathname);
         is_cfs = (cfs_path != NULL);
@@ -1112,6 +1123,7 @@ ssize_t real_readlinkat(int dirfd, const char *pathname, char *buf, size_t size)
         re = libc_readlinkat(dirfd, pathname, buf, size);
     }
     free(cfs_path);
+    free(absolute_path);
     return re;
 }
 
@@ -1339,6 +1351,8 @@ int real_fstatat(int ver, int dirfd, const char *pathname, struct stat *statbuf,
     bool is_cfs = false;
     char *path = NULL;
     char *local_path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
         local_path = cat_path(g_client_info.replicate_path, path);
@@ -1379,6 +1393,7 @@ log:
     #ifdef _CFS_DEBUG
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, re:%d\n", __func__, is_cfs, dirfd, pathname, re);
     #endif
+    free(absolute_path);
     return re;
 }
 
@@ -1504,6 +1519,8 @@ int real_fchmodat(int dirfd, const char *pathname, mode_t mode, int flags) {
     #endif
     bool is_cfs = false;
     char *path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
         is_cfs = (path != NULL);
@@ -1518,6 +1535,7 @@ int real_fchmodat(int dirfd, const char *pathname, mode_t mode, int flags) {
     re = g_hook && is_cfs ? cfs_errno(cfs_fchmodat(g_client_info.cfs_client_id, dirfd, cfs_path, mode, flags)) :
         libc_fchmodat(dirfd, pathname, mode, flags);
     free(path);
+    free(absolute_path);
     return re;
 }
 
@@ -1547,6 +1565,8 @@ int real_fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int
     #endif
     bool is_cfs = false;
     char *path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
         is_cfs = (path != NULL);
@@ -1561,6 +1581,7 @@ int real_fchownat(int dirfd, const char *pathname, uid_t owner, gid_t group, int
     re = g_hook && is_cfs ? cfs_errno(cfs_fchownat(g_client_info.cfs_client_id, dirfd, cfs_path, owner, group, flags)):
         libc_fchownat(dirfd, pathname, owner, group, flags);
     free(path);
+    free(absolute_path);
     return re;
 }
 
@@ -1612,6 +1633,8 @@ int real_futimesat(int dirfd, const char *pathname, const struct timeval times[2
     #endif
     bool is_cfs = false;
     char *path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
         is_cfs = (path != NULL);
@@ -1635,6 +1658,7 @@ int real_futimesat(int dirfd, const char *pathname, const struct timeval times[2
     re = g_hook && is_cfs ? cfs_errno(cfs_utimensat(g_client_info.cfs_client_id, dirfd, cfs_path, pts, 0)) :
         libc_futimesat(dirfd, pathname, times);
     free(path);
+    free(absolute_path);
     return re;
 }
 
@@ -1644,6 +1668,8 @@ int real_utimensat(int dirfd, const char *pathname, const struct timespec times[
     #endif
     bool is_cfs = false;
     char *path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
         is_cfs = (path != NULL);
@@ -1658,6 +1684,7 @@ int real_utimensat(int dirfd, const char *pathname, const struct timespec times[
     re = g_hook && is_cfs ? cfs_errno(cfs_utimensat(g_client_info.cfs_client_id, dirfd, cfs_path, times, flags)) :
         libc_utimensat(dirfd, pathname, times, flags);
     free(path);
+    free(absolute_path);
     return re;
 }
 
@@ -1672,6 +1699,8 @@ int real_faccessat(int dirfd, const char *pathname, int mode, int flags) {
     bool is_cfs = false;
     char *path = NULL;
     char *local_path = NULL;
+    char *absolute_path = get_absolute_path_at(dirfd, pathname);
+    pathname = absolute_path == NULL? pathname: absolute_path;
     if((pathname != NULL && pathname[0] == '/') || dirfd == AT_FDCWD) {
         path = get_cfs_path(pathname);
         local_path = cat_path(g_client_info.replicate_path, path);
@@ -1702,6 +1731,7 @@ log:
     log_debug("hook %s, is_cfs:%d, dirfd:%d, pathname:%s, mode:%d, flags:%#x, re:%d\n",
     __func__, is_cfs, dirfd, pathname, mode, flags, re);
     #endif
+    free(absolute_path);
     return re;
 }
 

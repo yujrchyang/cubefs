@@ -156,6 +156,7 @@ int config_handler(void* user, const char* section, const char* name, const char
 char *get_clean_path(const char *path);
 char *cat_path(const char *cwd, const char *pathname);
 char *get_cfs_path(const char *pathname);
+char *get_absolute_path_at(int dirfd, const char *pathname);
 int cfs_errno(int re);
 ssize_t cfs_errno_ssize_t(ssize_t re);
 bool has_renameat2();

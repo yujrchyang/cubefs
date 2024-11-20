@@ -7,6 +7,7 @@
 #include "client_type.h"
 
 extern client_info_t g_client_info;
+const ino_t ROOT_INO = 1;
 
 int config_handler(void* user, const char* section,
         const char* name, const char* value) {
@@ -139,11 +140,27 @@ char *cat_path(const char *cwd, const char *pathname) {
 
     memset(path, '\0', len);
     strcat(path, cwd);
-    if(len1 > 0 && len2 > 0 && pathname[0] != '/') {
+    if(len1 > 0 && len2 > 0 && pathname[0] != '/' && cwd[len1-1] != '/') {
         strcat(path, "/");
     }
     strcat(path, pathname);
     return path;
+}
+
+bool hit_ignore_path(char *path, char *ignore_path) {
+    if(strlen(ignore_path) > 0) {
+        char *token = strtok(ignore_path, ",");
+        size_t len_token;
+        while(token != NULL) {
+            len_token = strlen(token);
+            if(strncmp(path, token, len_token) == 0 &&
+            (path[len_token] == '\0' || path[len_token] == '/')) {
+                return true;
+            }
+            token = strtok(NULL, ",");
+        }
+    }
+    return false;
 }
 
 /*
@@ -168,38 +185,35 @@ char *get_cfs_path(const char *pathname) {
         return NULL;
     }
 
+    char *ignore_path = strdup(g_client_info.ignore_path);
+    if(ignore_path == NULL) {
+        free(real_path);
+        return NULL;
+    }
+
+    bool is_cfs = false;
     char *result;
     if(pathname[0] != '/' && g_client_info.in_cfs) {
         result = cat_path(g_client_info.cwd, real_path);
+        is_cfs = !hit_ignore_path(result+1, ignore_path);
         free(real_path);
-        return result;
+        free(ignore_path);
+        if (is_cfs) {
+            return result;
+        } else {
+            free(result);
+            return NULL;
+        }
     }
 
     // check if real_path contains mount_point, and doesn't contain ignore_path
     // the mount_point has been strip off the last '/' in cfs_init()
     size_t len = strlen(g_client_info.mount_point);
     size_t len_real = strlen(real_path);
-    bool is_cfs = false;
-    char *ignore_path = strdup(g_client_info.ignore_path);
-    if(ignore_path == NULL) {
-        free(real_path);
-        return NULL;
-    }
+
     is_cfs = strncmp(real_path, g_client_info.mount_point, len) == 0 && (real_path[len] == '\0' || real_path[len] == '/');
     if(is_cfs && real_path[len] == '/') {
-        if(strlen(g_client_info.ignore_path) > 0) {
-            char *token = strtok(ignore_path, ",");
-            size_t len_token;
-            while(token != NULL) {
-                len_token = strlen(token);
-                if(strncmp(real_path+len+1, token, len_token) == 0 &&
-                (real_path[len+1+len_token] == '\0' || real_path[len+1+len_token] == '/')) {
-                    is_cfs = false;
-                    break;
-                }
-                token = strtok(NULL, ",");
-            }
-        }
+        is_cfs = !hit_ignore_path(real_path+len+1, ignore_path);
     }
     free(ignore_path);
 
@@ -352,6 +366,36 @@ const char *get_fd_path(int fd) {
     const char *path = it != g_client_info.fd_path.end() ? it->second : "";
     pthread_rwlock_unlock(&g_client_info.fd_path_lock);
     return path;
+}
+
+char *get_absolute_path_at(int dirfd, const char *pathname) {
+    char *absolute_cwd = NULL;
+    char *absolute_path = NULL;
+
+    if (pathname == NULL || strlen(pathname) == 0 || pathname[0] == '/')
+        return NULL;
+
+    if (dirfd == AT_FDCWD && g_client_info.in_cfs) {
+        if (strcmp(g_client_info.cwd, "/") == 0) {
+            absolute_path = cat_path(g_client_info.mount_point, pathname);
+        } else {
+            absolute_cwd = cat_path(g_client_info.mount_point, g_client_info.cwd);
+            absolute_path = cat_path(absolute_cwd, pathname);
+            free(absolute_cwd);
+        }
+        return absolute_path;
+    }
+
+    if (dirfd != AT_FDCWD && fd_in_cfs(dirfd)) {
+        file_t * file = get_open_file(get_cfs_fd(dirfd));
+        if (file != NULL) {
+            if (file->inode_info->inode == ROOT_INO) {
+                absolute_path = cat_path(g_client_info.mount_point, pathname);
+                return absolute_path;
+            }
+        }
+    }
+    return NULL;
 }
 
 void find_diff_data(void *buf, void *buf_local, off_t offset, ssize_t size) {
