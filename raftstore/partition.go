@@ -368,6 +368,8 @@ func (p *partition) initWALStorage() (err error) {
 			FileSize:          p.config.WALFileSize,
 			ContinuityCheck:   p.config.WALContinuityCheck,
 			ContinuityFix:     p.config.WALContinuityFix,
+			Sync:              p.config.WALSync,
+			SyncRotate:        p.config.WALSyncRotate,
 		}
 		p.ws, err = wal.NewStorage(p.walPath, wc)
 		if err != nil {

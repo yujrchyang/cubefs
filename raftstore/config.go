@@ -86,6 +86,8 @@ type PartitionConfig struct {
 
 	WALFileSize          int
 	WALFileCacheCapacity int
+	WALSync       		 bool
+	WALSyncRotate        bool
 
 	StrictHS           bool
 	StartCommit        uint64

@@ -38,6 +38,7 @@ type logEntryStorage struct {
 	dir         string
 	filesize    int
 	syncRotate  bool
+	sync        bool
 	logfiles    []logFileName // 所有日志文件的名字
 	last        *logEntryFile
 	nextFileSeq uint64
@@ -54,6 +55,7 @@ func openLogStorage(dir string, s *Storage) (*logEntryStorage, error) {
 		filesize:    s.c.GetFileSize(),
 		nextFileSeq: 1,
 		syncRotate:  s.c.GetSyncRotate(),
+		sync:        s.c.GetSync(),
 	}
 
 	// cache
@@ -135,6 +137,10 @@ func (ls *logEntryStorage) SetFileSize(filesize int) {
 
 func (ls *logEntryStorage) GetFileSize() int {
 	return ls.filesize
+}
+
+func (ls *logEntryStorage) GetSync() bool {
+	return ls.sync
 }
 
 func (ls *logEntryStorage) SetFileCacheCapacity(capacity int) {
@@ -258,6 +264,11 @@ func (ls *logEntryStorage) SaveEntries(ents []*proto.Entry) error {
 	// flush应用层内存中的，写入file
 	if err := ls.last.Flush(nil); err != nil {
 		return err
+	}
+	if ls.GetSync() {
+		if err := ls.last.Sync(); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -434,6 +445,11 @@ func (ls *logEntryStorage) rotate(ctx context.Context) error {
 		if err := prev.FinishWrite(ctx); err != nil {
 			return err
 		}
+		if ls.GetSync() {
+			if err := prev.Sync(); err != nil {
+				return err
+			}
+		}
 		return nil
 	}
 
@@ -442,6 +458,9 @@ func (ls *logEntryStorage) rotate(ctx context.Context) error {
 	go func(lf *logEntryFile) {
 		defer ls.revokeRotate(lf.Name())
 		_ = lf.FinishWrite(ctx)
+		if ls.GetSync() {
+			_ = lf.Sync()
+		}
 		_ = lf.Release()
 	}(prev)
 

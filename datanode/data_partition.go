@@ -1736,6 +1736,8 @@ func (dp *DataPartition) startRaft() (err error) {
 		GetStartIndex:      getStartIndex,
 		WALContinuityCheck: dp.isNeedFaultCheck(),
 		WALContinuityFix:   dp.isNeedFaultCheck(),
+		WALSync: 			true,
+		WALSyncRotate: 		true,
 		Mode:               dp.config.Mode,
 		StorageListener: raftstore.NewStorageListenerBuilder().
 			ListenStoredEntry(dp.listenStoredRaftLogEntry).

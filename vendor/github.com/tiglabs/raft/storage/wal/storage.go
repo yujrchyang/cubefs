@@ -297,9 +297,6 @@ func (s *Storage) StoreHardState(st proto.HardState) error {
 			s.prevCommit = st.Commit
 		}
 		if sync {
-			if err := s.ls.Sync(); err != nil {
-				return err
-			}
 			if err := s.metafile.Sync(); err != nil {
 				return err
 			}
