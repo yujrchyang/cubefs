@@ -2,6 +2,7 @@ package data_check
 
 import (
 	"bufio"
+	"crypto/md5"
 	"fmt"
 	util_sdk "github.com/cubefs/cubefs/cli/cmd/util/sdk"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -81,23 +82,58 @@ func (rp *BadExtentPersist) loadFailedVols() (vols []string, err error) {
 func (rp *BadExtentPersist) persistBadExtent(e BadExtentInfo) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
-	msg := fmt.Sprintf("pid(%v) eid(%v) tiny(%v) badhostLen(%v) badhost(%v) vol(%v) ino(%v) eOff(%v) fOff(%v) size(%v) time(%v)",
-		e.PartitionID, e.ExtentID, proto.IsTinyExtent(e.ExtentID), len(e.Hosts), e.Hosts, e.Volume, e.Inode, e.ExtentOffset,
-		e.FileOffset, e.Size, time.Now().Format("2006-01-02 15:04:05"))
-	exporter.WarningBySpecialUMPKey(UmpWarnKey, fmt.Sprintf("Domain[%s] found bad crc extent: %v", rp.MasterAddr, msg))
-	rp.badExtentFd.WriteString(msg + "\n")
+	msg := formatBadExtentMsg(e)
+	exporter.WarningBySpecialUMPKey(UmpWarnKey, fmt.Sprintf("Domain[%s] found bad crc extent: %v\n", rp.MasterAddr, msg))
+
+	msgInLine := formatBadExtentMsgInLine(e)
+	rp.badExtentFd.WriteString(msgInLine + "\n")
 	rp.badExtentFd.Sync()
 }
 
 func (rp *BadExtentPersist) persistFixedBadExtent(e BadExtentInfo) {
 	rp.lock.Lock()
 	defer rp.lock.Unlock()
-	msg := fmt.Sprintf("pid(%v) eid(%v) tiny(%v) badhostLen(%v) badhost(%v) vol(%v) ino(%v) eOff(%v) fOff(%v) size(%v) time(%v)",
-		e.PartitionID, e.ExtentID, proto.IsTinyExtent(e.ExtentID), len(e.Hosts), e.Hosts, e.Volume, e.Inode, e.ExtentOffset,
-		e.FileOffset, e.Size, time.Now().Format("2006-01-02 15:04:05"))
-	exporter.WarningBySpecialUMPKey(UmpWarnKey, fmt.Sprintf("Domain[%s] found bad crc extent: %v", rp.MasterAddr, msg))
-	rp.fixedBadExtentFd.WriteString(msg + "\n")
+	msg := formatBadExtentMsg(e)
+	exporter.WarningBySpecialUMPKey(UmpWarnKey, fmt.Sprintf("Domain[%s] fixed bad crc extent: %v\n", rp.MasterAddr, msg))
+
+	msgInLine := formatBadExtentMsgInLine(e)
+	rp.fixedBadExtentFd.WriteString(msgInLine + "\n")
 	rp.fixedBadExtentFd.Sync()
+}
+
+func formatBadExtentMsgInLine(e BadExtentInfo) string {
+	msg := fmt.Sprintf("vol(%v) pid(%v) eid(%v) tiny(%v) ino(%v) eOff(%v) fOff(%v) size(%v) badHostsLen(%v) badHosts(%v) time(%v)\n",
+		e.Volume, e.PartitionID, e.ExtentID, proto.IsTinyExtent(e.ExtentID), e.Inode, e.ExtentOffset, e.FileOffset, e.Size, len(e.Hosts), e.Hosts, time.Now().Format("2006-01-02 15:04:05"))
+	return msg
+}
+
+func formatBadExtentMsg(e BadExtentInfo) string {
+	var sb = strings.Builder{}
+	sb.WriteString(fmt.Sprintf("  Volume: %v\n", e.Volume))
+	sb.WriteString(fmt.Sprintf("  Inode: %v\n", e.Inode))
+	sb.WriteString(fmt.Sprintf("  Partition: %v\n", e.PartitionID))
+	sb.WriteString(fmt.Sprintf("  Extent: %v\n", e.ExtentID))
+	sb.WriteString(fmt.Sprintf("  Size: %v\n", e.Size))
+	sb.WriteString(fmt.Sprintf("  ExtentOffset: %v\n", e.ExtentOffset))
+	sb.WriteString(fmt.Sprintf("  FileOffset: %v\n", e.FileOffset))
+	sb.WriteString(fmt.Sprintf("  Time: %v\n", time.Now().Format("2006-01-02 15:04:05")))
+	sb.WriteString(fmt.Sprintf("  BadHosts: \n"))
+	for i, host := range e.Hosts {
+		sb.WriteString(fmt.Sprintf("    - %v", host[0]))
+		if proto.IsTinyExtent(e.ExtentID) {
+			var zeroBytesMd5 string
+			if e.Size <= uint64(len(zeroBytes)) {
+				zeroBytesMd5 = fmt.Sprintf("%x", md5.Sum(zeroBytes[:e.Size]))
+			}
+			if host[1] == zeroBytesMd5 {
+				sb.WriteString("(空洞数据)")
+			}
+		}
+		if i < len(e.Hosts) {
+			sb.WriteString("\n")
+		}
+	}
+	return sb.String()
 }
 
 func (rp *BadExtentPersist) PersistResult() {
@@ -108,7 +144,7 @@ func (rp *BadExtentPersist) PersistResult() {
 				return
 			}
 			if rp.autoFix && !proto.IsTinyExtent(rExtent.ExtentID) && len(rExtent.Hosts) == 1 {
-				err := util_sdk.RepairExtents(rp.mc, rExtent.Hosts[0], rExtent.PartitionID, []uint64{rExtent.ExtentID})
+				err := util_sdk.RepairExtents(rp.mc, rExtent.Hosts[0][0], rExtent.PartitionID, []uint64{rExtent.ExtentID})
 				if err != nil {
 					rp.persistBadExtent(rExtent)
 				} else {
