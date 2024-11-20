@@ -545,7 +545,11 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 	for dataNodeAddr, lastOfflineDiskTime := range host.inOfflineDataNodes {
 		// mysql集群禁止自动下线，先电话通知，手动下线，等下线方案成熟后再改为自动下线
 		if host.host == "cn.elasticdb.jd.local" {
-			exporter.WarningBySpecialUMPKey(UMPCFSMysqlInactiveNodeKey, fmt.Sprintf("Domain[%v] mysql inactive node[%v], please offline by tool", host.host, dataNodeAddr))
+			exporter.WarningBySpecialUMPKey(UMPCFSMysqlInactiveNodeKey, fmt.Sprintf("Domain[%v] mysql inactive node[%v], please offline by tools", host.host, dataNodeAddr))
+			continue
+		}
+		if host.host == "nl.chubaofs.jd.local" || host.host == "nl.chubaofs.ochama.com" {
+			exporter.WarningBySpecialUMPKey(UMPCFSNLInactiveNodeKey, fmt.Sprintf("Domain[%v] inactive node[%v], please check", host.host, dataNodeAddr))
 			continue
 		}
 		zoneName := nodeZoneMap[dataNodeAddr]

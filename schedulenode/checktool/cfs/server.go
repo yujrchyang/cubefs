@@ -54,6 +54,7 @@ const (
 	UMPCFSCoreVolWarnKey                 = checktool.UmpKeyStorageBotPrefix + "cfs.core.vol"
 	UMPCFSMysqlBadDiskKey                = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.bad.disk"
 	UMPCFSMysqlInactiveNodeKey           = checktool.UmpKeyStorageBotPrefix + "cfs.mysql.inactive.node"
+	UMPCFSNLInactiveNodeKey              = checktool.UmpKeyStorageBotPrefix + "cfs.nl.inactive.node"
 	metaPartitionApplyWarningKey         = "Storage-Bot.cfs.meta.apply"
 	metaPartitionApplyFailedWarningKey   = "Storage-Bot.cfs.meta.apply.failed"
 	UMPKeyStuckNodes                     = checktool.UmpKeyStorageBotPrefix + "chubaofs.stuck.nodes"
