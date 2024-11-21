@@ -342,17 +342,17 @@ func (s *RepairServer) executeTask(t *RepairCrcTask) {
 		case <-timer.C:
 			log.LogInfof("executeTask begin, taskID:%v, cluster:%v, execCount:%v", t.TaskId, t.ClusterInfo.Master, t.executed)
 			var exec = func() {
+				var engine *data_check.CheckEngine
 				defer func() {
 					if err != nil {
 						log.LogErrorf("execute task failed, taskID:%v, cluster:%v, execCount:%v, err:%v", t.TaskId, t.ClusterInfo.Master, t.executed, err)
 					}
 				}()
-				var checkEngine *data_check.CheckEngine
-				checkEngine, err = data_check.NewCheckEngine(t.CheckTaskInfo, s.outputDir, t.mc, data_check.CheckTypeExtentCrc, "", s.autoFix)
+				engine, err = data_check.NewCheckEngine(t.CheckTaskInfo, s.outputDir, t.mc, data_check.CheckTypeExtentCrc, "", s.autoFix)
 				if err != nil {
 					return
 				}
-				t.checkEngine = checkEngine
+				t.checkEngine = engine
 				defer func() {
 					t.checkEngine.Close()
 				}()
@@ -362,12 +362,14 @@ func (s *RepairServer) executeTask(t *RepairCrcTask) {
 						t.checkEngine.Close()
 					}
 				}()
+
 				err = t.checkEngine.Start()
 				if err != nil {
 					return
 				}
 				t.checkEngine.Reset()
 				t.checkEngine.CheckFailedVols()
+				return
 			}
 			exec()
 			log.LogInfof("executeTask end, taskID:%v, execCount:%v", t.TaskId, t.executed)
