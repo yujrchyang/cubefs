@@ -2,6 +2,7 @@ package repaircrc_server
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/cli/cmd/data_check"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/master"
 	"regexp"
@@ -14,6 +15,8 @@ type RepairCrcTask struct {
 	TaskId      int64        `json:"task_id"`
 	ClusterInfo *ClusterInfo `json:"cluster_info"`
 	mc          *master.MasterClient
+	executed    uint32
+	checkEngine *data_check.CheckEngine
 	stopC       chan bool
 }
 

@@ -20,11 +20,20 @@ const (
 	DefaultCheckRetry   = 32
 )
 
+type VolCheckStat struct {
+	StartTime time.Time
+	Current   string
+	Total     int
+	Checked   int
+	Remain    int
+}
+
 type CheckEngine struct {
 	config    proto.CheckTaskInfo
 	checkType int
 	path      string
 
+	volCheckStat  *VolCheckStat
 	currentVol    string
 	mc            *master.MasterClient
 	cluster       string
@@ -43,7 +52,7 @@ type BadExtentInfo struct {
 	ExtentOffset uint64
 	FileOffset   uint64
 	Size         uint64
-	Hosts        []string
+	Hosts        [][2]string
 	Inode        uint64
 	Volume       string
 }
@@ -81,6 +90,10 @@ func (checkEngine *CheckEngine) Start() (err error) {
 	default:
 		return fmt.Errorf("invalid check dimension")
 	}
+}
+
+func (checkEngine *CheckEngine) Stat() (stat *VolCheckStat) {
+	return checkEngine.volCheckStat
 }
 
 func (checkEngine *CheckEngine) Reset() {
