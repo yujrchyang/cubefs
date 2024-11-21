@@ -23,6 +23,7 @@ const (
     RoleMetaDataCheck           = "mdck"
     RoleDoubleAllocExtentsCheck = "doubleAllocExtentsCheck"
     RoleDataMig                 = "dataMigrate"
+    RoleTinyBlockCheck          = "tinyblck"
 )
 
 const (
@@ -48,6 +49,7 @@ const (
     ModuleMetaDataCheck           = "mdck"
     ModuleDoubleAllocExtentsCheck = "doubleAllocExtentsCheck"
     ModuleDataMig                 = "dataMigration"
+    ModuleTinyBlockCheck          = "tinyblck"
 )
 
 const (

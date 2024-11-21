@@ -1,6 +1,9 @@
 package bitset
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // ByteSliceBitSet is a implementation of BitSet interface based on byte slice.
 type ByteSliceBitSet struct {
@@ -177,4 +180,10 @@ func (bs *ByteSliceBitSet) Cap() int {
 
 func (bs *ByteSliceBitSet) MaxNum() int {
 	return len(bs.bytes) * 8
+}
+
+func (bs *ByteSliceBitSet) FillAll() {
+	for index := 0; index < len(bs.bytes); index++ {
+		bs.bytes[index] = math.MaxUint8
+	}
 }
