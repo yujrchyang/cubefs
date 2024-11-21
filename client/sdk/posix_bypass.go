@@ -2920,17 +2920,46 @@ func cfs_fremovexattr(id C.int64_t, fd C.int, name *C.char) C.int {
  */
 
 //export cfs_fcntl
-func cfs_fcntl(id C.int64_t, fd C.int, cmd C.int, arg C.int) C.int {
+func cfs_fcntl(id C.int64_t, fd C.int, cmd C.int, arg C.int) (re C.int) {
+	var (
+		c    *client
+		f    *file
+		path string
+		ino  uint64
+		err  error
+	)
+	defer func() {
+		if re < 0 && err == nil {
+			err = syscall.Errno(-re)
+		}
+		r := recover()
+		hasErr := r != nil || (re < 0 && re != errorToStatus(syscall.ENOENT))
+		if !hasErr && !log.IsDebugEnabled() {
+			return
+		}
+		msg := fmt.Sprintf("id(%v) path(%v) ino(%v) cmd(%v) arg(%v) fd(%v) re(%v) err(%v)", id, path, ino, cmd, arg, fd, re, err)
+		if hasErr {
+			var stack string
+			if r != nil {
+				stack = fmt.Sprintf(" %v :\n%s", r, string(debug.Stack()))
+			}
+			handleError(c, "cfs_fcntl", fmt.Sprintf("%s%s", msg, stack))
+		} else {
+			log.LogDebugf("cfs_fcntl: %s", msg)
+		}
+	}()
+
 	c, exist := getClient(int64(id))
 	if !exist {
 		return statusEINVAL
 	}
-
-	f := c.getFile(uint(fd))
+	f = c.getFile(uint(fd))
 	if f == nil {
 		return statusEBADFD
 	}
 
+	path = f.path
+	ino = f.ino
 	if cmd == C.F_DUPFD || cmd == C.F_DUPFD_CLOEXEC {
 		newfd := c.copyFile(uint(fd), uint(arg))
 		if newfd == 0 {
@@ -3365,7 +3394,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		offset = f.pos
 	}
 
-	n, isROW, err := c.ec.Write(ctx, f.ino, offset, buffer, false)
+	n, isROW, err := c.ec.Write(ctx, f.ino, offset, buffer, f.isDirect())
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -3459,7 +3488,7 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 
 	// off >= 0 stands for pwrite
 	offset = uint64(off)
-	n, isROW, err := c.ec.Write(ctx, uint64(ino), offset, buffer, false)
+	n, isROW, err := c.ec.Write(ctx, uint64(ino), offset, buffer, f.isDirect())
 	if err != nil {
 		return C.ssize_t(statusEIO)
 	}
@@ -3664,4 +3693,8 @@ func (c *client) absPathAt(dirfd C.int, path *C.char) (string, error) {
 	}
 
 	return absPath, nil
+}
+
+func (f *file) isDirect() bool {
+	return f.fileType == fileTypeBinlog || f.fileType == fileTypeRedolog || f.flags&uint32(C.O_SYNC) != 0 || f.flags&uint32(C.O_DSYNC) != 0 || f.flags&uint32(C.O_DIRECT) != 0
 }

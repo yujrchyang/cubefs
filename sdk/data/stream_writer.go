@@ -384,7 +384,7 @@ func (s *Streamer) handleRequest(request interface{}) {
 
 func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size int, direct bool) (total int, isROW bool, err error) {
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Streamer write enter: ctx(%v) ino(%v) offset(%v) size(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size)
+		log.LogDebugf("Streamer write enter: ctx(%v) ino(%v) offset(%v) size(%v) direct(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size, direct)
 	}
 	if s.client.writeRate > 0 {
 		tpObject := exporter.NewModuleTPUs("write_wait_us")
@@ -709,9 +709,9 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 	sc := NewStreamConn(dp, false)
 	for total < size {
 		reqPacket := common.NewOverwritePacket(ctx, dp.PartitionID, req.ExtentKey.ExtentId, int(offset-ekFileOffset)+total+ekExtOffset, s.inode, offset)
-		if direct {
-			reqPacket.Opcode = proto.OpSyncRandomWrite
-		}
+		//if direct {
+		//	reqPacket.Opcode = proto.OpSyncRandomWrite
+		//}
 		packSize := unit.Min(size-total, unit.OverWritePacketSizeLimit)
 		reqPacket.Data = req.Data[total : total+packSize]
 		reqPacket.Size = uint32(packSize)
