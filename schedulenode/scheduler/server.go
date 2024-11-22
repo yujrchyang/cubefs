@@ -285,8 +285,12 @@ func doShutdown(server common.Server) {
 func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	// load all running worker types
 	wt := make([]proto.WorkerType, 0)
-	wt = append(wt, proto.WorkerTypeSmartVolume)
-	wt = append(wt, proto.WorkerTypeCompact)
+	if cfg.GetBool(config.ConfigKeyEnableSmartVol) {
+		wt = append(wt, proto.WorkerTypeSmartVolume)
+	}
+	if cfg.GetBool(config.ConfigKeyEnableCompact) {
+		wt = append(wt, proto.WorkerTypeCompact)
+	}
 	if cfg.GetBool(config.ConfigKeyEnableFsCheck) {
 		wt = append(wt, proto.WorkerTypeFSCheck)
 	}
@@ -302,21 +306,27 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	if cfg.GetBool(config.ConfigKeyEnableCrcWorker) {
 		wt = append(wt, proto.WorkerTypeCheckCrc)
 	}
-	wt = append(wt, proto.WorkerTypeInodeMigration)
+	if cfg.GetBool(config.ConfigKeyEnableInodeMigrate) {
+		wt = append(wt, proto.WorkerTypeInodeMigration)
+	}
 	s.workerTypes = wt
 
-	var smartVolumeWorker *smart.SmartVolumeWorker
-	if smartVolumeWorker, err = smart.NewSmartVolumeWorkerForScheduler(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create smart volume worker failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableSmartVol) {
+		var smartVolumeWorker *smart.SmartVolumeWorker
+		if smartVolumeWorker, err = smart.NewSmartVolumeWorkerForScheduler(cfg); err != nil {
+			log.LogErrorf("[registerWorker] create smart volume worker failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
 	}
-	s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
-	var compactWorker *migration.Worker
-	if compactWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeCompact); err != nil {
-		log.LogErrorf("[registerWorker] create compact worker failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableCompact) {
+		var compactWorker *migration.Worker
+		if compactWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeCompact); err != nil {
+			log.LogErrorf("[registerWorker] create compact worker failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeCompact, compactWorker)
 	}
-	s.workers.Store(proto.WorkerTypeCompact, compactWorker)
 	if cfg.GetBool(config.ConfigKeyEnableCrcWorker) {
 		var crcWorker *crcworker.CrcWorker
 		if crcWorker, err = crcworker.NewCrcWorkerForScheduler(); err != nil {
@@ -357,12 +367,14 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		}
 		s.workers.Store(proto.WorkerTypeNormalExtentMistakeDelCheck, normalExtentCheckTaskSchedule)
 	}
-	var fileMigrationWorker *migration.Worker
-	if fileMigrationWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeInodeMigration); err != nil {
-		log.LogErrorf("[registerWorker] create file migration worker failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableInodeMigrate) {
+		var fileMigrationWorker *migration.Worker
+		if fileMigrationWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeInodeMigration); err != nil {
+			log.LogErrorf("[registerWorker] create file migration worker failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeInodeMigration, fileMigrationWorker)
 	}
-	s.workers.Store(proto.WorkerTypeInodeMigration, fileMigrationWorker)
 	return
 }
 

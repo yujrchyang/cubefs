@@ -631,8 +631,8 @@ func (t *TinyBlockCheckTask) checkTinyGarbageBlocksOneByOne() {
 			if holesInfo == nil {
 				continue
 			}
-			bitCount := tinyExtentsBlockCount(holesInfo.ExtentSize)
-			bitSet := bitset.NewByteSliceBitSetWithCap(bitCount)
+			//bitCount := tinyExtentsBlockCount(holesInfo.ExtentSize)
+			bitSet := bitset.NewByteSliceBitSet()
 			bitSet.FillAll()
 			for _, hole := range holesInfo.Holes {
 				start := int(hole.Offset / proto.PageSize)
@@ -875,11 +875,11 @@ func (t *TinyBlockCheckTask) getTinyExtentsByDPs(dps []*proto.DataPartitionRespo
 					log.LogErrorf("data node %s start incomplete", dp.Hosts[0])
 					continue
 				}
+				extentsMapLock.Lock()
 				if _, has := t.tinyExtentsHolesMap[dp.PartitionID]; !has {
-					extentsMapLock.Lock()
 					t.tinyExtentsHolesMap[dp.PartitionID] = make([]*ExtentHolesInfo, proto.TinyExtentCount)
-					extentsMapLock.Unlock()
 				}
+				extentsMapLock.Unlock()
 
 				var tinyExtentsInfo []storage.ExtentInfoBlock
 				tinyExtentsInfo, err = t.getTinyExtentsByDataPartition(dp.PartitionID, dp.Hosts[0])
@@ -930,11 +930,11 @@ func (t *TinyBlockCheckTask) getTinyExtentsByDPs(dps []*proto.DataPartitionRespo
 func (t *TinyBlockCheckTask) doCheckTinyExtentsGarbage() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogCriticalf("recover panic: %v", debug.Stack())
+			log.LogCriticalf("recover panic: %s", string(debug.Stack()))
 			return
 		}
 	}()
-	timer := time.NewTimer(time.Duration(t.safeCleanInterval) * time.Second)
+	//timer := time.NewTimer(time.Duration(t.safeCleanInterval) * time.Second)
 	var dpsView *proto.DataPartitionsView
 	dpsView, err = t.masterClient.ClientAPI().GetDataPartitions(t.VolName, nil)
 	if err != nil {
@@ -948,9 +948,9 @@ func (t *TinyBlockCheckTask) doCheckTinyExtentsGarbage() (err error) {
 		return
 	}
 	log.LogInfof("get cluster[%s] volume[%s] extents from dp finished", t.Cluster, t.VolName)
-	select {
-	case <-timer.C:
-	}
+	//select {
+	//case <-timer.C:
+	//}
 	log.LogInfof("start get cluster[%s] volume[%s] meta extents info from mp", t.Cluster, t.VolName)
 	if err = t.getTinyExtentsByMPs(); err != nil {
 		log.LogErrorf("[doCheckGarbage] get cluster[%s] volume[%s] extents from mp failed:%v",

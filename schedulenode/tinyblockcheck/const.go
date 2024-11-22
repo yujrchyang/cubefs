@@ -10,7 +10,7 @@ import (
 
 const (
 	DefaultCheckInterval     = time.Minute * 1440 // 24h
-	DefaultSafeCleanInterval = 2592000            // 30 day
+	DefaultSafeCleanInterval = 60            //1 min
 	DefaultTaskConcurrency   = 5
 	DefaultInodeConcurrency  = 10
 	defaultParallelMPCount   = 20

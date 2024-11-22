@@ -66,6 +66,9 @@ const (
 	ConfigKeyEnableBlockCheck    = "enableBlockCheck"
 	ConfigKeyEnableNormalEKCheck = "enableNormalEKCheck"
 	ConfigKeyEnableMetaDataCheck = "enableMetaDataCheck"
+	ConfigKeyEnableSmartVol      = "enableSmartVol"
+	ConfigKeyEnableCompact       = "enableCompact"
+	ConfigKeyEnableInodeMigrate  = "enableInodeMigrate"
 	// HBase config
 	ConfigKeyHBaseUrl = "hBaseUrl" // int
 
