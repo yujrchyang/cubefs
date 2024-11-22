@@ -46,7 +46,7 @@ func (checkEngine *CheckEngine) checkVols() (err error) {
 		if !checkEngine.filterByZone() {
 			checkEngine.volCheckStat.Checked++
 			checkEngine.volCheckStat.Remain--
-			return
+			continue
 		}
 		checkEngine.checkVol()
 		checkEngine.volCheckStat.Checked++
@@ -163,7 +163,7 @@ func (checkEngine *CheckEngine) filterByZone() bool {
 		log.LogErrorf("get volume[%v] simple info failed, err:%v", checkEngine.currentVol, err)
 		return true
 	}
-	log.LogInfof("volume[%v] zone[%v] zone filter[%v] zone exclude filter[%v]")
+	log.LogInfof("volume[%v] zone[%v] zone filter[%v] zone exclude filter[%v]", checkEngine.currentVol, vv.ZoneName, checkEngine.config.Filter.ZoneFilter, checkEngine.config.Filter.ZoneExcludeFilter)
 	zoneName = vv.ZoneName
 	if zoneName == "" {
 		zoneName = "default"
