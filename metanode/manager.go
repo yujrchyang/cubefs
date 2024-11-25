@@ -1246,6 +1246,9 @@ func (m *metadataManager) loadMetaInfo() (metaNodeInfo *proto.MetaNodeInfo, file
 		}
 		break
 	}
+	if err != nil {
+		return
+	}
 
 	// Check metadataDir directory
 	var fileInfo os.FileInfo
@@ -1315,7 +1318,7 @@ func (m *metadataManager) createRecorder(request *proto.CreateMetaRecorderReques
 	defer m.createMu.Unlock()
 
 	if _, ok := m.startFailedPartitions.Load(request.PartitionID); ok {
-		err = errors.NewErrorf("[createRecorder]->partition %v exist in startFailedPartitions", request.PartitionID)
+		err = errors.NewErrorf("partition %v exist in startFailedPartitions", request.PartitionID)
 		return
 	}
 

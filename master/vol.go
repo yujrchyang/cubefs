@@ -1354,7 +1354,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 		//mpLearnerNum of vol is always 0 for other type vols except cross region quorum vol.
 		//if it will be used in other vol, should choose new learner replica
 	}
-	log.LogInfof("target meta hosts:%v, recorders:%v, peers:%v", hosts, recorders, peers)
+	log.LogInfof("vol:%v, target meta hosts:%v, recorders:%v, peers:%v", vol.Name, hosts, recorders, peers)
 	if partitionID, err = c.idAlloc.allocateMetaPartitionID(); err != nil {
 		return nil, errors.NewError(err)
 	}
@@ -1364,12 +1364,13 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	mp.setRecorders(recorders)
 	mp.setLearners(learners)
 	if len(recorders) > 0 {
-		err = mp.sortPeersByAddrs(append(hosts, recorders...))
+		err = mp.sortPeersByAddrs(hosts, recorders)
 		if err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] sortPeersByAddrs err[%v]", err)
 			return nil, errors.NewError(err)
 		}
 	}
+	log.LogInfof("vol:%v, mp:%v, target meta hosts:%v, recorders:%v, peers:%v", vol.Name, mp.PartitionID, hosts, recorders, peers)
 
 	parallelFunc := func(putErr bool, addrs []string, opFunc func(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error)) {
 		for _, addr := range addrs {
@@ -1378,9 +1379,9 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 				defer func() {
 					wg.Done()
 				}()
-				err = opFunc(addr, mp, storeMode, vol.trashRemainingDays)
-				if putErr && err != nil {
-					errChannel <- err
+				opErr := opFunc(addr, mp, storeMode, vol.trashRemainingDays)
+				if putErr && opErr != nil {
+					errChannel <- opErr
 				}
 			}(addr)
 		}

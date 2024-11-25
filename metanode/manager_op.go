@@ -1257,6 +1257,7 @@ func (m *metadataManager) opCreateMetaRecorder(conn net.Conn, p *Packet, remoteA
 	// create a new meta recorder.
 	if err = m.createRecorder(req); err != nil {
 		err = errors.NewErrorf("[opCreateMetaRecorder]->%s; request message: %v", err.Error(), adminTask.Request)
+		log.LogErrorf("%v", err)
 		return
 	}
 	log.LogInfof("%s [opCreateMetaRecorder] req:%v; resp: %v", remoteAddr, req, adminTask)
@@ -1346,6 +1347,7 @@ func (m *metadataManager) opAddMetaPartitionRaftRecorder(conn net.Conn, p *Packe
 	}
 	_, err = mp.ChangeMember(raftProto.ConfAddRecorder, raftProto.Peer{ID: req.AddRecorder.ID, Type: raftProto.PeerType(req.AddRecorder.Type)}, reqData)
 	if err != nil {
+		log.LogErrorf("[opAddMetaPartitionRaftRecorder]: partitionID= %d, err: %v", req.PartitionId, err)
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
 		return err
@@ -1421,6 +1423,7 @@ func (m *metadataManager) opRemoveMetaPartitionRaftRecorder(conn net.Conn, p *Pa
 	_, err = mp.ChangeMember(raftProto.ConfRemoveRecorder,
 		raftProto.Peer{ID: req.RemoveRecorder.ID, Type: raftProto.PeerType(req.RemoveRecorder.Type)}, reqData)
 	if err != nil {
+		log.LogErrorf("[opRemoveMetaPartitionRaftRecorder]: partitionID= %d, err: %v", req.PartitionId, err)
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)
 		return err
@@ -1916,7 +1919,8 @@ func (m *metadataManager) opGetTruncateIndex(conn net.Conn, p *Packet, remoteAdd
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	mp, err := m.getPartition(req.PartitionId)
+	var mp MetaPartition
+	mp, err = m.getPartition(req.PartitionId)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		m.respondToClient(conn, p)

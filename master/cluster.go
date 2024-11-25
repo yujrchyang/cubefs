@@ -3316,6 +3316,7 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 			peers = append(peers, selectedPeers...)
 			if len(selectedRecorders) > 0 {
 				recorders = append(recorders, selectedRecorders...)
+				allocateZoneMap[zone] = append(allocateZoneMap[zone], selectedRecorders...)
 			}
 			allocateZoneMap[zone] = append(allocateZoneMap[zone], selectedHosts...)
 			hasAllocateNum = hasAllocateNum + 1

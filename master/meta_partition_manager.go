@@ -18,6 +18,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"runtime/debug"
 	"strconv"
 	"time"
 
@@ -256,7 +257,7 @@ func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPush
 func (vol *Vol) checkAutoMetaPartitionCreation(c *Cluster, createMpContext context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogWarnf("checkAutoMetaPartitionCreation occurred panic,err[%v]", r)
+			log.LogWarnf("checkAutoMetaPartitionCreation occurred panic,err[%v], stack(%v)", r, string(debug.Stack()))
 			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
 				"checkAutoMetaPartitionCreation occurred panic")
 		}

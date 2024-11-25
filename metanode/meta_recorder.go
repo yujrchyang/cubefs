@@ -151,7 +151,7 @@ func (mr *metaRecorder) checkRecoverAfterStart() {
 			}
 			leaderApplyID, err := mr.GetLeaderRaftApplyID(leaderAddr)
 			if err != nil {
-				log.LogErrorf("CheckRecoverAfterStart mr(%v) get leader raft apply id failed:%v", mr, err)
+				log.LogErrorf("CheckRecoverAfterStart mr(%v) get leader raft apply id failed: %v", mr, err)
 				continue
 			}
 			applyID := mr.Recorder().GetApplyID()
@@ -396,7 +396,7 @@ func (mr *metaRecorder) sendTcpPacket(packet *Packet, target string) (resp *Pack
 		return
 	}
 	if packet.ResultCode != proto.OpOk {
-		err = fmt.Errorf("get raft truncate index failed with code 0x%x", packet.ResultCode)
+		err = fmt.Errorf("result from(%v) with code 0x%x: %v", target, packet.ResultCode, packet.GetRespData())
 		return
 	}
 	return packet, nil

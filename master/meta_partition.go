@@ -1817,10 +1817,17 @@ func (mp *MetaPartition) canAddRecorder(expectRecorderNum int) (err error) {
 	return
 }
 
-func (mp *MetaPartition) sortPeersByAddrs(hosts []string) error {
+func (mp *MetaPartition) sortPeersByAddrs(hosts, recorders []string) error {
 	newPeers := make([]proto.Peer, 0, len(mp.Peers))
 	for _, addr := range hosts {
-		peer, exist := mp.getPeerByAddr(addr)
+		peer, exist := mp.getPeerByAddr(addr, proto.PeerNormal)
+		if !exist {
+			return fmt.Errorf("mp(%v) peers(%v) mismatch peer(%v)", mp.PartitionID, mp.Peers, addr)
+		}
+		newPeers = append(newPeers, peer)
+	}
+	for _, addr := range recorders {
+		peer, exist := mp.getPeerByAddr(addr, proto.PeerRecorder)
 		if !exist {
 			return fmt.Errorf("mp(%v) peers(%v) mismatch peer(%v)", mp.PartitionID, mp.Peers, addr)
 		}
@@ -1830,9 +1837,9 @@ func (mp *MetaPartition) sortPeersByAddrs(hosts []string) error {
 	return nil
 }
 
-func (mp *MetaPartition) getPeerByAddr(addr string) (peer proto.Peer, exist bool) {
+func (mp *MetaPartition) getPeerByAddr(addr string, peerType proto.PeerType) (peer proto.Peer, exist bool) {
 	for _, p := range mp.Peers {
-		if p.Addr == addr {
+		if p.Addr == addr && p.Type == peerType {
 			return p, true
 		}
 	}

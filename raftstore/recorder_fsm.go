@@ -200,7 +200,9 @@ func (r *Recorder) Persist() (err error) {
 		NodeID: 	 r.NodeID(),
 	}
 	if err = meta.CheckValidate(); err != nil {
-		log.LogErrorf("mp recorder(%v) invalid config: %v", r.config.PartitionID, err)
+		msg := fmt.Sprintf("cluster(%v) vol(%v) mp(%v) recorderNode(%v) config invalid(%v), peers(%v) recorders(%v)",
+			r.ClusterName(), r.VolName(), r.PartitionID(), r.NodeID(), err, r.GetPeers(), r.GetRecorders())
+		exporter.WarningAppendKey(RecorderCriticalUmpKey, msg)
 		return
 	}
 
@@ -239,7 +241,7 @@ func (r *Recorder) HandleApply(command []byte, index uint64) (interface{}, error
 func (r *Recorder) HandleRaftSnapshot(recoverNode uint64, isRecorder bool) (raftproto.Snapshot, error) {
 	msg := fmt.Sprintf("cluster(%v) vol(%v) mp(%v) recorderNode(%v) become leader and trigger snapshot from node(%v) by mistake, peers(%v)",
 		r.ClusterName(), r.VolName(), r.PartitionID(), r.NodeID(), recoverNode, r.GetPeers())
-	exporter.WarningBySpecialUMPKey(RecorderCriticalUmpKey, msg)
+	exporter.WarningAppendKey(RecorderCriticalUmpKey, msg)
 	return nil, fmt.Errorf("unsupported snapshot")
 }
 
@@ -303,7 +305,6 @@ func (r *Recorder) StartRaft(fsm *FunctionalPartitionFsm) (err error) {
 		WalPath:            r.walPath,
 		StartCommit:        0,
 		GetStartIndex: 		func(firstIndex, lastIndex uint64) (startIndex uint64) { return r.applyID },
-		LogIndexCheck: 		true,
 		WALContinuityCheck: false,
 		WALContinuityFix:   false,
 		Mode:               proto.StandardMode,
@@ -607,7 +608,7 @@ func (r *Recorder) GetRaftLeader() (addr string) {
 	if leaderID == r.config.NodeID {
 		msg := fmt.Sprintf("cluster(%v) vol(%v) mp(%v) recorderNode(%v) become leader by mistake, peers(%v)",
 			r.ClusterName(), r.VolName(), r.PartitionID(), r.NodeID(), r.GetPeers())
-		exporter.WarningBySpecialUMPKey(RecorderCriticalUmpKey, msg)
+		exporter.WarningAppendKey(RecorderCriticalUmpKey, msg)
 		return
 	}
 	for _, peer := range r.GetPeers() {
@@ -672,7 +673,8 @@ func (r *Recorder) HasPeer(peer proto.Peer) bool {
 
 func (r *Recorder) loadApplyIndex() (index uint64, err error) {
 	filename := path.Join(r.metaPath, ApplyIndexFileName)
-	data, err := ioutil.ReadFile(filename)
+	var data []byte
+	data, err = ioutil.ReadFile(filename)
 	if err != nil {
 		if os.IsNotExist(err) {
 			err = nil
