@@ -176,7 +176,13 @@ func (mf *MetadataFsm) Apply(command []byte, index uint64) (resp interface{}, er
 
 	//only master leader send message
 	if mf.s.cluster.cfg.MqProducerState {
-		mf.s.mqProducer.addCommandMessage(cmd, index, mf.s.clusterName, mf.s.ip, mf.s.cluster.IsLeader())
+		if mf.s.mqProducer == nil {
+			warnKey := fmt.Sprintf("%v_%v_mqProducer", mf.s.cluster.Name, ModuleName)
+			warnMsg := fmt.Sprintf("mq producer not initilized when sending master command, opCode(%v), cmdKey(%v), index(%v)", cmd.Op, cmd.K, index)
+			WarnBySpecialKey(warnKey, warnMsg)
+			return
+		}
+		mf.s.mqProducer.AddMasterNodeCommand(command, cmd.Op, cmd.K, index, mf.s.clusterName, mf.s.ip, mf.s.cluster.IsLeader())
 	}
 	return
 }
