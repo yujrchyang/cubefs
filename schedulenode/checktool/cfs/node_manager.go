@@ -752,8 +752,12 @@ func isPhysicalMachineFailure(addr string) (isPhysicalFailure bool) {
 }
 
 func doRequest(reqUrl string, isReleaseCluster bool) (data []byte, err error) {
+	return doRequestWithTimeout(reqUrl, isReleaseCluster, time.Minute*5)
+}
+
+func doRequestWithTimeout(reqUrl string, isReleaseCluster bool, timeout time.Duration) (data []byte, err error) {
 	var resp *http.Response
-	client := http.Client{Timeout: time.Minute * 5}
+	client := http.Client{Timeout: timeout}
 	req, err := http.NewRequest(http.MethodGet, reqUrl, nil)
 	if err != nil {
 		log.LogErrorf("action[doRequest] reqRUL[%v] new request occurred err:%v\n", reqUrl, err)

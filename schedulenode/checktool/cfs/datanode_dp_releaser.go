@@ -224,7 +224,7 @@ func doReleaseDataNodePartitions(dataNodeHttpAddr, domain, timeLocation string, 
 	if keepSec > 0 {
 		reqURL = reqURL + fmt.Sprintf("&keepTimeSec=%v", keepSec)
 	}
-	data, err = doRequest(reqURL, false)
+	data, err = doRequestWithTimeout(reqURL, false, time.Minute*30)
 	if err != nil {
 		return fmt.Errorf("url[%v],err %v resp[%v]", reqURL, err, string(data))
 	}
