@@ -9,6 +9,7 @@ import (
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"reflect"
+	"strings"
 )
 
 type volValue struct {
@@ -90,20 +91,21 @@ type volValue struct {
 	RemoteCacheTTL         int64
 }
 type metaPartitionValue struct {
-	PartitionID   uint64
-	Start         uint64
-	End           uint64
-	VolID         uint64
-	ReplicaNum    uint8
-	LearnerNum    uint8
-	Status        int8
-	VolName       string
-	Hosts         string
-	OfflinePeerID uint64
-	Peers         []proto.Peer
-	Learners      []proto.Learner
-	PanicHosts    []string
-	IsRecover     bool
+	PartitionID    uint64
+	Start          uint64
+	End            uint64
+	VolID          uint64
+	ReplicaNum     uint8
+	Status         int8
+	VolName        string
+	Hosts          string
+	LearnerNum     uint8
+	OfflinePeerID  uint64
+	Peers          []proto.Peer
+	Learners       []proto.Learner
+	PanicHosts     []string
+	IsRecover      bool
+	PrePartitionID uint64
 }
 type dataPartitionValue struct {
 	PartitionID     uint64
@@ -261,6 +263,22 @@ func (c *CompareMeta) RangeCompareKeys(rocksPaths []string, dbMap map[string]*ra
 	return
 }
 
+func formatPeers(peers []proto.Peer) string {
+	sb := strings.Builder{}
+	for _, peer := range peers {
+		sb.WriteString(fmt.Sprintf("{%v,%v},", peer.ID, peer.Addr))
+	}
+	return sb.String()
+}
+
+func formatLearners(learners []proto.Learner) string {
+	sb := strings.Builder{}
+	for _, learner := range learners {
+		sb.WriteString(fmt.Sprintf("{%v,%v},", learner.ID, learner.Addr))
+	}
+	return sb.String()
+}
+
 func handleBadItem(dbPath, prefix string, k string, v []byte) string {
 	var out bytes.Buffer
 	switch prefix {
@@ -271,7 +289,7 @@ func handleBadItem(dbPath, prefix string, k string, v []byte) string {
 			log.LogErrorf("%v\n", err)
 			return "NULL"
 		}
-		return fmt.Sprintf("dbPath:%v prefix:%v key:%v val:vol(%v)pid(%v)stat(%v)num(%v)recover(%v)hosts(%v)create(%v)", dbPath, prefix, k, dpv.VolID, dpv.PartitionID, dpv.Status, dpv.ReplicaNum, dpv.IsRecover, dpv.Hosts, dpv.CreateTime)
+		return fmt.Sprintf("dbPath:%v prefix:%v key:%v val:vol(%v)pid(%v)stat(%v)num(%v)recover(%v)hosts(%v)offlineid(%v)peers(%v)learner(%v)create(%v)", dbPath, prefix, k, dpv.VolID, dpv.PartitionID, dpv.Status, dpv.ReplicaNum, dpv.IsRecover, dpv.Hosts, dpv.OfflinePeerID, formatPeers(dpv.Peers), formatLearners(dpv.Learners), dpv.CreateTime)
 	case metaPartitionPrefix:
 		mpv := &metaPartitionValue{}
 		if err := json.Unmarshal(v, mpv); err != nil {
@@ -279,7 +297,7 @@ func handleBadItem(dbPath, prefix string, k string, v []byte) string {
 			log.LogErrorf("%v\n", err)
 			return "NULL"
 		}
-		return fmt.Sprintf("dbPath:%v prefix:%v key:%v val:vol(%v)pid(%v)stat(%v)num(%v)recover(%v)hosts(%v)start(%v)end(%v)", dbPath, prefix, k, mpv.VolID, mpv.PartitionID, mpv.Status, mpv.ReplicaNum, mpv.IsRecover, mpv.Hosts, mpv.Start, mpv.End)
+		return fmt.Sprintf("dbPath:%v prefix:%v key:%v val:vol(%v)pid(%v)stat(%v)num(%v)recover(%v)hosts(%v)offlineid(%v)peers(%v)learner(%v)start(%v)end(%v)pre(%v)", dbPath, prefix, k, mpv.VolID, mpv.PartitionID, mpv.Status, mpv.ReplicaNum, mpv.IsRecover, mpv.Hosts, mpv.OfflinePeerID, formatPeers(mpv.Peers), formatLearners(mpv.Learners), mpv.Start, mpv.End, mpv.PrePartitionID)
 	case volPrefix:
 		vv := &volValue{}
 		if err := json.Unmarshal(v, vv); err != nil {
