@@ -550,7 +550,7 @@ func (m *Server) createDataPartition(w http.ResponseWriter, r *http.Request) {
 	_ = sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
-func (m *Server) createHddDataPartition(volName string, dpNum int) (dps []*DataPartition, err error) {
+func (m *Server) createHddDataPartition(volName, targetZones string, dpNum int) (dps []*DataPartition, err error) {
 	var (
 		vol         *Vol
 		dp          *DataPartition
@@ -560,17 +560,20 @@ func (m *Server) createHddDataPartition(volName string, dpNum int) (dps []*DataP
 	if vol, err = m.cluster.getVol(volName); err != nil {
 		return
 	}
-
-	zoneNames := strings.Split(vol.zoneName, ",")
-	for _, name := range zoneNames {
-		hddZone, e := m.cluster.t.getHddZoneInSameIdc(name)
-		if e != nil {
-			return nil, e
+	if targetZones != "" {
+		hddZones = targetZones
+	} else {
+		zoneNames := strings.Split(vol.zoneName, commaSeparator)
+		for _, name := range zoneNames {
+			hddZone, e := m.cluster.t.getHddZoneInSameIdc(name)
+			if e != nil {
+				return nil, e
+			}
+			hddZonArray = append(hddZonArray, hddZone)
 		}
-		hddZonArray = append(hddZonArray, hddZone)
+		hddZones = strings.Join(hddZonArray, commaSeparator)
 	}
-	hddZones = strings.Join(hddZonArray, ",")
-
+	log.LogInfof("createHDDDataPartition targetZones:%v,hddZones:%v", targetZones, hddZones)
 	// create data partition and freeze it
 	for i := 0; i < dpNum; i++ {
 		if dp, err = m.cluster.createDataPartition(vol.Name, hddZones); err != nil {
@@ -585,7 +588,7 @@ func (m *Server) createHddDataPartition(volName string, dpNum int) (dps []*DataP
 		}
 		dps = append(dps, dp)
 		log.LogInfof("createHDDDataPartition: create hdd data partition success, volumeName(%v), destZoneNames(%v), reqCount(%v), index(%v), dpId(%v)",
-			volName, zoneNames, dpNum, i, dp.PartitionID)
+			volName, hddZones, dpNum, i, dp.PartitionID)
 	}
 	return
 }
@@ -806,14 +809,14 @@ func (m *Server) deleteDataReplica(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) addMetaRecorder(w http.ResponseWriter, r *http.Request) {
 	var (
-		msg         			string
-		addr        			string
-		autoAddr				bool
-		mp          			*MetaPartition
-		partitionID 			uint64
-		volRecorderNum			int
-		increaseMPRecorderNum	bool
-		err         			error
+		msg                   string
+		addr                  string
+		autoAddr              bool
+		mp                    *MetaPartition
+		partitionID           uint64
+		volRecorderNum        int
+		increaseMPRecorderNum bool
+		err                   error
 	)
 	metrics := exporter.NewModuleTP(proto.AdminAddMetaRecorderUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -1795,7 +1798,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		capacity             int
 		replicaNum           int
 		mpReplicaNum         int
-		mpRecorderNum		 int
+		mpRecorderNum        int
 		followerRead         bool
 		nearRead             bool
 		forceROW             bool
@@ -5982,10 +5985,11 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 
 func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request) {
 	var (
-		name string
-		vol  *Vol
-		err  error
-		dprs []*proto.DataPartitionResponse
+		name           string
+		vol            *Vol
+		err            error
+		dprs           []*proto.DataPartitionResponse
+		targetZoneName string
 	)
 	currentLeaderVersion := m.getCurrentLeaderVersion(r)
 	metrics := exporter.NewModuleTP(proto.AdminGetHddDataPartitionsUmpKey)
@@ -5999,7 +6003,7 @@ func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request
 		m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
 		return
 	}
-
+	targetZoneName = r.FormValue(zoneNameKey)
 	// the condition to create hdd data partition:
 	// there was no hdd data partition or there was no writable hdd data partition and current node start more than 5 minutes
 	var hddDPs []*DataPartition
@@ -6018,7 +6022,7 @@ func (m *Server) getDataPartitionsWithHdd(w http.ResponseWriter, r *http.Request
 	// create data partition in hdd datanode if no writable hdd data partitions
 	if len(hddDPs) <= 0 || (len(writableHddDPs) <= 0 && time.Now().Unix()-m.cluster.metaLoadedTime > 5*int64(m.config.IntervalToCheckDataPartition)) {
 		var dps []*DataPartition
-		if dps, err = m.createHddDataPartition(vol.Name, 10); err != nil {
+		if dps, err = m.createHddDataPartition(vol.Name, targetZoneName, 10); err != nil {
 			m.sendErrReplyWithLeaderVersion(w, r, newErrHTTPReply(err), currentLeaderVersion)
 			return
 		}
