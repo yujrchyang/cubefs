@@ -16,6 +16,7 @@ const (
 	defaultParallelMPCount   = 20
 	DefaultMailToMember      = "lizhenzhen36@jd.com"
 	DefaultAlarmErps         = "lizhenzhen36"
+	DefTinyEKCheckRatio      = 0.5 //tiny extents的检查需要注意，所以只针对前50%的数据进行检测
 	DefReservedSize          = 16 * unit.MB
 	DefMaxCheckSize          = 1*unit.TB
 	DefBitSetCap             = 32*unit.MB //1TB对应32MB

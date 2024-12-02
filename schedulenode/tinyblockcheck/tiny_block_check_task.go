@@ -845,7 +845,7 @@ func tinyExtentsBlockCount(size uint64) (count int) {
 	return
 }
 
-//为保证数据安全性，保留最后16M数据不做检查(16M为可调参数)
+//为保证数据安全性，保留50%的数据不做检查(50%为可调参数)
 //避免内存问题，分批检查dp（按照tiny extent检查大小为1T计算，每个分片64个tiny extent使用的bitmap占用2G内存）
 func (t *TinyBlockCheckTask) getTinyExtentsByDPs(dps []*proto.DataPartitionResponse) (err error) {
 	var (
@@ -905,16 +905,20 @@ func (t *TinyBlockCheckTask) getTinyExtentsByDPs(dps []*proto.DataPartitionRespo
 						continue
 					}
 					extentSize := tinyExtentInfo[storage.Size]
-					if extentSize > unit.TB {
+					if extentSize < unit.GB * 64 { //todo:tiny块小于64G跳过检查，改为动态可配置
+						continue
+					}
+					if extentSize > unit.TB { //todo:改为动态可配置
 						log.LogInfof("cluster[%s] volume[%s] partitionID[%v]  tinyExtent[%v] size[%v] more than 1TB", t.Cluster, t.VolName, dp.PartitionID, extentID, extentSize)
 						extentSize = unit.TB
 					}
-					var checkSize uint64
-					if extentSize > DefReservedSize {
-						checkSize = extentSize - DefReservedSize
-					} else {
-						checkSize = 0
-					}
+					checkSize := uint64(float64(extentSize)*DefTinyEKCheckRatio) //todo:改为动态可配置
+					//var checkSize uint64
+					//if extentSize > DefReservedSize {
+					//	checkSize = extentSize - DefReservedSize
+					//} else {
+					//	checkSize = 0
+					//}
 
 					//get first host extent holes
 					if len(dp.Hosts) == 0 {
