@@ -30,7 +30,7 @@ import (
 func (s *DataNode) OperatePacket(p *repl.Packet, c *net.TCPConn) (err error) {
 	sz := p.Size
 
-	tpObject := exporter.NewModuleTP(p.GetOpMsg())
+	tpObject := exporter.NewModuleTPUs(p.GetOpMsg() + "_us")
 	tpObj := BeforeTpMonitor(p)
 
 	start := time.Now().UnixNano()

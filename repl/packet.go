@@ -282,12 +282,14 @@ func copyReplPacket(src *Packet, dst *Packet) {
 }
 
 func (p *Packet) BeforeTp(clusterID string) (ok bool) {
-	if p.IsForwardPkt() && !p.IsRandomWrite() {
-		p.TpObject = exporter.NewModuleTPUs(fmt.Sprintf("PrimaryBackUp_%v", p.GetOpMsg()))
-	} else if p.IsRandomWrite() {
-		p.TpObject = exporter.NewModuleTPUs(fmt.Sprintf("Raft_%v", p.GetOpMsg()))
+	switch {
+	case p.IsRandomWrite():
+		p.TpObject = exporter.NewModuleTPUs(fmt.Sprintf("Raft_%v_us", p.GetOpMsg()))
+	case p.IsForwardPkt():
+		p.TpObject = exporter.NewModuleTPUs(fmt.Sprintf("PrimaryBackUp_%v_us", p.GetOpMsg()))
+	default:
+		p.TpObject = exporter.NewModuleTPUs(fmt.Sprintf("NonRepl_%v_us", p.GetOpMsg()))
 	}
-
 	return
 }
 

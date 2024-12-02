@@ -181,10 +181,10 @@ func (m *metadataManager) statisticsOpTimeDelay(p *Packet, startTime time.Time, 
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
-	metric := exporter.NewModuleTPWithStart(p.GetOpMsg(), start)
+	metric := exporter.NewModuleTPUsWithStart(p.GetOpMsg() + "_us", start)
 	defer func() {
 		cost := time.Since(start)
-		metric.SetWithCost(int64(cost/time.Millisecond), err)
+		metric.SetWithCost(int64(cost/time.Microsecond), err)
 		m.statisticsOpTimeDelay(p, start, int(cost/time.Microsecond))
 	}()
 

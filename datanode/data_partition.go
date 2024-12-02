@@ -4096,6 +4096,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 /* The functions below implement the interfaces defined in the raft library. */
 // raftfsm Apply puts the data onto the disk.
 func (dp *DataPartition) handleRaftApply(command []byte, index uint64) (resp interface{}, err error) {
+	var tp = exporter.NewModuleTPUs("RaftApply_us")
 	defer func() {
 		if err != nil {
 			msg := fmt.Sprintf("partition [id: %v, disk: %v] apply command [index: %v] occurred error and will be stop: %v",
@@ -4107,10 +4108,12 @@ func (dp *DataPartition) handleRaftApply(command []byte, index uint64) (resp int
 			dp.Stop()
 			log.LogCriticalf("partition [id: %v, disk: %v] apply command [index: %v] failed and stopped: %v",
 				dp.partitionID, dp.Disk().Path, index, err)
+			tp.Set(err)
 			return
 		}
 		dp.advanceApplyID(index)
 		dp.actionHolder.Unregister(index)
+		tp.Set(nil)
 	}()
 	var opItem *rndWrtOpItem
 	if opItem, err = UnmarshalRandWriteRaftLog(command, true); err != nil {
@@ -4292,7 +4295,9 @@ func (dp *DataPartition) submitToRaft(cmd []byte) (err error) {
 		err = fmt.Errorf("%s", RaftNotStarted)
 		return
 	}
+	var tp = exporter.NewModuleTPUs("RaftSubmit_us")
 	_, err = dp.raftPartition.Submit(cmd, raftProto.AckTypeCommitted)
+	tp.Set(err)
 	return
 }
 
