@@ -743,8 +743,8 @@ func (mp *MetaPartition) checkRecordersInfo(c *Cluster, volName string, alarmInt
 	// check illegal recorder
 	for _, rInfo := range mp.RecordersInfo {
 		if !contains(mp.Recorders, rInfo.Addr) {
-			msg := fmt.Sprintf("action[checkRecordersInfo] clusterID[%v] metaPartition[%v] recorders[%v] find illegal info[%v]",
-				c.Name, mp.PartitionID, mp.Recorders, rInfo.Addr)
+			msg := fmt.Sprintf("action[checkRecordersInfo] clusterID[%v] vol[%v] mp[%v] recorders[%v] find illegal info[%v]",
+				c.Name, volName, mp.PartitionID, mp.Recorders, rInfo.Addr)
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpRecorder], msg)
 		}
 	}

@@ -833,14 +833,15 @@ func (s *raft) truncate(index uint64) {
 		return
 	}
 
-	if s.raftFsm.state == stateRecorder {
-		select {
-		case <-s.stopc:
-		case s.getIndexForTrunC <- index:
-		default:
-		}
-		return
-	}
+	// 目前raft内部不判断recorder的truncate条件，先交由上层应用判断
+	//if s.raftFsm.state == stateRecorder {
+	//	select {
+	//	case <-s.stopc:
+	//	case s.getIndexForTrunC <- index:
+	//	default:
+	//	}
+	//	return
+	//}
 
 	select {
 	case <-s.stopc:

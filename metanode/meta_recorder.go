@@ -100,10 +100,11 @@ func (mr *metaRecorder) startRecorderWorker() {
 			log.LogCriticalf("recorder worker panic(%v) stack: %v", r, string(debug.Stack()))
 		}
 	}()
-	persistTicker := time.NewTicker(3 * time.Minute)
+	persistTicker := time.NewTicker(2 * time.Minute)
 	defer persistTicker.Stop()
 
 	ctx := context.Background()
+	failTruncateCount := 0
 	log.LogInfof("recorder(%v) start recorder worker", mr.partitionID)
 	for {
 		select {
@@ -117,11 +118,19 @@ func (mr *metaRecorder) startRecorderWorker() {
 				log.LogWarnf("recorder(%v) persist apply index(%v) err(%v)", mr.partitionID, applyIndex, err)
 				continue
 			}
-			truncateIndex, err := mr.GetMinTruncateIndex(ctx)
+			var truncateIndex uint64
+			truncateIndex, err = mr.GetMinTruncateIndex(ctx)
 			if err != nil {
-				log.LogWarnf("recorder(%v) get truncate index err(%v)", mr.partitionID, err)
+				failTruncateCount++
+				log.LogWarnf("recorder(%v) get truncate index err(%v) failCnt(%v)", mr.partitionID, err, failTruncateCount)
+				if failTruncateCount % 10 == 0 {
+					msg := fmt.Sprintf("vol(%v) mp(%v) recorderNode(%v) truncate fail cnt(%v) err(%v)",
+						mr.Recorder().VolName(), mr.Recorder().PartitionID(), mr.Recorder().NodeID(), failTruncateCount, err)
+					exporter.WarningAppendKey(raftstore.RecorderCriticalUmpKey, msg)
+				}
 				continue
 			}
+			failTruncateCount = 0
 			if truncateIndex == 0 {
 				continue
 			}
