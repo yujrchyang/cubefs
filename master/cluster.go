@@ -968,9 +968,9 @@ func (c *Cluster) validZone(zoneName string, replicaNum int, isSmart bool) (err 
 	if len(zoneList) == 1 {
 		return
 	}
-	if len(zoneList) > replicaNum {
-		err = fmt.Errorf("can not specify zone number[%v] more than replica number[%v]", len(zoneList), replicaNum)
-	}
+	//if len(zoneList) > replicaNum {
+	//	err = fmt.Errorf("can not specify zone number[%v] more than replica number[%v]", len(zoneList), replicaNum)
+	//}
 	//if length of zoneList more than 1, there should not be duplicate zone names
 	for i := 0; i < len(zoneList)-1; i++ {
 		if zoneList[i] == zoneList[i+1] {
@@ -5122,9 +5122,9 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp
 func (c *Cluster) chooseTargetMetaNodeForAddRecorder(mp *MetaPartition) (addr string, expectRecorderNum int, err error) {
 	hosts := make([]string, 0)
 	var (
-		vol				*Vol
-		zoneCountMap	map[string]uint8
-		targetZone		string
+		vol          *Vol
+		zoneCountMap map[string]uint8
+		targetZone   string
 	)
 	vol, err = c.getVol(mp.volName)
 	if err != nil {
