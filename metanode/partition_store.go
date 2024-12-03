@@ -724,9 +724,10 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, e
 		return
 	}
 	defer func() {
-		err = fp.Sync()
-		// TODO Unhandled errors
-		fp.Close()
+		closeErr := fp.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
 	}()
 
 	sign := crc32.NewIEEE()
@@ -758,6 +759,9 @@ func (mp *metaPartition) storeInode(rootDir string, sm *storeMsg) (crc uint32, e
 		exporter.WarningCritical(msg)
 		return
 	}
+	if err = fp.Sync(); err != nil {
+		return
+	}
 	crc = sign.Sum32()
 	log.LogInfof("storeInode: store complete: partitionID(%v) volume(%v) numInodes(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(InodeType), crc)
@@ -773,8 +777,10 @@ func (mp *metaPartition) storeDeletedInode(rootDir string,
 		return
 	}
 	defer func() {
-		err = fp.Sync()
-		fp.Close()
+		closeErr := fp.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
 	}()
 	data := make([]byte, defDumpSnapPreAllocatedMemSize)
 	sign := crc32.NewIEEE()
@@ -805,6 +811,9 @@ func (mp *metaPartition) storeDeletedInode(rootDir string,
 		exporter.WarningCritical(msg)
 		return
 	}
+	if err = fp.Sync(); err != nil {
+		return
+	}
 	crc = sign.Sum32()
 	log.LogInfof("storeDeletedInode: store complete: partitionID(%v) volume(%v) numInodes(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(DelInodeType), crc)
@@ -819,8 +828,10 @@ func (mp *metaPartition) storeDeletedDentry(rootDir string, sm *storeMsg) (crc u
 		return
 	}
 	defer func() {
-		err = fp.Sync()
-		fp.Close()
+		closeErr := fp.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
 	}()
 	data := make([]byte, defDumpSnapPreAllocatedMemSize)
 	sign := crc32.NewIEEE()
@@ -851,6 +862,9 @@ func (mp *metaPartition) storeDeletedDentry(rootDir string, sm *storeMsg) (crc u
 		exporter.WarningCritical(msg)
 		return
 	}
+	if err = fp.Sync(); err != nil {
+		return
+	}
 	crc = sign.Sum32()
 	log.LogInfof("storeDeletedDentry: store complete: partitionID(%v) volume(%v) numDentries(%v) crc(%v)",
 		mp.config.PartitionId, mp.config.VolName, sm.snap.Count(DelDentryType), crc)
@@ -866,9 +880,10 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		return
 	}
 	defer func() {
-		err = fp.Sync()
-		// TODO Unhandled errors
-		fp.Close()
+		closeErr := fp.Close()
+		if err == nil && closeErr != nil {
+			err = closeErr
+		}
 	}()
 
 	data := make([]byte, defDumpSnapPreAllocatedMemSize)
@@ -898,6 +913,9 @@ func (mp *metaPartition) storeDentry(rootDir string,
 		msg := fmt.Sprintf("storeDentry: partitionID(%v) store failed: %v", mp.config.PartitionId, err)
 		log.LogErrorf(msg)
 		exporter.WarningCritical(msg)
+		return
+	}
+	if err = fp.Sync(); err != nil {
 		return
 	}
 	crc = sign.Sum32()
