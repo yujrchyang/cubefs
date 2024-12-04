@@ -263,8 +263,9 @@ func (ch *ClusterHost) doProcessDangerousDp(nodes map[string]*DeadNode) {
 	if len(dangerDps) != 0 {
 		ips := ""
 		for addr, _ := range nodes {
-			ips += ips + addr + ","
+			ips += addr + ","
 		}
+		ips = strings.TrimSuffix(ips, ",")
 		msg := fmt.Sprintf("%v has %v inactive data nodes,ips[%v],dangerous data partitions[%v]", ch.host, len(nodes), ips, dangerDps)
 		warnBySpecialUmpKeyWithPrefix(UMPKeyInactiveNodes, msg)
 	}
