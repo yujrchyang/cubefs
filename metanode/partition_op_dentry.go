@@ -46,7 +46,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 		parIno *Inode
 		exist    bool
 	)
-	if exist, parIno = mp.hasInode(NewInode(req.ParentID, 0)); !exist || parIno == nil {
+	if exist, parIno = mp.hasInode(req.ParentID); !exist || parIno == nil {
 		err = fmt.Errorf("parent inode (%v) not exist", req.ParentID)
 		p.PacketErrorWithBody(proto.OpNotExistErr, []byte(err.Error()))
 		return

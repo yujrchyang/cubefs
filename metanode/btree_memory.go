@@ -279,7 +279,10 @@ func (i *InodeBTree) GetMaxInode() (uint64, error) {
 
 //get
 func (i *InodeBTree) RefGet(ino uint64) (*Inode, error) {
-	item := i.BTree.Get(&Inode{Inode: ino})
+	tmpInode := inodePool.Get()
+	defer inodePool.Put(tmpInode)
+	tmpInode.Inode = ino
+	item := i.BTree.Get(tmpInode)
 	if item != nil {
 		return item.(*Inode), nil
 	}
@@ -287,7 +290,10 @@ func (i *InodeBTree) RefGet(ino uint64) (*Inode, error) {
 }
 
 func (i *InodeBTree) Get(ino uint64) (*Inode, error) {
-	item := i.BTree.CopyGet(&Inode{Inode: ino})
+	tmpInode := inodePool.Get()
+	defer inodePool.Put(tmpInode)
+	tmpInode.Inode = ino
+	item := i.BTree.CopyGet(tmpInode)
 	if item != nil {
 		return item.(*Inode), nil
 	}

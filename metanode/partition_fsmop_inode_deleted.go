@@ -181,10 +181,10 @@ func (mp *metaPartition) fsmRecoverDeletedInode(dbHandle interface{}, ino *FSMDe
 	return mp.recoverDeletedInode(dbHandle, ino.inode)
 }
 
-func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inode uint64) (
+func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inodeID uint64) (
 	resp *fsmOpDeletedInodeResponse, err error) {
 	resp = new(fsmOpDeletedInodeResponse)
-	resp.Inode = inode
+	resp.Inode = inodeID
 	resp.Status = proto.OpOk
 
 	var (
@@ -193,21 +193,20 @@ func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inode uint64)
 		ok           bool
 	)
 
-	ino := NewInode(inode, 0)
 	defer func() {
 		if resp.Status != proto.OpOk {
 			log.LogDebugf("[recoverDeletedInode], partitionID(%v), inode(%v), status: %v",
-				mp.config.PartitionId, ino.Inode, resp.Status)
+				mp.config.PartitionId, inodeID, resp.Status)
 		}
 	}()
 
-	dino := NewDeletedInodeByID(inode)
-	currInode, err = mp.inodeTree.Get(ino.Inode)
+	dino := NewDeletedInodeByID(inodeID)
+	currInode, err = mp.inodeTree.Get(inodeID)
 	if err != nil {
 		resp.Status = proto.OpErr
 		return
 	}
-	deletedInode, err = mp.inodeDeletedTree.Get(ino.Inode)
+	deletedInode, err = mp.inodeDeletedTree.Get(inodeID)
 	if err != nil {
 		resp.Status = proto.OpErr
 		return
@@ -216,7 +215,7 @@ func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inode uint64)
 		if deletedInode != nil {
 			log.LogCriticalf("[recoverDeletedInode], partitionID(%v), curInode(%v), delInode(%v)",
 				mp.config.PartitionId, currInode, deletedInode)
-			if _, err = mp.inodeDeletedTree.Delete(dbHandle, inode); err != nil {
+			if _, err = mp.inodeDeletedTree.Delete(dbHandle, inodeID); err != nil {
 				resp.Status = proto.OpErr
 				return
 			}
@@ -225,7 +224,7 @@ func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inode uint64)
 		}
 
 		if currInode.ShouldDelete() {
-			log.LogDebugf("[recoverDeletedInode], the inode[%v] 's deleted flag is invalid", ino)
+			log.LogDebugf("[recoverDeletedInode], the inode[%v] 's deleted flag is invalid", inodeID)
 			currInode.CancelDeleteMark()
 		}
 		if !proto.IsDir(currInode.Type) {
@@ -235,7 +234,7 @@ func (mp *metaPartition) recoverDeletedInode(dbHandle interface{}, inode uint64)
 			resp.Status = proto.OpErr
 			return
 		}
-		log.LogDebugf("[recoverDeletedInode], success to increase the link of inode[%v]", inode)
+		log.LogDebugf("[recoverDeletedInode], success to increase the link of inode[%v]", inodeID)
 		return
 	}
 
@@ -423,9 +422,9 @@ func (mp *metaPartition) internalClean(dbHandle interface{}, val []byte) (err er
 		return
 	}
 	buf := bytes.NewBuffer(val)
-	ino := NewInode(0, 0)
+	var inodeID uint64
 	for {
-		err = binary.Read(buf, binary.BigEndian, &ino.Inode)
+		err = binary.Read(buf, binary.BigEndian, &inodeID)
 		if err != nil {
 			if err == io.EOF {
 				err = nil
@@ -434,38 +433,38 @@ func (mp *metaPartition) internalClean(dbHandle interface{}, val []byte) (err er
 			return
 		}
 		log.LogDebugf("[internalClean] received internal delete: partitionID(%v) inode(%v)",
-			mp.config.PartitionId, ino.Inode)
-		if err = mp.internalCleanDeletedInode(dbHandle, ino); err != nil {
+			mp.config.PartitionId, inodeID)
+		if err = mp.internalCleanDeletedInode(dbHandle, inodeID); err != nil {
 			log.LogErrorf("[internalClean] clean deleted inode failed, partitionID(%v) inode(%v)",
-				mp.config.PartitionId, ino.Inode)
+				mp.config.PartitionId, inodeID)
 			return
 		}
 	}
 }
 
-func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *Inode) (err error) {
-	mp.freeList.Remove(ino.Inode)
+func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, inodeID uint64) (err error) {
+	mp.freeList.Remove(inodeID)
 	var ok bool
 	var dino *DeletedINode
-	if dino, err = mp.inodeDeletedTree.RefGet(ino.Inode); err != nil {
+	if dino, err = mp.inodeDeletedTree.RefGet(inodeID); err != nil {
 		log.LogErrorf("[internalCleanDeletedInode] partitionID(%v) get dino(%v) from deleted inode tree error:%v",
-			mp.config.PartitionId, ino.Inode, err)
+			mp.config.PartitionId, inodeID, err)
 		return
 	}
 
-	if ok, err = mp.inodeDeletedTree.Delete(dbHandle, ino.Inode); err != nil {
+	if ok, err = mp.inodeDeletedTree.Delete(dbHandle, inodeID); err != nil {
 		log.LogErrorf("[internalCleanDeletedInode] partitionID(%v) delete dino(%v) from deleted inode tree error:%v",
-			mp.config.PartitionId, ino.Inode, err)
+			mp.config.PartitionId, inodeID, err)
 		return
 	}
 
 	if !ok {
-		log.LogDebugf("[internalCleanDeletedInode], partitionID(%v) dino(%v) not exist", mp.config.PartitionId, ino.Inode)
+		log.LogDebugf("[internalCleanDeletedInode], partitionID(%v) dino(%v) not exist", mp.config.PartitionId, inodeID)
 		//check inode tree, if exist in inode tree, do not clear inode id in bitmap
 		var inode *Inode
-		if inode, err = mp.inodeTree.RefGet(ino.Inode); err != nil {
+		if inode, err = mp.inodeTree.RefGet(inodeID); err != nil {
 			log.LogErrorf("[internalCleanDeletedInode] partitionID(%v) get ino(%v) from inode tree error:%v",
-				mp.config.PartitionId, ino.Inode, err)
+				mp.config.PartitionId, inodeID, err)
 			return
 		}
 
@@ -477,23 +476,23 @@ func (mp *metaPartition) internalCleanDeletedInode(dbHandle interface{}, ino *In
 			}
 			//exist in inode tree, skip clear bitmap
 			log.LogDebugf("[internalCleanDeletedInode] partitionID(%v) ino(%v) exist in inode tree",
-				mp.config.PartitionId, ino.Inode)
+				mp.config.PartitionId, inodeID)
 			return
 		}
 	} else {
 		if dino != nil {
 			mp.updateDelInodesTotalSize(0, dino.Size)
 		}
-		log.LogDebugf("[internalCleanDeletedInode] partitionID(%v) dino(%v) delete success", mp.config.PartitionId, ino.Inode)
+		log.LogDebugf("[internalCleanDeletedInode] partitionID(%v) dino(%v) delete success", mp.config.PartitionId, inodeID)
 	}
 
-	if _, err = mp.extendTree.Delete(dbHandle, ino.Inode); err != nil { // Also delete extend attribute.
+	if _, err = mp.extendTree.Delete(dbHandle, inodeID); err != nil { // Also delete extend attribute.
 		log.LogErrorf("[internalCleanDeletedInode] partitionID(%v) deleted extend failed, ino:%v, error:%v",
-			mp.config.PartitionId, ino.Inode, err)
+			mp.config.PartitionId, inodeID, err)
 		return
 	}
 	log.LogDebugf("[internalCleanDeletedInode], partitionID(%v) clean deleted ino: %v result: %v",
-		mp.config.PartitionId, ino, err)
-	mp.clearAllocatorIno(ino.Inode)
+		mp.config.PartitionId, inodeID, err)
+	mp.clearAllocatorIno(inodeID)
 	return
 }

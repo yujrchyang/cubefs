@@ -101,7 +101,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		mp.inodeTree.SetCursor(ino.Inode)
 		resp, err = mp.fsmCreateInode(dbWriteHandle, ino)
 	case opFSMUnlinkInode:
-		ino := NewInode(0, 0)
+		ino := inodePool.Get()
+		defer inodePool.Put(ino)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
@@ -116,19 +117,22 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMExtentTruncate:
 		mp.monitorData[proto.ActionMetaTruncate].UpdateData(0)
 
-		ino := NewInode(0, 0)
+		ino := inodePool.Get()
+		defer inodePool.Put(ino)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		resp, err = mp.fsmExtentsTruncate(dbWriteHandle, ino, msg.ReqInfo)
 	case opFSMCreateLinkInode:
-		ino := NewInode(0, 0)
+		ino := inodePool.Get()
+		defer inodePool.Put(ino)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
 		resp, err = mp.fsmCreateLinkInode(dbWriteHandle, ino, msg.ReqInfo)
 	case opFSMEvictInode:
-		ino := NewInode(0, 0)
+		ino := inodePool.Get()
+		defer inodePool.Put(ino)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
@@ -185,7 +189,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMExtentsAdd:
 		mp.monitorData[proto.ActionMetaExtentsAdd].UpdateData(0)
 
-		ino := NewInode(0, 0)
+		ino := inodePool.Get()
+		defer inodePool.Put(ino)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}
@@ -193,7 +198,8 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	case opFSMExtentsInsert:
 		mp.monitorData[proto.ActionMetaExtentsInsert].UpdateData(0)
 
-		ino := NewInode(0, 0)
+		ino := inodePool.Get()
+		defer inodePool.Put(ino)
 		if err = ino.Unmarshal(ctx, msg.V); err != nil {
 			return
 		}

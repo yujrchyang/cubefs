@@ -118,7 +118,9 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		return
 	}
 
-	ino := NewInode(req.Inode, 0)
+	ino := inodePool.Get()
+	defer inodePool.Put(ino)
+	ino.Inode = req.Inode
 
 	defer func() {
 		if err != nil {
@@ -155,7 +157,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		return
 	}
 
-	val, err = ino.Marshal()
+	val, err = ino.MarshalV2()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -186,10 +188,12 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 	}
 
 	var inodes InodeBatch
-
 	for _, id := range req.Inodes {
-		inodes = append(inodes, NewInode(id, 0))
+		ino := inodePool.Get()
+		ino.Inode = id
+		inodes = append(inodes, ino)
 	}
+	defer inodePool.BatchPut(inodes)
 
 	val, err = inodes.Marshal(p.Ctx())
 	if err != nil {
@@ -242,9 +246,8 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 		reply []byte
 	)
 
-	ino := NewInode(req.Inode, 0)
 	var retMsg *InodeResponse
-	retMsg, err = mp.getInode(ino, false)
+	retMsg, err = mp.getInode(req.Inode, false)
 	if err != nil {
 		log.LogErrorf("InodeGet: get inode(Inode:%v) err:%v", req.Inode, err)
 		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
@@ -294,7 +297,6 @@ func (mp *metaPartition) InodeGet(req *InodeGetReq, p *Packet, version uint8) (e
 // InodeGetBatch executes the inodeBatchGet command from the client.
 func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error) {
 	var (
-		ino    = NewInode(0, 0)
 		data   []byte
 		retMsg *InodeResponse
 	)
@@ -303,8 +305,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 
 	resp := &proto.BatchInodeGetResponse{}
 	for _, inoId := range req.Inodes {
-		ino.Inode = inoId
-		retMsg, err = mp.getInode(ino, false)
+		retMsg, err = mp.getInode(inoId, false)
 		if err == nil && retMsg.Status == proto.OpOk {
 			inoInfo := &proto.InodeInfo{}
 			if replyInfo(inoInfo, retMsg.Msg) {
@@ -345,7 +346,9 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		return
 	}
 
-	ino := NewInode(req.Inode, 0)
+	ino := inodePool.Get()
+	defer inodePool.Put(ino)
+	ino.Inode = req.Inode
 
 	defer func() {
 		if err != nil {
@@ -386,7 +389,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		return
 	}
 
-	val, err = ino.Marshal()
+	val, err = ino.MarshalV2()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -412,8 +415,10 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 		return
 	}
 
-	ino := NewInode(req.Inode, 0)
-	val, err = ino.Marshal()
+	ino := inodePool.Get()
+	defer inodePool.Put(ino)
+	ino.Inode = req.Inode
+	val, err = ino.MarshalV2()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -634,7 +639,7 @@ func (mp *metaPartition) InodesMergeCheck(inos []uint64, limitCnt uint32, minEkL
 	cnt := uint32(0)
 	for i := 0; i < len(inos) && cnt < limitCnt; i++ {
 		ino := inos[i]
-		ok, inode := mp.hasInode(&Inode{Inode: ino})
+		ok, inode := mp.hasInode(ino)
 		if !ok {
 			continue
 		}
