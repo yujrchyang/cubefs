@@ -510,6 +510,9 @@ func (mp *metaPartition) startRaft() (err error) {
 		GetStartIndex: func(firstIndex, lastIndex uint64) (startIndex uint64) { return mp.applyID },
 
 		LogIndexCheck: true, //if mp.applyID more than raft log last index or less than first index, don't start meta partition
+
+		WALSync: true,
+		WALSyncRotate: true,
 	}
 	mp.raftPartition = mp.config.RaftStore.CreatePartition(pc)
 	/*meta node set raft log, default 4 files, 8MB per file*/
