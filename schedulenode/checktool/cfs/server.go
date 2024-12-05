@@ -49,6 +49,7 @@ const (
 	minMetaNodeExportDiskUsedRatio          = 70
 	defaultRestartNodeMaxCountIn24Hour      = 3
 	maxBadDataPartitionsCount               = 200
+	maxBadDataPartitionsCountMysql          = 150
 	minWarnFaultToUsersCheckInterval        = 60 * 5
 	defaultMaxPendQueueCount                = 0
 	defaultMaxAppliedIDDiffCount            = 100
