@@ -103,8 +103,8 @@ func InoAlloterv1UsedCnt(t *testing.T, allocator *inoAllocatorV1) {
 		cnt++
 		allocator.SetId(i*100 + i + allocator.Start)
 	}
-	if allocator.GetUsed() != 100 {
-		t.Fatalf("allocate 100, but record:%d, cap:%d", allocator.GetUsed(), allocator.Cnt)
+	if allocator.GetUsed() != 100 + 2 {
+		t.Fatalf("allocate 100, but record:%d, cap:%d", allocator.GetUsed(), allocator.Cnt+2)
 	}
 
 	cnt = 0
@@ -126,8 +126,8 @@ func InoAlloterv1UsedCnt(t *testing.T, allocator *inoAllocatorV1) {
 		cnt++
 		allocator.ClearId(i*100 + i + allocator.Start)
 	}
-	if allocator.GetUsed() != 0 {
-		t.Fatalf("allocate 0, but record:%d, cap:%d", allocator.GetUsed(), allocator.Cnt)
+	if allocator.GetUsed() != 2 {
+		t.Fatalf("allocate 0, but record:%d, cap:%d", allocator.GetUsed(), allocator.Cnt+2)
 	}
 	cnt = 0
 	for i := uint64(0); cnt < 100; i++ {

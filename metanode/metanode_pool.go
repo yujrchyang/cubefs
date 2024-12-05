@@ -10,6 +10,7 @@ var inodePool = NewInodePool()
 type InodePool struct {
 	pool *sync.Pool
 }
+
 func NewInodePool() *InodePool {
 	return &InodePool{
 		pool: &sync.Pool{
@@ -21,13 +22,16 @@ func NewInodePool() *InodePool {
 		},
 	}
 }
+
 func (p *InodePool) Get() *Inode {
 	return p.pool.Get().(*Inode)
 }
+
 func (p *InodePool) Put(ino *Inode) {
 	ino.Reset()
 	p.pool.Put(ino)
 }
+
 func (p *InodePool) BatchGet(count int) (inodes []*Inode) {
 	inodes = make([]*Inode, 0, count)
 	for index := 0; index < count; index++ {
@@ -36,6 +40,7 @@ func (p *InodePool) BatchGet(count int) (inodes []*Inode) {
 	}
 	return
 }
+
 func (p *InodePool) BatchPut(inodes []*Inode) {
 	for index := 0; index < len(inodes); index ++ {
 		inodes[index].Reset()
