@@ -594,13 +594,17 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 		offlineDiskIndex := int((time.Since(dataNodeReportTime) - autoOfflineThreshold) / diskOfflineInterval)
 
 		diskPaths = getDisks(host, dataNodeView)
-		diskPath := diskPaths[offlineDiskIndex%len(diskPaths)]
+		diskPath1 := diskPaths[(offlineDiskIndex*2)%len(diskPaths)]
+		diskPath2 := diskPaths[(offlineDiskIndex*2+1)%len(diskPaths)]
 
 		// 确认集群中正在下线dp的个数，判断是否可继续下线
 		if !canOffline(host) {
 			continue
 		}
-		offlineDataNodeDisk(host, dataNodeAddr, diskPath, false)
+		// 以半小时间隔为例，dbbak集群整机12块磁盘下线完成的总时间大概为6小时，加上2个小时的冷静期，总共8小时。
+		// 为了加快下线速度，将整机器下线的时间缩短至4小时内，每个磁盘下线间隔从下1块盘改成下2块盘。同时冷静期调整为1小时
+		offlineDataNodeDisk(host, dataNodeAddr, diskPath1, false)
+		offlineDataNodeDisk(host, dataNodeAddr, diskPath2, false)
 		host.inOfflineDataNodes[dataNodeAddr] = time.Now()
 	}
 }
