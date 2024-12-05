@@ -53,19 +53,16 @@ func (s *ChubaoFSMonitor) doCheckUnavailableDataPartition(dps map[uint64]map[str
 		log.LogWarn(fmt.Sprintf("action[offlineDataPartition] getBadPartitionIDsCount host:%v err:%v", host, err))
 		return
 	}
-	if badDPsCount >= maxBadDataPartitionsCount {
-		log.LogWarn(fmt.Sprintf("action[offlineDataPartition] host:%v badDPsCount:%v more than maxBadDataPartitionsCount:%v ",
-			host, badDPsCount, maxBadDataPartitionsCount))
-		return
-	}
-	maxOfflineCount := maxBadDataPartitionsCount - badDPsCount
-	// mysql集群禁止自动下线，先电话通知，手动下线，等下线方案成熟后再改为自动下线
+	maxBadPartition := maxBadDataPartitionsCount
 	if host.host == DomainMysql {
-		if len(dps) > 0 {
-			warnBySpecialUmpKeyWithPrefix(UMPCFSMysqlBadDiskKey, fmt.Sprintf("Domain[%v] occurred bad disk, bad partitions[%v]", host.host, len(dps)))
-		}
+		maxBadPartition = maxBadDataPartitionsCountMysql
+	}
+	if badDPsCount >= maxBadPartition {
+		log.LogWarn(fmt.Sprintf("action[offlineDataPartition] host:%v badDPsCount:%v more than maxBadDataPartitionsCount:%v ",
+			host, badDPsCount, maxBadPartition))
 		return
 	}
+	maxOfflineCount := maxBadPartition - badDPsCount
 	for dpID, badReplicas := range dps {
 		for addr, badReplica := range badReplicas {
 			if maxOfflineCount <= 0 {
@@ -323,8 +320,8 @@ func doOfflineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) 
 }
 
 func offlineDataNodeDisk(host *ClusterHost, addr, badDisk string, force bool) {
-	log.LogDebug(fmt.Sprintf("action[offlineDataNodeDisk] host:%v maxBadDataPartitionsCount:%v badDisk:%v addr:%v force:%v",
-		host, maxBadDataPartitionsCount, addr, badDisk, force))
+	log.LogDebug(fmt.Sprintf("action[offlineDataNodeDisk] host:%v maxBadDataPartitionsCount:%v maxBadDataPartitionsCountMysql:%v badDisk:%v addr:%v force:%v",
+		host, maxBadDataPartitionsCount, maxBadDataPartitionsCountMysql, addr, badDisk, force))
 	doOfflineDataNodeDisk(host, addr, badDisk, force)
 }
 

@@ -520,8 +520,12 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 // canOffline
 // 避免正在下线的DP数量过多
 func canOffline(host *ClusterHost) bool {
+	maxBadPartition := maxBadDataPartitionsCount
+	if host.host == DomainMysql {
+		maxBadPartition = maxBadDataPartitionsCountMysql
+	}
 	badDPsCount, err := getBadPartitionIDsCount(host)
-	if err != nil || badDPsCount > maxBadDataPartitionsCount {
+	if err != nil || badDPsCount > maxBadPartition {
 		log.LogWarnf("action[canOffline] can not offline, host:%v badDPsCount:%v err:%v", host, badDPsCount, err)
 		return false
 	}
