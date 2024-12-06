@@ -147,7 +147,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		msg = &InodeResponse{
 			Status: previousRespCode,
 		}
-		existIno, _ := mp.inodeTree.Get(ino.Inode)
+		existIno, _ := mp.inodeTree.RefGet(ino.Inode)
 		if existIno == nil {
 			log.LogCriticalf("UnlinkInode: dup req, but inode(%v) not exist", ino.Inode)
 			msg.Status = proto.OpNotExistErr
@@ -379,7 +379,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		retMsg = &InodeResponse{
 			Status: previousRespCode,
 		}
-		existIno, _ := mp.inodeTree.Get(ino.Inode)
+		existIno, _ := mp.inodeTree.RefGet(ino.Inode)
 		if existIno == nil {
 			log.LogCriticalf("CreateInodeLink: dup req, but inode(%v) not exist", ino.Inode)
 			retMsg.Status = proto.OpNotExistErr
