@@ -39,14 +39,16 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		return
 	}
 
-	ino := NewInode(req.Inode, 0)
+	ino := inodePool.Get()
+	defer inodePool.Put(ino)
+	ino.Inode = req.Inode
 	ino.Flag = 0
 	if req.IsPreExtent {
 		ino.Flag = proto.CheckPreExtentExist
 	}
 	ext := req.Extent
 	ino.Extents.Append(p.Ctx(), ext, ino.Inode)
-	val, err := ino.Marshal()
+	val, err := ino.MarshalV2()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -74,14 +76,16 @@ func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Pack
 		return
 	}
 
-	ino := NewInode(req.Inode, 0)
+	ino := inodePool.Get()
+	defer inodePool.Put(ino)
+	ino.Inode = req.Inode
 	ext := req.Extent
 	ino.Flag = 0
 	if req.IsPreExtent {
 		ino.Flag = proto.CheckPreExtentExist
 	}
 	ino.Extents.Insert(p.Ctx(), ext, ino.Inode)
-	val, err := ino.Marshal()
+	val, err := ino.MarshalV2()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -106,7 +110,7 @@ func (mp *metaPartition) ExtentsList(req *proto.GetExtentsRequest, p *Packet) (e
 	mp.monitorData[proto.ActionMetaExtentsList].UpdateData(0)
 
 	var retMsg *InodeResponse
-	retMsg, err = mp.getInode(NewInode(req.Inode, 0), true)
+	retMsg, err = mp.getInode(req.Inode, true)
 	if err != nil {
 		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
 		return
@@ -155,13 +159,16 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 		return
 	}
 
-	ino := NewInode(req.Inode, proto.Mode(os.ModePerm))
+	ino := inodePool.Get()
+	defer inodePool.Put(ino)
+	ino.Inode = req.Inode
+	ino.Type = proto.Mode(os.ModePerm)
 	ino.Size = req.Size
 	// we use CreateTime store req.Version in opFSMExtentTruncate request
 	ino.CreateTime = int64(req.Version)
 	// we use AccessTime store req.OldSize in opFSMExtentTruncate request
 	ino.AccessTime = int64(req.OldSize)
-	val, err := ino.Marshal()
+	val, err := ino.MarshalV2()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -190,7 +197,9 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		return
 	}
 
-	ino := NewInode(req.Inode, 0)
+	ino := inodePool.Get()
+	defer inodePool.Put(ino)
+	ino.Inode = req.Inode
 	ino.Flag = 0
 	if req.IsPreExtent {
 		ino.Flag = proto.CheckPreExtentExist
@@ -220,7 +229,7 @@ func (mp *metaPartition) ExtentsListNoModifyAT(req *proto.GetExtentsRequest, p *
 	}
 
 	var retMsg *InodeResponse
-	retMsg, err = mp.getInode(NewInode(req.Inode, 0), false)
+	retMsg, err = mp.getInode(req.Inode, false)
 	if err != nil {
 		p.PacketErrorWithBody(retMsg.Status, []byte(err.Error()))
 		return

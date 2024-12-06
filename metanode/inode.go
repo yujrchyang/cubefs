@@ -864,3 +864,23 @@ func (i *Inode) DoReadFunc(fn func()) {
 	fn()
 	i.RUnlock()
 }
+
+func (i *Inode) Reset() {
+	i.Lock()
+	defer i.Unlock()
+	i.Inode = 0
+	i.Size = 0
+	i.Generation = 0
+	i.Type = 0
+	i.NLink = 0
+	i.CreateTime = 0
+	i.ModifyTime = 0
+	i.AccessTime = 0
+	i.Uid = 0
+	i.Gid = 0
+	i.Flag = 0
+	i.Reserved = 0
+	i.LinkTarget = nil
+	i.Extents = se.NewSortedExtents()
+}
+

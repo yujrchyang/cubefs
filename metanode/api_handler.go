@@ -3355,7 +3355,7 @@ func (m *MetaNode) createInodeForTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getInodeResp, _ := partition.getInode(NewInode(inodeID, 0), false)
+	getInodeResp, _ := partition.getInode(inodeID, false)
 	if getInodeResp.Status == proto.OpInodeOutOfRange {
 		resp.Code = http.StatusBadRequest
 		resp.Msg = fmt.Sprintf("inode id (%v) out of range [%v - %v]", inodeID, partition.config.Start, partition.config.End)
