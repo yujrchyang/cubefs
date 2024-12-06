@@ -361,6 +361,9 @@ func (w *TinyBlockCheckWorker) updateParameters(respWriter http.ResponseWriter, 
 	}
 	newParallelMPCnt, _ := strconv.ParseInt(r.FormValue("parallelMPCnt"), 10, 32)
 	newParallelInodeCnt, _ := strconv.ParseInt(r.FormValue("parallelInodeCnt"), 10, 32)
+	newRatio, _ := strconv.ParseFloat(r.FormValue("ratio"), 64)
+	newMaxCheckSize, _ := strconv.ParseUint(r.FormValue("maxCheckSize"), 10, 64)
+	newMinCheckSize, _ := strconv.ParseUint(r.FormValue("minCheckSize"), 10, 64)
 
 	if newParallelMPCnt != 0 && int32(newParallelMPCnt) != parallelMpCnt.Load() {
 		parallelMpCnt.Store(int32(newParallelMPCnt))
@@ -370,12 +373,30 @@ func (w *TinyBlockCheckWorker) updateParameters(respWriter http.ResponseWriter, 
 		parallelInodeCnt.Store(int32(newParallelInodeCnt))
 	}
 
+	if newRatio > 0 && newRatio < 1 && newRatio != checkSizeRatio.Load() {
+		checkSizeRatio.Store(newRatio)
+	}
+
+	if newMaxCheckSize > 0 && newMaxCheckSize != maxCheckSize.Load() {
+		maxCheckSize.Store(newMaxCheckSize)
+	}
+
+	if newMinCheckSize > 0 && newMinCheckSize != minCheckSize.Load() {
+		minCheckSize.Store(newMinCheckSize)
+	}
+
 	resp.Data = &struct {
-		ParallelMPCount    int32 `json:"parallelMPCnt"`
-		ParallelInodeCount int32 `json:"parallelInodeCnt"`
+		ParallelMPCount    int32   `json:"parallelMPCnt"`
+		ParallelInodeCount int32   `json:"parallelInodeCnt"`
+		Ratio              float64 `json:"ratio"`
+		MaxCheckSize       uint64  `json:"maxCheckSize"`
+		MinCheckSize       uint64  `json:"minCheckSize"`
 	}{
 		ParallelMPCount:    parallelMpCnt.Load(),
 		ParallelInodeCount: parallelInodeCnt.Load(),
+		Ratio:              checkSizeRatio.Load(),
+		MaxCheckSize:       maxCheckSize.Load(),
+		MinCheckSize:       minCheckSize.Load(),
 	}
 	return
 }
@@ -389,11 +410,17 @@ func (w *TinyBlockCheckWorker) getParameters(respWriter http.ResponseWriter, r *
 		}
 	}()
 	resp.Data = &struct {
-		ParallelMPCount    int32 `json:"parallelMPCnt"`
-		ParallelInodeCount int32 `json:"parallelInodeCnt"`
+		ParallelMPCount    int32   `json:"parallelMPCnt"`
+		ParallelInodeCount int32   `json:"parallelInodeCnt"`
+		Ratio              float64 `json:"ratio"`
+		MaxCheckSize       uint64  `json:"maxCheckSize"`
+		MinCheckSize       uint64  `json:"minCheckSize"`
 	}{
 		ParallelMPCount:    parallelMpCnt.Load(),
 		ParallelInodeCount: parallelInodeCnt.Load(),
+		Ratio:              checkSizeRatio.Load(),
+		MaxCheckSize:       maxCheckSize.Load(),
+		MinCheckSize:       minCheckSize.Load(),
 	}
 	return
 }

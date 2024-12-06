@@ -14,7 +14,6 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/topology"
-	"github.com/cubefs/cubefs/util/unit"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -38,6 +37,7 @@ type TinyBlockCheckTask struct {
 	needClean              bool
 	needDumpResult         bool
 	tinyExtentsHolesMap    map[uint64][]*ExtentHolesInfo
+	tinyExtentsCount       uint64
 	dataTinyExtentsMap     map[uint64][]*bitset.ByteSliceBitSet
 	metaTinyExtentsMap     map[uint64][]*bitset.ByteSliceBitSet
 	garbageTinyBlocks      map[uint64][]*bitset.ByteSliceBitSet
@@ -321,6 +321,10 @@ func (t *TinyBlockCheckTask) getTinyExtentsFromMetaPartition(mpId uint64, leader
 					if errInfo == nil {
 						break
 					}
+					if strings.Contains(errInfo.Error(), "unknown meta partition") {
+						errorCh <- errInfo
+						return
+					}
 					time.Sleep(time.Second*5)
 					retryCount--
 				}
@@ -385,65 +389,6 @@ func batchDeleteExtent(host string, dp *topology.DataPartition, eks []*proto.Met
 	}
 	return
 }
-
-//func (t *TinyBlockCheckTask) doCleanGarbage() (err error) {
-//	var failedCnt int
-//	for dpID, blockInfo := range t.gar {
-//		maxNum := blockInfo.MaxNum()
-//		extentsID := make([]uint64, 0, maxNum)
-//		for index := 0; index <= maxNum; index++ {
-//			if blockInfo.Get(index) {
-//				extentsID = append(extentsID, uint64(index))
-//			}
-//		}
-//
-//		var dpInfo *proto.DataPartitionInfo
-//		if dpInfo, err = t.masterClient.AdminAPI().GetDataPartition(t.VolName, dpID); err != nil || len(dpInfo.Hosts) == 0 {
-//			log.LogErrorf("[doCleanGarbage] get cluster[%s] volume[%s] dp[%v] host failed:%v",
-//				t.Cluster, t.VolName, dpID, err)
-//			failedCnt++
-//			continue
-//		}
-//
-//		dp := &topology.DataPartition{
-//			PartitionID: dpID,
-//			Hosts:       dpInfo.Hosts,
-//		}
-//
-//		var eks []*proto.MetaDelExtentKey
-//		for _, extentID := range extentsID {
-//			ek := &proto.MetaDelExtentKey{
-//				ExtentKey: proto.ExtentKey{
-//					PartitionId:  dpID,
-//					ExtentId:     extentID,
-//				},
-//			}
-//			eks = append(eks, ek)
-//		}
-//		if len(eks) == 0 {
-//			continue
-//		}
-//
-//		startIndex := 0
-//		for startIndex < len(eks) {
-//			endIndex := startIndex + 1024
-//			if endIndex > len(eks) {
-//				endIndex = len(eks)
-//			}
-//			log.LogInfof("[doCleanGarbage] start batch delete extent, host addr[%s], partition id[%v], " +
-//				"extents is %v", dpInfo.Hosts[0], dpID, extentsID[startIndex:endIndex])
-//			if err = batchDeleteExtent(dpInfo.Hosts[0], dp, eks[startIndex: endIndex]); err != nil {
-//				log.LogErrorf("batch delete extent failed:%v", err)
-//				failedCnt++
-//				break
-//			}
-//			startIndex = endIndex
-//		}
-//		log.LogInfof("[doCleanGarbage] batch delete extent finish, partition id:%v", dpID)
-//	}
-//	log.LogInfof("[doCleanGarbage] totalCount:%v, failedCount:%v", len(t.garbageBlocks), failedCnt)
-//	return
-//}
 
 func (t *TinyBlockCheckTask) init() (err error) {
 	if t.exportDir == "" {
@@ -837,10 +782,11 @@ func (t *TinyBlockCheckTask) getTinyExtentsByMPs() (err error) {
 }
 
 func tinyExtentsBlockCount(size uint64) (count int) {
-	if size%proto.PageSize == 0 {
+	if size%(proto.PageSize*8) == 0 {
 		count = int(size / proto.PageSize)
 	} else {
-		count = int(size/proto.PageSize + 1)
+		size = size/(proto.PageSize*8)*(proto.PageSize*8)
+		count = int(size / proto.PageSize)
 	}
 	return
 }
@@ -853,6 +799,9 @@ func (t *TinyBlockCheckTask) getTinyExtentsByDPs(dps []*proto.DataPartitionRespo
 		extentsMapLock sync.Mutex
 		dpViewCh       = make(chan *proto.DataPartitionResponse, 10)
 	)
+	ratio := checkSizeRatio.Load()
+	maxSize := maxCheckSize.Load()
+	minSize := minCheckSize.Load()
 	t.tinyExtentsHolesMap = make(map[uint64][]*ExtentHolesInfo, len(dps))
 	go func() {
 		defer close(dpViewCh)
@@ -905,20 +854,14 @@ func (t *TinyBlockCheckTask) getTinyExtentsByDPs(dps []*proto.DataPartitionRespo
 						continue
 					}
 					extentSize := tinyExtentInfo[storage.Size]
-					if extentSize < unit.GB * 64 { //todo:tiny块小于64G跳过检查，改为动态可配置
+					if extentSize < minSize {
 						continue
 					}
-					if extentSize > unit.TB { //todo:改为动态可配置
+					if extentSize > maxSize {
 						log.LogInfof("cluster[%s] volume[%s] partitionID[%v]  tinyExtent[%v] size[%v] more than 1TB", t.Cluster, t.VolName, dp.PartitionID, extentID, extentSize)
-						extentSize = unit.TB
+						extentSize = maxSize
 					}
-					checkSize := uint64(float64(extentSize)*DefTinyEKCheckRatio) //todo:改为动态可配置
-					//var checkSize uint64
-					//if extentSize > DefReservedSize {
-					//	checkSize = extentSize - DefReservedSize
-					//} else {
-					//	checkSize = 0
-					//}
+					checkSize := uint64(float64(extentSize)*ratio)
 
 					//get first host extent holes
 					if len(dp.Hosts) == 0 {
@@ -934,6 +877,7 @@ func (t *TinyBlockCheckTask) getTinyExtentsByDPs(dps []*proto.DataPartitionRespo
 					}
 					extentHolesInfo.ExtentSize = checkSize
 					extentsMapLock.Lock()
+					t.tinyExtentsCount++
 					t.tinyExtentsHolesMap[dp.PartitionID][extentID-1] = extentHolesInfo
 					extentsMapLock.Unlock()
 				}
@@ -951,26 +895,27 @@ func (t *TinyBlockCheckTask) doCheckTinyExtentsGarbage() (err error) {
 			return
 		}
 	}()
-	//timer := time.NewTimer(time.Duration(t.safeCleanInterval) * time.Second)
 	var dpsView *proto.DataPartitionsView
 	dpsView, err = t.masterClient.ClientAPI().GetDataPartitions(t.VolName, nil)
 	if err != nil {
-		log.LogErrorf("action[doCheckGarbageInBatches] get cluster[%s] volume[%s] data partition failed: %v",
+		log.LogErrorf("action[doCheckTinyExtentsGarbage] get cluster[%s] volume[%s] data partition failed: %v",
 			t.Cluster, t.VolName, err)
 		return
 	}
 	if err = t.getTinyExtentsByDPs(dpsView.DataPartitions); err != nil {
-		log.LogErrorf("[doCheckGarbage] get cluster[%s] volume[%s] extents from dp failed:%v",
+		log.LogErrorf("[doCheckTinyExtentsGarbage] get cluster[%s] volume[%s] extents from dp failed:%v",
 			t.Cluster, t.VolName, err)
 		return
 	}
+	if t.tinyExtentsCount == 0 {
+		log.LogInfof("action[doCheckTinyExtentsGarbage] cluster[%s] volume[%s] need check tiny extents count 0",
+			t.Cluster, t.VolName)
+		return
+	}
 	log.LogInfof("get cluster[%s] volume[%s] extents from dp finished", t.Cluster, t.VolName)
-	//select {
-	//case <-timer.C:
-	//}
 	log.LogInfof("start get cluster[%s] volume[%s] meta extents info from mp", t.Cluster, t.VolName)
 	if err = t.getTinyExtentsByMPs(); err != nil {
-		log.LogErrorf("[doCheckGarbage] get cluster[%s] volume[%s] extents from mp failed:%v",
+		log.LogErrorf("[doCheckTinyExtentsGarbage] get cluster[%s] volume[%s] extents from mp failed:%v",
 			t.Cluster, t.VolName, err)
 		return
 	}
@@ -978,7 +923,7 @@ func (t *TinyBlockCheckTask) doCheckTinyExtentsGarbage() (err error) {
 	t.checkTinyGarbageBlocksOneByOne()
 
 	if err = t.reCheckTinyGarbageBlocks(); err != nil {
-		log.LogErrorf("[doCheckGarbage] recheck %s %s tiny garbage block failed:%v",
+		log.LogErrorf("[doCheckTinyExtentsGarbage] recheck %s %s tiny garbage block failed:%v",
 			t.Cluster, t.VolName, err)
 		return
 	}
@@ -1349,7 +1294,19 @@ func (t *TinyBlockCheckTask) RunTinyExtentsCheck() {
 		log.LogErrorf("BlockCheckTask RunTinyExtentsCheck, %s %s init bock check task failed: %v", t.Cluster, t.VolName, err)
 		return
 	}
-	err := t.doCheckTinyExtentsGarbage()
+
+	volView, err := t.masterClient.AdminAPI().GetVolumeSimpleInfo(t.VolName)
+	if err != nil {
+		log.LogErrorf("BlockCheckTask RunOnce, %s %s getVolumeSimpleInfo failed: %v", t.Cluster, t.VolName, err)
+		return
+	}
+
+	if volView.MetaOut || t.isMetaOutVolume() {
+		log.LogInfof("BlockCheckTask RunOnce, %s %s meta data out, skip check", t.Cluster, t.VolName)
+		return
+	}
+
+	err = t.doCheckTinyExtentsGarbage()
 	if err != nil {
 		log.LogErrorf("BlockCheckTask RunTinyExtentsCheck, %s %s check garbage block failed: %v", t.Cluster, t.VolName, err)
 		return

@@ -20,11 +20,15 @@ const (
 	DefReservedSize          = 16 * unit.MB
 	DefMaxCheckSize          = 1*unit.TB
 	DefBitSetCap             = 32*unit.MB //1TB对应32MB
+	DefMinCheckSize          = 64*unit.GB
 )
 
 var (
 	parallelMpCnt = atomic.NewInt32(defaultParallelMPCount)
 	parallelInodeCnt = atomic.NewInt32(DefaultInodeConcurrency)
+	checkSizeRatio = atomic.NewFloat64(DefTinyEKCheckRatio)
+	maxCheckSize = atomic.NewUint64(DefMaxCheckSize)
+	minCheckSize = atomic.NewUint64(DefMinCheckSize)
 )
 
 type DataPartitionView struct {

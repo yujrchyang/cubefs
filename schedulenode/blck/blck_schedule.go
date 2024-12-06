@@ -168,18 +168,6 @@ func (blckTaskSchedule *BlockCheckTaskSchedule) CreateTask(clusterID string, tas
 			continue
 		}
 
-		var volView *proto.SimpleVolView
-		volView, err = masterClient.AdminAPI().GetVolumeSimpleInfo(volName)
-		if err != nil {
-			log.LogErrorf("BlockCheckTaskSchedule CreateTask, %s %s getVolumeSimpleInfo failed: %v",
-				clusterID, volName, err)
-			continue
-		}
-		if volView.MetaOut || isMetaOutVolume(volName) {
-			log.LogInfof("BlockCheckTask CreateTask, %s %s meta data out, skip check", clusterID, volName)
-			continue
-		}
-
 		var taskId uint64
 		if taskId, err = blckTaskSchedule.AddTask(newTask); err != nil {
 			log.LogErrorf("BlockCheckTaskSchedule CreateTask AddTask to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
@@ -188,7 +176,7 @@ func (blckTaskSchedule *BlockCheckTaskSchedule) CreateTask(clusterID string, tas
 		}
 
 		newTask.TaskId = taskId
-		newTasks = append(newTasks, newTask)
+		blckTaskSchedule.storeTaskFunc(blckTaskSchedule.WorkerType, clusterID, newTask)
 	}
 	return
 }

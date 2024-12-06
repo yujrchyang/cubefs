@@ -570,7 +570,8 @@ func (mc *MetaHttpClient) GetExtentKeyByDelInodeId(metaPartitionId, inode uint64
 	result = new(proto.GetExtentsResponse)
 	if len(data) == 0 {
 		result.Extents = make([]proto.ExtentKey, 0)
-		log.LogInfof("[getExtentKeyByInodeId] inode:%v not exist", inode)
+		log.LogDebugf("[getExtentKeyByInodeId] host: %s, partition: %v, inode:%v not exist",
+			mc.host, metaPartitionId, inode)
 		return
 	}
 

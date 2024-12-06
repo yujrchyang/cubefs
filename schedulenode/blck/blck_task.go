@@ -492,6 +492,10 @@ func (t *BlockCheckTask) getExtentsFromMetaPartition(mpId uint64, leaderAddr str
 					if errInfo == nil {
 						break
 					}
+					if strings.Contains(errInfo.Error(), "unknown meta partition") {
+						errorCh <- errInfo
+						return
+					}
 					time.Sleep(time.Second*5)
 					retryCount--
 				}

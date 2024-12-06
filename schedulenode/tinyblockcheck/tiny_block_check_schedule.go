@@ -113,7 +113,7 @@ func (s *TinyBlockCheckTaskSchedule) CreateTask(clusterID string, taskNum int64,
 
 	_, ok := s.mcw[clusterID]
 	if !ok {
-		log.LogInfof("BlockCheckTaskSchedule CreateTask:cluster %s not exist", clusterID)
+		log.LogInfof("TinyBlockCheckTaskSchedule CreateTask:cluster %s not exist", clusterID)
 		return
 	}
 	masterClient := s.mcw[clusterID]
@@ -132,6 +132,8 @@ func (s *TinyBlockCheckTaskSchedule) CreateTask(clusterID string, taskNum int64,
 
 	var needCheckVols []string
 	checkAll, checkVolumes, enableCheckOwners, disableCheckOwners, skipVolumes := common.ParseCheckAllRules(checkRules)
+	log.LogDebugf("TinyBlockCheckTaskSchedule volCount: %v, checkAll %v, checkVolumes: %v, enableCheckOwners: %v, disableCheckOwners: %v, skipVolumes: %v",
+		len(vols), checkAll, checkVolumes, enableCheckOwners, disableCheckOwners, skipVolumes)
 	if checkAll {
 		for _, vol := range vols {
 			if _, ok = skipVolumes[vol.Name]; ok {
@@ -153,12 +155,13 @@ func (s *TinyBlockCheckTaskSchedule) CreateTask(clusterID string, taskNum int64,
 			}
 		}
 	}
+	log.LogDebugf("TinyBlockCheckTaskSchedule needCheckVols: %v", needCheckVols)
 
 	for _, volName := range needCheckVols {
 		if volName == "" {
 			continue
 		}
-		newTask := proto.NewDataTask(proto.WorkerTypeBlockCheck, clusterID, volName, 0, 0, "")
+		newTask := proto.NewDataTask(proto.WorkerTypeTinyBlockCheck, clusterID, volName, 0, 0, "")
 		if alreadyExist, _, _ := s.ContainTask(newTask, runningTasks); alreadyExist {
 			continue
 		}
@@ -168,27 +171,17 @@ func (s *TinyBlockCheckTaskSchedule) CreateTask(clusterID string, taskNum int64,
 			continue
 		}
 
-		var volView *proto.SimpleVolView
-		volView, err = masterClient.AdminAPI().GetVolumeSimpleInfo(volName)
-		if err != nil {
-			log.LogErrorf("BlockCheckTaskSchedule CreateTask, %s %s getVolumeSimpleInfo failed: %v",
-				clusterID, volName, err)
-			continue
-		}
-		if volView.MetaOut || isMetaOutVolume(volName) {
-			log.LogInfof("BlockCheckTask CreateTask, %s %s meta data out, skip check", clusterID, volName)
-			continue
-		}
-
 		var taskId uint64
 		if taskId, err = s.AddTask(newTask); err != nil {
-			log.LogErrorf("BlockCheckTaskSchedule CreateTask AddTask to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
+			log.LogErrorf("TinyBlockCheckTaskSchedule CreateTask AddTask to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
 				clusterID, volName, newTask, err)
 			continue
 		}
+		log.LogDebugf("TinyBlockCheckTaskSchedule CreateTask AddTask to database, cluster(%v), volume(%v), taskID(%v)",
+			clusterID, volName, taskId)
 
 		newTask.TaskId = taskId
-		newTasks = append(newTasks, newTask)
+		s.storeTaskFunc(s.WorkerType, clusterID, newTask)
 	}
 	return
 }

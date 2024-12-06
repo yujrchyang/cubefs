@@ -8,10 +8,9 @@ import (
 )
 
 func AddCheckRule(tableName string, rule *proto.CheckRule) (err error) {
-	sqlCmd := "insert into ? (task_type, cluster_id, rule_type, rule_value)" +
-		" values(?, ?, ?, ?)"
+	sqlCmd := fmt.Sprintf("insert into %s (task_type, cluster_id, rule_type, rule_value)" +
+		" values(?, ?, ?, ?)", tableName)
 	args := make([]interface{}, 0)
-	args = append(args, tableName)
 	args = append(args, int8(rule.WorkerType))
 	args = append(args, rule.ClusterID)
 	args = append(args, rule.RuleType)
@@ -27,8 +26,8 @@ func AddCheckRule(tableName string, rule *proto.CheckRule) (err error) {
 
 func SelectCheckRule(tableName string, clusterID string) (rules []*proto.CheckRule, err error) {
 	var rows *sql.Rows
-	sqlCmd := fmt.Sprintf("select task_type, cluster_id, rule_type, rule_value from ? where cluster_id = ? ")
-	rows, err = db.Query(sqlCmd, tableName, clusterID)
+	sqlCmd := fmt.Sprintf("select task_type, cluster_id, rule_type, rule_value from %s where cluster_id = ? ", tableName)
+	rows, err = db.Query(sqlCmd, clusterID)
 	if rows == nil {
 		return
 	}
@@ -48,9 +47,8 @@ func SelectCheckRule(tableName string, clusterID string) (rules []*proto.CheckRu
 }
 
 func UpdateCheckRule(tableName string, id int, ruleValue string) (err error) {
-	sqlCmd := "update ? set rule_value = ? where id = ?"
+	sqlCmd := fmt.Sprintf("update %s set rule_value = ? where id = ?", tableName)
 	args := make([]interface{}, 0)
-	args = append(args, tableName)
 	args = append(args, id)
 	args = append(args, ruleValue)
 	if _, err = Transaction(sqlCmd, args); err != nil {
@@ -61,9 +59,8 @@ func UpdateCheckRule(tableName string, id int, ruleValue string) (err error) {
 }
 
 func DeleteCheckRule(tableName string, id int) (err error) {
-	sqlCmd := "delete from ? where id = ?"
+	sqlCmd := fmt.Sprintf("delete from %s where id = ?", tableName)
 	args := make([]interface{}, 0)
-	args = append(args, tableName)
 	args = append(args, id)
 	if _, err = Transaction(sqlCmd, args); err != nil {
 		log.LogErrorf("delete check rule failed, id: %v, err: %v", id, err)

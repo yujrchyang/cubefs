@@ -13,6 +13,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/migration"
 	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
 	"github.com/cubefs/cubefs/schedulenode/smart"
+	tinyblck "github.com/cubefs/cubefs/schedulenode/tinyblockcheck"
 	"github.com/cubefs/cubefs/sdk/hbase"
 	"github.com/cubefs/cubefs/sdk/mysql"
 	"github.com/cubefs/cubefs/util/config"
@@ -309,6 +310,9 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	if cfg.GetBool(config.ConfigKeyEnableInodeMigrate) {
 		wt = append(wt, proto.WorkerTypeInodeMigration)
 	}
+	if cfg.GetBool(config.ConfigKeyEnableTinyBlockCheck) {
+		wt = append(wt, proto.WorkerTypeTinyBlockCheck)
+	}
 	s.workerTypes = wt
 
 	if cfg.GetBool(config.ConfigKeyEnableSmartVol) {
@@ -374,6 +378,14 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 			return
 		}
 		s.workers.Store(proto.WorkerTypeInodeMigration, fileMigrationWorker)
+	}
+	if cfg.GetBool(config.ConfigKeyEnableTinyBlockCheck) {
+		var tinyBlckTaskSchedule *tinyblck.TinyBlockCheckTaskSchedule
+		if tinyBlckTaskSchedule, err = tinyblck.NewTinyBlockCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
+			log.LogErrorf("[registerWorker] create blck task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeTinyBlockCheck, tinyBlckTaskSchedule)
 	}
 	return
 }
@@ -709,6 +721,14 @@ func (s *ScheduleNode) startTaskCreator() {
 					dr = DefaultWorkerDuration
 				}
 				go s.taskCreator(proto.WorkerTypeInodeMigration, dr, fmw.CreateTask)
+			case proto.WorkerTypeTinyBlockCheck:
+				tinyBlckTaskSchedule := value.(*tinyblck.TinyBlockCheckTaskSchedule)
+				dr := tinyBlckTaskSchedule.GetCreatorDuration()
+				if dr <= 0 {
+					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
+					dr = DefaultWorkerDuration
+				}
+				go s.taskCreator(proto.WorkerTypeTinyBlockCheck, dr, tinyBlckTaskSchedule.CreateTask)
 			default:
 				log.LogWarnf("[startTaskCreator] unknown worker type, workerType(%v)", wt)
 			}
@@ -1053,7 +1073,7 @@ func (s *ScheduleNode) getWorkerMaxTaskNums(wt proto.WorkerType, workerAddr stri
 			taskNum = DefaultWorkerMaxTaskNumCrcWorker
 		case proto.WorkerTypeFSCheck:
 			taskNum = DefaultWorkerMaxTaskNumFSCheck
-		case proto.WorkerTypeBlockCheck, proto.WorkerTypeNormalExtentMistakeDelCheck:
+		case proto.WorkerTypeBlockCheck, proto.WorkerTypeNormalExtentMistakeDelCheck, proto.WorkerTypeTinyBlockCheck:
 			taskNum = DefaultWorkerMaxTaskNumBlockCheck
 		case proto.WorkerTypeMetaDataCrcCheck:
 			taskNum = DefaultWorkerMaxTaskNumMDCheck
@@ -1252,6 +1272,8 @@ func getDefaultFlowControlValue(wt proto.WorkerType) int64 {
 		return math.MaxInt64
 	case proto.WorkerTypeInodeMigration:
 		return DefaultFlowControlFileMig
+	case proto.WorkerTypeTinyBlockCheck:
+		return math.MaxInt64
 	default:
 		log.LogErrorf("[getDefaultFlowControlValue] invalid worker type, workerType(%v)", wt)
 		return 0
