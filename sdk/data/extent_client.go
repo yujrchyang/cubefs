@@ -414,7 +414,7 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 	return s.IssueWriteRequest(ctx, offset, data, direct)
 }
 
-func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset uint64, data []byte) (dp *DataPartition, write int, newEk *proto.ExtentKey, err error) {
+func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset uint64, data []byte, direct bool) (dp *DataPartition, write int, newEk *proto.ExtentKey, err error) {
 	if client.dataWrapper.VolNotExists() {
 		return nil, 0, nil, proto.ErrVolNotExists
 	}
@@ -431,7 +431,7 @@ func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset 
 
 	oriReq := &ExtentRequest{FileOffset: offset, Size: len(data), Data: data}
 	var exID int
-	dp, exID, write, err = s.writeToNewExtent(ctx, oriReq, true)
+	dp, exID, write, err = s.writeToNewExtent(ctx, oriReq, direct)
 	if err != nil {
 		return
 	}
@@ -524,7 +524,7 @@ func (client *ExtentClient) ReadExtentAllHost(ctx context.Context, inode uint64,
 	return
 }
 
-func (client *ExtentClient) SyncWriteToSpecificExtent(ctx context.Context, dp *DataPartition, inode uint64, fileOffset uint64, extentOffset int, data []byte, extID int) (total int, err error) {
+func (client *ExtentClient) SyncWriteToSpecificExtent(ctx context.Context, dp *DataPartition, inode uint64, fileOffset uint64, extentOffset int, data []byte, extID int, direct bool) (total int, err error) {
 	if client.dataWrapper.VolNotExists() {
 		return 0, proto.ErrVolNotExists
 	}
@@ -536,7 +536,7 @@ func (client *ExtentClient) SyncWriteToSpecificExtent(ctx context.Context, dp *D
 	}
 
 	oriReq := &ExtentRequest{FileOffset: fileOffset, Size: len(data), Data: data}
-	total, err = s.writeToSpecificExtent(ctx, oriReq, extID, extentOffset, dp, true)
+	total, err = s.writeToSpecificExtent(ctx, oriReq, extID, extentOffset, dp, direct)
 	if err != nil {
 		return
 	}

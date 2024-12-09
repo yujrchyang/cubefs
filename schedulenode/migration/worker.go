@@ -38,6 +38,7 @@ const (
 	ConfigKeyMinEkLen        = "minEkLen"
 	ConfigKeyMinInodeSize    = "minInodeSize"
 	ConfigKeyMaxEkAvgSize    = "maxEkAvgSize"
+	ConfigKeyDirectWrite     = "directWrite"
 )
 
 const (
@@ -141,7 +142,7 @@ func doStartWorker(s common.Server, cfg *config.Config) (err error) {
 	go w.loadVolumeInfo()
 	go w.releaseVolume()
 	w.registerHandler()
-	log.LogErrorf("worker type(%v) localIp(%v) WorkerAddr(%v)", w.WorkerType, localIp, w.WorkerAddr)
+	log.LogErrorf("worker type(%v) localIp(%v) WorkerAddr(%v) controlConfig(%v)", w.WorkerType, localIp, w.WorkerAddr, w.controlConfig)
 	return
 }
 
@@ -517,19 +518,23 @@ func (w *Worker) parseControlConfig(cfg *config.Config, workerType proto.WorkerT
 	}
 
 	for key, value := range mnInfo {
-		v := value.(float64)
 		switch key {
 		case ConfigKeyInodeCheckStep:
-			mcc.InodeCheckStep = int(v)
+			mcc.InodeCheckStep = int(value.(float64))
 		case ConfigKeyInodeConcurrent:
-			mcc.InodeConcurrent = int(v)
+			mcc.InodeConcurrent = int(value.(float64))
 		case ConfigKeyMinEkLen:
-			mcc.MinEkLen = int(v)
+			mcc.MinEkLen = int(value.(float64))
 		case ConfigKeyMinInodeSize:
-			mcc.MinInodeSize = uint64(v)
+			mcc.MinInodeSize = uint64(value.(float64))
 		case ConfigKeyMaxEkAvgSize:
-			mcc.MaxEkAvgSize = uint64(v)
+			mcc.MaxEkAvgSize = uint64(value.(float64))
+		case ConfigKeyDirectWrite:
+			mcc.DirectWrite = value.(bool)
 		}
+	}
+	if _, ok := mnInfo[ConfigKeyDirectWrite]; !ok {
+		mcc.DirectWrite = true
 	}
 	if mcc.InodeCheckStep <= 0 {
 		mcc.InodeCheckStep = DefaultInodeCheckStep

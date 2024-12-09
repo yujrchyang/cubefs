@@ -61,6 +61,7 @@ type MigrateInode struct {
 	migDataCrc     uint32
 	migDirection   MigrateDirection
 	extentClient   *data.ExtentClient
+	DirectWrite    bool
 }
 
 func NewMigrateInode(mpOp *MigrateTask, inode *proto.InodeExtents) (inodeOp *MigrateInode, err error) {
@@ -73,6 +74,7 @@ func NewMigrateInode(mpOp *MigrateTask, inode *proto.InodeExtents) (inodeOp *Mig
 		firstMig:       true,
 		statisticsInfo: MigrateRecord{MigInodeCnt: 1},
 		name:           fmt.Sprintf("%s_%d_%d", mpOp.vol.Name, mpOp.mpId, inode.Inode.Inode),
+		DirectWrite:    mpOp.vol.Mcc.DirectWrite,
 	}
 	return
 }
@@ -423,7 +425,7 @@ func (migInode *MigrateInode) ReadAndWriteEkData() (err error) {
 		if readN > 0 {
 			_, _ = crc.Write(buff[:readN])
 			if firstWrite {
-				dp, writeN, newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, readOffset, buff[:readN])
+				dp, writeN, newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, readOffset, buff[:readN], migInode.DirectWrite)
 				if err != nil {
 					return
 				}
@@ -436,10 +438,10 @@ func (migInode *MigrateInode) ReadAndWriteEkData() (err error) {
 				migInode.newEks = append(migInode.newEks, newEk)
 				firstWrite = false
 			} else {
-				writeN, err = migInode.extentClient.SyncWriteToSpecificExtent(ctx, dp, migInode.inodeInfo.Inode, readOffset, write, buff[:readN], int(newEk.ExtentId))
+				writeN, err = migInode.extentClient.SyncWriteToSpecificExtent(ctx, dp, migInode.inodeInfo.Inode, readOffset, write, buff[:readN], int(newEk.ExtentId), migInode.DirectWrite)
 				if err != nil {
 					log.LogWarnf("ReadAndWriteEkData syncWriteToSpecificExtent ino(%v), err(%v)", migInode.name, err)
-					dp, writeN, newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, readOffset, buff[:readN])
+					dp, writeN, newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, readOffset, buff[:readN], migInode.DirectWrite)
 					write = 0
 					if err != nil {
 						return
@@ -456,8 +458,8 @@ func (migInode *MigrateInode) ReadAndWriteEkData() (err error) {
 			readOffset += uint64(readN)
 			write += writeN
 			writeTotal += writeN
-			log.LogDebugf("ReadAndWriteEkData write data ino(%v), totalSize(%v), readN(%v), readOffset(%v), write(%v), dpId(%v), extId(%v)",
-				migInode.name, totalSize, readN, readOffset, write, dp.PartitionID, newEk.ExtentId)
+			log.LogDebugf("ReadAndWriteEkData write data ino(%v), totalSize(%v), readN(%v), readOffset(%v), write(%v), dpId(%v), extId(%v) directWrite(%v)",
+				migInode.name, totalSize, readN, readOffset, write, dp.PartitionID, newEk.ExtentId, migInode.DirectWrite)
 		}
 		if err == io.EOF {
 			err = nil
