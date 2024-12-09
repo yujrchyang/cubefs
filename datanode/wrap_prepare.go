@@ -22,7 +22,6 @@ func (s *DataNode) Prepare(p *repl.Packet, remoteAddr string) (err error) {
 	if err = s.checkReplInfo(p); err != nil {
 		return
 	}
-	p.BeforeTp(s.clusterID)
 	err = s.checkStoreMode(p)
 	if err != nil {
 		return

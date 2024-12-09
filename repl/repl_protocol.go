@@ -191,6 +191,7 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 			rp.sourceConn.RemoteAddr().String(), err)
 		return
 	}
+	request.BeforeTp()
 	request.OrgBuffer = request.Data
 	if log.IsDebugEnabled() {
 		log.LogDebugf("action[readPkgAndPrepare] packet(%v) from remote(%v) ",
@@ -573,6 +574,7 @@ func (rp *ReplProtocol) writeResponse(reply *Packet) {
 		rp.cleanPacketPoolFlag(reply, "writeResponse")
 	}()
 	_ = rp.postFunc(reply)
+	reply.AfterTp()
 	if !reply.NeedReply {
 		return
 	}

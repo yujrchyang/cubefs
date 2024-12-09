@@ -13,7 +13,6 @@ func (s *DataNode) Post(p *repl.Packet) error {
 	// 处理成功的读请求回写响应在Operate阶段由相关处理函数处理，不需要复制协议回写响应。
 	p.NeedReply = !(p.IsReadOperation() && !p.IsErrPacket())
 	s.cleanupPkt(p)
-	s.addMetrics(p)
 	return nil
 }
 
@@ -45,11 +44,4 @@ func (s *DataNode) releaseExtent(p *repl.Packet) {
 		store.SendToAvailableTinyExtentC(p.ExtentID)
 	}
 	atomic.StoreInt32(&p.IsReleased, IsReleased)
-}
-
-func (s *DataNode) addMetrics(p *repl.Packet) {
-	if p.IsMasterCommand() {
-		return
-	}
-	p.AfterTp()
 }

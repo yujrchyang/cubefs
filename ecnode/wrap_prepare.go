@@ -34,7 +34,7 @@ func (e *EcNode) Prepare(p *repl.Packet, remote string) (err error) {
 		return
 	}
 
-	p.BeforeTp(e.clusterID)
+	p.BeforeTp()
 	err = e.checkCrc(p)
 	if err != nil {
 		return

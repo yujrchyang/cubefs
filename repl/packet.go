@@ -281,7 +281,7 @@ func copyReplPacket(src *Packet, dst *Packet) {
 	dst.ReqID = src.ReqID
 }
 
-func (p *Packet) BeforeTp(clusterID string) (ok bool) {
+func (p *Packet) BeforeTp() (ok bool) {
 	switch {
 	case p.IsRandomWrite():
 		p.TpObject = exporter.NewModuleTPUs(fmt.Sprintf("Raft_%v_us", p.GetOpMsg()))
