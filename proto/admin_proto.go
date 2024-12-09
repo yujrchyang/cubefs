@@ -326,6 +326,7 @@ const (
 
 	IDsKey     = "ids"
 	MetaOutKey = "metaOut"
+	MpZonesKey = "mpZones"
 )
 
 const (
@@ -369,7 +370,7 @@ func (p CrossRegionHAType) String() string {
 	switch p {
 	case DefaultCrossRegionHAType:
 		return "default"
-	case CrossRegionHATypeQuorum:
+	case CrossRegionHATypeQuorum, TwoZoneHATypeQuorum:
 		return "quorum"
 	default:
 	}
@@ -379,7 +380,12 @@ func (p CrossRegionHAType) String() string {
 const (
 	DefaultCrossRegionHAType CrossRegionHAType = iota // 默认类型，表示主备复制中所有复制组成员必须全部成功才可判定为成功
 	CrossRegionHATypeQuorum                           // 表示主备复制中采用Quorum机制，复制组成员成功数量达到Quorum数值要求即可判定为成功
+	TwoZoneHATypeQuorum                               // 跨地域两机房高可用，追加写采用Quorum机制，即复制组成员成功数量达到Quorum数值要求即可判定为成功
 )
+
+func IsTwoZoneHAType(haType CrossRegionHAType) bool {
+	return TwoZoneHATypeQuorum == haType
+}
 
 type RegionType uint8
 
@@ -1382,6 +1388,7 @@ type SimpleVolView struct {
 	UpdateTimeOfReplicaNum       int64
 	DisableState                 bool
 	MetaOut                      bool
+	MpZones                      string
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition

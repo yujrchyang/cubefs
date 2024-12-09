@@ -863,7 +863,7 @@ func (m *Server) deleteMetaRecorder(w http.ResponseWriter, r *http.Request) {
 		addr        string
 		mp          *MetaPartition
 		partitionID uint64
-		reduceNum	bool
+		reduceNum   bool
 		err         error
 	)
 
@@ -1856,6 +1856,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		reqRecordReservedTime int32
 		reqRecordMaxCount     int32
+		mpZones               string
 	)
 	metrics := exporter.NewModuleTP(proto.AdminUpdateVolUmpKey)
 	defer func() { metrics.Set(err) }()
@@ -2027,13 +2028,14 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	mpZones = parseMpZonesToUpdateVol(r, vol)
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum), uint8(mpRecorderNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
 		dpSelectorName, dpSelectorParm, ossBucketPolicy, crossRegionHAType, dpWriteableThreshold, trashRemainingDays,
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, umpKeyPrefix, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
-		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB, MetaOut, reqRecordReservedTime, reqRecordMaxCount); err != nil {
+		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB, MetaOut, reqRecordReservedTime, reqRecordMaxCount, mpZones); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2370,6 +2372,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		ReadAheadMemMB:           vol.ReadAheadMemMB,
 		ReadAheadWindowMB:        vol.ReadAheadWindowMB,
 		MetaOut:                  vol.MetaOut,
+		MpZones:                  vol.MpZones,
 	}
 }
 
@@ -3945,7 +3948,7 @@ func parseDpWriteableThresholdToUpdateVol(r *http.Request, vol *Vol) (dpWriteabl
 	return
 }
 
-func parseCrossRegionHATypeToUpdateVol(r *http.Request, vol *Vol) (crossRegionHAType proto.CrossRegionHAType, err error) {
+func parseCrossRegionHATypeToUpdateVol(r *http.Request, vol *Vol) (hAType proto.CrossRegionHAType, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -3955,14 +3958,16 @@ func parseCrossRegionHATypeToUpdateVol(r *http.Request, vol *Vol) (crossRegionHA
 			err = unmatchedKey(crossRegionHAKey)
 			return
 		}
-		crossRegionHAType = proto.CrossRegionHAType(crossRegionHA)
-		if crossRegionHAType != proto.DefaultCrossRegionHAType && crossRegionHAType != proto.CrossRegionHATypeQuorum {
-			err = fmt.Errorf("parameter %s should be %d(%s) or %d(%s)", crossRegionHAKey,
-				proto.DefaultCrossRegionHAType, proto.DefaultCrossRegionHAType, proto.CrossRegionHATypeQuorum, proto.CrossRegionHATypeQuorum)
+		hAType = proto.CrossRegionHAType(crossRegionHA)
+		if !(hAType == proto.DefaultCrossRegionHAType || hAType == proto.CrossRegionHATypeQuorum ||
+			hAType == proto.TwoZoneHATypeQuorum) {
+			err = fmt.Errorf("parameter %s should be one of (%d(%s), %d(%s),%d(%s))", crossRegionHAKey,
+				proto.DefaultCrossRegionHAType, proto.DefaultCrossRegionHAType, proto.CrossRegionHATypeQuorum,
+				proto.CrossRegionHATypeQuorum, proto.TwoZoneHATypeQuorum, proto.TwoZoneHATypeQuorum)
 			return
 		}
 	} else {
-		crossRegionHAType = vol.CrossRegionHAType
+		hAType = vol.CrossRegionHAType
 	}
 	return
 }
@@ -5321,9 +5326,11 @@ func extractCrossRegionHA(r *http.Request) (crossRegionHAType proto.CrossRegionH
 			return
 		}
 		crossRegionHAType = proto.CrossRegionHAType(crossRegionHA)
-		if crossRegionHAType != proto.DefaultCrossRegionHAType && crossRegionHAType != proto.CrossRegionHATypeQuorum {
-			err = fmt.Errorf("parameter %s should be %d(%s) or %d(%s)", crossRegionHAKey,
-				proto.DefaultCrossRegionHAType, proto.DefaultCrossRegionHAType, proto.CrossRegionHATypeQuorum, proto.CrossRegionHATypeQuorum)
+		if !(crossRegionHAType == proto.DefaultCrossRegionHAType || crossRegionHAType == proto.CrossRegionHATypeQuorum ||
+			crossRegionHAType == proto.TwoZoneHATypeQuorum) {
+			err = fmt.Errorf("parameter %s should be %d(%s) or %d(%s) or %d(%s)", crossRegionHAKey,
+				proto.DefaultCrossRegionHAType, proto.DefaultCrossRegionHAType, proto.CrossRegionHATypeQuorum, proto.CrossRegionHATypeQuorum,
+				proto.TwoZoneHATypeQuorum, proto.TwoZoneHATypeQuorum)
 			return
 		}
 	} else {
@@ -7175,7 +7182,7 @@ func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
 		RemoteReadTimeoutMs:    m.cluster.cfg.RemoteReadConnTimeoutMs,
 		ZoneConnConfig:         m.cluster.cfg.getZoneNetConnConfigMap(),
 	}
-	cf.DataNodes = m.cluster.allDataNodes()
+	cf.DataNodes = m.cluster.allDataNodesForClient()
 	cf.EcNodes = m.cluster.allEcNodes()
 
 	sendOkReply(w, r, newSuccessHTTPReply(cf))
@@ -7603,6 +7610,14 @@ func parseMetaOutToUpdateVol(r *http.Request, vol *Vol) (metaOut bool, err error
 		if err != nil {
 			return
 		}
+	}
+	return
+}
+
+func parseMpZonesToUpdateVol(r *http.Request, vol *Vol) (mpZones string) {
+	mpZones = r.FormValue(proto.MpZonesKey)
+	if mpZones == "" {
+		mpZones = vol.MpZones
 	}
 	return
 }

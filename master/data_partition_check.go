@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/collection"
 	"math"
 	"time"
 
@@ -44,6 +45,8 @@ func (partition *DataPartition) checkStatus(clusterName string, needLog bool, dp
 		partition.Status = proto.ReadOnly
 	} else if IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		partition.SetCrossRegionQuorumVolStatus(liveReplicas, dpWriteableThreshold, c, quorum)
+	} else if proto.IsTwoZoneHAType(crossRegionHAType) {
+		partition.setTwoZoneHAQuorumVolStatus(liveReplicas, dpWriteableThreshold, c, quorum)
 	} else {
 		partition.Status = proto.ReadOnly
 		if len(liveReplicas) >= (int)(partition.ReplicaNum) {
@@ -99,6 +102,8 @@ func (partition *DataPartition) checkTransferStatus(dpTimeOutSec int64, dpWritea
 		partition.TransferStatus = proto.ReadOnly
 	} else if IsCrossRegionHATypeQuorum(crossRegionHAType) {
 		partition.SetCrossRegionQuorumVolTransferStatus(liveReplicas, dpWriteableThreshold, c, quorum)
+	} else if proto.IsTwoZoneHAType(crossRegionHAType) {
+		partition.setTwoZoneHAQuorumVolTransferStatus(liveReplicas, dpWriteableThreshold, c, quorum)
 	} else {
 		switch len(liveReplicas) {
 		case (int)(partition.ReplicaNum):
@@ -113,6 +118,50 @@ func (partition *DataPartition) checkTransferStatus(dpTimeOutSec int64, dpWritea
 		default:
 			partition.TransferStatus = proto.ReadOnly
 		}
+	}
+}
+
+func (partition *DataPartition) setTwoZoneHAQuorumVolStatus(liveReplicas []*DataReplica, dpWriteableThreshold float64, c *Cluster, quorum int) {
+	partition.Status = proto.ReadOnly
+	if quorum > len(partition.Hosts) || quorum < int(partition.ReplicaNum/2+1) {
+		quorum = int(partition.ReplicaNum/2 + 1)
+	}
+	majorZoneAllHostsIsAlive := false
+	if len(liveReplicas) >= len(partition.Hosts) {
+		majorZoneAllHostsIsAlive = true
+	} else {
+		liveHosts := make([]string, 0)
+		for _, replica := range liveReplicas {
+			liveHosts = append(liveHosts, replica.Addr)
+		}
+		if collection.Contains(liveHosts, partition.Hosts[0:quorum]) {
+			majorZoneAllHostsIsAlive = true
+		}
+	}
+	if majorZoneAllHostsIsAlive && partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
+		partition.Status = proto.ReadWrite
+	}
+}
+
+func (partition *DataPartition) setTwoZoneHAQuorumVolTransferStatus(liveReplicas []*DataReplica, dpWriteableThreshold float64, c *Cluster, quorum int) {
+	partition.TransferStatus = proto.ReadOnly
+	if quorum > len(partition.Hosts) || quorum < int(partition.ReplicaNum/2+1) {
+		quorum = int(partition.ReplicaNum/2 + 1)
+	}
+	majorZoneAllHostsIsAlive := false
+	if len(liveReplicas) >= len(partition.Hosts) {
+		majorZoneAllHostsIsAlive = true
+	} else {
+		liveHosts := make([]string, 0)
+		for _, replica := range liveReplicas {
+			liveHosts = append(liveHosts, replica.Addr)
+		}
+		if collection.Contains(liveHosts, partition.Hosts[0:quorum]) {
+			majorZoneAllHostsIsAlive = true
+		}
+	}
+	if majorZoneAllHostsIsAlive && partition.canWrite() && partition.canResetStatusToWrite(dpWriteableThreshold) {
+		partition.TransferStatus = proto.ReadWrite
 	}
 }
 

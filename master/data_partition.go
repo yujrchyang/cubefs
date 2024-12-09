@@ -1331,6 +1331,27 @@ func (partition *DataPartition) removePromotedDataLearner(vr *proto.PartitionRep
 	return newLearners, false
 }
 
+func (partition *DataPartition) sortHostsForTwoZoneHA(c *Cluster) (newHosts []string, err error) {
+	host0Node, err := c.dataNode(partition.Hosts[0])
+	if err != nil {
+		return
+	}
+	var node *DataNode
+	hostsInHost0Zone := make([]string, 0)
+	hostsInAnotherZone := make([]string, 0)
+	for _, host := range partition.Hosts {
+		node, err = c.dataNode(host)
+		if node.ZoneName == host0Node.ZoneName {
+			hostsInHost0Zone = append(hostsInHost0Zone, host)
+		} else {
+			hostsInAnotherZone = append(hostsInAnotherZone, host)
+		}
+	}
+	newHosts = append(newHosts, hostsInHost0Zone...)
+	newHosts = append(newHosts, hostsInAnotherZone...)
+	return
+}
+
 // getNewHostsWithAddedPeer is used in add new replica which is covered with partition Lock, so need not use this lock again
 func (partition *DataPartition) getNewHostsWithAddedPeer(c *Cluster, addPeerAddr string) (newHosts []string, addPeerRegionType proto.RegionType, err error) {
 	newHosts = make([]string, 0, len(partition.Hosts)+1)

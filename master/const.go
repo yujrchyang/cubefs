@@ -47,7 +47,7 @@ const (
 	mpReplicaNumKey                     = "mpReplicaNum"
 	mpRecorderNumKey                    = "mpRecorderNum"
 	autoAddrKey                         = "autoAddr"
-	reduceNumKey						= "reduceNum"
+	reduceNumKey                        = "reduceNum"
 	dpHostDelayIntervalKey              = "hostDelayInterval"
 	dpFollReadHostWeightKey             = "follReadHostWeight"
 	followerReadKey                     = "followerRead"
@@ -293,6 +293,8 @@ const (
 	defaultReadAheadWindowMB                               = 0
 	maxReadAheadMemMB                                      = 8192
 	maxReadAheadWindowMB                                   = 64
+	defaultTwoZoneHAMpReplicaCount                         = 5
+	defaultTwoZoneHAMpZoneCount                            = 4
 )
 
 const (
