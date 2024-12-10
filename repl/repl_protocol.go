@@ -209,6 +209,14 @@ func (rp *ReplProtocol) readPkgAndPrepare() (err error) {
 		err = rp.putResponse(request)
 		return
 	}
+
+	if request.IsRandomWrite() {
+		// 基于Raft进行复制的随机写操作直接执行，避免线程切换和调度带来的性能损耗
+		_ = rp.operatorFunc(request, rp.sourceConn)
+		rp.writeResponse(request)
+		return
+	}
+
 	err = rp.putToBeProcess(request)
 	if err == nil {
 		request.addPacketPoolRefCnt()
