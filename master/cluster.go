@@ -1069,7 +1069,13 @@ func (c *Cluster) chooseTargetDataNodes(excludeZones []string, excludeNodeSets [
 	}
 	allocateZoneMap = make(map[*Zone][]string)
 	eachZoneAvgReplicaNum = replicaNum / len(zones)
-	firstZoneReplicaNum = replicaNum - len(zones)*eachZoneAvgReplicaNum
+	if eachZoneAvgReplicaNum == 0 {
+		eachZoneAvgReplicaNum = 1
+	}
+	firstZoneReplicaNum = 1
+	if replicaNum > len(zones) {
+		firstZoneReplicaNum = replicaNum - (len(zones)-1)*eachZoneAvgReplicaNum
+	}
 	for idx, zone := range zones {
 		if idx == 0 {
 			demandReplicaNum = firstZoneReplicaNum
@@ -2886,7 +2892,8 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	trashItemCleanMaxCount, trashCleanDuration int32, enableBitMapAllocator bool,
 	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
 	enableRemoveDupReq bool, notCacheNode bool, flock bool, truncateEKCountEveryTime int, mpSplitStep, inodeCountThreshold uint64,
-	bitMapSnapFrozenHour int64, enableCheckDelEK bool, readAheadMemMB, readAheadWindowMB int64, metaOut bool, reqReservedTime, reqRecordMaxCount int32, mpZones string) (err error) {
+	bitMapSnapFrozenHour int64, enableCheckDelEK bool, readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool,
+	reqReservedTime, reqRecordMaxCount int32, mpZones string) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -2907,11 +2914,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 			goto errHandler
 		}
 	}
-	if c.isTwoZoneHAType(zoneName) {
-		if crossRegionHAType != proto.TwoZoneHATypeQuorum {
-			err = fmt.Errorf("for two zone HA vol,crossRegionHAType must be is %v,but is %v", proto.TwoZoneHATypeQuorum, crossRegionHAType)
-			goto errHandler
-		}
+	if proto.IsTwoZoneHAType(crossRegionHAType) {
 		zoneArr := strings.Split(zoneName, commaSeparator)
 		mpZoneArr := strings.Split(mpZones, commaSeparator)
 		if !collection.Contains(mpZoneArr, zoneArr) {
@@ -2925,6 +2928,12 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		if len(mpZoneArr) < defaultTwoZoneHAMpZoneCount {
 			err = fmt.Errorf("mpZones must contain four zones,but mpZones[%v]", mpZones)
 			return
+		}
+	}
+	if mpFollowerRead == true {
+		if crossRegionHAType != proto.TwoZoneHATypeQuorum {
+			err = fmt.Errorf("only twoZoneHA scenario can mpFollowerRead be set to true,name:%v,haType:%v", name, crossRegionHAType)
+			goto errHandler
 		}
 	}
 	vol.Lock()
@@ -3077,6 +3086,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	vol.ReadAheadMemMB = readAheadMemMB
 	vol.ReadAheadWindowMB = readAheadWindowMB
 	vol.MetaOut = metaOut
+	vol.MpFollowerRead = mpFollowerRead
 	vol.reqRecordReservedTime = reqReservedTime
 	vol.reqRecordMaxCount = reqRecordMaxCount
 	if err = c.syncUpdateVol(vol); err != nil {
@@ -3100,7 +3110,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	childFileMaxCnt uint32, storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
 	compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32,
-	bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64, readAheadMemMB, readAheadWindowMB int64, metaOut bool) (vol *Vol, err error) {
+	bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64, readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -3137,11 +3147,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 			goto errHandler
 		}
 	}
-	if c.isTwoZoneHAType(zoneName) {
-		if crossRegionHAType != proto.TwoZoneHATypeQuorum {
-			err = fmt.Errorf("for two zone HA vol,crossRegionHAType must be is %v,but is %v", proto.TwoZoneHATypeQuorum, crossRegionHAType)
-			goto errHandler
-		}
+	if proto.IsTwoZoneHAType(crossRegionHAType) {
 		if mpZones, err = c.buildCandidateMpZones(zoneName, storeMode); err != nil {
 			goto errHandler
 		}
@@ -3150,6 +3156,12 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 		}
 		if dpReplicaNum%2 == 0 {
 			err = fmt.Errorf("for two zone HA vol,dpReplicaNum must be is odd number,dpReplicaNum is %v", dpReplicaNum)
+			goto errHandler
+		}
+	}
+	if mpFollowerRead == true {
+		if crossRegionHAType != proto.TwoZoneHATypeQuorum {
+			err = fmt.Errorf("only twoZoneHA scenario can mpFollowerRead be set to true,name:%v,haType:%v", name, crossRegionHAType)
 			goto errHandler
 		}
 	}
@@ -3163,7 +3175,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
 		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, uint8(mpRecorderNum), dpWriteableThreshold,
 		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocatorEnable,
-		mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpZones); err != nil {
+		mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpFollowerRead, mpZones); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -3190,14 +3202,6 @@ errHandler:
 	log.LogError(errors.Stack(err))
 	WarnBySpecialKey(gAlarmKeyMap[alarmKeyCreateVolFailed], err.Error())
 	return
-}
-
-func (c *Cluster) isTwoZoneHAType(zoneName string) (ok bool) {
-	zoneList := strings.Split(zoneName, ",")
-	if len(zoneList) != 2 {
-		return
-	}
-	return true
 }
 
 func (c *Cluster) buildCandidateMpZones(zoneName string, storeMode proto.StoreMode) (mpZones string, err error) {
@@ -3245,7 +3249,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	dpWriteableThreshold float64, childFileMaxCnt uint32, storeMode proto.StoreMode, convertSt proto.VolConvertState,
 	mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
 	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64,
-	readAheadMemMB, readAheadWindowMB int64, metaOut bool, mpZones string) (vol *Vol, err error) {
+	readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool, mpZones string) (vol *Vol, err error) {
 	var (
 		id              uint64
 		smartEnableTime int64
@@ -3288,6 +3292,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	vol.EcEnable = enableEc
 	vol.EnableBitMapAllocator = bitMapAllocatorEnable
 	vol.MetaOut = metaOut
+	vol.MpFollowerRead = mpFollowerRead
 	vol.MpZones = mpZones
 	if len(masterRegionZoneList) > 1 {
 		vol.crossZone = true
@@ -3354,7 +3359,7 @@ func (c *Cluster) updateInodeIDRange(volName string, start uint64) (err error) {
 
 // Choose the target hosts from the available zones and meta nodes.
 func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []uint64, excludeHosts []string, replicaNum, recorderNum int,
-	zoneName string, isStrict bool, dstStoreMode proto.StoreMode) (hosts []string, peers []proto.Peer, recorders []string, err error) {
+	zoneName string, isStrict bool, dstStoreMode proto.StoreMode, haType proto.CrossRegionHAType) (hosts []string, peers []proto.Peer, recorders []string, err error) {
 	var (
 		zones []*Zone
 	)
@@ -3374,7 +3379,7 @@ func (c *Cluster) chooseTargetMetaHosts(excludeZone string, excludeNodeSets []ui
 	if excludeZone != "" {
 		excludeZones = append(excludeZones, excludeZone)
 	}
-	if zones, err = c.t.allocZonesForMetaNode(c.Name, zoneName, replicaNum, recorderNum, excludeZones, isStrict, dstStoreMode); err != nil {
+	if zones, err = c.t.allocZonesForMetaNode(c.Name, zoneName, replicaNum, recorderNum, excludeZones, isStrict, dstStoreMode, haType); err != nil {
 		return
 	}
 	zoneList := strings.Split(zoneName, ",")
@@ -4841,7 +4846,7 @@ func (c *Cluster) setZoneRegion(zoneName, newRegionName string) (err error) {
 	return
 }
 
-func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, learnerReplicaNum int, zoneName string, dstStoreMode proto.StoreMode) (hosts []string, peers []proto.Peer,
+func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, learnerReplicaNum int, zoneName string, dstStoreMode proto.StoreMode, haType proto.CrossRegionHAType) (hosts []string, peers []proto.Peer,
 	learners []proto.Learner, err error) {
 	masterRegionZoneName, slaveRegionZoneName, err := c.getMasterAndSlaveRegionZoneName(zoneName)
 	if err != nil {
@@ -4849,7 +4854,7 @@ func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, 
 	}
 	learners = make([]proto.Learner, 0)
 	masterRegionHosts, masterRegionPeers, _, err := c.chooseTargetMetaHosts("", nil, nil,
-		replicaNum, 0, strings.Join(masterRegionZoneName, ","), true, dstStoreMode)
+		replicaNum, 0, strings.Join(masterRegionZoneName, ","), true, dstStoreMode, haType)
 	if err != nil {
 		err = fmt.Errorf("choose master region hosts failed, err:%v", err)
 		return
@@ -4862,7 +4867,7 @@ func (c *Cluster) chooseTargetMetaHostsForCreateQuorumMetaPartition(replicaNum, 
 		return
 	}
 	slaveRegionHosts, slaveRegionPeers, _, err := c.chooseTargetMetaHosts("", nil, nil,
-		slaveReplicaNum, 0, strings.Join(slaveRegionZoneName, ","), true, dstStoreMode)
+		slaveReplicaNum, 0, strings.Join(slaveRegionZoneName, ","), true, dstStoreMode, haType)
 	if err != nil {
 		err = fmt.Errorf("choose slave region hosts failed, err:%v", err)
 		return
@@ -4980,7 +4985,7 @@ func (c *Cluster) chooseTargetDataNodesFromSameRegionTypeOfOfflineReplica(offlin
 }
 
 func (c *Cluster) chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(offlineReplicaRegionName, volZoneName string, replicaNum int,
-	excludeNodeSets []uint64, oldHosts []string, dstStoreMode proto.StoreMode) (hosts []string, peers []proto.Peer, err error) {
+	excludeNodeSets []uint64, oldHosts []string, dstStoreMode proto.StoreMode, haType proto.CrossRegionHAType) (hosts []string, peers []proto.Peer, err error) {
 	var targetZoneNames string
 	region, err := c.t.getRegion(offlineReplicaRegionName)
 	if err != nil {
@@ -5000,7 +5005,7 @@ func (c *Cluster) chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(offlin
 			offlineReplicaRegionName, region.Name, region.RegionType)
 		return
 	}
-	if hosts, peers, _, err = c.chooseTargetMetaHosts("", excludeNodeSets, oldHosts, replicaNum, 0, targetZoneNames, true, dstStoreMode); err != nil {
+	if hosts, peers, _, err = c.chooseTargetMetaHosts("", excludeNodeSets, oldHosts, replicaNum, 0, targetZoneNames, true, dstStoreMode, haType); err != nil {
 		return
 	}
 	return
@@ -5177,14 +5182,14 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVol(mp *MetaPartition,
 			mp.PartitionID, vol.mpReplicaNum, masterRegionHosts)
 		return
 	}
-	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZoneNames, true, dstStoreMode); err != nil {
+	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZoneNames, true, dstStoreMode, vol.CrossRegionHAType); err != nil {
 		return
 	}
 	addr = hosts[0]
 	return
 }
 
-func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp *MetaPartition, dstStoreMode proto.StoreMode) (addr string, totalReplicaNum int, err error) {
+func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp *MetaPartition, dstStoreMode proto.StoreMode, haType proto.CrossRegionHAType) (addr string, totalReplicaNum int, err error) {
 	hosts := make([]string, 0)
 	var targetZoneNames string
 	vol, err := c.getVol(mp.volName)
@@ -5218,7 +5223,7 @@ func (c *Cluster) chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp
 			mp.PartitionID, learnerReplicaNum, slaveRegionHosts)
 		return
 	}
-	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZoneNames, true, dstStoreMode); err != nil {
+	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZoneNames, true, dstStoreMode, haType); err != nil {
 		return
 	}
 	addr = hosts[0]
@@ -5273,7 +5278,7 @@ func (c *Cluster) chooseTargetMetaNodeForAddRecorder(mp *MetaPartition) (addr st
 		log.LogInfof("vol(%v) mp(%v) choose target zone(%v) to create recorder, volZone(%v) curZoneCount(%v)", mp.volName, mp.PartitionID, targetZone, vol.zoneName, zoneCountMap)
 	}
 
-	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZone, true, vol.DefaultStoreMode); err != nil {
+	if hosts, _, _, err = c.chooseTargetMetaHosts("", nil, mp.peerHosts(), 1, 0, targetZone, true, vol.DefaultStoreMode, vol.CrossRegionHAType); err != nil {
 		return
 	}
 	addr = hosts[0]

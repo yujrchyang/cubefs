@@ -218,7 +218,7 @@ func (t *topology) getHddZoneInSameIdc(ssdZoneName string) (zoneName string, err
 		}
 		return true
 	})
-	if len(zoneName)> 0 {
+	if len(zoneName) > 0 {
 		return
 	}
 	return "", fmt.Errorf("hdd zone not found")
@@ -445,7 +445,7 @@ func calculateDemandWriteNodes(zoneNum, replicaNum int) (demandWriteNodes int) {
 }
 
 func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum, recorderNum int, excludeZone []string, isStrict bool,
-	dstStoreMode proto.StoreMode) (candidateZones []*Zone, err error) {
+	dstStoreMode proto.StoreMode, haType proto.CrossRegionHAType) (candidateZones []*Zone, err error) {
 	var initCandidateZones []*Zone
 	initCandidateZones = make([]*Zone, 0)
 	zoneList := strings.Split(zoneName, ",")
@@ -507,6 +507,15 @@ func (t *topology) allocZonesForMetaNode(clusterID, zoneName string, replicaNum,
 			WarnBySpecialKey(gAlarmKeyMap[alarmKeyChooseTargetHost], msg)
 		}
 		return nil, proto.ErrNoZoneToCreateMetaPartition
+	}
+	if proto.IsTwoZoneHAType(haType) && len(candidateZones) <= 2 {
+		log.LogError(fmt.Sprintf("action[allocZonesForMetaNode],zoneName[%v],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],isStrict[%v],err:%v",
+			zoneName, len(zoneList), len(candidateZones), demandWriteNodes, isStrict, proto.ErrNoZoneToCreateMetaPartition))
+		return nil, proto.ErrNoZoneToCreateMetaPartition
+	}
+	if log.IsInfoEnabled() {
+		log.LogInfof(fmt.Sprintf("action[allocZonesForMetaNode],zoneName[%v],reqZoneNum[%v],candidateZones[%v],demandWriteNodes[%v],isStrict[%v],haType[%v]",
+			zoneName, len(zoneList), candidateZones, demandWriteNodes, isStrict, haType))
 	}
 	err = nil
 	return
@@ -627,6 +636,10 @@ func newZone(name string) (zone *Zone) {
 	zone.ecNodes = new(sync.Map)
 	zone.nodeSetMap = make(map[uint64]*nodeSet)
 	return
+}
+
+func (zone *Zone) String() string {
+	return fmt.Sprintf("zoneName:%v,status:%v", zone.name, zone.status)
 }
 
 func newPureZone(name string) (zone *Zone) {
@@ -917,7 +930,7 @@ func (zone *Zone) getAvailDataNodeHosts(excludeNodeSets []uint64, excludeHosts [
 }
 
 func (zone *Zone) getAvailMetaNodeHosts(excludeNodeSets []uint64, excludeHosts []string, replicaNum, recorderNum int, dstStoreMode proto.StoreMode) (newHosts []string, peers []proto.Peer, recorders []string, err error) {
-	if replicaNum + recorderNum == 0 {
+	if replicaNum+recorderNum == 0 {
 		return
 	}
 	ns, err := zone.allocNodeSetForMetaNode(excludeNodeSets, uint8(replicaNum+recorderNum), dstStoreMode)

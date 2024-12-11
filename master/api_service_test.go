@@ -250,7 +250,7 @@ func createDefaultMasterServerForTest() *Server {
 	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 0, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, true, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0}, 0,
-		0, false, 0, 0, maxReadAheadMemMB, maxReadAheadWindowMB, false)
+		0, false, 0, 0, maxReadAheadMemMB, maxReadAheadWindowMB, false, false)
 	if err != nil {
 		panic(err)
 	}
@@ -267,7 +267,7 @@ func createDefaultMasterServerForTest() *Server {
 	recorderVol, err = testServer.cluster.createVol(recorderVolName, "cfs", zoneName, "", 3, 3, 3, 2, 120, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, false, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{}, 0,
-		0, false, 0, 0, 0, 0, false)
+		0, false, 0, 0, 0, 0, false, false)
 	if err != nil {
 		panic(fmt.Sprintf("create recorder vol err: %v", err))
 	}
@@ -4826,6 +4826,9 @@ func TestRecorderTransferVol(t *testing.T) {
 	reqURL = fmt.Sprintf("%v%v?name=%v&authKey=%v&mpRecorderNum=%v", hostAddr, proto.AdminUpdateVol, testVolName, buildAuthKey("cfs"), 0)
 	process(reqURL, t)
 	assert.Equalf(t, uint8(0), recorderTransferVol.mpRecorderNum, "get recorder transfer vol err")
+	for _, replica := range mp.Replicas {
+		replica.IsLeader = true
+	}
 	reqURL = fmt.Sprintf("%v%v?id=%v&addr=%v&reduceNum=%v", hostAddr, proto.AdminDeleteMetaRecorder, mp.PartitionID, deleteAddr, "true")
 	process(reqURL, t)
 	assert.Equalf(t, uint8(0), mp.RecorderNum, "mp[%v] should be 0 after delete", mp.PartitionID)
@@ -5047,30 +5050,35 @@ func TestTwoZoneHA(t *testing.T) {
 	testGetClientClusterConf(t)
 	//create twoZoneHAVol
 	name := "twoZoneHAVol"
-	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v&crossRegion=%v", hostAddr, proto.AdminCreateVol,
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v&crossRegion=%v&mpFollowerRead=true", hostAddr, proto.AdminCreateVol,
 		name, fmt.Sprintf("%v,%v", testZone1, testZone3), 2)
 	process(reqURL, t)
 	tmpVol, err := server.cluster.getVol(name)
 	if !assert.NoError(t, err) {
 		return
 	}
-	if !assert.NotEmpty(t, tmpVol.MpZones) {
+	assert.Equal(t, true, tmpVol.MpFollowerRead)
+	realMpZones := strings.Split(tmpVol.MpZones, commaSplit)
+	t.Logf("mpZones:%v", tmpVol.MpZones)
+	if !assert.Equal(t, 4, len(realMpZones)) {
+		t.Logf("mpZones:%v", tmpVol.MpZones)
 		return
 	}
 	for _, dp := range tmpVol.dataPartitions.partitions {
-		if !assert.Equal(t, dp.Replicas[0].dataNode.ZoneName, dp.Replicas[1].dataNode.ZoneName) {
+		node0, _ := server.cluster.dataNode(dp.Hosts[0])
+		node1, _ := server.cluster.dataNode(dp.Hosts[1])
+		if !assert.Equal(t, node0.ZoneName, node1.ZoneName) {
 			return
 		}
 	}
-
+	log.LogFlush()
 	for _, mp := range tmpVol.MetaPartitions {
 		mpZones := make(map[string]int)
-		for _, replica := range mp.Replicas {
-			mpZones[replica.metaNode.ZoneName] = 1
+		for _, host := range mp.Hosts {
+			node, _ := server.cluster.metaNode(host)
+			mpZones[node.ZoneName] = 1
 		}
-		if !assert.Equal(t, 4, len(mpZones)) {
-			return
-		}
+		assert.LessOrEqualf(t, 3, len(mpZones), "mpZones:%v", mpZones)
 	}
 	vv, err := mc.AdminAPI().GetVolumeSimpleInfo(name)
 	if !assert.NoError(t, err) {
@@ -5079,10 +5087,15 @@ func TestTwoZoneHA(t *testing.T) {
 	if !assert.Equal(t, true, vv.Quorum == int(vv.DpReplicaNum/2+1)) {
 		return
 	}
-
-	reqURL = fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v&crossRegion=%v&authKey=%v", hostAddr, proto.AdminUpdateVol,
+	assert.Equal(t, true, vv.MpFollowerRead)
+	reqURL = fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v&crossRegion=%v&authKey=%v&mpFollowerRead=false", hostAddr, proto.AdminUpdateVol,
 		name, fmt.Sprintf("%v,%v", testZone1, testZone3), 2, buildAuthKey("cfstest"))
 	process(reqURL, t)
+	tmpVol, err = server.cluster.getVol(name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	assert.Equal(t, false, tmpVol.MpFollowerRead)
 }
 
 func testGetClientClusterConf(t *testing.T) {

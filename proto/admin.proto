@@ -262,6 +262,7 @@ message SimpleVolViewPb {
     int32                     ReqRecordsReservedTime = 107;
     int32                     ReqRecordsMaxCount     = 108;
     string                    MpZones                = 109;
+    bool                    MpFollowerRead                = 110;
 }
 
 message NodeStatInfoPb {
