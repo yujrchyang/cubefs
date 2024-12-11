@@ -16,6 +16,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/mqsender"
 	"golang.org/x/time/rate"
 	"net"
 	"net/http/httputil"
@@ -90,7 +91,7 @@ type Server struct {
 	leaderChangeChan     chan *LeaderTermInfo
 	apiListener          net.Listener
 	bandwidthRateLimiter *rate.Limiter
-	mqProducer           *MetadataMQProducer
+	mqProducer           *mqsender.MetadataMQProducer
 }
 
 // NewServer creates a new server
@@ -152,11 +153,12 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	m.cluster.scheduleTask()
 
 	var producerStat bool
-	if producerStat, err = m.getMqProducerState(cfg); err != nil {
+	if producerStat, err = mqsender.GetMqProducerState(cfg); err != nil {
 		return fmt.Errorf("action[Start] failed %v, err: mq producer stat may be invalid = %s", proto.ErrInvalidCfg, err.Error())
 	}
 	if producerStat {
-		if err = m.initMetadataMqProducer(cfg); err != nil {
+		m.mqProducer, err = mqsender.CreateMetadataMqProducer(m.clusterName, proto.RoleMaster, cfg)
+		if err != nil {
 			return
 		}
 	}
@@ -179,7 +181,7 @@ func (m *Server) Shutdown() {
 		}
 	}
 	if m.mqProducer != nil {
-		m.mqProducer.shutdown()
+		m.mqProducer.Shutdown()
 	}
 	m.wg.Done()
 }
