@@ -121,7 +121,7 @@ func (d *Disk) checkAvailable(dp *proto.PartitionReport) (bool, *proto.DataParti
 	}
 	log.LogInfof("checkAvailable: migNode(%v) disk(%s) dp(%v) status(%v) isRecover(%v) replicaNum(%v) hosts(%v)",
 		d.nodeAddr, d.path, dp.PartitionID, dataPartition.Status, dataPartition.IsRecover, dataPartition.ReplicaNum, dataPartition.Hosts)
-	// DP 正常
+
 	if dataPartition.Status == proto.Unavailable {
 		return false, nil
 	}
@@ -137,15 +137,15 @@ func (d *Disk) checkAvailable(dp *proto.PartitionReport) (bool, *proto.DataParti
 			return false, nil
 		}
 	}
-	if len(dataPartition.Replicas) == 0 || dataPartition.Replicas[0].Used == 0 {
-		log.LogInfof("checkAvailable: replica[0].Used = 0")
-		return false, nil
-	}
-
-	liveReplicas := getLiveReplicas(dataPartition, 60*3)
-	if len(liveReplicas) != len(dataPartition.Hosts) {
-		log.LogWarnf("getDataPartitionFromDiskForMigration DP:%v liveReplicas:%v Hosts:%v", dataPartition.PartitionID, liveReplicas, dataPartition.Hosts)
-		return false, nil
+	if !(d.zoneCtrl.taskType == NodesMigrate && d.zoneCtrl.outMigRatio == 1) {
+		if len(dataPartition.Replicas) == 0 || dataPartition.Replicas[0].Used == 0 {
+			log.LogInfof("checkAvailable: replica[0].Used = 0")
+			return false, nil
+		}
+		// 非百分百节点迁移，不动主备的主
+		if dataPartition.Hosts[0] == d.nodeAddr {
+			return false, nil
+		}
 	}
 
 	if !utils.Contains(dataPartition.Hosts, d.nodeAddr) {
@@ -157,16 +157,18 @@ func (d *Disk) checkAvailable(dp *proto.PartitionReport) (bool, *proto.DataParti
 		return false, nil
 	}
 
-	// 先只选择非主备leader的副本执行迁移
-	// 可能不需要这个限制条件了
-	if dataPartition.Hosts[0] == d.nodeAddr {
-		return false, nil
-	}
 	for _, replica := range dataPartition.Replicas {
 		if replica.Addr == d.nodeAddr && replica.DiskPath != d.path {
 			return false, nil
 		}
 	}
+
+	liveReplicas := getLiveReplicas(dataPartition, 60*3)
+	if len(liveReplicas) != len(dataPartition.Hosts) {
+		log.LogWarnf("getDataPartitionFromDiskForMigration DP:%v liveReplicas:%v Hosts:%v", dataPartition.PartitionID, liveReplicas, dataPartition.Hosts)
+		return false, nil
+	}
+
 	//检测所有副本的raft status是否都正常
 	if d.masterClient != nil {
 		for _, host := range dataPartition.Hosts {

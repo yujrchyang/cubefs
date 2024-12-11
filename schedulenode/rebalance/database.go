@@ -392,6 +392,9 @@ func (rw *ReBalanceWorker) GetRebalancedInfoTotalCount(cluster, zoneName, volume
 	if rType < MaxRebalanceType {
 		tx.Where("rebalance_type = ?", rType)
 	}
+	if taskType == 0 {
+		tx.Where("task_type in ?", []TaskType{ZoneAutoReBalance, NodesMigrate})
+	}
 	if taskType > 0 && taskType < MaxTaskType {
 		tx.Where("task_type = ?", taskType)
 	}
@@ -419,6 +422,9 @@ func (rw *ReBalanceWorker) GetRebalancedInfoList(cluster, zoneName, volume strin
 	}
 	if rType < MaxRebalanceType {
 		tx.Where("rebalance_type = ?", rType)
+	}
+	if taskType == 0 {
+		tx.Where("task_type in ?", []TaskType{ZoneAutoReBalance, NodesMigrate})
 	}
 	if taskType > 0 && taskType < MaxTaskType {
 		tx.Where("task_type = ?", taskType)

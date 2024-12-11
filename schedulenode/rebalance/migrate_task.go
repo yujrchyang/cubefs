@@ -94,6 +94,7 @@ func (mt *MigVolTask) startVolDpMigrateTask(vols []string) {
 				continue
 			}
 		}
+		// todo：提示分片并发 不能过大
 		//if !strings.Contains(volInfo.ZoneName, mt.srcZone) && !strings.Contains(volInfo.ZoneName, mt.dstZone) {
 		//	log.LogWarnf("the zone(%v) of vol(%v) is neither srcZone(%v) nor dstZone(%v)", volInfo.ZoneName, vol, mt.srcZone, mt.dstZone)
 		//	mt.finishVols[vol] = true
@@ -147,7 +148,7 @@ func (mt *MigVolTask) startVolDpMigrateTask(vols []string) {
 				log.LogInfof("wait for next round: taskID(%v) actualMaxClusterCount(%v) reach the limit\n", mt.taskId, availableClusterCurrency)
 				break
 			}
-			time.Sleep(defaultMigNodeInterval)
+			//time.Sleep(defaultMigNodeInterval)
 		}
 		rest := len(vols) - len(mt.finishVols)
 		if rest > 0 {
@@ -441,7 +442,7 @@ func (mt *MigVolTask) startVolMpMigrateTask(vols []string) {
 	}()
 
 	for _, vol := range mt.vols {
-		volInfo, err := mt.AdminAPI().GetVolumeSimpleInfo(vol)
+		_, err := mt.AdminAPI().GetVolumeSimpleInfo(vol)
 		if err != nil {
 			if strings.Contains(err.Error(), proto.ErrVolNotExists.Error()) {
 				mt.finishVols[vol] = true
@@ -449,10 +450,10 @@ func (mt *MigVolTask) startVolMpMigrateTask(vols []string) {
 				continue
 			}
 		}
-		if !strings.Contains(volInfo.ZoneName, mt.srcZone) && !strings.Contains(volInfo.ZoneName, mt.dstZone) {
-			log.LogWarnf("the zone(%v) of vol(%v) is neither srcZone(%v) nor dstZone(%v)", volInfo.ZoneName, vol, mt.srcZone, mt.dstZone)
-			mt.finishVols[vol] = true
-		}
+		//if !strings.Contains(volInfo.ZoneName, mt.srcZone) && !strings.Contains(volInfo.ZoneName, mt.dstZone) {
+		//	log.LogWarnf("the zone(%v) of vol(%v) is neither srcZone(%v) nor dstZone(%v)", volInfo.ZoneName, vol, mt.srcZone, mt.dstZone)
+		//	mt.finishVols[vol] = true
+		//}
 	}
 	mt.updateDstMetaNode()
 	if len(mt.dstMetaNodes) <= 0 {
@@ -502,7 +503,7 @@ func (mt *MigVolTask) startVolMpMigrateTask(vols []string) {
 				log.LogInfof("wait for next round: taskID(%v) actualMaxClusterCount(%v) reach the limit\n", mt.taskId, availableClusterCurrency)
 				break
 			}
-			time.Sleep(defaultMigNodeInterval)
+			//time.Sleep(defaultMigNodeInterval)
 		}
 		rest := len(vols) - len(mt.finishVols)
 		if rest > 0 {
@@ -644,23 +645,21 @@ func (mt *MigVolTask) serialChangeMp(volName string, volMpNum, mpCurrency int, m
 			continue
 		}
 
-		err = mt.doChangeMp(migMp, targetMetaNode, mt.dstZone)
+		err = mt.doChangeMp(migMp, targetMetaNode, mt.dstZone, &mpCurrency, clusterCurrency)
 		if err != nil {
 			stackErr = errors.Join(stackErr, err)
 			continue
 		}
-		mpCurrency--
-		*clusterCurrency--
 	}
 	// todo: 所有分片都选不出dst节点 没有实际发生迁移
-	if stackErr == nil {
-		mt.finishVols[volName] = true
-		mt.worker.updateVolRecordStatus(id, StatusStop)
-	}
+	//if stackErr == nil {
+	//	mt.finishVols[volName] = true
+	//	mt.worker.updateVolRecordStatus(id, StatusStop)
+	//}
 	return
 }
 
-func (mt *MigVolTask) doChangeMp(migMp *proto.MetaPartitionInfo, targetMetaNode, dstZone string) (err error) {
+func (mt *MigVolTask) doChangeMp(migMp *proto.MetaPartitionInfo, targetMetaNode, dstZone string, mpCurrency *int, clusterCurrency *int) (err error) {
 	// 最后对leader执行下线
 	// 检测是不是只有leader 不是targetZone
 	isOnlyLeaderNotInTargetZone := IsOnlyLeaderNotInTargetZone(migMp, dstZone)
@@ -701,7 +700,10 @@ func (mt *MigVolTask) doChangeMp(migMp *proto.MetaPartitionInfo, targetMetaNode,
 					UpdateAt:    time.Now(),
 				}
 				mt.worker.insertPartitionMigRecords(record)
+				*mpCurrency--
+				*clusterCurrency--
 			}
+			return
 		}
 	}
 	log.LogDebugf("doChangeMp: taskID(%v) mp(%v) dstZone(%v) err(%v)", mt.taskId, migMp.PartitionID, dstZone, err)

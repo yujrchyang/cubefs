@@ -17,8 +17,8 @@ type MetaNodeReBalanceController struct {
 	inodeTotalCnt                    uint64
 	sortedMetaPartitions             []*proto.MetaPartitionInfo // 按mp inode数排序 降序
 	alreadyMigrateFinishedPartitions map[uint64]bool
-	maxMigrateDpCnt     			int
-	hasMigrateDpCnt     			int
+	maxMigrateDpCnt                  int
+	hasMigrateDpCnt                  int
 }
 
 func NewMetaNodeReBalanceController(nodeInfo *proto.MetaNodeInfo, zoneCtrl *ZoneReBalanceController) (ctrl *MetaNodeReBalanceController) {
@@ -187,6 +187,10 @@ func (mnCtrl *MetaNodeReBalanceController) doMigrate() error {
 	alreadyMigrateInodeCnt := uint64(0)
 
 	for alreadyMigrateInodeCnt < canBeMigrateInodeCnt {
+		if mnCtrl.hasMigrateDpCnt >= mnCtrl.maxMigrateDpCnt {
+			log.LogInfof("doMigrate finish: task(%v) srcNode(%v) hasMig(%v) maxMig(%v)", mnCtrl.zoneCtrl.Id, mnCtrl.nodeInfo.Addr, mnCtrl.hasMigrateDpCnt, mnCtrl.maxMigrateDpCnt)
+			return nil
+		}
 		inRecoveringMPMap, err := IsInRecoveringMoreThanMaxBatchCount(mnCtrl.zoneCtrl.masterClient, mnCtrl.zoneCtrl.releaseClient, mnCtrl.zoneCtrl.rType, mnCtrl.zoneCtrl.clusterMaxBatchCount)
 		if err != nil {
 			log.LogWarnf("doMigrate err:%v", err.Error())
@@ -195,7 +199,7 @@ func (mnCtrl *MetaNodeReBalanceController) doMigrate() error {
 		}
 		clusterMPCurrency := mnCtrl.zoneCtrl.clusterMaxBatchCount - len(inRecoveringMPMap)
 		if clusterMPCurrency > mnCtrl.maxMigrateDpCnt-mnCtrl.hasMigrateDpCnt {
-			clusterMPCurrency = mnCtrl.maxMigrateDpCnt-mnCtrl.hasMigrateDpCnt
+			clusterMPCurrency = mnCtrl.maxMigrateDpCnt - mnCtrl.hasMigrateDpCnt
 		}
 		for clusterMPCurrency > 0 {
 			select {

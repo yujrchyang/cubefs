@@ -51,7 +51,7 @@ func httpRequest(method, url string, param, header map[string]string, reqData []
 	client.Timeout = requestTimeout
 	var req *http.Request
 	fullUrl := mergeRequestUrl(url, param)
-	log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
+	//log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
 	if req, err = http.NewRequest(method, fullUrl, reader); err != nil {
 		return
 	}
@@ -94,7 +94,7 @@ func serveRequest(useSSL bool, target string, r *request) (respData []byte, err 
 	}
 	var url = fmt.Sprintf("%s://%s%s", schema, target, r.path)
 	resp, err = httpRequest(r.method, url, r.params, r.header, r.body)
-	log.LogDebugf("resp %v,err %v", resp, err)
+	//log.LogDebugf("resp %v,err %v", resp, err)
 	if err != nil {
 		log.LogErrorf("serveRequest: send http request fail: method(%v) url(%v) err(%v)", r.method, url, err)
 		return
