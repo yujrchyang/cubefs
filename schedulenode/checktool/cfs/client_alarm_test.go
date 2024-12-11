@@ -14,7 +14,8 @@ import (
 func TestClientAlarm(t *testing.T) {
 	m := NewChubaoFSMonitor(context.Background())
 	m.umpClient = ump.NewUmpClient("", umpOpenAPiDomain)
-	m.clientJMQConfig = clientJMQConfig{addr: "", topic: "", group: ""}
+	m.envConfig = new(EnvConfig)
+	m.envConfig.JMQ = &JMQConfig{Addr: "", Topic: "", Group: ""}
 	m.sreDB, _ = gorm.Open(mysql.New(mysql.Config{DSN: ""}), &gorm.Config{})
 	begin := time.Date(2024, 10, 14, 21, 12, 0, 0, time.Local)
 	alarmCount := m.clientAlarmImpl(clusterSpark, begin, begin.Add(10*time.Minute))

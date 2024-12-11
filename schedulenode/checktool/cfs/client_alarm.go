@@ -18,15 +18,13 @@ const (
 	clusterMysql            = "mysql"
 	clusterSpark            = "spark"
 
-	cfgClientJMQAddr  = "clientJMQAddr"
-	cfgClientJMQTopic = "clientJMQTopic"
-	cfgClientJMQGroup = "clientJMQGroup"
+	cfgPushJMQInterval = "pushJMQInterval"
 )
 
-type clientJMQConfig struct {
-	addr  string
-	topic string
-	group string
+type JMQConfig struct {
+	Addr  string `json:"addr"`
+	Topic string `json:"topic"`
+	Group string `json:"group"`
 }
 
 type clientJMQMsg struct {
@@ -38,7 +36,8 @@ type clientJMQMsg struct {
 
 func (s *ChubaoFSMonitor) clientAlarm() {
 	// only execute on one node
-	if s.clientJMQConfig.addr == "" {
+	if s.envConfig.JMQ == nil || s.envConfig.JMQ.Addr == "" {
+		log.LogInfof("client alarm does not config jmq config...")
 		return
 	}
 	now := time.Now()
@@ -50,17 +49,17 @@ func (s *ChubaoFSMonitor) clientAlarm() {
 
 func (s *ChubaoFSMonitor) clientAlarmImpl(cluster string, begin time.Time, end time.Time) (alarmCount int) {
 	var (
-		prefix       string
-		alarmRecords *ump.AlarmRecordResponse
-		err          error
+		clientUmpPrefix string
+		alarmRecords    *ump.AlarmRecordResponse
+		err             error
 	)
 	if cluster == clusterMysql {
-		prefix = umpKeyMysqlClientPrefix
+		clientUmpPrefix = umpKeyMysqlClientPrefix
 	} else if cluster == clusterSpark {
-		prefix = umpKeySparkClientPrefix
+		clientUmpPrefix = umpKeySparkClientPrefix
 	}
 	for i := 0; i < 10; i++ {
-		alarmRecords, err = s.umpClient.GetAlarmRecords(alarmRecordsMethod, UmpAppName, UmpPlatForm, prefix+umpKeyWarningSufix, begin.UnixMilli(), end.UnixMilli())
+		alarmRecords, err = s.umpClient.GetAlarmRecords(alarmRecordsMethod, UmpAppName, UmpPlatForm, clientUmpPrefix+umpKeyWarningSufix, begin.UnixMilli(), end.UnixMilli())
 		if err == nil {
 			break
 		}
@@ -85,6 +84,7 @@ func (s *ChubaoFSMonitor) clientAlarmImpl(cluster string, begin time.Time, end t
 		vol, ip := parseClientWarning(record.Content)
 		abnormal := isIpPingAbnormal(ip, record.AlarmTime-300*1000, record.AlarmTime+60*1000)
 		if abnormal {
+			log.LogInfof("ping abnormal vol(%v) ip(%v)", vol, ip)
 			continue
 		}
 		ipRes := strings.Split(record.Content, "报警主机")
@@ -93,13 +93,13 @@ func (s *ChubaoFSMonitor) clientAlarmImpl(cluster string, begin time.Time, end t
 			record.Content = fmt.Sprintf("报警主机：%s，%s", ip, strings.Trim(ipRes[0], ",，"))
 		}
 		alarmCount++
-		warnBySpecialUmpKeyWithPrefix(prefix+umpKeyFatalSufix, record.Content)
-		log.LogInfof("clientAlarm: ump(%v) content(%v)", prefix+umpKeyFatalSufix, record.Content)
-		insertRes := s.insertClientMysqlMsg(cluster, vol, ip, record.Content, end.Add(-time.Hour), end)
+		warnBySpecialUmpKeyWithPrefix(clientUmpPrefix+umpKeyFatalSufix, record.Content)
+		log.LogInfof("clientAlarm: ump(%v) content(%v)", clientUmpPrefix+umpKeyFatalSufix, record.Content)
+		insertRes := s.insertClientMysqlMsg(cluster, vol, ip, record.Content, end.Add(-time.Second*time.Duration(s.pushJMQInterval)), end)
 		if insertRes {
 			msg, err := json.Marshal(clientJMQMsg{Cluster: cluster, Volume: vol, Ip: ip, Error: record.Content})
 			if err == nil {
-				sendClientMQMsg(s.clientJMQConfig.addr, s.clientJMQConfig.topic, s.clientJMQConfig.group, string(msg))
+				sendClientMQMsg(s.envConfig.JMQ.Addr, s.envConfig.JMQ.Topic, s.envConfig.JMQ.Group, string(msg))
 			} else {
 				log.LogErrorf("clientAlarm: marshal failed, err(%v)", err)
 			}
