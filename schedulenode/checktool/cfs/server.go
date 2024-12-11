@@ -210,7 +210,7 @@ type ChubaoFSMonitor struct {
 	checkRiskFix                            bool
 	configMap                               map[string]string
 	integerMap                              map[string]int64
-	clientJMQConfig                         clientJMQConfig
+	pushJMQInterval                         int64
 }
 
 func NewChubaoFSMonitor(ctx context.Context) *ChubaoFSMonitor {
@@ -347,7 +347,6 @@ func (s *ChubaoFSMonitor) scheduleTask(cfg *config.Config) {
 	go s.NewSchedule(s.checkAvailableTinyExtents, time.Minute*2)
 	go s.NewSchedule(s.CheckMetaPartitionApply, time.Minute*30)
 	go s.NewSchedule(s.clientAlarm, clientAlarmInterval)
-	//go s.NewSchedule(s.checkCoreVols, time.Minute*2)
 }
 
 func (s *ChubaoFSMonitor) scheduleToCheckVol() {
@@ -548,17 +547,16 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	for _, k := range intKeys {
 		s.integerMap[k] = cfg.GetInt64(k)
 	}
-
-	s.clientJMQConfig.addr = cfg.GetString(cfgClientJMQAddr)
-	s.clientJMQConfig.topic = cfg.GetString(cfgClientJMQTopic)
-	s.clientJMQConfig.group = cfg.GetString(cfgClientJMQGroup)
+	s.pushJMQInterval = int64(cfg.GetFloat(cfgPushJMQInterval))
 
 	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
 		",offlineDiskMaxCountIn24Hour[%v],offlineDiskThreshold[%v],  mpCheckInterval[%v], "+
-		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v],clientJMQConfig[%v]\n",
+		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v]," +
+		"pushJMQInterval[%v]\n",
 		s.usedRatio, s.availSpaceRatio, s.readWriteDpRatio, s.minReadWriteCount, s.hosts, s.scheduleInterval, s.clusterUsedRatio,
 		s.offlineDiskMaxCountIn24Hour, s.offlineDiskThreshold, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval,
-		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD, s.clientJMQConfig)
+		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD,
+	    s.pushJMQInterval)
 	return
 }
 
@@ -599,6 +597,7 @@ type EnvConfig struct {
 	Ump             *UmpConfig        `json:"ump"`
 	GroupAlarm      *GroupAlarmConfig `json:"groupAlarm"`
 	Bucket          *BucketConfig     `json:"bucket"`
+	JMQ             *JMQConfig        `json:"jmq"`
 }
 
 type XbpConfig struct {
@@ -702,8 +701,8 @@ func (s *ChubaoFSMonitor) parseEnv(configsPath string, cfg *config.Config) (envC
 	if email.Enable {
 		multi_email.InitMultiMail(email.Property.SmtpPort, email.Property.SmtpHost, email.Property.MailFrom, email.Property.MailUser, email.Property.MailPwd, email.Property.MailTo)
 	}
-	log.LogInfof("env config: email:%v xbp:%v ump:%v group:%v mysql:%v bucket:%v jdos:%v",
-		envConfig.Email, envConfig.Xbp, envConfig.Ump, envConfig.GroupAlarm, envConfig.SreDbConfig, envConfig.Bucket, envConfig.Jdos)
+	log.LogInfof("env config: email:%v xbp:%v ump:%v group:%v mysql:%v bucket:%v jdos:%v jmq:%v",
+		envConfig.Email, envConfig.Xbp, envConfig.Ump, envConfig.GroupAlarm, envConfig.SreDbConfig, envConfig.Bucket, envConfig.Jdos, envConfig.JMQ)
 	return
 }
 
