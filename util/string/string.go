@@ -65,6 +65,7 @@ func RandomString(length int, seed RandomSeed) string {
 	}
 	return result
 }
+
 func Intersect(string1, string2 []string) (inter []string) {
 	m := make(map[string]int)
 	for _, v := range string1 {

@@ -143,7 +143,11 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 		}
 		addAddr = destAddr
 	} else {
-		if nodeAddr, addAddr, err = chooseMetaHostFunc(c, nodeAddr, mp, oldPeerHosts, excludeNodeSets, vol.zoneName, dstStoreMode); err != nil {
+		candidateZones := vol.zoneName
+		if proto.IsTwoZoneHAType(vol.CrossRegionHAType) {
+			candidateZones = vol.MpZones
+		}
+		if nodeAddr, addAddr, err = chooseMetaHostFunc(c, nodeAddr, mp, oldPeerHosts, excludeNodeSets, candidateZones, dstStoreMode); err != nil {
 			goto errHandler
 		}
 	}
@@ -1052,7 +1056,7 @@ func (c *Cluster) addMetaRecorder(partition *MetaPartition, addr string, volReco
 		err = fmt.Errorf("vol[%v], mp[%v] has contains host[%v]", partition.volName, partition.PartitionID, addr)
 		return
 	}
-	if len(partition.Recorders) + 1 > len(partition.Hosts) {
+	if len(partition.Recorders)+1 > len(partition.Hosts) {
 		err = fmt.Errorf("vol[%v], mp[%v] has recorders count[%v] can't larger than hosts count[%v]",
 			partition.volName, partition.PartitionID, len(partition.Recorders), len(partition.Hosts))
 		return

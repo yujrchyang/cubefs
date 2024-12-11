@@ -4991,3 +4991,110 @@ func TestCreateHddDataPartitionForSmartVolume(t *testing.T) {
 		}
 	}
 }
+
+func TestTwoZoneHA(t *testing.T) {
+	//1 create region
+	regionMap := make(map[string]proto.RegionType)
+	region1 := "twoZoneHA1"
+	region2 := "twoZoneHA2"
+	regionMap[region1] = proto.MasterRegion
+	regionMap[region2] = proto.MasterRegion
+	for regionName, regionType := range regionMap {
+		reqURL := fmt.Sprintf("%v%v?regionName=%v&regionType=%d", hostAddr, proto.CreateRegion, regionName, regionType)
+		process(reqURL, t)
+	}
+	for name, rType := range regionMap {
+		rv, err2 := mc.AdminAPI().GetRegionView(name)
+		if !assert.NoError(t, err2) {
+			return
+		}
+		assert.Equal(t, rType, rv.RegionType)
+	}
+	//2 Establish the association between zone and region
+	zoneRegionMap := make(map[string]string)
+	zoneRegionMap[testZone1] = region1
+	zoneRegionMap[testZone2] = region1
+	zoneRegionMap[testZone6] = region1
+	for zoneName, regionName := range zoneRegionMap {
+		reqURL := fmt.Sprintf("%v%v?zoneName=%v&regionName=%v", hostAddr, proto.SetZoneRegion, zoneName, regionName)
+		process(reqURL, t)
+	}
+
+	zoneList, err := mc.AdminAPI().ZoneList()
+	if !assert.NoErrorf(t, err, "get ZoneList err:%v", err) {
+		return
+	}
+	for zoneName, regionName := range zoneRegionMap {
+		flag := false
+		for _, zoneView := range zoneList {
+			if zoneView.Name == zoneName {
+				flag = true
+				assert.Equalf(t, regionName, zoneView.Region, "zone:%v expect region is %v, but is %v", zoneName, regionName, zoneView.Region)
+				break
+			}
+		}
+		if !flag {
+			t.Errorf("can not find zoneName:%v from zone list", zoneName)
+		}
+	}
+
+	views := server.cluster.t.getRegionViews()
+	zoneArr := make([]string, 0)
+	zoneArr = append(zoneArr, testZone1, testZone3)
+	for _, view := range views {
+		t.Logf("regionView:%v,%v,%v", view.Name, view.RegionType, view.Zones)
+	}
+	testGetClientClusterConf(t)
+	//create twoZoneHAVol
+	name := "twoZoneHAVol"
+	reqURL := fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v&crossRegion=%v", hostAddr, proto.AdminCreateVol,
+		name, fmt.Sprintf("%v,%v", testZone1, testZone3), 2)
+	process(reqURL, t)
+	tmpVol, err := server.cluster.getVol(name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.NotEmpty(t, tmpVol.MpZones) {
+		return
+	}
+	for _, dp := range tmpVol.dataPartitions.partitions {
+		if !assert.Equal(t, dp.Replicas[0].dataNode.ZoneName, dp.Replicas[1].dataNode.ZoneName) {
+			return
+		}
+	}
+
+	for _, mp := range tmpVol.MetaPartitions {
+		mpZones := make(map[string]int)
+		for _, replica := range mp.Replicas {
+			mpZones[replica.metaNode.ZoneName] = 1
+		}
+		if !assert.Equal(t, 4, len(mpZones)) {
+			return
+		}
+	}
+	vv, err := mc.AdminAPI().GetVolumeSimpleInfo(name)
+	if !assert.NoError(t, err) {
+		return
+	}
+	if !assert.Equal(t, true, vv.Quorum == int(vv.DpReplicaNum/2+1)) {
+		return
+	}
+
+	reqURL = fmt.Sprintf("%v%v?name=%v&replicas=3&type=extent&capacity=100&owner=cfstest&zoneName=%v&crossRegion=%v&authKey=%v", hostAddr, proto.AdminUpdateVol,
+		name, fmt.Sprintf("%v,%v", testZone1, testZone3), 2, buildAuthKey("cfstest"))
+	process(reqURL, t)
+}
+
+func testGetClientClusterConf(t *testing.T) {
+	cf, err := mc.AdminAPI().GetClientConf()
+	if !assert.NoError(t, err) {
+		return
+	}
+	hasZone := false
+	for _, node := range cf.DataNodes {
+		if node.Zone != "" {
+			hasZone = true
+		}
+	}
+	assert.Equal(t, true, hasZone)
+}

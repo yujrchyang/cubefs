@@ -149,6 +149,7 @@ type Vol struct {
 	ReadAheadMemMB             int64
 	ReadAheadWindowMB          int64
 	MetaOut                    bool // whether metadata have be stored to cfs meta node
+	MpZones                    string
 	sync.RWMutex
 }
 
@@ -357,6 +358,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.DisableState = vv.DisableState
 	vol.updateTimeOfReplicaNum = vv.UpdateTimeOfReplicaNum
 	vol.MetaOut = vv.MetaOut
+	vol.MpZones = vv.MpZones
 	return vol
 }
 
@@ -1346,8 +1348,12 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 			return nil, errors.NewError(err)
 		}
 	} else {
+		candidateZones := vol.zoneName
+		if proto.IsTwoZoneHAType(vol.CrossRegionHAType) {
+			candidateZones = vol.MpZones
+		}
 		if hosts, peers, recorders, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum),
-			int(vol.mpRecorderNum), vol.zoneName, false, storeMode); err != nil {
+			int(vol.mpRecorderNum), candidateZones, false, storeMode); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
 			return nil, errors.NewError(err)
 		}
@@ -1412,6 +1418,8 @@ func (vol *Vol) getDataPartitionQuorum() (quorum int) {
 		} else {
 			quorum = int(vol.dpReplicaNum/2 + 1)
 		}
+	case proto.TwoZoneHATypeQuorum:
+		quorum = int(vol.dpReplicaNum/2 + 1)
 	default:
 	}
 	return
@@ -1445,7 +1453,7 @@ func (vol *Vol) backupConfig() *Vol {
 		OSSBucketPolicy:            vol.OSSBucketPolicy,
 		trashRemainingDays:         vol.trashRemainingDays,
 		mpLearnerNum:               vol.mpLearnerNum,
-		mpRecorderNum: 				vol.mpRecorderNum,
+		mpRecorderNum:              vol.mpRecorderNum,
 		CrossRegionHAType:          vol.CrossRegionHAType,
 		DPConvertMode:              vol.DPConvertMode,
 		MPConvertMode:              vol.MPConvertMode,
@@ -1490,6 +1498,7 @@ func (vol *Vol) backupConfig() *Vol {
 		ReadAheadMemMB:             vol.ReadAheadMemMB,
 		ReadAheadWindowMB:          vol.ReadAheadWindowMB,
 		MetaOut:                    vol.MetaOut,
+		MpZones:                    vol.MpZones,
 	}
 }
 
@@ -1560,6 +1569,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.ReadAheadWindowMB = backupVol.ReadAheadWindowMB
 	vol.updateTimeOfReplicaNum = backupVol.updateTimeOfReplicaNum
 	vol.MetaOut = backupVol.MetaOut
+	vol.MpZones = backupVol.MpZones
 }
 
 func (vol *Vol) getEcPartitionByID(partitionID uint64) (ep *EcDataPartition, err error) {

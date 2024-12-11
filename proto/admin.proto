@@ -261,6 +261,7 @@ message SimpleVolViewPb {
     bool                      MetaOut                = 106;
     int32                     ReqRecordsReservedTime = 107;
     int32                     ReqRecordsMaxCount     = 108;
+    string                    MpZones                = 109;
 }
 
 message NodeStatInfoPb {
@@ -293,6 +294,7 @@ message NodeView {
     uint64 ID         = 3;
     bool   IsWritable = 4;
     string Version    = 5;
+    string Zone       = 6;
 }
 
 message DataNodeBadDisksView {
