@@ -4,9 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"os"
@@ -153,7 +153,7 @@ var (
 
 var (
 	bucketName    string
-	bucketSession *session.Session
+	s3Client      *s3.Client
 )
 
 type ChubaoFSMonitor struct {
@@ -570,18 +570,19 @@ func (s *ChubaoFSMonitor) parseBucket() (err error) {
 	}
 	bucketName = s.envConfig.Bucket.BucketName
 	log.LogInfof("bucket config: %v", s.envConfig.Bucket)
-	bucketSession, err = session.NewSession(&aws.Config{
-		Credentials:      credentials.NewStaticCredentials(s.envConfig.Bucket.AccessKey, s.envConfig.Bucket.SecretKey, ""),
-		Endpoint:         aws.String(s.envConfig.Bucket.EndPoint),
-		Region:           aws.String(s.envConfig.Bucket.Region),
-		DisableSSL:       aws.Bool(true),
-		S3ForcePathStyle: aws.Bool(false),
-		HTTPClient:       httpClient,
-	})
-	if err != nil {
-		log.LogErrorf("new bucket session failed, bucketConfig: %v, err: %v", s.envConfig.Bucket, err)
-		return
-	}
+	s3Client = s3.NewFromConfig(aws.Config{
+		HTTPClient: httpClient,
+	},
+		func(o *s3.Options) {
+			o.BaseEndpoint = aws.String("http://" + s.envConfig.Bucket.EndPoint)
+		},
+		func(o *s3.Options) {
+			o.Credentials = credentials.NewStaticCredentialsProvider(s.envConfig.Bucket.AccessKey, s.envConfig.Bucket.SecretKey, "")
+		},
+		func(o *s3.Options) {
+			o.Region = s.envConfig.Bucket.Region
+		},
+	)
 	return
 }
 

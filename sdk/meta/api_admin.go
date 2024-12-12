@@ -140,7 +140,7 @@ func (mc *MetaHttpClient) serveRequest(r *request) (respData []byte, err error) 
 func (mc *MetaHttpClient) httpRequest(method, url string, param, header map[string]string, reqData []byte) (resp *http.Response, err error) {
 	client := http.DefaultClient
 	reader := bytes.NewReader(reqData)
-	client.Timeout = c.requestTimeOut
+	client.Timeout = mc.requestTimeOut
 	var req *http.Request
 	fullUrl := mc.mergeRequestUrl(url, param)
 	//log.LogDebugf("httpRequest: merge request url: method(%v) url(%v) bodyLength[%v].", method, fullUrl, len(reqData))
