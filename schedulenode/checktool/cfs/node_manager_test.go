@@ -162,7 +162,7 @@ func TestCheckHeartbeatStuck(t *testing.T) {
 	}()
 
 	t.Run("spark", func(t *testing.T) {
-		host := newClusterHost("test.chubaofs.jd.local")
+		host := newClusterHost("test.chubaofs.jd.local", false)
 		host.isReleaseCluster = false
 		cv, err := getCluster(host)
 		if err != nil {
@@ -173,7 +173,7 @@ func TestCheckHeartbeatStuck(t *testing.T) {
 	})
 
 	t.Run("dbbak", func(t *testing.T) {
-		host := newClusterHost("test.dbbak.jd.local")
+		host := newClusterHost("test.dbbak.jd.local", true)
 		host.isReleaseCluster = true
 		cv, err := getCluster(host)
 		if err != nil {
