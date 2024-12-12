@@ -144,6 +144,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/createInodeForTest", m.createInodeForTest)
 
 	http.HandleFunc("/getRecorderById", m.getRecorderByIDHandler)
+	http.HandleFunc("/truncateRecorderWAL", m.truncateRecorderWALHandler)
 	http.HandleFunc("/checkDirInodeNlink", m.checkDirInodeNLink)
 	return
 }
@@ -3406,7 +3407,7 @@ func (m *MetaNode) getRecorderByIDHandler(w http.ResponseWriter, r *http.Request
 	defer func() {
 		data, _ := resp.Marshal()
 		if _, err := w.Write(data); err != nil {
-			log.LogErrorf("[getPartitionByIDHandler] response %s", err)
+			log.LogErrorf("[getRecorderByIDHandler] response %s", err)
 		}
 	}()
 	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
@@ -3440,6 +3441,49 @@ func (m *MetaNode) getRecorderByIDHandler(w http.ResponseWriter, r *http.Request
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
+}
+
+func (m *MetaNode) truncateRecorderWALHandler(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	resp := NewAPIResponse(http.StatusBadRequest, "")
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[truncateRecorderWALHandler] response %s", err)
+		}
+	}()
+	pid, err := strconv.ParseUint(r.FormValue("pid"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	var (
+		truncateIndex		uint64
+		newTruncateIndex	uint64
+		mr					*metaRecorder
+	)
+	truncateIndex, err = strconv.ParseUint(r.FormValue("index"), 10, 64)
+	if err != nil {
+		resp.Msg = err.Error()
+		return
+	}
+	mr, err = m.metadataManager.GetRecorder(pid)
+	if err != nil {
+		resp.Code = http.StatusNotFound
+		resp.Msg = err.Error()
+		return
+	}
+	if persistApplyID := mr.Recorder().GetPersistApplyID(); persistApplyID < truncateIndex {
+		resp.Msg = fmt.Sprintf("can only truncate to less than applyIndex(%v)", persistApplyID)
+		return
+	}
+	raftPartition := mr.Recorder().RaftPartition()
+	if raftPartition != nil {
+		raftPartition.Truncate(truncateIndex)
+		newTruncateIndex = raftPartition.GetTruncateIndex()
+	}
+	resp.Code = http.StatusOK
+	resp.Msg = fmt.Sprintf("recorder(%v) truncate to %v", pid, newTruncateIndex)
 }
 
 func (m *MetaNode) checkDirInodeNLink(w http.ResponseWriter, r *http.Request) {

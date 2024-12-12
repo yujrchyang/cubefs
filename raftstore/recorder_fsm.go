@@ -178,6 +178,10 @@ func (r *Recorder) GetApplyID() uint64 {
 	return atomic.LoadUint64(&r.applyID)
 }
 
+func (r *Recorder) GetPersistApplyID() uint64 {
+	return atomic.LoadUint64(&r.persistApplyID)
+}
+
 func (r *Recorder) Persist() (err error) {
 	// todo 加锁
 	if _, err = r.PersistApplyIndex(); err != nil {
