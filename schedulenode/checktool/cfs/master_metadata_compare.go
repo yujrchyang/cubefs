@@ -24,9 +24,9 @@ const (
 
 const (
 	cloudOssUrlFormat = "https://%v/chubaofs_master_backup/%v/%v/masterbackup_%v_%v.tgz"
-	rocksDataPath     = "/tmp/rocksdata"
+	rocksDataPath     = "/export/tmp/master_compare_rocksdata"
 	rocksdbPrefix     = "rocksdb"
-	dangerousPath     = "/export"
+	dangerousPath     = "/export/App"
 )
 
 type CompareRocksMeta interface {
@@ -114,9 +114,10 @@ func executeCompare(masterAddrs []string, ossDomain, cluster, domain string) {
 
 	err := os.RemoveAll(executeDir)
 	if err != nil {
-		log.LogErrorf("remove dir[%v] err:%v", rocksDataPath, err)
+		log.LogErrorf("remove dir[%v] err:%v", executeDir, err)
 		return
 	}
+	log.LogInfof("clear dir:%v", executeDir)
 	os.MkdirAll(executeDir, 0777)
 
 	rocksFilePaths := make([]string, 0)
