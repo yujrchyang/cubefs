@@ -42,6 +42,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 	ino := inodePool.Get()
 	defer inodePool.Put(ino)
 	ino.Inode = req.Inode
+	ino.ModifyTime = Now.GetCurrentTime().Unix()
 	ino.Flag = 0
 	if req.IsPreExtent {
 		ino.Flag = proto.CheckPreExtentExist
@@ -79,6 +80,7 @@ func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Pack
 	ino := inodePool.Get()
 	defer inodePool.Put(ino)
 	ino.Inode = req.Inode
+	ino.ModifyTime = Now.GetCurrentTime().Unix()
 	ext := req.Extent
 	ino.Flag = 0
 	if req.IsPreExtent {
@@ -162,6 +164,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 	ino := inodePool.Get()
 	defer inodePool.Put(ino)
 	ino.Inode = req.Inode
+	ino.ModifyTime = Now.GetCurrentTime().Unix()
 	ino.Type = proto.Mode(os.ModePerm)
 	ino.Size = req.Size
 	// we use CreateTime store req.Version in opFSMExtentTruncate request
@@ -200,6 +203,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 	ino := inodePool.Get()
 	defer inodePool.Put(ino)
 	ino.Inode = req.Inode
+	ino.ModifyTime = Now.GetCurrentTime().Unix()
 	ino.Flag = 0
 	if req.IsPreExtent {
 		ino.Flag = proto.CheckPreExtentExist
