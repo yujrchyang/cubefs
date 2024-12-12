@@ -2,9 +2,9 @@ package cfs
 
 import (
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/tcp_api"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/stretchr/testify/assert"
@@ -86,21 +86,22 @@ func TestUploadMetaNodeStack(t *testing.T) {
 		return
 	}
 
-	var err error
 	httpClient := &http.Client{
 		Timeout: time.Minute * 2,
 	}
-	bucketSession, err = session.NewSession(&aws.Config{
-		Credentials:      credentials.NewStaticCredentials("", "", ""),
-		Endpoint:         aws.String(""),
-		Region:           aws.String(""),
-		DisableSSL:       aws.Bool(true),
-		S3ForcePathStyle: aws.Bool(false),
-		HTTPClient:       httpClient,
-	})
-	if err != nil {
-		return
-	}
+	s3Client = s3.NewFromConfig(aws.Config{
+		HTTPClient: httpClient,
+	},
+		func(o *s3.Options) {
+			o.BaseEndpoint = aws.String("")
+		},
+		func(o *s3.Options) {
+			o.Credentials = credentials.NewStaticCredentialsProvider("", "", "")
+		},
+		func(o *s3.Options) {
+			o.Region = ""
+		},
+	)
 	bucketName = ""
 	uploadMetaNodeStack(addr)
 }

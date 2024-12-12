@@ -2,10 +2,11 @@ package cfs
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/cubefs/cubefs/schedulenode/checktool/cfs/tcp_api"
 	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/log"
@@ -253,15 +254,14 @@ func uploadMetaNodeStack(addr string) {
 		return
 	}
 
-	if bucketSession == nil {
+	if s3Client == nil {
 		return
 	}
 
 	curTime := time.Now()
 	today := time.Date(curTime.Year(), curTime.Month(), curTime.Day(), 0, 0, 0, 0, time.Local)
-	svc := s3.New(bucketSession)
 	key := fmt.Sprintf("/metanode_stack/%s/%s_%s", today.Format("20060102150405"), strings.Split(addr, ":")[0], curTime.Format("20060102150405"))
-	_, err = svc.PutObject(&s3.PutObjectInput{
+	_, err = s3Client.PutObject(context.Background(), &s3.PutObjectInput{
 		Bucket:      aws.String(bucketName),
 		Key:         aws.String(key),
 		Body:        bytes.NewReader(data),
