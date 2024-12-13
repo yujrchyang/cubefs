@@ -626,6 +626,9 @@ func (ml *MultiLimiter) waitOrAlowN(ctx context.Context, ps Properties, stat Sta
 
 	statIndex := stat.index()
 	groups := ml.getLimiters(ps)
+	if len(groups) == 0 {
+		return nil
+	}
 	var timeout time.Duration
 	for _, group := range groups {
 		for i, limiterWithTimeout := range group {
