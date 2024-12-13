@@ -61,21 +61,8 @@ func (s *ChubaoFSMonitor) checkZoneDiskUsedRatio() {
 				log.LogErrorf("get cluster stat info from %v failed,err:%v", host.host, err)
 				return
 			}
-			cv, err := cfs.GetCluster(host.host, host.isReleaseCluster)
-			if err != nil {
-				_, ok := err.(*json.SyntaxError)
-				if ok {
-					return
-				}
-				log.LogErrorf("get cluster info from %v failed,err:%v", host.host, err)
-				return
-			}
 			var dataNodeAlarmInfo, metaNodeAlarmInfo *PackAlarmInfo
-			if host.host == DomainMysql {
-				dataNodeAlarmInfo, metaNodeAlarmInfo = s.doCheckZoneDiskUsedRatio(csv, cv.MetaNodeThreshold, host)
-			} else {
-				dataNodeAlarmInfo, metaNodeAlarmInfo = s.doCheckZoneDiskUsedRatio(csv, cv.MetaNodeThreshold, host)
-			}
+			dataNodeAlarmInfo, metaNodeAlarmInfo = s.doCheckZoneDiskUsedRatio(csv, host)
 			clusterUsedRatioAlarmInfoLock.Lock()
 			clusterDataNodeUsedRatioAlarmInfo[host.host] = dataNodeAlarmInfo
 			clusterMetaNodeUsedRatioAlarmInfo[host.host] = metaNodeAlarmInfo
@@ -166,35 +153,39 @@ func (s *ChubaoFSMonitor) alarmMataNode(clusterUsedRatioAlarmInfo map[string]*Pa
 	}
 }
 
-func (s *ChubaoFSMonitor) doCheckZoneDiskUsedRatio(csv *cfs.ClusterStatInfoView, usedRatioThreshold float64, host *ClusterHost) (dataNodeAlarmInfo, metaNodeAlarmInfo *PackAlarmInfo) {
-	minDataNodeUsedRatio := usedRatioThreshold
-	maxDataNodeUsedRatio := minDataNodeUsedRatio + 0.05
-	minMetaNodeUsedRatio := usedRatioThreshold
-	maxMetaNodeUsedRatio := minMetaNodeUsedRatio + 0.05
-	dataNodeAlarmInfo = s.doCheckZoneDataNodeDiskUsedRatio(csv, minDataNodeUsedRatio, maxDataNodeUsedRatio, host)
-	metaNodeAlarmInfo = s.doCheckZoneMetaNodeDiskUsedRatio(csv, minMetaNodeUsedRatio, maxMetaNodeUsedRatio, host)
+func (s *ChubaoFSMonitor) doCheckZoneDiskUsedRatio(csv *cfs.ClusterStatInfoView, host *ClusterHost) (dataNodeAlarmInfo, metaNodeAlarmInfo *PackAlarmInfo) {
+	dataNodeAlarmInfo = s.doCheckZoneDataNodeDiskUsedRatio(csv, host)
+	metaNodeAlarmInfo = s.doCheckZoneMetaNodeDiskUsedRatio(csv, host)
 	return
 }
 
-func (s *ChubaoFSMonitor) doCheckZoneDataNodeDiskUsedRatio(csv *cfs.ClusterStatInfoView, usedRatioMin, usedRatioMax float64, host *ClusterHost) (collectAlarmInfo *PackAlarmInfo) {
+func (s *ChubaoFSMonitor) doCheckZoneDataNodeDiskUsedRatio(csv *cfs.ClusterStatInfoView, host *ClusterHost) (collectAlarmInfo *PackAlarmInfo) {
 	collectAlarmInfo = &PackAlarmInfo{
 		nodeType:      dataNodeType,
 		zoneAlarmInfo: make(map[string]*AlarmInfo),
 	}
+	var usedRatioMin, usedRatioMax, usedRatioMinSSD, usedRatioMaxSSD float64
+	usedRatioMin = s.dataNodeUsedRatioMinThresholdHDD
+	usedRatioMax = s.dataNodeUsedRatioMinThresholdHDD + 0.05
+	usedRatioMinSSD = s.dataNodeUsedRatioMinThresholdSSD
+	usedRatioMaxSSD = s.dataNodeUsedRatioMinThresholdSSD + 0.05
 	for zoneName, zoneStat := range csv.ZoneStatInfo {
-		//如果是SSD zone 低于阈值直接忽略
-		if host.isSSDZone(zoneName) && zoneStat.DataNodeStat.UsedRatio < s.dataNodeUsedRatioMinThresholdSSD {
-			log.LogDebug(fmt.Sprintf("ssd zone:%v dataRatio:%v", zoneName, zoneStat.DataNodeStat.UsedRatio))
-			continue
+		var normalAlarmRatio, telAlarmRatio float64
+		if host.isSSDZone(zoneName) {
+			normalAlarmRatio = usedRatioMinSSD
+			telAlarmRatio = usedRatioMaxSSD
+		} else {
+			normalAlarmRatio = usedRatioMin
+			telAlarmRatio = usedRatioMax
 		}
 		alarmInfo := &AlarmInfo{}
 		zoneAlarmInfo := fmt.Sprintf("zone[%v]:", zoneName)
-		if zoneStat.DataNodeStat.UsedRatio > usedRatioMin {
+		if zoneStat.DataNodeStat.UsedRatio > normalAlarmRatio {
 			collectAlarmInfo.shouldAlarm = true
 			alarmInfo.shouldAlarm = true
 			zoneAlarmInfo += fmt.Sprintf(" datanode usedRatio is now %v,", zoneStat.DataNodeStat.UsedRatio)
 		}
-		if zoneStat.DataNodeStat.UsedRatio >= usedRatioMax {
+		if zoneStat.DataNodeStat.UsedRatio >= telAlarmRatio {
 			collectAlarmInfo.shouldTelAlarm = true
 		}
 		alarmInfo.alarmMsg = zoneAlarmInfo
@@ -203,25 +194,27 @@ func (s *ChubaoFSMonitor) doCheckZoneDataNodeDiskUsedRatio(csv *cfs.ClusterStatI
 	return
 }
 
-func (s *ChubaoFSMonitor) doCheckZoneMetaNodeDiskUsedRatio(csv *cfs.ClusterStatInfoView, usedRatioMin, usedRatioMax float64, host *ClusterHost) (collectAlarmInfo *PackAlarmInfo) {
+func (s *ChubaoFSMonitor) doCheckZoneMetaNodeDiskUsedRatio(csv *cfs.ClusterStatInfoView, host *ClusterHost) (collectAlarmInfo *PackAlarmInfo) {
 	collectAlarmInfo = &PackAlarmInfo{
 		nodeType:      metaNodeType,
 		zoneAlarmInfo: make(map[string]*AlarmInfo),
 	}
+	var usedRatio, usedRatioSSD float64
+	usedRatio = s.metaNodeUsedRatioMinThresholdHDD
+	usedRatioSSD = s.metaNodeUsedRatioMinThresholdSSD
 	for zoneName, zoneStat := range csv.ZoneStatInfo {
-		//如果是SSD zone 低于阈值直接忽略
-		if host.isSSDZone(zoneName) && zoneStat.MetaNodeStat.UsedRatio < s.metaNodeUsedRatioMinThresholdSSD {
-			log.LogDebug(fmt.Sprintf("ssd zone:%v,metaRatio:%v", zoneName, zoneStat.MetaNodeStat.UsedRatio))
-			continue
+		var telAlarmRatio float64
+		if host.isSSDZone(zoneName) {
+			telAlarmRatio = usedRatioSSD
+		} else {
+			telAlarmRatio = usedRatio
 		}
 		alarmInfo := &AlarmInfo{}
 		zoneAlarmInfo := fmt.Sprintf("zone[%v]:", zoneName)
-		if zoneStat.MetaNodeStat.UsedRatio > usedRatioMin {
+		if zoneStat.MetaNodeStat.UsedRatio >= telAlarmRatio {
 			collectAlarmInfo.shouldAlarm = true
 			alarmInfo.shouldAlarm = true
 			zoneAlarmInfo += fmt.Sprintf(" metanode usedRatio is now %v,\n", zoneStat.MetaNodeStat.UsedRatio)
-		}
-		if zoneStat.MetaNodeStat.UsedRatio >= usedRatioMax {
 			collectAlarmInfo.shouldTelAlarm = true
 		}
 		alarmInfo.alarmMsg = zoneAlarmInfo

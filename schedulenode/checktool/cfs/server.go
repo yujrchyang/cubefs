@@ -41,8 +41,10 @@ const (
 	minOfflineDiskThreshold                 = time.Minute * 5
 	defaultMNDiskMinWarnSize                = GB * 20
 	defaultMNDiskMinWarnRatio               = 0.7
-	defaultMetaNodeUsedRatioMinThresholdSSD = 0.87
-	defaultDataNodeUsedRatioMinThresholdSSD = 0.87
+	defaultMetaNodeUsedRatioMinThresholdSSD = 0.75
+	defaultDataNodeUsedRatioMinThresholdSSD = 0.85
+	defaultMetaNodeUsedRatioMinThresholdHDD = 0.75
+	defaultDataNodeUsedRatioMinThresholdHDD = 0.85
 	checkPeerConcurrency                    = 8
 	defaultNodeRapidMemIncWarnThreshold     = 20 //内存使用率(%)
 	defaultNodeRapidMemIncreaseWarnRatio    = 0.05
@@ -77,6 +79,8 @@ const (
 	cfgKeyMinOfflineDiskMinute             = "minOfflineDiskMinute"
 	cfgKeyMetaNodeUsedRatioMinThresholdSSD = "metaNodeUsedRatioMinThresholdSSD"
 	cfgKeyDataNodeUsedRatioMinThresholdSSD = "dataNodeUsedRatioMinThresholdSSD"
+	cfgKeyMetaNodeUsedRatioMinThresholdHDD = "metaNodeUsedRatioMinThresholdHDD"
+	cfgKeyDataNodeUsedRatioMinThresholdHDD = "dataNodeUsedRatioMinThresholdHDD"
 	cfgKeyCheckPeerConcurrency             = "checkPeerConcurrency"
 	cfsKeymasterJsonPath                   = "cfsmasterJsonPath"
 	cfgMinRWDPAndMPVolsJsonPath            = "minRWDPAndMPVolsJsonPath"
@@ -194,6 +198,8 @@ type ChubaoFSMonitor struct {
 	ignoreCheckMp                           bool
 	nodeRapidMemIncWarnThreshold            float64
 	nodeRapidMemIncreaseWarnRatio           float64
+	metaNodeUsedRatioMinThresholdHDD        float64
+	dataNodeUsedRatioMinThresholdHDD        float64
 	metaNodeUsedRatioMinThresholdSSD        float64
 	dataNodeUsedRatioMinThresholdSSD        float64
 	checkPeerConcurrency                    int
@@ -521,6 +527,17 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		fmt.Printf("parse %v failed use default value\n", cfgKeyDataNodeUsedRatioMinThresholdSSD)
 		s.dataNodeUsedRatioMinThresholdSSD = defaultDataNodeUsedRatioMinThresholdSSD
 	}
+	s.metaNodeUsedRatioMinThresholdHDD = cfg.GetFloat(cfgKeyMetaNodeUsedRatioMinThresholdHDD)
+	if s.metaNodeUsedRatioMinThresholdHDD <= 0 {
+		fmt.Printf("parse %v failed use default value\n", cfgKeyMetaNodeUsedRatioMinThresholdHDD)
+		s.metaNodeUsedRatioMinThresholdHDD = defaultMetaNodeUsedRatioMinThresholdHDD
+	}
+	s.dataNodeUsedRatioMinThresholdHDD = cfg.GetFloat(cfgKeyDataNodeUsedRatioMinThresholdHDD)
+	if s.dataNodeUsedRatioMinThresholdHDD <= 0 {
+		fmt.Printf("parse %v failed use default value\n", cfgKeyDataNodeUsedRatioMinThresholdHDD)
+		s.dataNodeUsedRatioMinThresholdHDD = defaultDataNodeUsedRatioMinThresholdHDD
+	}
+
 	s.checkPeerConcurrency = int(cfg.GetInt(cfgKeyCheckPeerConcurrency))
 	if s.checkPeerConcurrency <= 0 || s.checkPeerConcurrency > 20 {
 		fmt.Printf("parse %v failed use default value\n", cfgKeyCheckPeerConcurrency)
@@ -549,14 +566,14 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	}
 	s.pushJMQInterval = int64(cfg.GetFloat(cfgPushJMQInterval))
 
-	fmt.Printf("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
+	log.LogInfof("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
 		",offlineDiskMaxCountIn24Hour[%v],offlineDiskThreshold[%v],  mpCheckInterval[%v], "+
-		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v]," +
-		"pushJMQInterval[%v]\n",
+		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v],"+
+		"metaNodeUsedRatioMinThresholdHDD[%v],dataNodeUsedRatioMinThresholdHDD[%v],pushJMQInterval[%v]\n",
 		s.usedRatio, s.availSpaceRatio, s.readWriteDpRatio, s.minReadWriteCount, s.hosts, s.scheduleInterval, s.clusterUsedRatio,
 		s.offlineDiskMaxCountIn24Hour, s.offlineDiskThreshold, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval,
-		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD,
-	    s.pushJMQInterval)
+		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD, s.metaNodeUsedRatioMinThresholdHDD, s.dataNodeUsedRatioMinThresholdHDD,
+		s.pushJMQInterval)
 	return
 }
 
