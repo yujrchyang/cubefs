@@ -12,7 +12,6 @@ import (
 // prepare
 func (s *DataNode) Prepare(p *repl.Packet, remoteAddr string) (err error) {
 	defer func() {
-		p.SetPacketHasPrepare(remoteAddr)
 		if err != nil {
 			p.PackErrorBody(repl.ActionPreparePkt, err.Error())
 		}

@@ -420,7 +420,6 @@ func PutPacketToPool(p *Packet) {
 			}
 		}
 	}
-	p.HasPrepare = false
 	p.Size = 0
 	p.Data = nil
 	p.Opcode = 0
@@ -769,7 +768,12 @@ func (p *Packet) ReadFromConnFromCli(c net.Conn, deadlineSonds int64) (isUseBuff
 	if p.Size < 0 {
 		return
 	}
-	return p.allocateBufferFromPoolForReadConnectBody(c)
+	isUseBufferPool, err = p.allocateBufferFromPoolForReadConnectBody(c)
+	if err != nil {
+		return
+	}
+	p.RemoteAddr = c.RemoteAddr().String()
+	return
 }
 
 func (p *Packet) allocateBufferFromPoolForReadConnectBody(c net.Conn) (isUseBufferPool bool, err error) {

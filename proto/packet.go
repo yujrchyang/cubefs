@@ -314,9 +314,10 @@ type Packet struct {
 	WaitT              int64
 	RecvT              int64
 	mesg               string
-	HasPrepare         bool
 	PoolFlag           int64
 	ctx                context.Context
+
+	RemoteAddr string
 }
 
 // NewPacket returns a new packet.
@@ -962,17 +963,14 @@ func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	p.ArgLen = 0
 }
 
-func (p *Packet) SetPacketHasPrepare(remoteAddr string) {
-	m := p.getPacketCommonLog(remoteAddr)
-	p.mesg = m
-	p.HasPrepare = true
-}
-
-func (p *Packet) SetPacketRePrepare() {
-	p.HasPrepare = false
+func (p *Packet) prepareMesg() {
+	if p.mesg == "" {
+		p.mesg = p.getPacketCommonLog()
+	}
 }
 
 func (p *Packet) AddMesgLog(m string) {
+	p.prepareMesg()
 	p.mesg += m
 }
 
@@ -985,45 +983,18 @@ func (p *Packet) GetUniqueLogId() (m string) {
 			m = m + fmt.Sprintf("_ResultMesg(%v)_PoolFLag(%v)", p.GetResultMsg(), p.PoolFlag)
 		}
 	}()
-	if p.HasPrepare {
-		m = p.mesg
-		return
-	}
-	m = p.getPacketCommonLog("unknowAddr")
+	p.prepareMesg()
+	m = p.mesg
 	return
 }
 
-func (p *Packet) getPacketCommonLog(remoteAddr string) (m string) {
-	m = fmt.Sprintf("RemoteAddr(%v)_Req(%v)_Partition(%v)_", remoteAddr, p.ReqID, p.PartitionID)
-	if p.ExtentType == TinyExtentType && p.Opcode == OpMarkDelete && len(p.Data) > 0 {
-		ext := new(InodeExtentKey)
-		err := json.Unmarshal(p.Data, ext)
-		if err == nil {
-			m += fmt.Sprintf("Extent(%v)_ExtentOffset(%v)_Size(%v)_Opcode(%v)",
-				ext.ExtentId, ext.ExtentOffset, ext.Size, p.GetOpMsg())
-			return
-		}
-	} else if p.Opcode == OpReadTinyDeleteRecord || p.Opcode == OpNotifyReplicasToRepair || p.Opcode == OpDataNodeHeartbeat ||
-		p.Opcode == OpLoadDataPartition || p.Opcode == OpBatchDeleteExtent {
-		p.mesg += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
-		return
-	} else if p.Opcode == OpBroadcastMinAppliedID || p.Opcode == OpGetAppliedId {
-		if p.Size > 0 {
-			applyID := binary.BigEndian.Uint64(p.Data)
-			m += fmt.Sprintf("Opcode(%v)_AppliedID(%v)", p.GetOpMsg(), applyID)
-		} else {
-			m += fmt.Sprintf("Opcode(%v)", p.GetOpMsg())
-		}
-		return
-	} else if p.Opcode == OpGetAllWatermarks || p.Opcode == OpGetAllWatermarksV2 || p.Opcode == OpGetAllWatermarksV3 {
-		m += fmt.Sprintf("Opcode(%v)_RepairExtentType(%v)_", p.GetOpMsg(), p.ExtentType)
-		return
+func (p *Packet) getPacketCommonLog() (m string) {
+	const pattern = "Req(%v)_Opcode(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_Size(%v)_CRC(%v)_Remote(%v)"
+	remoteAddr := p.RemoteAddr
+	if remoteAddr == "" {
+		remoteAddr = "Unknown"
 	}
-	m = fmt.Sprintf("Req(%v)_Partition(%v)_Extent(%v)_ExtentOffset(%v)_KernelOffset(%v)_"+
-		"Size(%v)_Opcode(%v)_CRC(%v)",
-		p.ReqID, p.PartitionID, p.ExtentID, p.ExtentOffset,
-		p.KernelOffset, p.Size, p.GetOpMsg(), p.CRC)
-	return
+	return fmt.Sprintf(pattern, p.ReqID, p.GetOpMsg(), p.PartitionID, p.ExtentID, p.ExtentOffset, p.KernelOffset, p.Size, p.CRC, remoteAddr)
 }
 
 // IsForwardPkt returns if the packet is the forward packet (a packet that will be forwarded to the followers).

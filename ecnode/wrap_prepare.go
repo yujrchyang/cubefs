@@ -25,7 +25,6 @@ import (
 
 func (e *EcNode) Prepare(p *repl.Packet, remote string) (err error) {
 	defer func() {
-		p.SetPacketHasPrepare(remote)
 		if err != nil {
 			p.PackErrorBody(repl.ActionPreparePkt, err.Error())
 		}
