@@ -2242,7 +2242,7 @@ func (c *Cluster) removeDataReplica(dp *DataPartition, addr string, validate, mi
 			return
 		}
 	}
-	ok := c.isRecovering(dp, addr) && !dp.isLatestReplica(addr)
+	ok := dp.isRecover && !dp.isLatestReplica(addr)
 	if ok {
 		err = fmt.Errorf("vol[%v],data partition[%v] can't decommision until it has recovered", dp.VolName, dp.PartitionID)
 		return
@@ -2372,22 +2372,6 @@ func (c *Cluster) resetDataPartitionRaftMember(dp *DataPartition, newPeers []pro
 		return
 	}
 	log.LogInfof("action[resetDataPartitionRaftMember] vol[%v], data partition[%v], newPeers[%v], err[%v]", dp.VolName, dp.PartitionID, newPeers, err)
-	return
-}
-
-func (c *Cluster) isRecovering(dp *DataPartition, addr string) (isRecover bool) {
-	var diskPath string
-	dp.RLock()
-	defer dp.RUnlock()
-	replica, _ := dp.getReplica(addr)
-	if replica != nil {
-		diskPath = replica.DiskPath
-	}
-	key := decommissionDataPartitionKey(addr, diskPath, dp.PartitionID)
-	_, ok := c.BadDataPartitionIds.Load(key)
-	if ok {
-		isRecover = true
-	}
 	return
 }
 
