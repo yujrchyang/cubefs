@@ -259,7 +259,7 @@ func (s *ChubaoFSMonitor) extractChubaoFSInfo(filePath string) (err error) {
 	if err = json.Unmarshal(cfg.Raw, &s.chubaoFSMasterNodes); err != nil {
 		return
 	}
-	fmt.Println("chubaoFSMasterNodes:", s.chubaoFSMasterNodes)
+	log.LogInfof("chubaoFSMasterNodes: %v", s.chubaoFSMasterNodes)
 	return
 }
 
@@ -382,6 +382,13 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	if err = s.initSreDBConfig(); err != nil {
 		return
 	}
+	cfsMasterJsonPath := cfg.GetString(cfsKeymasterJsonPath)
+	if cfsMasterJsonPath == "" {
+		return fmt.Errorf("cfsMasterJsonPath is empty")
+	}
+	if err = s.extractChubaoFSInfo(cfsMasterJsonPath); err != nil {
+		return fmt.Errorf("parse cfsmasterJsonPath failed, cfsmasterJsonPath can not be nil err:%v", err)
+	}
 	if err = s.parseChubaoFSDomains(); err != nil {
 		return
 	}
@@ -394,13 +401,6 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	}
 	if err = s.parseBucket(); err != nil {
 		return err
-	}
-	cfsMasterJsonPath := cfg.GetString(cfsKeymasterJsonPath)
-	if cfsMasterJsonPath == "" {
-		return fmt.Errorf("cfsMasterJsonPath is empty")
-	}
-	if err = s.extractChubaoFSInfo(cfsMasterJsonPath); err != nil {
-		return fmt.Errorf("parse cfsmasterJsonPath failed, cfsmasterJsonPath can not be nil err:%v", err)
 	}
 	minRWDPAndMPVolsJson := cfg.GetString(cfgMinRWDPAndMPVolsJsonPath)
 	if minRWDPAndMPVolsJson == "" {
@@ -723,7 +723,7 @@ func (s *ChubaoFSMonitor) parseChubaoFSDomains() (err error) {
 	for _, host := range s.hosts {
 		if masterNodes, ok := s.chubaoFSMasterNodes[host.host]; ok {
 			host.masterNodes = masterNodes
-			fmt.Printf("domain: %v chubaoFSMasterNodes: %v\n", host.host, s.chubaoFSMasterNodes)
+			log.LogInfof("domain: %v chubaoFSMasterNodes: %v\n", host.host, s.chubaoFSMasterNodes)
 		}
 	}
 	return
