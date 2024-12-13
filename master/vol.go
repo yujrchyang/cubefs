@@ -149,6 +149,7 @@ type Vol struct {
 	ReadAheadMemMB             int64
 	ReadAheadWindowMB          int64
 	MetaOut                    bool // whether metadata have be stored to cfs meta node
+	MpFollowerRead             bool
 	MpZones                    string
 	sync.RWMutex
 }
@@ -358,6 +359,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.DisableState = vv.DisableState
 	vol.updateTimeOfReplicaNum = vv.UpdateTimeOfReplicaNum
 	vol.MetaOut = vv.MetaOut
+	vol.MpFollowerRead = vv.MpFollowerRead
 	vol.MpZones = vv.MpZones
 	return vol
 }
@@ -1343,7 +1345,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	storeMode = vol.DefaultStoreMode
 	errChannel := make(chan error, vol.mpReplicaNum+vol.mpLearnerNum+vol.mpRecorderNum)
 	if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
-		if hosts, peers, learners, err = c.chooseTargetMetaHostsForCreateQuorumMetaPartition(int(vol.mpReplicaNum), int(vol.mpLearnerNum), vol.zoneName, storeMode); err != nil {
+		if hosts, peers, learners, err = c.chooseTargetMetaHostsForCreateQuorumMetaPartition(int(vol.mpReplicaNum), int(vol.mpLearnerNum), vol.zoneName, storeMode, vol.CrossRegionHAType); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts for cross region quorum vol,err[%v]", err)
 			return nil, errors.NewError(err)
 		}
@@ -1353,7 +1355,7 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 			candidateZones = vol.MpZones
 		}
 		if hosts, peers, recorders, err = c.chooseTargetMetaHosts("", nil, nil, int(vol.mpReplicaNum),
-			int(vol.mpRecorderNum), candidateZones, false, storeMode); err != nil {
+			int(vol.mpRecorderNum), candidateZones, false, storeMode, vol.CrossRegionHAType); err != nil {
 			log.LogErrorf("action[doCreateMetaPartition] chooseTargetMetaHosts err[%v]", err)
 			return nil, errors.NewError(err)
 		}

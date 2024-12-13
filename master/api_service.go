@@ -998,6 +998,7 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		isNeedIncreaseMPLearnerNum bool
 		err                        error
 		storeMode                  int
+		vol                        *Vol
 	)
 
 	metrics := exporter.NewModuleTP(proto.AdminAddMetaReplicaLearnerUmpKey)
@@ -1011,10 +1012,8 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(proto.ErrMetaPartitionNotExists))
 		return
 	}
-
+	vol, err = m.cluster.getVol(mp.volName)
 	if proto.StoreMode(storeMode) == proto.StoreModeDef {
-		var vol *Vol
-		vol, err = m.cluster.getVol(mp.volName)
 		if err != nil {
 			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
 			return
@@ -1029,7 +1028,7 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if isAutoChooseAddrForQuorumVol(addReplicaType) {
-		if addr, totalReplicaNum, err = m.cluster.chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp, proto.StoreMode(storeMode)); err != nil {
+		if addr, totalReplicaNum, err = m.cluster.chooseTargetMetaNodeForCrossRegionQuorumVolOfLearnerReplica(mp, proto.StoreMode(storeMode), vol.CrossRegionHAType); err != nil {
 			sendErrReply(w, r, newErrHTTPReply(err))
 			return
 		}
@@ -1848,12 +1847,12 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 
 		truncateEKCountEveryTime int
 
-		bitMapSnapFrozenHour int64
-		enableCheckDelEK     bool
-		readAheadMemMB       int64
-		readAheadWindowMB    int64
-		MetaOut              bool
-
+		bitMapSnapFrozenHour  int64
+		enableCheckDelEK      bool
+		readAheadMemMB        int64
+		readAheadWindowMB     int64
+		MetaOut               bool
+		mpFollowerRead        bool
 		reqRecordReservedTime int32
 		reqRecordMaxCount     int32
 		mpZones               string
@@ -2027,7 +2026,11 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
+	mpFollowerRead, err = parseMpFollowerReadToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
 	mpZones = parseMpZonesToUpdateVol(r, vol)
 	if err = m.cluster.updateVol(name, authKey, zoneName, description, uint64(capacity), uint8(replicaNum), uint8(mpReplicaNum), uint8(mpRecorderNum),
 		followerRead, nearRead, authenticate, enableToken, autoRepair, forceROW, volWriteMutexEnable, isSmart, enableWriteCache,
@@ -2035,7 +2038,8 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		proto.StoreMode(storeMode), mpLayout, extentCacheExpireSec, smartRules, compactTag, dpFolReadDelayCfg, follReadHostWeight, connConfig,
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, umpKeyPrefix, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
-		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB, MetaOut, reqRecordReservedTime, reqRecordMaxCount, mpZones); err != nil {
+		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB, MetaOut,
+		mpFollowerRead, reqRecordReservedTime, reqRecordMaxCount, mpZones); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2136,13 +2140,14 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		readAheadMemMB       int64
 		readAheadWindowMB    int64
 		metaOut              bool
+		mpFollowerRead       bool
 	)
 
 	metrics := exporter.NewModuleTP(proto.AdminCreateVolUmpKey)
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
 		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
-		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, err = parseRequestToCreateVol(r); err != nil {
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpFollowerRead, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2186,7 +2191,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
 		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval,
-		bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut); err != nil {
+		bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpFollowerRead); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2372,6 +2377,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		ReadAheadMemMB:           vol.ReadAheadMemMB,
 		ReadAheadWindowMB:        vol.ReadAheadWindowMB,
 		MetaOut:                  vol.MetaOut,
+		MpFollowerRead:           vol.MpFollowerRead,
 		MpZones:                  vol.MpZones,
 	}
 }
@@ -4395,7 +4401,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
 	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnableState bool, mpSplitStep, inodeCountThreshold uint64,
-	readAheadMemMB, readAheadWindowMB int64, metaOut bool, err error) {
+	readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -4628,6 +4634,15 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		metaOut = false
 	} else {
 		metaOut, err = strconv.ParseBool(metaOutStr)
+		if err != nil {
+			return
+		}
+	}
+	mpFollowerReadStr := r.FormValue(proto.MpFollowerReadKey)
+	if mpFollowerReadStr == "" {
+		mpFollowerRead = false
+	} else {
+		mpFollowerRead, err = strconv.ParseBool(mpFollowerReadStr)
 		if err != nil {
 			return
 		}
@@ -7607,6 +7622,22 @@ func parseMetaOutToUpdateVol(r *http.Request, vol *Vol) (metaOut bool, err error
 		metaOut = vol.MetaOut
 	} else {
 		metaOut, err = strconv.ParseBool(metaOutStr)
+		if err != nil {
+			return
+		}
+	}
+	return
+}
+
+func parseMpFollowerReadToUpdateVol(r *http.Request, vol *Vol) (mpFollowerRead bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	mpFollowerReadStr := r.FormValue(proto.MpFollowerReadKey)
+	if mpFollowerReadStr == "" {
+		mpFollowerRead = vol.MpFollowerRead
+	} else {
+		mpFollowerRead, err = strconv.ParseBool(mpFollowerReadStr)
 		if err != nil {
 			return
 		}

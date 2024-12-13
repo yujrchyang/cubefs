@@ -298,7 +298,7 @@ var getTargetAddressForMetaPartitionDecommission = func(c *Cluster, nodeAddr str
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				//select meta nodes from the other zones in the same region type
 				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,
-					1, excludeNodeSets, oldHosts, dstStoreMode)
+					1, excludeNodeSets, oldHosts, dstStoreMode, vol.CrossRegionHAType)
 				if err != nil {
 					return
 				}
@@ -541,7 +541,7 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 			if IsCrossRegionHATypeQuorum(vol.CrossRegionHAType) {
 				//select meta nodes from the other zones in the same region type
 				_, newPeers, err = c.chooseTargetMetaNodesFromSameRegionTypeOfOfflineReplica(zone.regionName, vol.zoneName,
-					1, excludeNodeSets, oldHosts, dstStoreMode)
+					1, excludeNodeSets, oldHosts, dstStoreMode, vol.CrossRegionHAType)
 				if err != nil {
 					return
 				}
@@ -557,7 +557,7 @@ func (c *Cluster) chooseTargetMetaPartitionHost(oldAddr string, mp *MetaPartitio
 				excludeZone = zones[0]
 			}
 			// choose a meta node in other zone
-			if _, newPeers, _, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, 0, "", false, dstStoreMode); err != nil {
+			if _, newPeers, _, err = c.chooseTargetMetaHosts(excludeZone, excludeNodeSets, oldHosts, 1, 0, "", false, dstStoreMode, vol.CrossRegionHAType); err != nil {
 				goto errHandler
 			}
 		}

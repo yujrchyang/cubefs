@@ -358,6 +358,8 @@ func ConvertSimpleVolViewPb(vv *SimpleVolViewPb) *SimpleVolView {
 		ReadAheadMemMB:           vv.ReadAheadMemMB,
 		ReadAheadWindowMB:        vv.ReadAheadWindowMB,
 		MetaOut:                  vv.MetaOut,
+		MpFollowerRead:           vv.MpFollowerRead,
+		MpZones:                  vv.MpZones,
 		ReqRecordMaxCount:        vv.ReqRecordsMaxCount,
 		ReqRecordReservedTime:    vv.ReqRecordsReservedTime,
 	}
@@ -474,6 +476,7 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		ReadAheadMemMB:         vv.ReadAheadMemMB,
 		ReadAheadWindowMB:      vv.ReadAheadWindowMB,
 		MetaOut:                vv.MetaOut,
+		MpFollowerRead:         vv.MpFollowerRead,
 		ReqRecordsReservedTime: vv.ReqRecordReservedTime,
 		ReqRecordsMaxCount:     vv.ReqRecordMaxCount,
 	}

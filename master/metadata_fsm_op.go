@@ -399,6 +399,7 @@ type volValue struct {
 	DisableState             bool
 	UpdateTimeOfReplicaNum   int64
 	MetaOut                  bool
+	MpFollowerRead           bool
 	MpZones                  string
 }
 
@@ -504,6 +505,7 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		DisableState:             vol.DisableState,
 		UpdateTimeOfReplicaNum:   vol.updateTimeOfReplicaNum,
 		MetaOut:                  vol.MetaOut,
+		MpFollowerRead:           vol.MpFollowerRead,
 		MpZones:                  vol.MpZones,
 	}
 	return

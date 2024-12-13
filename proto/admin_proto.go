@@ -324,9 +324,10 @@ const (
 	ReqRecordReservedTimeKey         = "volReqRecordReservedTime"
 	ReqRecordMaxCountKey             = "volReqRecordMaxCount"
 
-	IDsKey     = "ids"
-	MetaOutKey = "metaOut"
-	MpZonesKey = "mpZones"
+	IDsKey            = "ids"
+	MetaOutKey        = "metaOut"
+	MpZonesKey        = "mpZones"
+	MpFollowerReadKey = "mpFollowerRead"
 )
 
 const (
@@ -1388,6 +1389,7 @@ type SimpleVolView struct {
 	UpdateTimeOfReplicaNum       int64
 	DisableState                 bool
 	MetaOut                      bool
+	MpFollowerRead               bool
 	MpZones                      string
 }
 
