@@ -541,14 +541,14 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 		s.dataNodeUsedRatioMinThresholdHDD = defaultDataNodeUsedRatioMinThresholdHDD
 	}
 
-	s.checkPeerConcurrency = int(cfg.GetInt(cfgKeyCheckPeerConcurrency))
+	s.checkPeerConcurrency = int(cfg.GetInt64(cfgKeyCheckPeerConcurrency))
 	if s.checkPeerConcurrency <= 0 || s.checkPeerConcurrency > 20 {
-		log.LogInfof("parse %v failed use default value\n", cfgKeyCheckPeerConcurrency)
+		log.LogInfof("parse %v g(%v) use default value\n", cfgKeyCheckPeerConcurrency, s.checkPeerConcurrency)
 		s.checkPeerConcurrency = checkPeerConcurrency
 	}
-	s.checkPeerForceSleepMs = int(cfg.GetInt(cfgKeyCheckPeerForceSleepMs))
+	s.checkPeerForceSleepMs = int(cfg.GetInt64(cfgKeyCheckPeerForceSleepMs))
 	if s.checkPeerForceSleepMs <= 0 {
-		log.LogInfof("parse %v failed use default value\n", cfgKeyCheckPeerForceSleepMs)
+		log.LogInfof("parse %v failed(%v) use default value\n", cfgKeyCheckPeerForceSleepMs, s.checkPeerForceSleepMs)
 		s.checkPeerForceSleepMs = defaultCheckPeerForceSleepSec
 	}
 	s.ExpiredMetaRemainDaysCfg, _ = strconv.Atoi(cfg.GetString(cfgKeyExpiredMetaRemainDays))
@@ -577,11 +577,11 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("usedRatio[%v],availSpaceRatio[%v],readWriteDpRatio[%v],minRWCnt[%v],domains[%v],scheduleInterval[%v],clusterUsedRatio[%v]"+
 		",offlineDiskMaxCountIn24Hour[%v],offlineDiskThreshold[%v],  mpCheckInterval[%v], "+
 		"dpCheckInterval[%v],metaNodeExportDiskUsedRatio[%v],ignoreCheckMp[%v],metaNodeUsedRatioMinThresholdSSD[%v],dataNodeUsedRatioMinThresholdSSD[%v],"+
-		"metaNodeUsedRatioMinThresholdHDD[%v],dataNodeUsedRatioMinThresholdHDD[%v],pushJMQInterval[%v]\n",
+		"metaNodeUsedRatioMinThresholdHDD[%v],dataNodeUsedRatioMinThresholdHDD[%v],pushJMQInterval[%v],checkPeerConcurrency[%v],checkPeerSleep[%v]\n",
 		s.usedRatio, s.availSpaceRatio, s.readWriteDpRatio, s.minReadWriteCount, s.hosts, s.scheduleInterval, s.clusterUsedRatio,
 		s.offlineDiskMaxCountIn24Hour, s.offlineDiskThreshold, s.scheduleMpCheckInterval, s.scheduleDpCheckInterval,
 		s.metaNodeExportDiskUsedRatio, s.ignoreCheckMp, s.metaNodeUsedRatioMinThresholdSSD, s.dataNodeUsedRatioMinThresholdSSD, s.metaNodeUsedRatioMinThresholdHDD, s.dataNodeUsedRatioMinThresholdHDD,
-		s.pushJMQInterval)
+		s.pushJMQInterval, s.checkPeerConcurrency, s.checkPeerForceSleepMs)
 	return
 }
 

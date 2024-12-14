@@ -85,10 +85,10 @@ func checkMetaPartitionByVol(volName string, ch *ClusterHost) {
 		return
 	}
 	// 6 并发
-	mpChan := make(chan *MetaPartition, 6)
+	mpChan := make(chan *MetaPartitionView, 6)
 	for i := 0; i < 6; i++ {
 		wg.Add(1)
-		go func(w *sync.WaitGroup, mpCh chan *MetaPartition) {
+		go func(w *sync.WaitGroup, mpCh chan *MetaPartitionView) {
 			defer w.Done()
 			for mp := range mpCh {
 				retryCompareMetaPartition(ch, volName, mp)
@@ -108,7 +108,7 @@ const (
 	inoudeIndex
 )
 
-func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartition) {
+func retryCompareMetaPartition(ch *ClusterHost, volName string, mp *MetaPartitionView) {
 	var err error
 	defer func() {
 		if err != nil {
@@ -305,12 +305,12 @@ func isServerAlreadyStart(tcpAddr string, startDuration time.Duration) bool {
 	return false
 }
 
-func compareMetaPartition(dbbak bool, minReplicas [][]*tcp_api.MetaPartitionLoadResponse, mp *MetaPartition, partitionID uint64) (err error) {
-	metaInfos := make(map[string]*tcp_api.MetaPartitionLoadResponse, len(mp.Replicas))
-	for _, r := range mp.Replicas {
+func compareMetaPartition(dbbak bool, minReplicas [][]*tcp_api.MetaPartitionLoadResponse, mp *MetaPartitionView, partitionID uint64) (err error) {
+	metaInfos := make(map[string]*tcp_api.MetaPartitionLoadResponse, len(mp.Members))
+	for _, host := range mp.Members {
 		var mpr *tcp_api.MetaPartitionLoadResponse
 		for i := 0; i < 3; i++ {
-			if mpr, err = tcp_api.LoadMetaPartition(dbbak, partitionID, r.Addr); err == nil {
+			if mpr, err = tcp_api.LoadMetaPartition(dbbak, partitionID, host); err == nil {
 				break
 			}
 			time.Sleep(time.Millisecond * 200)
@@ -318,7 +318,7 @@ func compareMetaPartition(dbbak bool, minReplicas [][]*tcp_api.MetaPartitionLoad
 		if err != nil {
 			return
 		}
-		metaInfos[r.Addr] = mpr
+		metaInfos[host] = mpr
 	}
 	minApplied, appliedSame := compareLoadResponse(200, 0, func(mpr *tcp_api.MetaPartitionLoadResponse) uint64 { return mpr.ApplyID }, metaInfos)
 	if !appliedSame {
