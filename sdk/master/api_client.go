@@ -136,6 +136,9 @@ func (api *ClientAPI) GetToken(volName, tokenKey string) (token *proto.Token, er
 func (api *ClientAPI) GetMetaPartition(partitionID uint64, volName string) (partition *proto.MetaPartitionInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.ClientMetaPartition)
 	request.addParam("id", strconv.FormatUint(partitionID, 10))
+	if volName == "" {
+		return nil,fmt.Errorf("vol name can't be empty,partitionID:%v",partitionID)
+	}
 	request.addParam("name", volName)
 	var data []byte
 	if data, _, err = api.mc.serveRequest(request); err != nil {
