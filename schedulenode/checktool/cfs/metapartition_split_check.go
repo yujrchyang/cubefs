@@ -112,7 +112,7 @@ func (s *ChubaoFSMonitor) checkMaxMpInodeCount(vols []*VolSpaceStat, host *Clust
 				<-ch
 				wg.Done()
 			}()
-			var mps []*MetaPartition
+			var mps []*MetaPartitionView
 			mps, err = getMetaPartitionsFromVolume(volName, host)
 			if err != nil {
 				log.LogErrorf("getMetaPartitionsFromVolume, volume(%v), host(%v), err(%v)", volName, host, err)
@@ -149,7 +149,7 @@ func (s *ChubaoFSMonitor) checkMaxMpInodeCount(vols []*VolSpaceStat, host *Clust
 	return
 }
 
-func (s *ChubaoFSMonitor) checkMpInodeCount(mpViews []*MetaPartition, host, volume string, isReleaseCluster bool) (mpId, inodeCount, dentryCount uint64, shouldSplit bool) {
+func (s *ChubaoFSMonitor) checkMpInodeCount(mpViews []*MetaPartitionView, host, volume string, isReleaseCluster bool) (mpId, inodeCount, dentryCount uint64, shouldSplit bool) {
 	sort.SliceStable(mpViews, func(i, j int) bool {
 		return mpViews[i].PartitionID > mpViews[j].PartitionID
 	})
@@ -167,7 +167,7 @@ func (s *ChubaoFSMonitor) checkMpInodeCount(mpViews []*MetaPartition, host, volu
 	return
 }
 
-func (s *ChubaoFSMonitor) checkEachMpEndValue(mpViews []*MetaPartition) (mpIds []uint64) {
+func (s *ChubaoFSMonitor) checkEachMpEndValue(mpViews []*MetaPartitionView) (mpIds []uint64) {
 	sort.SliceStable(mpViews, func(i, j int) bool {
 		return mpViews[i].PartitionID > mpViews[j].PartitionID
 	})

@@ -254,7 +254,13 @@ type MetaPartitionView struct {
 	PhyPid      uint64
 	Start       uint64
 	End         uint64
+	MaxInodeID  uint64
+	InodeCount  uint64
+	DentryCount uint64
+	MaxExistIno uint64
+	IsRecover   bool
 	Members     []string
+	Learners    []string
 	LeaderAddr  string
 	Status      int8
 }

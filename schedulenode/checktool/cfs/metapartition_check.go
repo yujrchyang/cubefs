@@ -68,7 +68,7 @@ func (s *ChubaoFSMonitor) checkMpPeerCorrupt() {
 	log.LogInfof("check all metaPartitions corrupt start")
 	for _, host := range s.hosts {
 		checkMpCorruptWg.Add(1)
-		go checkHostMetaPartition(host, s.checkPeerConcurrency)
+		go checkHostMetaPartition(host, s.checkPeerConcurrency, s.checkPeerForceSleepMs)
 	}
 	checkMpCorruptWg.Wait()
 	log.LogInfof("check all metaPartitions corrupt end, cost [%v]", time.Since(mpCheckStartTime))
@@ -78,7 +78,7 @@ func (s *ChubaoFSMonitor) checkMpPeerCorrupt() {
 	}
 }
 
-func getMetaPartitionsFromVolume(volName string, ch *ClusterHost) (mps []*MetaPartition, err error) {
+func getMetaPartitionsFromVolume(volName string, ch *ClusterHost) (mps []*MetaPartitionView, err error) {
 	var (
 		reqURL string
 	)
@@ -101,7 +101,7 @@ func getMetaPartitionsFromVolume(volName string, ch *ClusterHost) (mps []*MetaPa
 	return
 }
 
-func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64) {
+func checkMetaPartitionPeers(ch *ClusterHost, volName string, mpView *MetaPartitionView) {
 	var (
 		reqURL      string
 		err         error
@@ -110,11 +110,17 @@ func checkMetaPartitionPeers(ch *ClusterHost, volName string, PartitionID uint64
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[checkMetaPartitionPeers] host[%v], vol[%v], id[%v], err[%v]", ch.host, volName,
-				PartitionID, err)
+				mpView.PartitionID, err)
 		}
 	}()
 	badReplicas = make([]PeerReplica, 0)
-	reqURL = fmt.Sprintf("http://%v/metaPartition/get?name=%v&id=%v", ch.host, volName, PartitionID)
+	// todo 直接用MetaPartitionView代替MetaPartition结构
+	// MetaPartitionView相比MetaPartition缺少的属性的改造方案：
+	// ReplicaNum: 通过Volume属性获取
+	// Hosts: 用Members代替
+	// PhyID: 这是已经废弃的字段，可以直接去掉相关逻辑
+	// Replicas：旧版本的inode count检查才会用，建议直接删除旧版本代码 checkRaftInodeCountOrDentryCountDiff
+	reqURL = fmt.Sprintf("http://%v/metaPartition/get?name=%v&id=%v", ch.host, volName, mpView.PartitionID)
 	data, err := doRequest(reqURL, ch.isReleaseCluster)
 	if err != nil {
 		return
@@ -320,7 +326,7 @@ loop:
 	return
 }
 
-func checkHostMetaPartition(host *ClusterHost, concurrency int) {
+func checkHostMetaPartition(host *ClusterHost, concurrency int, forceSleepMs int) {
 	defer func() {
 		checkMpCorruptWg.Done()
 		if r := recover(); r != nil {
@@ -343,14 +349,14 @@ func checkHostMetaPartition(host *ClusterHost, concurrency int) {
 			log.LogWarnf("action[checkHostMetaPartition] get metaPartitions of volume failed, vol:%v", vss.Name)
 			continue
 		}
-		mpChan := make(chan *MetaPartition, 8)
+		mpChan := make(chan *MetaPartitionView, 8)
 		for i := 0; i < concurrency; i++ {
 			wg.Add(1)
-			go func(w *sync.WaitGroup, ch chan *MetaPartition) {
+			go func(w *sync.WaitGroup, ch chan *MetaPartitionView) {
 				defer w.Done()
 				for mp := range ch {
-					checkMetaPartitionPeers(host, vss.Name, mp.PartitionID)
-					time.Sleep(time.Millisecond * 16)
+					checkMetaPartitionPeers(host, vss.Name, mp)
+					time.Sleep(time.Millisecond * time.Duration(forceSleepMs))
 				}
 			}(&wg, mpChan)
 		}
@@ -375,6 +381,7 @@ func checkRaftReplicaStatus(host *ClusterHost, replicaRaftStatusMap map[string]*
 	checkRaftReplicaStatusOfRaftAppliedDiff(host, replicaRaftStatusMap, pID, volName, partitionType, hosts)
 	checkRaftStoppedReplica(host, replicaRaftStatusMap, pID, volName, partitionType, replicas, mp)
 	if partitionType == partitionTypeMP {
+		// todo 这个检查是不是可以去掉了？
 		checkRaftInodeCountOrDentryCountDiff(host, replicaRaftStatusMap, pID, volName, mp)
 	}
 }

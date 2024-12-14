@@ -113,7 +113,7 @@ func (s *ChubaoFSMonitor) checkDpPeerCorrupt() {
 			continue
 		}
 		checkDpCorruptWg.Add(1)
-		go checkHostDataPartition(host, s.checkPeerConcurrency)
+		go checkHostDataPartition(host, s.checkPeerConcurrency, s.checkPeerForceSleepMs)
 	}
 	checkDpCorruptWg.Wait()
 	log.LogInfof("check dataPartition corrupt end, cost [%v]", time.Since(dpCheckStartTime))
@@ -628,7 +628,7 @@ func delDpReplica(master string, partition uint64, addr string) (err error) {
 	return
 }
 
-func checkHostDataPartition(host *ClusterHost, concurrency int) {
+func checkHostDataPartition(host *ClusterHost, concurrency int, forceSleep int) {
 	defer func() {
 		checkDpCorruptWg.Done()
 		if r := recover(); r != nil {
@@ -669,7 +669,7 @@ func checkHostDataPartition(host *ClusterHost, concurrency int) {
 				defer w.Done()
 				for dp := range ch {
 					checkDataPartitionPeers(host, vol.Name, dp.PartitionID)
-					time.Sleep(time.Millisecond * 13)
+					time.Sleep(time.Millisecond * time.Duration(forceSleep))
 				}
 			}(&wg, dpChan)
 		}

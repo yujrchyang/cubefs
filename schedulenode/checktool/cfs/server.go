@@ -45,7 +45,8 @@ const (
 	defaultDataNodeUsedRatioMinThresholdSSD = 0.85
 	defaultMetaNodeUsedRatioMinThresholdHDD = 0.75
 	defaultDataNodeUsedRatioMinThresholdHDD = 0.85
-	checkPeerConcurrency                    = 8
+	checkPeerConcurrency                    = 3
+	defaultCheckPeerForceSleepSec           = 100
 	defaultNodeRapidMemIncWarnThreshold     = 20 //内存使用率(%)
 	defaultNodeRapidMemIncreaseWarnRatio    = 0.05
 	minMetaNodeExportDiskUsedRatio          = 70
@@ -82,6 +83,7 @@ const (
 	cfgKeyMetaNodeUsedRatioMinThresholdHDD = "metaNodeUsedRatioMinThresholdHDD"
 	cfgKeyDataNodeUsedRatioMinThresholdHDD = "dataNodeUsedRatioMinThresholdHDD"
 	cfgKeyCheckPeerConcurrency             = "checkPeerConcurrency"
+	cfgKeyCheckPeerForceSleepMs            = "checkPeerForceSleepMs"
 	cfsKeymasterJsonPath                   = "cfsmasterJsonPath"
 	cfgMinRWDPAndMPVolsJsonPath            = "minRWDPAndMPVolsJsonPath"
 	cfsKeyWarnFaultToUsersJsonPath         = "cfsWarnFaultToUsersJsonPath"
@@ -203,6 +205,7 @@ type ChubaoFSMonitor struct {
 	metaNodeUsedRatioMinThresholdSSD        float64
 	dataNodeUsedRatioMinThresholdSSD        float64
 	checkPeerConcurrency                    int
+	checkPeerForceSleepMs                   int
 	checkFlashNode                          bool
 	flashNodeValidVersions                  []string
 	umpClient                               *ump.UMPClient
@@ -540,8 +543,13 @@ func (s *ChubaoFSMonitor) parseConfig(cfg *config.Config) (err error) {
 
 	s.checkPeerConcurrency = int(cfg.GetInt(cfgKeyCheckPeerConcurrency))
 	if s.checkPeerConcurrency <= 0 || s.checkPeerConcurrency > 20 {
-		fmt.Printf("parse %v failed use default value\n", cfgKeyCheckPeerConcurrency)
+		log.LogInfof("parse %v failed use default value\n", cfgKeyCheckPeerConcurrency)
 		s.checkPeerConcurrency = checkPeerConcurrency
+	}
+	s.checkPeerForceSleepMs = int(cfg.GetInt(cfgKeyCheckPeerForceSleepMs))
+	if s.checkPeerForceSleepMs <= 0 {
+		log.LogInfof("parse %v failed use default value\n", cfgKeyCheckPeerForceSleepMs)
+		s.checkPeerForceSleepMs = defaultCheckPeerForceSleepSec
 	}
 	s.ExpiredMetaRemainDaysCfg, _ = strconv.Atoi(cfg.GetString(cfgKeyExpiredMetaRemainDays))
 	if s.ExpiredMetaRemainDaysCfg <= 0 {
