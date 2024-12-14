@@ -100,6 +100,7 @@ type Worker struct {
 	limiter               *cm.ConcurrencyLimiter
 	volumeInfoCheckMutex  sync.Mutex
 	inodeMigParallelNum   int32
+	volumeLastTaskTime    sync.Map // key: volume value:timestamp
 }
 
 func NewWorker(workerType proto.WorkerType) (w *Worker) {

@@ -207,7 +207,7 @@ func checkMpsColdFile(index int, timePoint int64, volName string, mps []*proto.M
 				inodeInfos     map[uint64]*proto.MetaInode
 				err            error
 			)
-			if mpInfo, err = client.ClientAPI().GetMetaPartition(mp.PartitionID, ""); err != nil {
+			if mpInfo, err = client.ClientAPI().GetMetaPartition(mp.PartitionID, volName); err != nil {
 				stdout("Volume(%v) mpId(%v) get MetaPartition failed, err:%v\n", volName, mp.PartitionID, err)
 				return
 			}

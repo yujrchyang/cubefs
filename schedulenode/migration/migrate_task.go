@@ -135,7 +135,7 @@ func (migTask *MigrateTask) GetMpInfo() (err error) {
 		}
 		migTask.stage = GetMNProfPort
 	}()
-	mpInfo, err := migTask.mc.ClientAPI().GetMetaPartition(migTask.mpId, "")
+	mpInfo, err := migTask.mc.ClientAPI().GetMetaPartition(migTask.mpId, migTask.task.VolName)
 	if err != nil {
 		log.LogErrorf("get meta partition(%v) info failed, err:%v", migTask.mpId, err)
 		return
@@ -235,10 +235,6 @@ func (migTask *MigrateTask) MigrateInode() (err error) {
 		}
 		migTask.stage = WaitSubTask
 	}()
-	if migTask.isRecover() {
-		err = fmt.Errorf("mp[%v] is recovering", migTask.mpId)
-		return
-	}
 	end := migTask.last + migTask.vol.GetInodeCheckStep()
 	if end > len(migTask.inodes) {
 		end = len(migTask.inodes)
@@ -333,11 +329,6 @@ func (migTask *MigrateTask) resetInode() {
 
 func (migTask *MigrateTask) StopMig() {
 	migTask.resetInode()
-}
-
-func (migTask *MigrateTask) isRecover() bool {
-	mpInfo, err := migTask.mc.ClientAPI().GetMetaPartition(migTask.mpId, "")
-	return err != nil || mpInfo.IsRecover
 }
 
 func (migTask *MigrateTask) getInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err error) {

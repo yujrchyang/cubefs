@@ -17,6 +17,7 @@ import (
 const (
 	DefaultVolumeMaxExecMPNum = 5
 	DefaultVolumeLoadDuration = 60
+	TaskTimeInterval          = 1 * 60 * 60
 )
 
 const (
@@ -239,6 +240,9 @@ func (w *Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView 
 	runningTasks []*proto.Task, taskNum int64, workerType proto.WorkerType) (newTasks []*proto.Task, err error) {
 	volumeTaskNum := w.getTaskCountByVolume(runningTasks, vol.Name)
 	key := workerTypeKey(workerType, vol.ClusterId, vol.Name)
+	if !w.checkCanCreateTask(key) {
+		return
+	}
 	for i, mp := range mpView {
 		var id uint64
 		if value, ok := w.volumeTaskPos.Load(key); ok {
@@ -282,6 +286,8 @@ func (w *Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView 
 		}
 		if i >= len(mpView)-1 {
 			w.volumeTaskPos.Store(key, uint64(0))
+			// 所有mp创建一轮后设置任务创建时间
+			w.volumeLastTaskTime.Store(key, time.Now().Unix())
 		} else {
 			w.volumeTaskPos.Store(key, mp.PartitionID)
 		}
@@ -295,10 +301,31 @@ func (w *Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView 
 	return
 }
 
+func (w *Worker) checkCanCreateTask(key string) (canCreate bool) {
+	var (
+		lastTaskTime int64
+		mpId         uint64
+	)
+	if v, ok := w.volumeLastTaskTime.Load(key); ok {
+		lastTaskTime = v.(int64)
+	}
+	if v, ok := w.volumeTaskPos.Load(key); ok {
+		mpId = v.(uint64)
+	}
+	if mpId == 0 && time.Now().Unix()-lastTaskTime < TaskTimeInterval{
+		log.LogInfof("last task time create file migrate task time is too short, volume(%v)", key)
+		return false
+	}
+	return true
+}
+
 func (w *Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMigVolume, mpView []*proto.MetaPartitionView,
 	runningTasks []*proto.Task, taskNum int64, workerType proto.WorkerType) (newTasks []*proto.Task, err error) {
 	volumeTaskNum := w.getTaskCountByVolume(runningTasks, vol.Name)
 	key := workerTypeKey(workerType, cluster, vol.Name)
+	if !w.checkCanCreateTask(key) {
+		return
+	}
 	for i, mp := range mpView {
 		var mpId uint64 = 0
 		if value, ok := w.volumeTaskPos.Load(key); ok {
@@ -338,6 +365,8 @@ func (w *Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMigV
 		}
 		if i >= len(mpView)-1 {
 			w.volumeTaskPos.Store(key, uint64(0))
+			// 所有mp创建一轮后设置任务创建时间
+			w.volumeLastTaskTime.Store(key, time.Now().Unix())
 		} else {
 			w.volumeTaskPos.Store(key, mp.PartitionID)
 		}

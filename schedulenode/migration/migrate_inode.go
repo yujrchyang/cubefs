@@ -496,11 +496,6 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 		}
 		migInode.stage = LookupEkSegment
 	}()
-	if migInode.mpOp.isRecover() {
-		migInode.UnlockExtents()
-		err = fmt.Errorf("mp[%v] is recovering", migInode.mpOp.mpId)
-		return
-	}
 	if !migInode.compareReplicasInodeEksEqual() {
 		migInode.UnlockExtents()
 		err = fmt.Errorf("unequal extensions between mp[%v] inode[%v] replicas", migInode.mpOp.mpId, migInode.inodeInfo.Inode)

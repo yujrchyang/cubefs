@@ -42,8 +42,3 @@ func TestGetProfPort(t *testing.T) {
 	}
 	assert.Equal(t, migTask.stage, ListAllIno)
 }
-
-func TestMpIsRecover(t *testing.T) {
-	migTask = NewMigrateTask(task, masterClient, vol)
-	assert.False(t, migTask.isRecover(), "")
-}
