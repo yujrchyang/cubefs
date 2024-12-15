@@ -98,6 +98,9 @@ func (mr *metaRecorder) startRecorderWorker() {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogCriticalf("recorder worker panic(%v) stack: %v", r, string(debug.Stack()))
+			msg := fmt.Sprintf("vol(%v) mp(%v) recorderNode(%v) worker occur panic(%v)",
+				mr.Recorder().VolName(), mr.Recorder().PartitionID(), mr.Recorder().NodeID(), r)
+			exporter.WarningAppendKey(raftstore.RecorderCriticalUmpKey, msg)
 		}
 	}()
 	persistTicker := time.NewTicker(2 * time.Minute)
@@ -144,6 +147,9 @@ func (mr *metaRecorder) checkRecoverAfterStart() {
 	defer func() {
 		if r := recover(); r != nil {
 			log.LogCriticalf("recorder checkRecoverAfterStart panic(%v) stack: %v", r, string(debug.Stack()))
+			msg := fmt.Sprintf("vol(%v) mp(%v) recorderNode(%v) checkRecoverAfterStart occur panic(%v)",
+				mr.Recorder().VolName(), mr.Recorder().PartitionID(), mr.Recorder().NodeID(), r)
+			exporter.WarningAppendKey(raftstore.RecorderCriticalUmpKey, msg)
 		}
 	}()
 

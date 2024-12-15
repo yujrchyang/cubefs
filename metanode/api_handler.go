@@ -3428,6 +3428,7 @@ func (m *MetaNode) getRecorderByIDHandler(w http.ResponseWriter, r *http.Request
 
 	msg := make(map[string]interface{})
 	msg["peers"] = mr.Recorder().GetPeers()
+	msg["recorders"] = mr.Recorder().GetRecorders()
 	msg["learners"] = mr.Recorder().GetLearners()
 	msg["nodeId"] = mr.Recorder().NodeID()
 	msg["apply_id"] = mr.Recorder().GetApplyID()

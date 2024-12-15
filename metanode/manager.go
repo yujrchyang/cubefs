@@ -1253,12 +1253,13 @@ func (m *metadataManager) loadMetaInfo() (metaNodeInfo *proto.MetaNodeInfo, file
 	fileInfo, err = os.Stat(m.rootDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			err = os.MkdirAll(m.rootDir, 0755)
+			os.MkdirAll(m.rootDir, 0755)
+			fileInfo, err = os.Stat(m.rootDir)
 		} else {
 			return
 		}
 	}
-	if !fileInfo.IsDir() {
+	if err != nil || !fileInfo.IsDir() {
 		err = errors.New("metadataDir must be directory")
 		return
 	}

@@ -521,7 +521,7 @@ func (mp *metaPartition) Snapshot(recoverNode uint64, isRecorder bool) (snap raf
 		}
 	}()
 	if isRecorder && mp.IsRecorder(recoverNode) {
-		snapIndex := mp.GetTruncateIndex()
+		snapIndex := mp.GetAppliedID()
 		log.LogInfof("Snapshot: mp[%v] get recover recorder node[%v], snapshotIndex[%v]", mp.config.PartitionId, recoverNode, snapIndex)
 		return newRecorderItemIterator(snapIndex)
 	}
