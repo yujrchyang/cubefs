@@ -264,43 +264,6 @@ func (mp *metaPartition) ExtentsListNoModifyAT(req *proto.GetExtentsRequest, p *
 	return
 }
 
-func (mp *metaPartition) MergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error) {
-	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
-		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
-		return
-	}
-	if len(req.NewExtents) == 0 || len(req.OldExtents) <= 1 {
-		msg := fmt.Sprintf("inode(%v) newExtents length(%v) oldExtents length(%v)", req.Inode, len(req.NewExtents), len(req.OldExtents))
-		p.PacketErrorWithBody(proto.OpArgMismatchErr, []byte(msg))
-		return
-	}
-	clientReqInfo := NewRequestInfo(req.ClientID, req.ClientStartTime, p.ReqID, req.ClientIP, p.CRC, mp.removeDupClientReqEnableState())
-	if previousRespCode, isDup := mp.reqRecords.IsDupReq(clientReqInfo); isDup {
-		log.LogCriticalf("MergeExtents partitionID:%v, reqInfo:%v, respCode:%v", mp.config.PartitionId, clientReqInfo, previousRespCode)
-		p.PacketErrorWithBody(previousRespCode, nil)
-		return
-	}
-
-	im := &InodeMerge{
-		Inode:      req.Inode,
-		NewExtents: req.NewExtents,
-		OldExtents: req.OldExtents,
-	}
-
-	val, err := im.Marshal()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-		return
-	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentMerge, p.RemoteWithReqID(), val, clientReqInfo)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-		return
-	}
-	p.PacketErrorWithBody(resp.(uint8), nil)
-	return
-}
-
 func (mp *metaPartition) FileMigMergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error) {
 	if _, err = mp.isInoOutOfRange(req.Inode); err != nil {
 		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))

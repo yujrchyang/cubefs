@@ -2343,36 +2343,6 @@ func (m *metadataManager) opGetCompactInodesInfo(conn net.Conn, p *Packet, remot
 	return
 }
 
-func (m *metadataManager) opInodeMergeExtents(conn net.Conn, p *Packet, remoteAddr string) (err error) {
-	req := &proto.InodeMergeExtentsRequest{}
-	if err = json.Unmarshal(p.Data, req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return
-	}
-	if err = p.FillClientRequestPacket(req); err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return
-	}
-	mp, err := m.getPartition(req.PartitionId)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return
-	}
-	p.PartitionID = req.PartitionId
-	if !m.serveProxy(conn, mp, p, req) {
-		return
-	}
-	err = mp.MergeExtents(req, p)
-	_ = m.respondToClient(conn, p)
-	return
-}
-
 func (m *metadataManager) responseHeartbeatPb(adminTask *proto.AdminTask, remoteAddr string) {
 	var (
 		resp         = &proto.MetaNodeHeartbeatResponsePb{}

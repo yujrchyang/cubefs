@@ -464,9 +464,22 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Me
 		return
 	}
 
-
 	// delete the data node
-	conn, err := mp.config.ConnPool.GetConnect(dp.Hosts[0])
+	if ext.SrcType != uint64(proto.DelEkSrcTypeFromFileMigMerge) {
+		err = mp.doMarkDelete(ctx, dp, ext)
+	} else {
+		var isMismatchOp = false
+		isMismatchOp, err = mp.doBatchTrashExtents(ctx, dp, ext)
+		if isMismatchOp {
+			err = mp.doMarkDelete(ctx, dp, ext)
+		}
+	}
+	return
+}
+
+func (mp *metaPartition) doMarkDelete(ctx context.Context, dp *topology.DataPartition, ext *proto.MetaDelExtentKey) (err error) {
+	var conn *net.TCPConn
+	conn, err = mp.config.ConnPool.GetConnect(dp.Hosts[0])
 
 	defer func() {
 		if err != nil {
@@ -482,6 +495,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Me
 			err.Error(), ext.PartitionId, ext.ExtentId)
 		return
 	}
+
 	p := NewPacketToDeleteExtent(ctx, dp, ext)
 	if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
 		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
@@ -498,6 +512,53 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Me
 			mp.topoManager.FetchDataPartitionView(mp.config.VolName, ext.PartitionId)
 			log.LogDebugf("doDeleteMarkedInodes vol(%s) dataPartition(%v) not exist in host(%v)," +
 				" force fetch data partition view", mp.config.VolName, ext.PartitionId, dp.Hosts[0])
+		}
+		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
+			p.GetResultMsg())
+	}
+	return
+}
+
+func (mp *metaPartition) doBatchTrashExtents(ctx context.Context, dp *topology.DataPartition, ext *proto.MetaDelExtentKey) (isMismatchOp bool, err error){
+	var conn *net.TCPConn
+	conn, err = mp.config.ConnPool.GetConnect(dp.Hosts[0])
+
+	defer func() {
+		if err != nil {
+			mp.config.ConnPool.PutConnect(conn, ForceClosedConnect)
+		} else {
+			mp.config.ConnPool.PutConnect(conn, NoClosedConnect)
+		}
+	}()
+
+	if err != nil {
+		err = errors.NewErrorf("get conn from pool %s, "+
+			"extents partitionId=%d, extentId=%d",
+			err.Error(), ext.PartitionId, ext.ExtentId)
+		return
+	}
+
+	p := NewPacketToBatchTrashExtent(ctx, dp, []*proto.MetaDelExtentKey{ext})
+	if err = p.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
+		err = errors.NewErrorf("write to dataNode %s, %s", p.GetUniqueLogId(),
+			err.Error())
+		return
+	}
+	if err = p.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
+		err = errors.NewErrorf("read response from dataNode %s, %s",
+			p.GetUniqueLogId(), err.Error())
+		return
+	}
+	if p.ResultCode != proto.OpOk {
+		if p.ResultCode == proto.OpTryOtherAddr {
+			mp.topoManager.FetchDataPartitionView(mp.config.VolName, ext.PartitionId)
+			log.LogDebugf("doDeleteMarkedInodes vol(%s) dataPartition(%v) not exist in host(%v)," +
+				" force fetch data partition view", mp.config.VolName, ext.PartitionId, dp.Hosts[0])
+		}
+		if p.ResultCode == proto.OpArgMismatchErr {
+			isMismatchOp = true
+			log.LogDebugf("doDeleteMarkedInodes vol(%s) dataPartition(%v) need use old op, host(%v),",
+				mp.config.VolName, ext.PartitionId, dp.Hosts[0])
 		}
 		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())

@@ -196,6 +196,21 @@ func NewPacketToBatchDeleteExtent(ctx context.Context, dp *topology.DataPartitio
 	return p
 }
 
+func NewPacketToBatchTrashExtent(ctx context.Context, dp *topology.DataPartition, exts []*proto.MetaDelExtentKey) *Packet {
+	p := new(Packet)
+	p.Magic = proto.ProtoMagic
+	p.Opcode = proto.OpBatchTrashExtent
+	p.PartitionID = uint64(dp.PartitionID)
+	p.Data, _ = json.Marshal(exts)
+	p.Size = uint32(len(p.Data))
+	p.ReqID = proto.GenerateRequestID()
+	p.RemainingFollowers = uint8(len(dp.Hosts) - 1)
+	p.Arg = ([]byte)(dp.GetAllAddrs())
+	p.ArgLen = uint32(len(p.Arg))
+	p.SetCtx(ctx)
+	return p
+}
+
 // NewPacketToDeleteExtent returns a new packet to delete the extent.
 func NewPacketToFreeInodeOnRaftFollower(ctx context.Context, partitionID uint64, freeInodes []byte) *Packet {
 	p := new(Packet)

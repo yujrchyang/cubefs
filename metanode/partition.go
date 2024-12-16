@@ -210,7 +210,6 @@ type OpInode interface {
 	DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (err error)
 	DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p *Packet) (err error)
 	GetCompactInodeInfo(req *proto.GetCmpInodesRequest, p *Packet) (err error)
-	MergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error)
 	FileMigMergeExtents(req *proto.InodeMergeExtentsRequest, p *Packet) (err error)
 }
 

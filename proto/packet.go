@@ -170,6 +170,8 @@ const (
 	OpPromoteDataPartitionRaftLearner uint8 = 0x6C
 	OpResetDataPartitionRaftMember    uint8 = 0x6D
 
+	OpBatchTrashExtent uint8 = 0x6E
+
 	// Operations: MultipartInfo
 	OpCreateMultipart   uint8 = 0x70
 	OpGetMultipart      uint8 = 0x71
@@ -203,7 +205,7 @@ const (
 	//inode reset
 	OpMetaCursorReset     uint8 = 0x94
 	OpMetaGetCmpInode     uint8 = 0x95
-	OpMetaInodeMergeEks   uint8 = 0x96
+	OpMetaInodeMergeEks   uint8 = 0x96 //Deprecated
 	OpMetaFileMigMergeEks uint8 = 0x97
 
 	//Operations: Master -> CodecNode

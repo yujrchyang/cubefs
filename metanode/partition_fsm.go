@@ -312,14 +312,6 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		resp, err = mp.fsmRecoverDeletedInode(dbWriteHandle, ino)
-	case opFSMExtentMerge:
-		var im *InodeMerge
-		im, err = InodeMergeUnmarshal(msg.V)
-		if err != nil {
-			log.LogError(err.Error())
-			return
-		}
-		resp, err = mp.fsmExtentsMerge(dbWriteHandle, im, msg.ReqInfo)
 	case opFSMFileMigExtentMerge:
 		var im *InodeMerge
 		im, err = InodeMergeUnmarshal(msg.V)

@@ -172,7 +172,7 @@ const (
 	opFSMCleanExpiredInode
 	opFSMExtentDelSync
 	opSnapSyncExtent
-	opFSMExtentMerge
+	opFSMExtentMerge // Deprecated
 	resetStoreTick
 	opFSMExtentDelSyncV2
 	opFSMMetaAddVirtualMP //deprecated

@@ -718,15 +718,6 @@ func (i *Inode) ExtentsTruncate(length uint64, ct int64) (delExtents []proto.Met
 	return
 }
 
-func (i *Inode) MergeExtents(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (delExtents []proto.MetaDelExtentKey, merged bool, msg string) {
-	i.Lock()
-	defer i.Unlock()
-	if delExtents, merged, msg = i.Extents.Merge(newEks, oldEks, i.Inode); merged {
-		i.Generation++
-	}
-	return
-}
-
 func (i *Inode) FileMigMergeExtents(newEks []proto.ExtentKey, oldEks []proto.ExtentKey) (delExtents []proto.MetaDelExtentKey, merged bool, msg string) {
 	i.Lock()
 	defer i.Unlock()
