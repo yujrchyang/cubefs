@@ -105,7 +105,7 @@ func (m *Server) SetDelayMinutesOfReplicaNum(w http.ResponseWriter, r *http.Requ
 		delayMinutes int64
 		err          error
 	)
-	if delayMinutes, err = parseAndDelayMinutes(r); err != nil {
+	if delayMinutes, err = parseAndExtractMinutes(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -120,6 +120,28 @@ func (m *Server) SetDelayMinutesOfReplicaNum(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set delay minutes  to %v successfully", delayMinutes)))
+	return
+}
+
+func (m *Server) SetUnrecoverableDuration(w http.ResponseWriter, r *http.Request) {
+	var (
+		alarmInterval int64
+		err           error
+	)
+	if alarmInterval, err = parseAndExtractHours(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if alarmInterval < 1 {
+		err = fmt.Errorf("unrecoverable Duration can't less than %v hour", 1)
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.SetUnrecoverableDuration(alarmInterval * 60 * 60); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set Unrecoverable Duration  to %v hours successfully", alarmInterval)))
 	return
 }
 
@@ -164,6 +186,18 @@ func (c *Cluster) setDelayMinutes(val int64) (err error) {
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setDelayMinutes] from %v to %v failed,err[%v]", oldVal, val, err)
 		c.cfg.delayMinutesReduceReplicaNum = oldVal
+		err = errors.New("persistence by raft occurred error")
+		return
+	}
+	return
+}
+
+func (c *Cluster) SetUnrecoverableDuration(val int64) (err error) {
+	oldVal := c.cfg.UnrecoverableDuration
+	c.cfg.UnrecoverableDuration = val
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[SetUnrecoverableDuration] from %v to %v failed,err[%v]", oldVal, val, err)
+		c.cfg.UnrecoverableDuration = oldVal
 		err = errors.New("persistence by raft occurred error")
 		return
 	}

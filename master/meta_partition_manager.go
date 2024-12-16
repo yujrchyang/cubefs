@@ -20,6 +20,7 @@ import (
 	"math"
 	"runtime/debug"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -116,6 +117,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 	var normalReplicaCount int
 	c.checkFulfillMetaReplica()
 	unrecoverMpIDs := make(map[string]uint64, 0)
+	unrecoverableDuration := atomic.LoadInt64(&c.cfg.UnrecoverableDuration)
 	c.BadMetaPartitionIds.Range(func(key, value interface{}) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -142,7 +144,7 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 			partition.RUnlock()
 			c.BadMetaPartitionIds.Delete(key)
 		} else {
-			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+			if time.Now().Unix()-partition.modifyTime > unrecoverableDuration {
 				unrecoverMpIDs[key.(string)] = partitionID
 			}
 		}
@@ -158,7 +160,8 @@ func (c *Cluster) checkMetaPartitionRecoveryProgress() {
 		if len(unrecoverMpIDs) == 0 {
 			return
 		}
-		msg := fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverMpIDs), unrecoverMpIDs)
+		msg := fmt.Sprintf("action[checkMetaPartitionRecoveryProgress] clusterID[%v],[%v] has migrated more than %v hours,still not recovered,ids[%v]",
+			c.Name, len(unrecoverMpIDs), unrecoverableDuration/60/60, unrecoverMpIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyMpHasNotRecover], msg)
 	}
 }

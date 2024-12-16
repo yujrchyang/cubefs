@@ -181,6 +181,7 @@ type clusterConfig struct {
 	DisableClusterCheckDeleteEK         bool //default false, enable check delete ek
 	delayMinutesReduceReplicaNum        int64
 	MqProducerState                     bool
+	UnrecoverableDuration               int64
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -221,6 +222,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.NodesLiveRatio = defaultNodesLiveRatio
 	cfg.MaxConnsPerHost = defaultMaxConnsPerHost
 	cfg.delayMinutesReduceReplicaNum = defaultDelayMinutesReduceReplicaNum
+	cfg.UnrecoverableDuration = defaultUnrecoverableDuration
 	cfg.initAPIReqBandwidthRateLimitMap()
 	return
 }

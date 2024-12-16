@@ -117,6 +117,7 @@ type clusterValue struct {
 	DisableClusterCheckDelEK            bool
 	DelayMinutesReduceReplicaNum        int64
 	MqProducerState                     bool
+	UnrecoverableDuration               int64
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -201,6 +202,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DisableClusterCheckDelEK:            c.cfg.DisableClusterCheckDeleteEK,
 		DelayMinutesReduceReplicaNum:        c.cfg.delayMinutesReduceReplicaNum,
 		MqProducerState:                     c.cfg.MqProducerState,
+		UnrecoverableDuration:               c.cfg.UnrecoverableDuration,
 	}
 	return cv
 }
@@ -1273,6 +1275,11 @@ func (c *Cluster) loadClusterValue() (err error) {
 			c.cfg.delayMinutesReduceReplicaNum = defaultDelayMinutesReduceReplicaNum
 		}
 		c.cfg.MqProducerState = cv.MqProducerState
+		if cv.UnrecoverableDuration == 0 {
+			atomic.StoreInt64(&c.cfg.UnrecoverableDuration, defaultUnrecoverableDuration)
+		} else {
+			atomic.StoreInt64(&c.cfg.UnrecoverableDuration, cv.UnrecoverableDuration)
+		}
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
