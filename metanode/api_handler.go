@@ -254,6 +254,7 @@ func (m *MetaNode) getPartitionByIDHandler(w http.ResponseWriter, r *http.Reques
 	msg["truncateCountEveryTime"] = partition.GetTruncateEKCountEveryTime()
 	msg["child_file_max_count"] = partition.config.ChildFileMaxCount
 	msg["now"] = time.Now()
+	msg["isRecover"] = partition.CreationType == proto.DecommissionedCreateMetaPartition
 	resp.Data = msg
 	resp.Code = http.StatusOK
 	resp.Msg = http.StatusText(http.StatusOK)
