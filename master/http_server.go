@@ -181,7 +181,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetMqProducerState).
 		HandlerFunc(m.setMetadataMqProducerState)
-
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminAPISetUnrecoverableDuration).
+		HandlerFunc(m.SetUnrecoverableDuration)
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateVol).

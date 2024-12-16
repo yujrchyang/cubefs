@@ -17,6 +17,7 @@ package master
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -32,6 +33,7 @@ func (c *Cluster) checkUnavailDataPartitionsProcessProgress() {
 		}
 	}()
 	unprocessedPartitionIDs := make(map[uint64]string, 0)
+	unrecoverableDuration := atomic.LoadInt64(&c.cfg.UnrecoverableDuration)
 	c.UnavailDataPartitions.Range(func(key, value any) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -48,7 +50,7 @@ func (c *Cluster) checkUnavailDataPartitionsProcessProgress() {
 			return true
 		}
 		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(vol.dpReplicaNum) {
-			if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+			if time.Now().Unix()-partition.modifyTime > unrecoverableDuration {
 				unprocessedPartitionIDs[partitionID] = ""
 			}
 			return true
@@ -57,13 +59,14 @@ func (c *Cluster) checkUnavailDataPartitionsProcessProgress() {
 		if len(badReplicas) == 0 {
 			c.UnavailDataPartitions.Delete(partitionID)
 		}
-		if time.Now().Unix()-partition.modifyTime > defaultUnrecoverableDuration {
+		if time.Now().Unix()-partition.modifyTime > unrecoverableDuration {
 			unprocessedPartitionIDs[partitionID] = ""
 		}
 		return true
 	})
 	if len(unprocessedPartitionIDs) != 0 {
-		msg := fmt.Sprintf("action[checkUnavailDataPartitionsProcessProgress] clusterID[%v],has[%v] unavil dps  more than 24 hours,still not be processed,ids[%v]", c.Name, len(unprocessedPartitionIDs), unprocessedPartitionIDs)
+		msg := fmt.Sprintf("action[checkUnavailDataPartitionsProcessProgress] clusterID[%v],has[%v] unavil dps  more than %v hours,still not be processed,ids[%v]",
+			c.Name, len(unprocessedPartitionIDs), unrecoverableDuration/60/60, unprocessedPartitionIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpHasNotRecover], msg)
 	}
 }
@@ -79,6 +82,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 	c.checkFulfillDataReplica()
 	unrecoverPartitionIDs := make(map[string]uint64, 0)
 	var passedTime int64
+	unrecoverableDuration := atomic.LoadInt64(&c.cfg.UnrecoverableDuration)
 	c.BadDataPartitionIds.Range(func(key, value interface{}) bool {
 		if c.leaderHasChanged() {
 			return false
@@ -103,7 +107,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 		}
 		passedTime = time.Now().Unix() - partition.modifyTime
 		if len(partition.Replicas) == 0 || len(partition.Replicas) < int(replicaNum) {
-			if passedTime > defaultUnrecoverableDuration {
+			if passedTime > unrecoverableDuration {
 				unrecoverPartitionIDs[key.(string)] = partitionID
 			}
 			return true
@@ -118,7 +122,7 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			partition.RUnlock()
 			c.BadDataPartitionIds.Delete(key)
 		} else {
-			if passedTime > defaultUnrecoverableDuration {
+			if passedTime > unrecoverableDuration {
 				unrecoverPartitionIDs[key.(string)] = partitionID
 			}
 		}
@@ -133,7 +137,8 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 		if len(unrecoverPartitionIDs) == 0 {
 			return
 		}
-		msg := fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],has[%v] has offlined more than 24 hours,still not recovered,ids[%v]", c.Name, len(unrecoverPartitionIDs), unrecoverPartitionIDs)
+		msg := fmt.Sprintf("action[checkDiskRecoveryProgress] clusterID[%v],has[%v] has offlined more than %v hours,still not recovered,ids[%v]",
+			c.Name, len(unrecoverPartitionIDs), unrecoverableDuration/60/60, unrecoverPartitionIDs)
 		WarnBySpecialKey(gAlarmKeyMap[alarmKeyDpHasNotRecover], msg)
 	}
 }

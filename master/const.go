@@ -36,7 +36,8 @@ const (
 	stateKey                            = "state"
 	enableKey                           = "enable"
 	thresholdKey                        = "threshold"
-	delayMinutesKey                     = "delayMinutes"
+	minutesKey                          = "minutes"
+	hoursKey                            = "hours"
 	dataPartitionSizeKey                = "size"
 	metaPartitionCountKey               = "mpCount"
 	volCapacityKey                      = "capacity"
@@ -220,7 +221,7 @@ const (
 	intervalToCheckMissingReplica                          = 600
 	intervalToWarnDataPartition                            = 600
 	intervalToLoadDataPartition                            = 12 * 60 * 60
-	defaultUnrecoverableDuration                           = 24 * 60 * 60
+	defaultUnrecoverableDuration                           = 3 * 60 * 60
 	defaultCheckRecoverDuration                            = 10 * 60 * 60
 	defaultDecommissionDuration                            = 10 * 60
 	defaultInitDataPartitionCnt                            = 10

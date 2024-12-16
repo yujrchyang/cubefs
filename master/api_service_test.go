@@ -27,6 +27,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -5110,4 +5111,12 @@ func testGetClientClusterConf(t *testing.T) {
 		}
 	}
 	assert.Equal(t, true, hasZone)
+}
+func TestSetUnrecoverableDuration(t *testing.T) {
+	hours := int64(30)
+	reqURL := fmt.Sprintf("%v%v?hours=%v", hostAddr, proto.AdminAPISetUnrecoverableDuration, hours)
+	process(reqURL, t)
+	if !assert.Equalf(t, hours*60*60, atomic.LoadInt64(&server.cluster.cfg.UnrecoverableDuration), fmt.Sprintf("set  to %v failed", hours)) {
+		return
+	}
 }

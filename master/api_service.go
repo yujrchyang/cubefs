@@ -476,6 +476,7 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		DataNodeDiskReservedRatio:              m.cluster.cfg.DataNodeDiskReservedRatio,
 		DisableClusterCheckDeleteEK:            m.cluster.cfg.DisableClusterCheckDeleteEK,
 		DelayMinutesReduceReplicaNum:           m.cluster.cfg.delayMinutesReduceReplicaNum,
+		UnrecoverableDuration:                  m.cluster.cfg.UnrecoverableDuration,
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
@@ -5369,13 +5370,28 @@ func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
 	return
 }
 
-func parseAndDelayMinutes(r *http.Request) (delay int64, err error) {
+func parseAndExtractMinutes(r *http.Request) (delay int64, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
 	var value string
-	if value = r.FormValue(delayMinutesKey); value == "" {
-		err = keyNotFound(delayMinutesKey)
+	if value = r.FormValue(minutesKey); value == "" {
+		err = keyNotFound(minutesKey)
+		return
+	}
+	if delay, err = strconv.ParseInt(value, 10, 64); err != nil {
+		return
+	}
+	return
+}
+
+func parseAndExtractHours(r *http.Request) (delay int64, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(hoursKey); value == "" {
+		err = keyNotFound(hoursKey)
 		return
 	}
 	if delay, err = strconv.ParseInt(value, 10, 64); err != nil {
