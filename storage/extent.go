@@ -359,6 +359,11 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
 	defer func() {
 		if err == nil {
+			if isSync {
+				atomic.StoreInt32(&e.modified, 0)
+				atomic.StoreInt64(&e.modifies, 0)
+				return
+			}
 			atomic.StoreInt32(&e.modified, 1)
 			atomic.AddInt64(&e.modifies, size)
 		}
