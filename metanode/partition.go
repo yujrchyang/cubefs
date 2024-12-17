@@ -205,6 +205,7 @@ type OpInode interface {
 	UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (err error)
 	InodeGet(req *InodeGetReq, p *Packet, version uint8) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
+	InodeGetBatchPb(req *InodeGetReqBatch, p *Packet, data []byte) (err error)
 	CreateInodeLink(req *LinkInodeReq, p *Packet) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (err error)
@@ -242,6 +243,7 @@ type OpDentry interface {
 	DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet) (err error)
 	UpdateDentry(req *UpdateDentryReq, p *Packet) (err error)
 	ReadDir(req *ReadDirReq, p *Packet) (err error)
+	ReadDirPb(req *ReadDirReq, p *Packet, data []byte) (err error)
 	Lookup(req *LookupReq, p *Packet) (err error)
 	GetDentryTree() DentryTree
 }

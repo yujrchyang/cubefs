@@ -262,6 +262,48 @@ func (mp *metaPartition) getInodeXAttr(inodeID uint64, keys []string) (extendAtt
 	return
 }
 
+func (mp *metaPartition) getInodeXAttrPb(inodeID uint64, keys []string) (extendAttrResp []*proto.ExtendAttrInfoPb, err error) {
+	var extend *Extend
+	extend, err = mp.extendTree.RefGet(inodeID)
+	if err != nil {
+		if err == rocksDBError {
+			exporter.WarningRocksdbError(fmt.Sprintf("action[getInodeExtendAttr] clusterID[%s] volumeName[%s] partitionID[%v]" +
+				" get extend failed witch rocksdb error[Inode:%v]", mp.manager.metaNode.clusterId, mp.config.VolName,
+				mp.config.PartitionId, inodeID))
+		}
+		return
+	}
+
+	if extend == nil {
+		return
+	}
+
+	if len(keys) == 0 {
+		extendAttrResp = make([]*proto.ExtendAttrInfoPb, 0)
+		extend.Range(func(key, value []byte) bool {
+			extendAttrInfo := &proto.ExtendAttrInfoPb{
+				Name:  string(key),
+				Value: string(value),
+			}
+			extendAttrResp = append(extendAttrResp, extendAttrInfo)
+			return true
+		})
+		return
+	}
+
+	extendAttrResp = make([]*proto.ExtendAttrInfoPb, 0, len(keys))
+	for _, name := range keys {
+		if value, exist := extend.Get([]byte(name)); exist {
+			extendAttrInfo := &proto.ExtendAttrInfoPb{
+				Name:  name,
+				Value: string(value),
+			}
+			extendAttrResp = append(extendAttrResp, extendAttrInfo)
+		}
+	}
+	return
+}
+
 func (mp *metaPartition) hasXAttr(inodeID uint64, key string) (exist bool, err error){
 	var extend *Extend
 	if extend, err = mp.extendTree.RefGet(inodeID); err != nil {

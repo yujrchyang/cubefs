@@ -518,9 +518,9 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 			ExtendAttrKeys: []string{proto.XATTR_FLOCK},
 		}
 		packet := proto.NewPacketReqID(ctx)
-		packet.Opcode = proto.OpMetaBatchInodeGet
+		packet.Opcode = proto.OpMetaBatchInodeGetPb
 		packet.PartitionID = mp.PartitionID
-		err = packet.MarshalData(req)
+		err = packet.MarshalDataPb(req)
 		if err != nil {
 			return
 		}
@@ -534,16 +534,16 @@ func (mw *MetaWrapper) batchIget(ctx context.Context, wg *sync.WaitGroup, mp *Me
 			log.LogWarnf("batchIget: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 			return
 		}
-		resp := new(proto.BatchInodeGetResponse)
-		err = packet.UnmarshalData(resp)
+		respPb := new(proto.BatchInodeGetResponsePb)
+		err = packet.UnmarshalDataPb(respPb)
 		if err != nil {
 			log.LogWarnf("batchIget: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 			return
 		}
 		if log.IsDebugEnabled() {
-			log.LogDebugf("batchIget: packet(%v) mp(%v) result(%v) count(%v) pos start(%v) end(%v)", packet, mp, packet.GetResultMsg(), len(resp.Infos), posStart, posEnd)
+			log.LogDebugf("batchIget: packet(%v) mp(%v) result(%v) count(%v) pos start(%v) end(%v)", packet, mp, packet.GetResultMsg(), len(respPb.Infos), posStart, posEnd)
 		}
-		processBatchInodeGetResponse(resp)
+		resp := processBatchInodeGetResponse(respPb)
 		infoRes = append(infoRes, resp.Infos...)
 		posStart = posEnd
 	}
@@ -568,32 +568,50 @@ func processInodeGetResponse(resp *proto.InodeGetResponse) {
 	}
 }
 
-func processBatchInodeGetResponse(resp *proto.BatchInodeGetResponse) {
-	attrMap := make(map[uint64][]*proto.ExtendAttrInfo)
-	for _, attr := range resp.ExtendAttrs {
+func processBatchInodeGetResponse(respPb *proto.BatchInodeGetResponsePb) (resp *proto.BatchInodeGetResponse) {
+	resp = &proto.BatchInodeGetResponse{}
+	attrMap := make(map[uint64][]*proto.ExtendAttrInfoPb)
+	for _, attr := range respPb.ExtendAttrs {
 		attrMap[attr.InodeID] = attr.ExtendAttrs
 	}
-	for _, info := range resp.Infos {
+	for _, infoPb := range respPb.Infos {
 		if proto.IsDbBack {
-			info.Mode = uint32(proto.ConvertDbbakMode(info.Mode))
+			infoPb.Mode = uint32(proto.ConvertDbbakMode(infoPb.Mode))
 		}
-		attrs, ok := attrMap[info.Inode]
-		if !ok {
-			continue
+		info := &proto.InodeInfo{
+			Inode:      infoPb.Inode,
+			Mode:       infoPb.Mode,
+			Nlink:      infoPb.Nlink,
+			Size:       infoPb.Size_,
+			Uid:        infoPb.Uid,
+			Gid:        infoPb.Gid,
+			Generation: infoPb.Generation,
+			ModifyTime: infoPb.ModifyTime,
+			CreateTime: infoPb.CreateTime,
+			AccessTime: infoPb.AccessTime,
 		}
-		var xattrs []proto.InodeXAttrInfo
-		for _, attr := range attrs {
-			if attr == nil {
-				continue
+		if len(infoPb.Target) != 0 {
+			info.Target = &infoPb.Target
+		}
+
+		attrs, ok := attrMap[infoPb.Inode]
+		if ok {
+			var xattrs []proto.InodeXAttrInfo
+			for _, attr := range attrs {
+				if attr == nil {
+					continue
+				}
+				if xattr, err := parseXattr(attr.Name, attr.Value); err == nil {
+					xattrs = append(xattrs, xattr)
+				}
 			}
-			if xattr, err := parseXattr(attr.Name, attr.Value); err == nil {
-				xattrs = append(xattrs, xattr)
+			if len(xattrs) > 0 {
+				info.SetXAttrs(&xattrs)
 			}
 		}
-		if len(xattrs) > 0 {
-			info.SetXAttrs(&xattrs)
-		}
+		resp.Infos = append(resp.Infos, info)
 	}
+	return
 }
 
 func parseXattr(name, value string) (attr proto.InodeXAttrInfo, err error) {
@@ -640,9 +658,9 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 			IsBatch:     true,
 		}
 		packet := proto.NewPacketReqID(ctx)
-		packet.Opcode = proto.OpMetaReadDir
+		packet.Opcode = proto.OpMetaReadDirPb
 		packet.PartitionID = mp.PartitionID
-		err = packet.MarshalData(req)
+		err = packet.MarshalDataPb(req)
 		if err != nil {
 			log.LogWarnf("readdir: req(%v) err(%v)", *req, err)
 			return
@@ -665,7 +683,7 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 			return
 		}
 		resp := new(proto.ReadDirResponse)
-		err = packet.UnmarshalData(resp)
+		err = packet.UnmarshalDataPb(resp)
 		if err != nil {
 			log.LogWarnf("readdir: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
 			return

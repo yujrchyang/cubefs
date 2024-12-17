@@ -167,11 +167,11 @@ func (m *metadataManager) statisticsOpTimeDelay(p *Packet, startTime time.Time, 
 		statisticsAction = proto.ActionMetaOpDeleteDentry
 	case proto.OpMetaLookup:
 		statisticsAction = proto.ActionMetaOpLookup
-	case proto.OpMetaReadDir:
+	case proto.OpMetaReadDir, proto.OpMetaReadDirPb:
 		statisticsAction = proto.ActionMetaOpReadDir
 	case proto.OpMetaInodeGet:
 		statisticsAction = proto.ActionMetaOpInodeGet
-	case proto.OpMetaBatchInodeGet:
+	case proto.OpMetaBatchInodeGet, proto.OpMetaBatchInodeGetPb:
 		statisticsAction = proto.ActionMetaOpBatchInodeGet
 	case proto.OpMetaExtentsAdd:
 		statisticsAction = proto.ActionMetaOpExtentsAdd
@@ -236,6 +236,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opUpdateDentry(conn, p, remoteAddr)
 	case proto.OpMetaReadDir:
 		err = m.opReadDir(conn, p, remoteAddr)
+	case proto.OpMetaReadDirPb:
+		err = m.opReadDirPb(conn, p, remoteAddr)
 	case proto.OpCreateMetaPartition:
 		err = m.opCreateMetaPartition(conn, p, remoteAddr)
 	case proto.OpMetaNodeHeartbeat:
@@ -284,6 +286,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaPartitionTryToLeader(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:
 		err = m.opMetaBatchInodeGet(conn, p, remoteAddr)
+	case proto.OpMetaBatchInodeGetPb:
+		err = m.opMetaBatchInodeGetPb(conn, p, remoteAddr)
 	case proto.OpMetaDeleteInode:
 		err = m.opMetaDeleteInode(conn, p, remoteAddr)
 	case proto.OpMetaCursorReset:

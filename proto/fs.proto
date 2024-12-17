@@ -1,0 +1,94 @@
+// protoc --proto_path=./vendor/:./proto/  --gofast_out=./proto/   fs.proto
+ syntax = "proto3";
+ package proto;
+ import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+ message Dentry {
+  option (gogoproto.goproto_unkeyed)      = false;
+  option (gogoproto.goproto_unrecognized) = false;
+  option (gogoproto.goproto_sizecache)    = false;
+
+
+   uint64 ParentId = 1[(gogoproto.jsontag) = "pid"];
+   string Name = 2[(gogoproto.jsontag) = "name"];
+   uint64 Inode = 3[(gogoproto.jsontag) = "ino"];
+   uint32 Type = 4[(gogoproto.jsontag) = "type"];
+ }
+
+ message ReadDirRequest {
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    string VolName     = 1[(gogoproto.jsontag) = "vol"];
+    uint64 PartitionID = 2[(gogoproto.jsontag) = "pid"];
+    uint64 ParentID    = 3[(gogoproto.jsontag) = "pino"];
+    string Marker      = 4[(gogoproto.jsontag) = "marker"];
+    bool   IsBatch     = 5[(gogoproto.jsontag) = "is_batch"];
+  }
+
+
+ message ReadDirResponse {
+   option (gogoproto.goproto_unkeyed)      = false;
+   option (gogoproto.goproto_unrecognized) = false;
+   option (gogoproto.goproto_sizecache)    = false;
+
+   repeated Dentry   Children   = 1[(gogoproto.nullable) = false,(gogoproto.jsontag) = "children"];
+   string            NextMarker = 2[(gogoproto.jsontag) = "next_marker"];
+ }
+
+ message InodeInfoPb {
+   option (gogoproto.goproto_unkeyed)      = false;
+   option (gogoproto.goproto_unrecognized) = false;
+   option (gogoproto.goproto_sizecache)    = false;
+
+   uint64 Inode      = 1[(gogoproto.jsontag) = "ino"];
+   uint32 Mode       = 2[(gogoproto.jsontag) = "mode"];
+   uint32 Nlink      = 3[(gogoproto.jsontag) = "nlink"];
+   uint64 Size       = 4[(gogoproto.jsontag) = "sz"];
+   uint32 Uid        = 5[(gogoproto.jsontag) = "uid"];
+   uint32 Gid        = 6[(gogoproto.jsontag) = "gid"];
+   uint64 Generation = 7[(gogoproto.jsontag) = "gen"];
+   int64 ModifyTime  = 8[(gogoproto.jsontag) = "mt",(gogoproto.customtype) = "CubeFSTime",(gogoproto.nullable) = false];
+   int64 CreateTime  = 9[(gogoproto.jsontag) = "ct",(gogoproto.customtype) = "CubeFSTime",(gogoproto.nullable) = false];
+   int64 AccessTime  = 10[(gogoproto.jsontag) = "at",(gogoproto.customtype) = "CubeFSTime",(gogoproto.nullable) = false];
+   bytes Target      = 11[(gogoproto.jsontag) = "tgt"];
+ }
+
+ message ExtendAttrInfoPb {
+   option (gogoproto.goproto_unkeyed)      = false;
+   option (gogoproto.goproto_unrecognized) = false;
+   option (gogoproto.goproto_sizecache)    = false;
+
+   string Name  = 1[(gogoproto.jsontag) = "name"];
+   string Value = 2[(gogoproto.jsontag) = "value"];
+ }
+
+ message InodeExtendAttrsInfoPb {
+   option (gogoproto.goproto_unkeyed)      = false;
+   option (gogoproto.goproto_unrecognized) = false;
+   option (gogoproto.goproto_sizecache)    = false;
+
+   uint64                    InodeID     = 1[(gogoproto.jsontag) = "ino"];
+   repeated ExtendAttrInfoPb ExtendAttrs = 2[(gogoproto.jsontag) = "extendAttrs"];
+ }
+
+message BatchInodeGetRequest {
+  option (gogoproto.goproto_unkeyed)      = false;
+  option (gogoproto.goproto_unrecognized) = false;
+  option (gogoproto.goproto_sizecache)    = false;
+
+  string VolName                 = 1[(gogoproto.jsontag) = "vol"];
+  uint64 PartitionID             = 2[(gogoproto.jsontag) = "pid"];
+  repeated uint64 Inodes         = 3[(gogoproto.jsontag) = "inos"];
+  bool WithExtendAttr            = 4[(gogoproto.jsontag) = "withXAttr"];
+  repeated string ExtendAttrKeys = 5[(gogoproto.jsontag) = "keys"];
+}
+
+ message BatchInodeGetResponsePb {
+   option (gogoproto.goproto_unkeyed)      = false;
+   option (gogoproto.goproto_unrecognized) = false;
+   option (gogoproto.goproto_sizecache)    = false;
+
+   repeated InodeInfoPb            Infos       = 1;
+   repeated InodeExtendAttrsInfoPb ExtendAttrs = 2;
+ }

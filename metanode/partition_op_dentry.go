@@ -283,7 +283,7 @@ func (mp *metaPartition) ReadDir(req *ReadDirReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	p.PacketOkWithBody(reply)
+	p.PacketOkWithNoCopyBody(reply)
 	return
 }
 
@@ -329,5 +329,32 @@ func (mp *metaPartition) GetDentryTree() DentryTree {
 func (mp *metaPartition) GetTrashCleanItemMaxTotalCountForEachTime() (maxTotalCount uint64) {
 	maxTotalCount = defCleanTrashItemMaxTotalCountEachTime
 
+	return
+}
+
+func (mp *metaPartition) ReadDirPb(req *ReadDirReq, p *Packet, data []byte) (err error) {
+	if _, err = mp.isInoOutOfRange(req.ParentID); err != nil {
+		p.PacketErrorWithBody(proto.OpInodeOutOfRange, []byte(err.Error()))
+		return
+	}
+	mp.monitorData[proto.ActionMetaReadDir].UpdateData(0)
+	var resp *proto.ReadDirResponse
+	resp, err = mp.readDirPb(p.Ctx(), req)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	respPbDataSize := resp.Size()
+	if respPbDataSize > cap(data) {
+		bytesPool.Put(data)
+		data = make([]byte, 0, respPbDataSize)
+	}
+	data = data[:respPbDataSize]
+	_, err = resp.MarshalTo(data)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithNoCopyBody(data)
 	return
 }

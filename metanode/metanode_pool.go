@@ -2,10 +2,18 @@ package metanode
 
 import (
 	se "github.com/cubefs/cubefs/util/sortedextent"
+	"github.com/cubefs/cubefs/util/unit"
 	"sync"
 )
 
-var inodePool = NewInodePool()
+const (
+	defRespDataCap = 64*unit.KB
+)
+
+var (
+	inodePool = NewInodePool()
+	bytesPool = NewBytesPool()
+)
 
 type InodePool struct {
 	pool *sync.Pool
@@ -46,4 +54,30 @@ func (p *InodePool) BatchPut(inodes []*Inode) {
 		inodes[index].Reset()
 		p.pool.Put(inodes[index])
 	}
+}
+
+type BytesPool struct {
+	pool *sync.Pool
+}
+
+func NewBytesPool() *BytesPool {
+	return &BytesPool{
+		pool: &sync.Pool{
+			New: func() interface{} {
+				return make([]byte, 0, defRespDataCap)
+			},
+		},
+	}
+}
+
+func (p *BytesPool) Get() []byte {
+	return p.pool.Get().([]byte)
+}
+
+func (p *BytesPool) Put(data []byte) {
+	if cap(data) > defRespDataCap {
+		return
+	}
+	data = data[:0]
+	p.pool.Put(data)
 }

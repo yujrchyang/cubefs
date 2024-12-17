@@ -6,6 +6,7 @@ import (
 	"github.com/cubefs/cubefs/metanode/metamock"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/cubefs/cubefs/util/unit"
 	"math"
 	"os"
 	"reflect"
@@ -976,9 +977,82 @@ func ReadDirInterTest(t *testing.T, leader, follower *metaPartition) {
 
 }
 
+func ReadDirPbInterTest(t *testing.T, leader, follower *metaPartition) {
+	parentID, err := createInode(uint32(os.ModeDir), 1000, 1000, leader)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	//create dentry
+	fileNameGen := func(i int) string{
+		return fmt.Sprintf("test_0%v", i)
+	}
+	if err = createDentries(leader, parentID, 2000, 470, 1000, fileNameGen); err != nil {
+		t.Error(err)
+		return
+	}
+
+	dirNameGen := func(i int) string{
+		return fmt.Sprintf("test_dir_0%v", i)
+	}
+	if err = createDentries(leader, parentID, 2000, uint32(os.ModeDir), 2000, dirNameGen); err != nil {
+		t.Error(err)
+		return
+	}
+
+	//read dir
+	marker := ""
+	children := make([]proto.Dentry, 0)
+	for {
+		req := &proto.ReadDirRequest{
+			ParentID:    parentID,
+			Marker:      marker,
+			IsBatch:     true,
+		}
+		packet := &Packet{}
+		data := make([]byte, 1*unit.MB)
+		if err = leader.ReadDirPb(req, packet, data); err != nil || packet.ResultCode != proto.OpOk {
+			t.Fatalf("err[%v] or resultCode mismatch, resultCode expect:OpOk(0xF0), actual:0x%X", err, packet.ResultCode)
+		}
+		resp := &proto.ReadDirResponse{}
+		if err = packet.UnmarshalDataPb(resp); err != nil {
+			t.Errorf("unmarshal read dir resp failed:%v", err)
+			return
+		}
+
+		children = append(children, resp.Children...)
+		if resp.NextMarker == "" {
+			break
+		}
+		marker = resp.NextMarker
+	}
+
+	//validate
+	if len(children) != 4000 {
+		t.Errorf("read dir children number not equal, expect[4000] actual[%v]", len(children))
+		return
+	}
+	for _, dentry := range children {
+		if proto.IsDir(dentry.Type) {
+			if dentry.Name != dirNameGen(int(dentry.Inode - 2000)) {
+				t.Fatalf("read dir error, dentry info not equal, except[inode:%v, name:%s, type:%v], "+
+					"actualp[inode:%v, name:%s, type:%v]", dentry.Inode, dirNameGen(int(dentry.Inode - 2000)), dentry.Type, dentry.Inode, dentry.Name, dentry.Type)
+			}
+		} else {
+			if dentry.Name != fileNameGen(int(dentry.Inode - 1000)) {
+				t.Fatalf("read dir error, dentry info not equal, except[inode:%v, name:%s, type:%v], "+
+					"actualp[inode:%v, name:%s, type:%v]", dentry.Inode, fileNameGen(int(dentry.Inode - 1000)), dentry.Type, dentry.Inode, dentry.Name, dentry.Type)
+			}
+		}
+	}
+	return
+}
+
 func TestMetaPartition_ReadDirCase01(t *testing.T) {
 	//leader is mem mode
-	dir := "read_dir_test_01"
+	dir := "./read_dir_test_01"
+	defer os.RemoveAll(dir)
 	leader, follower := mockMp(t, dir, proto.StoreModeMem)
 	ReadDirInterTest(t, leader, follower)
 	releaseMp(leader, follower, dir)
@@ -986,6 +1060,21 @@ func TestMetaPartition_ReadDirCase01(t *testing.T) {
 	//leader is rocksdb mode
 	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
 	ReadDirInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+}
+
+
+func TestMetaPartition_ReadDirPbCase01(t *testing.T) {
+	//leader is mem mode
+	dir := "./read_dir_pb_test_01"
+	defer os.RemoveAll(dir)
+	leader, follower := mockMp(t, dir, proto.StoreModeMem)
+	ReadDirPbInterTest(t, leader, follower)
+	releaseMp(leader, follower, dir)
+
+	//leader is rocksdb mode
+	leader, follower = mockMp(t, dir, proto.StoreModeRocksDb)
+	ReadDirPbInterTest(t, leader, follower)
 	releaseMp(leader, follower, dir)
 }
 

@@ -345,3 +345,40 @@ func (mp *metaPartition) readDir(ctx context.Context, req *ReadDirReq) (resp *Re
 	}
 	return
 }
+
+func (mp *metaPartition) readDirPb(ctx context.Context, req *ReadDirReq) (resp *proto.ReadDirResponse, err error) {
+
+	resp = &proto.ReadDirResponse{}
+	begDentry := &Dentry{
+		ParentId: req.ParentID,
+		Name:     req.Marker,
+	}
+	endDentry := &Dentry{
+		ParentId: req.ParentID + 1,
+	}
+
+	count := uint64(0)
+	readDirLimitCount := ReadDirLimitNum()
+	err = mp.dentryTree.RangeWithPrefix(&Dentry{ParentId: req.ParentID}, begDentry, endDentry, func(d *Dentry) (bool, error) {
+		count += 1
+		if req.IsBatch && count > readDirMax {
+			resp.NextMarker = d.Name
+			return false, nil
+		}
+		if readDirLimitCount > 0 && count > readDirLimitCount {
+			log.LogWarnf("readDir: parent(%v) exceeded maximum limit(%v) count(%v)", req.ParentID, readDirLimitCount, count)
+			return false, nil
+		}
+		resp.Children = append(resp.Children, proto.Dentry{
+			Inode: d.Inode,
+			Type:  d.Type,
+			Name:  d.Name,
+		})
+		return true, nil
+	})
+	if err != nil {
+		log.LogErrorf("readDir failed:[%s]", err.Error())
+		return
+	}
+	return
+}

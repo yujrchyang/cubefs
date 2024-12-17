@@ -154,6 +154,9 @@ const (
 	OpCreateMetaRecorder              uint8 = 0x54
 	OpDeleteMetaRecorder              uint8 = 0x55
 
+	OpMetaReadDirPb       uint8 = 0x56
+	OpMetaBatchInodeGetPb uint8 = 0x57
+
 	// Operations: Master -> DataNode
 	OpCreateDataPartition             uint8 = 0x60
 	OpDeleteDataPartition             uint8 = 0x61
@@ -294,7 +297,7 @@ const (
 )
 
 var GReadOps = []uint8{OpMetaLookup, OpMetaReadDir, OpMetaInodeGet, OpMetaBatchInodeGet, OpMetaExtentsList, OpMetaGetXAttr,
-	OpMetaListXAttr, OpMetaBatchGetXAttr, OpMetaGetAppliedID, OpGetMultipart, OpListMultiparts}
+	OpMetaListXAttr, OpMetaBatchGetXAttr, OpMetaGetAppliedID, OpGetMultipart, OpListMultiparts, OpMetaBatchInodeGetPb, OpMetaReadDirPb}
 
 // Packet defines the packet structure.
 type Packet struct {
@@ -439,12 +442,16 @@ func GetOpMsg(opcode uint8) (m string) {
 		m = "OpMetaLookup"
 	case OpMetaReadDir:
 		m = "OpMetaReadDir"
+	case OpMetaReadDirPb:
+		m = "OpMetaReadDirPb"
 	case OpMetaInodeGet:
 		m = "OpMetaInodeGet"
 	case OpMetaInodeGetV2:
 		m = "OpMetaInodeGetV2"
 	case OpMetaBatchInodeGet:
 		m = "OpMetaBatchInodeGet"
+	case OpMetaBatchInodeGetPb:
+		m = "OpMetaBatchInodeGetPb"
 	case OpMetaExtentsAdd:
 		m = "OpMetaExtentsAdd"
 	case OpMetaExtentsInsert:
@@ -969,6 +976,13 @@ func (p *Packet) PacketErrorWithBody(code uint8, reply []byte) {
 	p.ArgLen = 0
 }
 
+func (p *Packet) PacketOkWithNoCopyBody(reply []byte) {
+	p.Size = uint32(len(reply))
+	p.Data = reply
+	p.ResultCode = OpOk
+	p.ArgLen = 0
+}
+
 func (p *Packet) prepareMesg() {
 	if p.mesg == "" {
 		p.mesg = p.getPacketCommonLog()
@@ -1037,7 +1051,8 @@ func (p *Packet) IsReadMetaPkt() bool {
 		p.Opcode == OpMetaReadDir || p.Opcode == OpMetaExtentsList || p.Opcode == OpGetMultipart ||
 		p.Opcode == OpMetaGetXAttr || p.Opcode == OpMetaListXAttr || p.Opcode == OpListMultiparts ||
 		p.Opcode == OpMetaBatchGetXAttr || p.Opcode == OpMetaLookupForDeleted || p.Opcode == OpMetaGetDeletedInode ||
-		p.Opcode == OpMetaBatchGetDeletedInode || p.Opcode == OpMetaReadDeletedDir {
+		p.Opcode == OpMetaBatchGetDeletedInode || p.Opcode == OpMetaReadDeletedDir || p.Opcode == OpMetaReadDirPb ||
+		p.Opcode == OpMetaBatchInodeGetPb {
 		return true
 	}
 	return false
@@ -1096,7 +1111,7 @@ func (p *Packet) ShallTryToLeader() bool {
 		p.Opcode == OpMetaBatchGetXAttr || p.Opcode == OpMetaBatchGetDeletedInode || p.Opcode == OpMetaBatchRecoverDeletedDentry ||
 		p.Opcode == OpMetaBatchRecoverDeletedInode || p.Opcode == OpMetaBatchCleanDeletedInode || p.Opcode == OpMetaBatchCleanDeletedDentry ||
 		p.Opcode == OpMetaBatchDeleteInode || p.Opcode == OpMetaBatchDeleteDentry || p.Opcode == OpMetaBatchUnlinkInode ||
-		p.Opcode == OpMetaBatchEvictInode {
+		p.Opcode == OpMetaBatchEvictInode || p.Opcode == OpMetaReadDirPb || p.Opcode == OpMetaBatchInodeGetPb {
 		return false
 	}
 

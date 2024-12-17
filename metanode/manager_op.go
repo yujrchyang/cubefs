@@ -2635,3 +2635,69 @@ func (m *metadataManager) opGetExtentsNoModifyAccessTime(conn net.Conn, p *Packe
 	m.respondToClient(conn, p)
 	return
 }
+
+func (m *metadataManager) opReadDirPb(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.ReadDirRequest{}
+	if err = p.UnmarshalDataPb(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opReadDirWithProtob] [%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	var mp MetaPartition
+	mp, err = m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[opReadDirWithProtob] [%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+		return
+	}
+	p.PartitionID = req.PartitionID
+	if !m.serveProxy(conn, mp, p, req) {
+		return
+	}
+	data := bytesPool.Get()
+	defer bytesPool.Put(data)
+	if err = mp.ReadDirPb(req, p, data); err != nil {
+		log.LogErrorf("[opReadDirWithProtob] %s [%v]req: %v, err: %v", remoteAddr,
+			p.GetReqID(), req, err)
+	}
+	m.respondToClient(conn, p)
+	log.LogDebugf("[opReadDirWithProtob] %s [%v]req: %v , resp: %v, body: %s", remoteAddr,
+		p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaBatchInodeGetPb(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.BatchInodeGetRequest{}
+	if err = p.UnmarshalDataPb(req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	p.PartitionID = req.PartitionID
+	if !m.serveProxy(conn, mp, p, req) {
+		return
+	}
+	data := bytesPool.Get()
+	defer bytesPool.Put(data)
+	if err = mp.InodeGetBatchPb(req, p, data); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaBatchInodeGetProtob] req: %d - %v, resp: %v, "+
+		"body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}

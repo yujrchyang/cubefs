@@ -50,6 +50,29 @@ func replyInfo(info *proto.InodeInfo, ino *Inode) bool {
 	return true
 }
 
+func replyPbInfo(info *proto.InodeInfoPb, ino *Inode) bool {
+	ino.RLock()
+	defer ino.RUnlock()
+	if ino.Flag&DeleteMarkFlag > 0 {
+		return false
+	}
+	info.Inode = ino.Inode
+	info.Mode = ino.Type
+	info.Size_ = ino.Size
+	info.Nlink = ino.NLink
+	info.Uid = ino.Uid
+	info.Gid = ino.Gid
+	info.Generation = ino.Generation
+	if length := len(ino.LinkTarget); length > 0 {
+		info.Target = make([]byte, length)
+		copy(info.Target, ino.LinkTarget)
+	}
+	info.CreateTime = proto.CubeFSTime(ino.CreateTime)
+	info.AccessTime = proto.CubeFSTime(ino.AccessTime)
+	info.ModifyTime = proto.CubeFSTime(ino.ModifyTime)
+	return true
+}
+
 // CreateInode returns a new inode.
 func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 	var (
@@ -307,7 +330,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 	for _, inoId := range req.Inodes {
 		retMsg, err = mp.getInode(inoId, false)
 		if err == nil && retMsg.Status == proto.OpOk {
-			inoInfo := &proto.InodeInfo{}
+			var inoInfo = &proto.InodeInfo{}
 			if replyInfo(inoInfo, retMsg.Msg) {
 				resp.Infos = append(resp.Infos, inoInfo)
 			}
@@ -329,7 +352,7 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	p.PacketOkWithBody(data)
+	p.PacketOkWithNoCopyBody(data)
 	return
 }
 
@@ -678,5 +701,43 @@ func (mp *metaPartition) GetCompactInodeInfo(req *proto.GetCmpInodesRequest, p *
 		return
 	}
 	p.PacketErrorWithBody(proto.OpOk, data)
+	return
+}
+
+func (mp *metaPartition) InodeGetBatchPb(req *InodeGetReqBatch, p *Packet, data []byte) (err error) {
+	var retMsg *InodeResponse
+	mp.monitorData[proto.ActionMetaBatchInodeGet].UpdateData(0)
+	resp := &proto.BatchInodeGetResponsePb{}
+	for _, inoId := range req.Inodes {
+		retMsg, err = mp.getInode(inoId, false)
+		if err == nil && retMsg.Status == proto.OpOk {
+			var inoInfoPb = &proto.InodeInfoPb{}
+			if replyPbInfo(inoInfoPb, retMsg.Msg) {
+				resp.Infos = append(resp.Infos, inoInfoPb)
+			}
+		}
+		if req.WithExtendAttr {
+			var extendAttrs []*proto.ExtendAttrInfoPb
+			extendAttrs, err = mp.getInodeXAttrPb(inoId, req.ExtendAttrKeys)
+			if err == nil && extendAttrs != nil {
+				resp.ExtendAttrs = append(resp.ExtendAttrs, &proto.InodeExtendAttrsInfoPb{
+					InodeID:     inoId,
+					ExtendAttrs: extendAttrs,
+				})
+			}
+		}
+	}
+	respPbDataSize := resp.Size()
+	if respPbDataSize > cap(data) {
+		bytesPool.Put(data)
+		data = make([]byte, 0, respPbDataSize)
+	}
+	data = data[:respPbDataSize]
+	_, err = resp.MarshalTo(data)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithNoCopyBody(data)
 	return
 }

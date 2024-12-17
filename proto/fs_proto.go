@@ -207,18 +207,19 @@ func (info XAttrInfo) String() string {
 	return fmt.Sprintf("XAttrInfo{Inode(%v), XAttrs(%v)}", info.Inode, builder.String())
 }
 
+// move to fs.pb.go
 // Dentry defines the dentry struct.
-type Dentry struct {
-	ParentId uint64 `json:"pid"`
-	Name     string `json:"name"`
-	Inode    uint64 `json:"ino"`
-	Type     uint32 `json:"type"`
-}
+//type Dentry struct {
+//	ParentId uint64 `json:"pid"`
+//	Name     string `json:"name"`
+//	Inode    uint64 `json:"ino"`
+//	Type     uint32 `json:"type"`
+//}
 
 // String returns the string format of the dentry.
-func (d Dentry) String() string {
-	return fmt.Sprintf("Dentry{Name(%v),Inode(%v),Type(%v)}", d.Name, d.Inode, d.Type)
-}
+//func (d Dentry) String() string {
+//	return fmt.Sprintf("Dentry{Name(%v),Inode(%v),Type(%v)}", d.Name, d.Inode, d.Type)
+//}
 
 // CreateInodeRequest defines the request to create an inode.
 type CreateInodeRequest struct {
@@ -408,14 +409,15 @@ type InodeGetResponse struct {
 	ExtendAttrs []*ExtendAttrInfo `json:"extendAttrs,omitempty"`
 }
 
+//move to fs.pb.go
 // BatchInodeGetRequest defines the request to get the inode in batch.
-type BatchInodeGetRequest struct {
-	VolName        string   `json:"vol"`
-	PartitionID    uint64   `json:"pid"`
-	Inodes         []uint64 `json:"inos"`
-	WithExtendAttr bool     `json:"withXAttr"`
-	ExtendAttrKeys []string `json:"keys"`
-}
+//type BatchInodeGetRequest struct {
+//	VolName        string   `json:"vol"`
+//	PartitionID    uint64   `json:"pid"`
+//	Inodes         []uint64 `json:"inos"`
+//	WithExtendAttr bool     `json:"withXAttr"`
+//	ExtendAttrKeys []string `json:"keys"`
+//}
 
 type InodeExtendAttrsInfo struct {
 	InodeID     uint64            `json:"ino"`
@@ -428,20 +430,22 @@ type BatchInodeGetResponse struct {
 	ExtendAttrs []*InodeExtendAttrsInfo `json:"inodesExtendAttrs,omitempty"`
 }
 
+//move to fs.pb.go
 // ReadDirRequest defines the request to read dir.
-type ReadDirRequest struct {
-	VolName     string `json:"vol"`
-	PartitionID uint64 `json:"pid"`
-	ParentID    uint64 `json:"pino"`
-	Marker      string `json:"marker"` // the name of child from which the operation begins
-	IsBatch     bool   `json:"is_batch"`
-}
+//type ReadDirRequest struct {
+//	VolName     string `json:"vol"`
+//	PartitionID uint64 `json:"pid"`
+//	ParentID    uint64 `json:"pino"`
+//	Marker      string `json:"marker"` // the name of child from which the operation begins
+//	IsBatch     bool   `json:"is_batch"`
+//}
 
+//move to fs.pb.go
 // ReadDirResponse defines the response to the request of reading dir.
-type ReadDirResponse struct {
-	Children   []Dentry `json:"children"`
-	NextMarker string   `json:"next_marker"` // the name of child from which the next operation begins
-}
+//type ReadDirResponse struct {
+//	Children   []Dentry `json:"children"`
+//	NextMarker string   `json:"next_marker"` // the name of child from which the next operation begins
+//}
 
 // BatchAppendExtentKeyRequest defines the request to append an extent key.
 type AppendExtentKeyRequest struct {
