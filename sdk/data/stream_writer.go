@@ -36,7 +36,7 @@ const (
 	MaxNewHandlerRetry             = 4
 	MaxUsePreHandlerRetry          = 1
 	MaxPacketErrorCount            = 64
-	MaxPacketCheckTimeoutCount	   = 16
+	MaxPacketCheckTimeoutCount     = 16
 	MaxDirtyListLen                = 0
 )
 
@@ -491,10 +491,10 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		if retryCost >= alarmInterval {
 			errmsg = fmt.Sprintf("err(%v) ctx(%v) inode(%v) req(%v) try count(%v) in (%v)", err, ctx.Value(proto.ContextReq), s.inode, req, tryCount, retryCost)
 			common.HandleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
-			alarmInterval += retryCost + 10 * time.Second
+			alarmInterval += retryCost + 10*time.Second
 		}
 		writeRetryTime := atomic.LoadInt64(&s.client.dataWrapper.writeRetryTimeSec)
-		if writeRetryTime > 0 && retryCost >= time.Duration(writeRetryTime) * time.Second {
+		if writeRetryTime > 0 && retryCost >= time.Duration(writeRetryTime)*time.Second {
 			log.LogWarnf("doOverWriteOrROW failed: retry timeout-(%v)s ctx(%v) ino(%v) err(%v) req(%v)", writeRetryTime, ctx.Value(proto.ContextReq), s.inode, err, req)
 			break
 		}
@@ -670,7 +670,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 	}
 
 	s.extents.Insert(newEK, true)
-	err = s.client.insertExtentKey(ctx, s.inode, *newEK, false)
+	err = s.client.insertExtentKey(ctx, s.inode, *newEK)
 	if err != nil {
 		return
 	}
@@ -1095,6 +1095,8 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 
 	preEk := s.extents.Pre(uint64(offset))
 	if preEk == nil ||
+		preEk.PartitionId == 0 ||
+		preEk.ExtentId == 0 ||
 		s.dirtylist.Len() != 0 ||
 		proto.IsTinyExtent(preEk.ExtentId) ||
 		preEk.FileOffset+uint64(preEk.Size) != uint64(offset) ||
@@ -1122,22 +1124,11 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 		return false
 	}
 
-	s.handler = NewExtentHandler(s, preEk.FileOffset, proto.NormalExtentType)
-
+	s.handler = NewExtentHandler(s, offset, proto.NormalExtentType)
 	s.handler.dp = dp
 	s.handler.extID = int(preEk.ExtentId)
-	s.handler.key = &proto.ExtentKey{
-		FileOffset:   preEk.FileOffset,
-		PartitionId:  preEk.PartitionId,
-		ExtentId:     preEk.ExtentId,
-		ExtentOffset: preEk.ExtentOffset,
-		Size:         preEk.Size,
-		CRC:          preEk.CRC,
-	}
-	s.handler.isPreExtent = true
-	s.handler.size = int(preEk.Size)
 	s.handler.conn = conn
-	s.handler.extentOffset = int(preEk.ExtentOffset)
+	s.handler.extentOffset = int(preEk.ExtentOffset) + int(preEk.Size)
 
 	return true
 }

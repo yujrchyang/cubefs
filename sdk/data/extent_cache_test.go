@@ -2,13 +2,13 @@ package data
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_PrepareRequests(t *testing.T) {

@@ -720,11 +720,11 @@ func (mw *MetaWrapper) AppendExtentKeys(ctx context.Context, inode uint64, eks [
 	return
 }
 
-func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey, isPreExtent bool) (err error) {
+func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey) (err error) {
 	var status int
 	defer func() {
 		if err != nil && err != syscall.ENOENT {
-			log.LogErrorf("InsertExtentKey: vol(%v) ino(%v) ek(%v) isPreExtent(%v) err(%v) status(%v)", mw.volname, inode, ek, isPreExtent, err, status)
+			log.LogErrorf("InsertExtentKey: vol(%v) ino(%v) ek(%v) err(%v) status(%v)", mw.volname, inode, ek, err, status)
 		}
 	}()
 	mp := mw.getPartitionByInode(ctx, inode)
@@ -732,11 +732,11 @@ func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek pro
 		return syscall.ENOENT
 	}
 
-	status, err = mw.insertExtentKey(ctx, mp, inode, ek, isPreExtent)
+	status, err = mw.insertExtentKey(ctx, mp, inode, ek)
 	if err != nil || status != statusOK {
 		err = statusToErrno(status)
 	}
-	log.LogDebugf("InsertExtentKey: ino(%v) ek(%v) isPreExtent(%v)", inode, ek, isPreExtent)
+	log.LogDebugf("InsertExtentKey: ino(%v) ek(%v)", inode, ek)
 	return
 }
 

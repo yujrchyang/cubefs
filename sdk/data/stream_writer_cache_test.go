@@ -573,7 +573,7 @@ func TestStreamer_WriteFile_Pending(t *testing.T) {
 						writeData[j] = byte(writeIndex)
 					}
 					offset := rule.offset + uint64(i*size)
-					t.Logf("test(%v) write offset(%v) size(%v)\n", tt.name, offset, size)
+					//t.Logf("test(%v) write offset(%v) size(%v)\n", tt.name, offset, size)
 					total, isROW, err := streamer.write(context.Background(), writeData, offset, size, false)
 					hasROW = hasROW || isROW
 					if err != nil || total != size {

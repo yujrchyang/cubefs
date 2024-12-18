@@ -95,10 +95,9 @@ type ExtentHandler struct {
 	// Created and updated in *receiver* ONLY.
 	// Not protected by lock, therefore can be used ONLY when there is no
 	// pending and new packets.
-	key         *proto.ExtentKey
-	dirty       bool // indicate if open handler is dirty.
-	isPreExtent bool // true if the extent of the key has ever been sent to metanode
-	ekMutex     sync.Mutex
+	key     *proto.ExtentKey
+	dirty   bool // indicate if open handler is dirty.
+	ekMutex sync.Mutex
 
 	// Created in receiver ONLY in recovery status.
 	// Will not be changed once assigned.
@@ -155,7 +154,7 @@ func (eh *ExtentHandler) String() string {
 	if eh == nil {
 		return ""
 	}
-	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)Size(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.size, eh.storeMode)
+	return fmt.Sprintf("ExtentHandler{ID(%v)Inode(%v)FileOffset(%v)ExtentOffset(%v)Size(%v)StoreMode(%v)}", eh.id, eh.inode, eh.fileOffset, eh.extentOffset, eh.size, eh.storeMode)
 }
 
 func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, size int, direct bool) (ek *proto.ExtentKey, err error) {
@@ -178,7 +177,6 @@ func (eh *ExtentHandler) write(ctx context.Context, data []byte, offset uint64, 
 	// In this case, the caller should try to create a new extent handler.
 	if (!eh.stream.client.EnableWriteCache() && eh.fileOffset+uint64(eh.size) != offset) ||
 		eh.extentOffset+eh.size+size > eh.stream.extentSize || (eh.storeMode == proto.TinyExtentType && eh.size+size > blksize) {
-
 		err = errors.NewErrorf("ExtentHandler: full or discontinuous: writeCache(%v) extentSize(%v) offset(%v) size(%v) eh(%v)",
 			eh.stream.client.EnableWriteCache(), eh.stream.extentSize, offset, size, eh)
 		return
@@ -236,15 +234,9 @@ func (eh *ExtentHandler) sender() {
 	defer eh.wg.Done()
 	var err error
 
-	//	t := time.NewTicker(5 * time.Second)
-	//	defer t.Stop()
-
 	for {
 		select {
-		//		case <-t.C:
-		//			log.LogDebugf("sender alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.request:
-			//log.LogDebugf("ExtentHandler sender begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			if eh.getStatus() >= ExtentStatusRecovery {
 				log.LogWarnf("sender in recovery: eh(%v) packet(%v)", eh, packet)
 				eh.reply <- packet
@@ -317,17 +309,11 @@ func (eh *ExtentHandler) sender() {
 
 func (eh *ExtentHandler) receiver() {
 	defer eh.wg.Done()
-	//	t := time.NewTicker(5 * time.Second)
-	//	defer t.Stop()
 
 	for {
 		select {
-		//		case <-t.C:
-		//			log.LogDebugf("receiver alive: eh(%v) inflight(%v)", eh, atomic.LoadInt32(&eh.inflight))
 		case packet := <-eh.reply:
-			//log.LogDebugf("receiver begin: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 			eh.processReply(packet)
-			//log.LogDebugf("receiver end: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 		case <-eh.doneReceiver:
 			log.LogDebugf("receiver done: eh(%v) size(%v) ek(%v)", eh, eh.size, eh.key)
 			return
@@ -341,8 +327,6 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 			eh.empty <- struct{}{}
 		}
 	}()
-
-	//log.LogDebugf("processReply enter: eh(%v) packet(%v)", eh, packet.GetUniqueLogId())
 
 	var errmsg string
 	status := eh.getStatus()
@@ -436,13 +420,13 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 		extOffset = uint64(reply.ExtentOffset)
 	} else {
 		extID = packet.ExtentID
-		extOffset = packet.KernelOffset - uint64(eh.fileOffset)
+		extOffset = uint64(eh.extentOffset) + packet.KernelOffset - eh.fileOffset
 	}
 
 	eh.ekMutex.Lock()
 	if eh.key == nil {
 		eh.key = &proto.ExtentKey{
-			FileOffset:   uint64(eh.fileOffset),
+			FileOffset:   eh.fileOffset,
 			PartitionId:  packet.PartitionID,
 			ExtentId:     extID,
 			ExtentOffset: extOffset,
@@ -539,15 +523,18 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 	if dirty {
 		// Order: First 'insertExtentKey'，and then 'Append' local extent cache
 		// Otherwise, if 'Append' first and the 'GetExtents' operation occurs before 'insertExtentKey', the newly appended ek will be overwritten.
-		err = eh.stream.client.insertExtentKey(ctx, eh.inode, *ek, eh.isPreExtent)
+		err = eh.stream.client.insertExtentKey(ctx, eh.inode, *ek)
 		eh.stream.extents.Insert(ek, true)
 		if err == nil {
 			eh.ekMutex.Lock()
 			// If the extent has ever been sent to metanode, all following insertExtentKey requests of the
 			// extent will be checked by metanode, in case of the extent been removed by other clients.
-			eh.isPreExtent = true
 			if ek.GetExtentKey() == eh.key.GetExtentKey() {
 				eh.dirty = false
+				eh.fileOffset += uint64(ek.Size)
+				eh.extentOffset += int(ek.Size)
+				eh.size = 0
+				eh.key = nil
 			} else {
 				log.LogErrorf("appendExtentKey not consistent: eh(%v) original ek(%v), now ek(%v)", eh, ek, eh.key)
 			}
@@ -581,19 +568,12 @@ func (eh *ExtentHandler) waitForFlush(ctx context.Context) {
 		return
 	}
 
-	//	t := time.NewTicker(10 * time.Second)
-	//	defer t.Stop()
-
 	for {
 		select {
 		case <-eh.empty:
 			if atomic.LoadInt32(&eh.inflight) <= 0 {
 				return
 			}
-			//		case <-t.C:
-			//			if atomic.LoadInt32(&eh.inflight) <= 0 {
-			//				return
-			//			}
 		}
 	}
 }
@@ -604,7 +584,7 @@ func (eh *ExtentHandler) recoverPacket(packet *common.Packet, errmsg string) err
 		packet.RetryTimestamp = time.Now().Unix()
 	}
 	retryCost := time.Now().Unix() - packet.RetryTimestamp
-	if packet.ErrCount % MaxPacketCheckTimeoutCount == 0 {
+	if packet.ErrCount%MaxPacketCheckTimeoutCount == 0 {
 		log.LogWarnf("recoverPacket: try (%v) times in (%v)s because of failing to write to extent, eh(%v) packet(%v)",
 			packet.ErrCount, retryCost, eh, packet)
 		umpMsg := fmt.Sprintf("append write err(%v) eh(%v) packet(%v) try count(%v)", errmsg, eh, packet, packet.ErrCount)
@@ -684,10 +664,10 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 				err, loopCount, retryCost, eh)
 			umpMsg := fmt.Sprintf("create extent failed(%v), eh(%v), try count(%v) in (%v)", err, eh, loopCount, retryCost)
 			common.HandleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "allocateExtent", umpMsg)
-			alarmInterval += retryCost + 10 * time.Second
+			alarmInterval += retryCost + 10*time.Second
 		}
 		writeRetryTime := atomic.LoadInt64(&eh.stream.client.dataWrapper.writeRetryTimeSec)
-		if eh.stream.client.dataWrapper.VolNotExists() || (loopCount > MaxPacketErrorCount && writeRetryTime > 0 && retryCost >= time.Duration(writeRetryTime) * time.Second) {
+		if eh.stream.client.dataWrapper.VolNotExists() || (loopCount > MaxPacketErrorCount && writeRetryTime > 0 && retryCost >= time.Duration(writeRetryTime)*time.Second) {
 			log.LogWarnf("allocateExtent failed: retry (%v)th timeout-(%v)s err(%v) eh(%v)", loopCount, writeRetryTime, err, eh)
 			break
 		}
