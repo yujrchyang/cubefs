@@ -395,21 +395,25 @@ func TestMigratedMetaPartitionsContainHasDeletedMp(t *testing.T) {
 func TestUpdateServerLimitInfoRespCache(t *testing.T) {
 	c := server.cluster
 	c.updateServerLimitInfoRespCache()
-	data := c.getServerLimitInfoRespCache("")
+	data, err := c.getServerLimitInfoRespCache("")
+	assert.NoError(t, err)
 	assert.NotEmpty(t, data)
-	data = c.getServerLimitInfoRespCache(testZone1)
+	data, err = c.getServerLimitInfoRespCache(testZone1)
+	assert.NoError(t, err)
 	assert.NotEmpty(t, data)
 	c.doCheckVolStatus()
 	if c.mustUsedVolLimitInfoRespCache(commonVolName) {
-		data = c.getVolLimitInfoRespCache(commonVolName)
+		data, err = c.getVolLimitInfoRespCache(commonVolName)
+		assert.NoError(t, err)
 		assert.NotEmpty(t, data)
 	} else {
-		data = c.getServerLimitInfoRespCache("")
+		data, err = c.getServerLimitInfoRespCache("")
+		assert.NoError(t, err)
 		assert.NotEmpty(t, data)
 	}
 	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetLimitInfo, commonVolName)
 	httpReply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
-	err := json.Unmarshal(httpReply.Data, limitInfo)
+	err = json.Unmarshal(httpReply.Data, limitInfo)
 	assert.NoError(t, err)
 }

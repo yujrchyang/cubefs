@@ -29,8 +29,8 @@ var (
 	ErrMetaPartitionNotExists = errors.New("meta partition not exists")
 	ErrDataPartitionNotExists = errors.New("data partition not exists")
 	ErrEcPartitionNotExists   = errors.New("ec partition not exists")
-	ErrDataReplicaExists 	  = errors.New("data raft peer exists")
-	ErrMetaReplicaExists	  = errors.New("meta raft peer exists")
+	ErrDataReplicaExists      = errors.New("data raft peer exists")
+	ErrMetaReplicaExists      = errors.New("meta raft peer exists")
 	ErrDataNodeNotExists      = errors.New("data node not exists")
 	ErrMetaNodeNotExists      = errors.New("meta node not exists")
 	ErrEcNodeNotExists        = errors.New("ec node not exists")
@@ -112,6 +112,7 @@ var (
 	ErrUnknownMetaPartition      = errors.New("unknown meta partition")
 	ErrVolNameIsEmpty            = errors.New("vol name is empty")
 	ErrFlashGroupIsEmpty         = errors.New("flash group is empty")
+	ErrLimitInfoIsNotCached      = errors.New("limit info  is not cached")
 )
 
 // http response error code and error message definitions
@@ -266,8 +267,8 @@ var Err2CodeMap = map[error]int32{
 	ErrRaftLeaderHasChanged:            ErrCodeRaftLeaderHasChanged,
 	ErrVolNameIsEmpty:                  ErrCodeVolNameIsEmpty,
 	ErrFlashGroupIsEmpty:               ErrCodeFlashGroupIsEmpty,
-	ErrDataReplicaExists: 				ErrCodeDataReplicaExists,
-	ErrMetaReplicaExists: 				ErrCodeMetaReplicaExists,
+	ErrDataReplicaExists:               ErrCodeDataReplicaExists,
+	ErrMetaReplicaExists:               ErrCodeMetaReplicaExists,
 }
 
 func ParseErrorCode(code int32) error {
@@ -349,8 +350,8 @@ var code2ErrMap = map[int32]error{
 	ErrCodeRaftLeaderHasChanged:            ErrRaftLeaderHasChanged,
 	ErrCodeVolNameIsEmpty:                  ErrVolNameIsEmpty,
 	ErrCodeFlashGroupIsEmpty:               ErrFlashGroupIsEmpty,
-	ErrCodeDataReplicaExists: 				ErrDataReplicaExists,
-	ErrCodeMetaReplicaExists: 				ErrMetaReplicaExists,
+	ErrCodeDataReplicaExists:               ErrDataReplicaExists,
+	ErrCodeMetaReplicaExists:               ErrMetaReplicaExists,
 }
 
 type GeneralResp struct {

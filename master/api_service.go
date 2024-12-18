@@ -351,11 +351,11 @@ func (m *Server) getDataNodeZoneNameOfRemoteAddr(r *http.Request) (dataNodeZoneN
 	return
 }
 
-func (m *Server) getLimitInfoForServer(dataNodeZoneName string) []byte {
+func (m *Server) getLimitInfoForServer(dataNodeZoneName string) (data []byte, err error) {
 	return m.cluster.getServerLimitInfoRespCache(dataNodeZoneName)
 }
 
-func (m *Server) getLimitInfoByVolName(volName string) []byte {
+func (m *Server) getLimitInfoByVolName(volName string) (data []byte, err error) {
 	return m.cluster.getVolLimitInfoRespCache(volName)
 }
 
@@ -365,22 +365,22 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	var (
 		dataNodeZoneName string
 		data             []byte
+		err              error
 	)
 	vol := r.FormValue(nameKey)
 	if vol == "" || !m.cluster.mustUsedVolLimitInfoRespCache(vol) { // the data/meta node will not report vol name
 		dataNodeZoneName = m.getDataNodeZoneNameOfRemoteAddr(r)
-		data = m.getLimitInfoForServer(dataNodeZoneName)
-		send(w, r, data, proto.JsonType)
-		return
+		data, err = m.getLimitInfoForServer(dataNodeZoneName)
 	}
 	if !m.cluster.cfg.DisableUsedVolLimitInfoRespCache {
-		data = m.getLimitInfoByVolName(vol)
-		send(w, r, data, proto.JsonType)
+		data, err = m.getLimitInfoByVolName(vol)
+	}
+	if err != nil || len(data) == 0 {
+		m.getLimitInfoNoCache(w, r, vol)
 		return
 	}
-	m.getLimitInfoNoCache(w, r, vol)
+	send(w, r, data, proto.JsonType)
 	return
-
 }
 
 func (m *Server) getLimitInfoNoCache(w http.ResponseWriter, r *http.Request, volName string) {

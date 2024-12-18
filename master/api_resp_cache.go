@@ -71,12 +71,12 @@ func (c *Cluster) clearVolsResponseCache() {
 	c.volsInfoRespCache = nil
 }
 
-func (c *Cluster) getServerLimitInfoRespCache(dataNodeZoneName string) []byte {
+func (c *Cluster) getServerLimitInfoRespCache(dataNodeZoneName string) (data []byte, err error) {
 	value, ok := c.serverLimitInfoRespCache.Load(dataNodeZoneName)
 	if !ok {
-		return emptyRespCache
+		return nil, proto.ErrLimitInfoIsNotCached
 	}
-	return value.([]byte)
+	return value.([]byte), nil
 }
 
 func (c *Cluster) setServerLimitInfoRespCache(dataNodeZoneName string, data []byte) {
@@ -236,14 +236,14 @@ func (c *Cluster) buildLimitInfo(volName string) (cInfo *proto.LimitInfo) {
 	return
 }
 
-func (c *Cluster) getVolLimitInfoRespCache(name string) []byte {
+func (c *Cluster) getVolLimitInfoRespCache(name string) (data []byte, err error) {
 	vol, err := c.getVol(name)
 	if err != nil {
-		return emptyRespCache
+		return nil, proto.ErrLimitInfoIsNotCached
 	}
 	vol.limitInfoRespCacheMutex.RLock()
 	defer vol.limitInfoRespCacheMutex.RUnlock()
-	return vol.limitInfoRespCache
+	return vol.limitInfoRespCache, nil
 }
 
 func (vol *Vol) setVolLimitInfoRespCache(data []byte) {
