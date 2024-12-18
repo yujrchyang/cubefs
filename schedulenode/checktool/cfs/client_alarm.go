@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	clientAlarmInterval     = 60 * time.Second
-	clusterMysql            = "mysql"
-	clusterSpark            = "spark"
+	clientAlarmInterval = 60 * time.Second
+	clusterMysql        = "mysql"
+	clusterSpark        = "spark"
 
 	cfgPushJMQInterval = "pushJMQInterval"
 )
@@ -43,6 +43,7 @@ func (s *ChubaoFSMonitor) clientAlarm() {
 	now := time.Now()
 	begin := now.Add(-clientAlarmInterval - 5*time.Second)
 	end := now
+	log.LogDebugf("clientAlarm: begin(%v) end(%v)", begin, end)
 	s.clientAlarmImpl(clusterMysql, begin, end)
 	s.clientAlarmImpl(clusterSpark, begin, end)
 }
@@ -69,6 +70,7 @@ func (s *ChubaoFSMonitor) clientAlarmImpl(cluster string, begin time.Time, end t
 		log.LogErrorf("clientAlarm: GetAlarmRecords failed")
 		return
 	}
+	log.LogDebugf("clientAlarm: begin(%v) end(%v) ump(%v) content(%v)", begin, end, clientUmpPrefix+umpKeyWarningSufix, alarmRecords.Records)
 	ignoreContents := []string{"no such file or directory", "/readProcess/register", "timeout", "NotExistErr", "network is unreachable", "not exists"}
 	for _, record := range alarmRecords.Records {
 		var ignore bool
