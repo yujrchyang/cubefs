@@ -1,6 +1,7 @@
 package master
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -27,7 +28,7 @@ func buildPanicVol() *Vol {
 	vol := newVol(id, commonVol.Name, commonVol.Owner, testZone1+","+testZone2, commonVol.dataPartitionSize, commonVol.Capacity,
 		defaultReplicaNum, defaultReplicaNum, false, false, true,
 		true, false, false, false, false, createTime, createTime,
-		"", "", "", 0, 0, 0,0,0.0, 30,
+		"", "", "", 0, 0, 0, 0, 0.0, 30,
 		0, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0},
 		0, 0, 0, 0, 0, 0)
@@ -389,4 +390,26 @@ func TestMigratedMetaPartitionsContainHasDeletedMp(t *testing.T) {
 		return true
 	})
 	assert.Equal(t, 0, len(badMpIDs))
+}
+
+func TestUpdateServerLimitInfoRespCache(t *testing.T) {
+	c := server.cluster
+	c.updateServerLimitInfoRespCache()
+	data := c.getServerLimitInfoRespCache("")
+	assert.NotEmpty(t, data)
+	data = c.getServerLimitInfoRespCache(testZone1)
+	assert.NotEmpty(t, data)
+	c.doCheckVolStatus()
+	if c.mustUsedVolLimitInfoRespCache(commonVolName) {
+		data = c.getVolLimitInfoRespCache(commonVolName)
+		assert.NotEmpty(t, data)
+	} else {
+		data = c.getServerLimitInfoRespCache("")
+		assert.NotEmpty(t, data)
+	}
+	reqURL := fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetLimitInfo, commonVolName)
+	httpReply := processReturnRawReply(reqURL, t)
+	limitInfo := &proto.LimitInfo{}
+	err := json.Unmarshal(httpReply.Data, limitInfo)
+	assert.NoError(t, err)
 }

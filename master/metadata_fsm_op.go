@@ -118,6 +118,7 @@ type clusterValue struct {
 	DelayMinutesReduceReplicaNum        int64
 	MqProducerState                     bool
 	UnrecoverableDuration               int64
+	DisableUsedVolLimitInfoRespCache    bool
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -203,6 +204,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DelayMinutesReduceReplicaNum:        c.cfg.delayMinutesReduceReplicaNum,
 		MqProducerState:                     c.cfg.MqProducerState,
 		UnrecoverableDuration:               c.cfg.UnrecoverableDuration,
+		DisableUsedVolLimitInfoRespCache:    c.cfg.DisableUsedVolLimitInfoRespCache,
 	}
 	return cv
 }
@@ -1280,6 +1282,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		} else {
 			atomic.StoreInt64(&c.cfg.UnrecoverableDuration, cv.UnrecoverableDuration)
 		}
+		c.cfg.DisableUsedVolLimitInfoRespCache = cv.DisableUsedVolLimitInfoRespCache
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}

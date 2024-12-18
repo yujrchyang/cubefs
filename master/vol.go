@@ -151,6 +151,8 @@ type Vol struct {
 	MetaOut                    bool // whether metadata have be stored to cfs meta node
 	MpFollowerRead             bool
 	MpZones                    string
+	limitInfoRespCache         []byte
+	limitInfoRespCacheMutex    sync.RWMutex
 	sync.RWMutex
 }
 

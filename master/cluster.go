@@ -97,6 +97,7 @@ type Cluster struct {
 	flashGroupRespCache        []byte
 	volsInfoRespCache          []byte
 	volsInfoCacheMutex         sync.RWMutex
+	serverLimitInfoRespCache   sync.Map
 	nodeTaskHandleChan         chan *NodeTask
 	heartbeatPbHandleChan      chan *HeartbeatPbTask
 	raftTermOnStartTask        uint64
@@ -3973,6 +3974,11 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DisableClusterCheckDeleteEK = val.(bool)
 	}
 
+	oldEnableUsedVolLimitInfoRespCache := c.cfg.DisableUsedVolLimitInfoRespCache
+	if val, ok := params[proto.EnableUsedVolLimitInfoRespCacheKey]; ok {
+		c.cfg.DisableUsedVolLimitInfoRespCache = val.(bool)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -4024,6 +4030,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.TopologyForceFetchIntervalSec, oldTopologyForceFetchIntervalSec)
 		c.cfg.DataNodeDiskReservedRatio = oldDataNodeDiskReservedRatio
 		c.cfg.DisableClusterCheckDeleteEK = oldDisableClusterCheckDelEK
+		c.cfg.DisableUsedVolLimitInfoRespCache = oldEnableUsedVolLimitInfoRespCache
 		err = proto.ErrPersistenceByRaft
 		return
 	}

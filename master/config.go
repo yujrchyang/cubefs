@@ -107,7 +107,7 @@ type clusterConfig struct {
 	RateLimit                           map[string]map[string]map[int]bsProto.AllLimitGroup
 	FlashNodeLimitMap                   map[string]uint64
 	FlashNodeVolLimitMap                map[string]map[string]uint64
-	reqRateLimitMapMutex                sync.Mutex
+	reqRateLimitMapMutex                sync.RWMutex
 	DataNodeDeleteLimitRate             uint64 //datanode delete limit rate
 	DataNodeRepairTaskCount             uint64
 	DataNodeRepairSSDZoneTaskCount      uint64
@@ -182,6 +182,7 @@ type clusterConfig struct {
 	delayMinutesReduceReplicaNum        int64
 	MqProducerState                     bool
 	UnrecoverableDuration               int64
+	DisableUsedVolLimitInfoRespCache    bool
 }
 
 func newClusterConfig() (cfg *clusterConfig) {
@@ -223,6 +224,7 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MaxConnsPerHost = defaultMaxConnsPerHost
 	cfg.delayMinutesReduceReplicaNum = defaultDelayMinutesReduceReplicaNum
 	cfg.UnrecoverableDuration = defaultUnrecoverableDuration
+	cfg.DisableUsedVolLimitInfoRespCache = true
 	cfg.initAPIReqBandwidthRateLimitMap()
 	return
 }

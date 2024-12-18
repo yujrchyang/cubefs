@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	"github.com/cubefs/cubefs/util/exporter"
@@ -352,132 +351,42 @@ func (m *Server) getDataNodeZoneNameOfRemoteAddr(r *http.Request) (dataNodeZoneN
 	return
 }
 
+func (m *Server) getLimitInfoForServer(dataNodeZoneName string) []byte {
+	return m.cluster.getServerLimitInfoRespCache(dataNodeZoneName)
+}
+
+func (m *Server) getLimitInfoByVolName(volName string) []byte {
+	return m.cluster.getVolLimitInfoRespCache(volName)
+}
+
 func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewModuleTP(proto.AdminGetLimitInfoUmpKey)
 	defer func() { metrics.Set(nil) }()
-	var dataNodeZoneName string
+	var (
+		dataNodeZoneName string
+		data             []byte
+	)
 	vol := r.FormValue(nameKey)
-	if vol == "" { // the data/meta node will not report vol name
+	if vol == "" || !m.cluster.mustUsedVolLimitInfoRespCache(vol) { // the data/meta node will not report vol name
 		dataNodeZoneName = m.getDataNodeZoneNameOfRemoteAddr(r)
+		data = m.getLimitInfoForServer(dataNodeZoneName)
+		send(w, r, data, proto.JsonType)
+		return
 	}
-	//m.cluster.loadClusterValue()
-	batchCount := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteBatchCount)
-	deleteLimitRate := atomic.LoadUint64(&m.cluster.cfg.DataNodeDeleteLimitRate)
-	dumpWaterLevel := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDumpWaterLevel)
-	if dumpWaterLevel < defaultMetanodeDumpWaterLevel {
-		dumpWaterLevel = defaultMetanodeDumpWaterLevel
+	if !m.cluster.cfg.DisableUsedVolLimitInfoRespCache {
+		data = m.getLimitInfoByVolName(vol)
+		send(w, r, data, proto.JsonType)
+		return
 	}
-	repairTaskCount := atomic.LoadUint64(&m.cluster.cfg.DataNodeRepairTaskCount)
-	deleteSleepMs := atomic.LoadUint64(&m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
-	metaNodeReadDirLimitNum := atomic.LoadUint64(&m.cluster.cfg.MetaNodeReadDirLimitNum)
-	dataNodeFlushFDInterval := atomic.LoadUint32(&m.cluster.cfg.DataNodeFlushFDInterval)
-	dataNodeFlushFDParallelismOnDisk := atomic.LoadUint64(&m.cluster.cfg.DataNodeFlushFDParallelismOnDisk)
-	dataPartitionConsistencyMode := proto.ConsistencyModeFromInt32(atomic.LoadInt32(&m.cluster.cfg.DataPartitionConsistencyMode))
-	ssdZoneRepairTaskCount := atomic.LoadUint64(&m.cluster.cfg.DataNodeRepairSSDZoneTaskCount)
-	if ssdZoneRepairTaskCount == 0 {
-		ssdZoneRepairTaskCount = defaultSSDZoneTaskLimit
-	}
-	clusterRepairTaskCount := repairTaskCount
-	monitorSummarySec := atomic.LoadUint64(&m.cluster.cfg.MonitorSummarySec)
-	monitorReportSec := atomic.LoadUint64(&m.cluster.cfg.MonitorReportSec)
-	metaRocksDBWalFileSize := atomic.LoadUint64(&m.cluster.cfg.MetaRockDBWalFileSize)
-	metaRocksDBWalMemSize := atomic.LoadUint64(&m.cluster.cfg.MetaRocksWalMemSize)
-	metaRocksDBLogSize := atomic.LoadUint64(&m.cluster.cfg.MetaRocksLogSize)
-	metaRocksDBLogReservedTime := atomic.LoadUint64(&m.cluster.cfg.MetaRocksLogReservedTime)
-	metaRocksDBLogReservedCnt := atomic.LoadUint64(&m.cluster.cfg.MetaRocksLogReservedCnt)
-	metaRocksDBFlushWalInterval := atomic.LoadUint64(&m.cluster.cfg.MetaRocksFlushWalInterval)
-	metaRocksDBWalTTL := atomic.LoadUint64(&m.cluster.cfg.MetaRocksWalTTL)
-	metaRocksDBDisableFlush := atomic.LoadUint64(&m.cluster.cfg.MetaRocksDisableFlushFlag)
-	metaDeleteEKRecordFilesMaxTotalSize := atomic.LoadUint64(&m.cluster.cfg.DeleteEKRecordFilesMaxSize)
-	metaTrashCleanInterval := atomic.LoadUint64(&m.cluster.cfg.MetaTrashCleanInterval)
-	metaRaftLogSize := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogSize)
-	metaRaftLogCap := atomic.LoadInt64(&m.cluster.cfg.MetaRaftLogCap)
-	normalExtentDeleteExpireTime := atomic.LoadUint64(&m.cluster.cfg.DataNodeNormalExtentDeleteExpire)
-	trashCleanDuration := atomic.LoadInt32(&m.cluster.cfg.TrashCleanDurationEachTime)
-	trashCleanMaxCount := atomic.LoadInt32(&m.cluster.cfg.TrashItemCleanMaxCountEachTime)
-	dpTimeoutCntThreshold := atomic.LoadInt32(&m.cluster.cfg.DpTimeoutCntThreshold)
-	clientReqRecordsReservedCount := atomic.LoadInt32(&m.cluster.cfg.ClientReqRecordsReservedCount)
-	clientReqRecordsReservedMin := atomic.LoadInt32(&m.cluster.cfg.ClientReqRecordsReservedMin)
-	m.cluster.cfg.reqRateLimitMapMutex.Lock()
-	defer m.cluster.cfg.reqRateLimitMapMutex.Unlock()
-	if dataNodeZoneName != "" {
-		if zoneTaskLimit, ok := m.cluster.cfg.DataNodeRepairTaskCountZoneLimit[dataNodeZoneName]; ok {
-			repairTaskCount = zoneTaskLimit
-		} else if strings.Contains(dataNodeZoneName, mediumSSD) {
-			repairTaskCount = ssdZoneRepairTaskCount
-		}
-	}
-	topoFetchIntervalMin := atomic.LoadInt64(&m.cluster.cfg.TopologyFetchIntervalMin)
-	topoForceFetchIntervalSec := atomic.LoadInt64(&m.cluster.cfg.TopologyForceFetchIntervalSec)
-	zoneNetConnConfig := m.cluster.cfg.getZoneNetConnConfigMap()
-	cInfo := &proto.LimitInfo{
-		Cluster:                                m.cluster.Name,
-		MetaNodeDeleteBatchCount:               batchCount,
-		MetaNodeDeleteWorkerSleepMs:            deleteSleepMs,
-		MetaNodeReadDirLimitNum:                metaNodeReadDirLimitNum,
-		DataNodeDeleteLimitRate:                deleteLimitRate,
-		DataNodeRepairTaskLimitOnDisk:          repairTaskCount,
-		DataNodeRepairClusterTaskLimitOnDisk:   clusterRepairTaskCount,
-		DataNodeRepairSSDZoneTaskLimitOnDisk:   ssdZoneRepairTaskCount,
-		DataNodeFlushFDInterval:                dataNodeFlushFDInterval,
-		DataNodeFlushFDParallelismOnDisk:       dataNodeFlushFDParallelismOnDisk,
-		DataPartitionConsistencyMode:           dataPartitionConsistencyMode,
-		DataNodeNormalExtentDeleteExpire:       normalExtentDeleteExpireTime,
-		DataNodeRepairTaskCountZoneLimit:       m.cluster.cfg.DataNodeRepairTaskCountZoneLimit,
-		NetworkFlowRatio:                       m.cluster.cfg.NetworkFlowRatio,
-		RateLimit:                              m.cluster.cfg.RateLimit,
-		FlashNodeLimitMap:                      m.cluster.cfg.FlashNodeLimitMap,
-		FlashNodeVolLimitMap:                   m.cluster.cfg.FlashNodeVolLimitMap,
-		ClientReadVolRateLimitMap:              m.cluster.cfg.ClientReadVolRateLimitMap,
-		ClientWriteVolRateLimitMap:             m.cluster.cfg.ClientWriteVolRateLimitMap,
-		ClientVolOpRateLimit:                   m.cluster.cfg.ClientVolOpRateLimitMap[vol],
-		ObjectNodeActionRateLimit:              m.cluster.cfg.ObjectNodeActionRateLimitMap[vol],
-		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
-		MetaNodeDelEkVolRateLimitMap:           m.cluster.cfg.MetaNodeDelEKVolRateLimitMap,
-		MetaNodeDelEkZoneRateLimitMap:          m.cluster.cfg.MetaNodeDelEKZoneRateLimitMap,
-		MetaNodeDumpWaterLevel:                 dumpWaterLevel,
-		MonitorSummarySec:                      monitorSummarySec,
-		MonitorReportSec:                       monitorReportSec,
-		RocksdbDiskUsageThreshold:              m.cluster.cfg.MetaNodeRocksdbDiskThreshold,
-		MemModeRocksdbDiskUsageThreshold:       m.cluster.cfg.MetaNodeMemModeRocksdbDiskThreshold,
-		RocksDBDiskReservedSpace:               m.cluster.cfg.RocksDBDiskReservedSpace,
-		LogMaxSize:                             m.cluster.cfg.LogMaxSize,
-		MetaRockDBWalFileSize:                  metaRocksDBWalFileSize,
-		MetaRocksWalMemSize:                    metaRocksDBWalMemSize,
-		MetaRocksLogSize:                       metaRocksDBLogSize,
-		MetaRocksLogReservedTime:               metaRocksDBLogReservedTime,
-		MetaRocksLogReservedCnt:                metaRocksDBLogReservedCnt,
-		MetaRocksDisableFlushFlag:              metaRocksDBDisableFlush,
-		MetaRocksFlushWalInterval:              metaRocksDBFlushWalInterval,
-		MetaRocksWalTTL:                        metaRocksDBWalTTL,
-		DeleteEKRecordFileMaxMB:                metaDeleteEKRecordFilesMaxTotalSize,
-		MetaTrashCleanInterval:                 metaTrashCleanInterval,
-		MetaRaftLogSize:                        metaRaftLogSize,
-		MetaRaftCap:                            metaRaftLogCap,
-		MetaSyncWALOnUnstableEnableState:       m.cluster.cfg.MetaSyncWALOnUnstableEnableState,
-		DataSyncWALOnUnstableEnableState:       m.cluster.cfg.DataSyncWALOnUnstableEnableState,
-		DisableStrictVolZone:                   m.cluster.cfg.DisableStrictVolZone,
-		AutoUpdatePartitionReplicaNum:          m.cluster.cfg.AutoUpdatePartitionReplicaNum,
-		BitMapAllocatorMaxUsedFactor:           m.cluster.cfg.BitMapAllocatorMaxUsedFactor,
-		BitMapAllocatorMinFreeFactor:           m.cluster.cfg.BitMapAllocatorMinFreeFactor,
-		TrashItemCleanMaxCountEachTime:         trashCleanMaxCount,
-		TrashCleanDurationEachTime:             trashCleanDuration,
-		DeleteMarkDelVolInterval:               m.cluster.cfg.DeleteMarkDelVolInterval,
-		RemoteCacheBoostEnable:                 m.cluster.cfg.RemoteCacheBoostEnable,
-		DpTimeoutCntThreshold:                  int(dpTimeoutCntThreshold),
-		ClientReqRecordsReservedCount:          clientReqRecordsReservedCount,
-		ClientReqRecordsReservedMin:            clientReqRecordsReservedMin,
-		ClientReqRemoveDupFlag:                 m.cluster.cfg.ClientReqRemoveDup,
-		RemoteReadConnTimeout:                  m.cluster.cfg.RemoteReadConnTimeoutMs,
-		ZoneNetConnConfig:                      zoneNetConnConfig,
-		MetaNodeDumpSnapCountByZone:            m.cluster.cfg.MetaNodeDumpSnapCountByZone,
-		TopologyFetchIntervalMin:               topoFetchIntervalMin,
-		TopologyForceFetchIntervalSec:          topoForceFetchIntervalSec,
-		DataNodeDiskReservedRatio:              m.cluster.cfg.DataNodeDiskReservedRatio,
-		DisableClusterCheckDeleteEK:            m.cluster.cfg.DisableClusterCheckDeleteEK,
-		DelayMinutesReduceReplicaNum:           m.cluster.cfg.delayMinutesReduceReplicaNum,
-		UnrecoverableDuration:                  m.cluster.cfg.UnrecoverableDuration,
-	}
+	m.getLimitInfoNoCache(w, r, vol)
+	return
+
+}
+
+func (m *Server) getLimitInfoNoCache(w http.ResponseWriter, r *http.Request, volName string) {
+	metrics := exporter.NewModuleTP(proto.AdminGetLimitInfoNoCacheUmpKey)
+	defer func() { metrics.Set(nil) }()
+	cInfo := m.cluster.buildLimitInfo(volName)
 	sendOkReply(w, r, newSuccessHTTPReply(cInfo))
 }
 

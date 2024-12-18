@@ -53,6 +53,7 @@ func (c *Cluster) startPeriodicBackgroundSchedulingTasks() {
 
 	// cluster tasks
 	c.startTask(c.doUpdateClusterView, time.Second*defaultIntervalToCheckHeartbeat, 0, true)
+	c.startTask(c.doServerLimitInfoRespCache, time.Second*defaultIntervalToCheckHeartbeat, 0, true)
 	c.startTask(c.doUpdateFlashGroupResponseCache, time.Second*defaultIntervalToCheckHeartbeat, 0, true)
 	c.startTask(c.doCheckDataNodeHeartbeat, time.Second*defaultIntervalToCheckHeartbeat, 0, true)
 	c.startTask(c.doCheckMetaNodeHeartbeat, time.Second*defaultIntervalToCheckHeartbeat, 0, true)
@@ -159,6 +160,9 @@ func (c *Cluster) doCheckVolStatus() {
 			return
 		}
 		vol.checkStatus(c)
+		if !c.cfg.DisableUsedVolLimitInfoRespCache {
+			c.updateVolLimitInfoRespCache(vol)
+		}
 	}
 }
 
@@ -434,6 +438,19 @@ func (c *Cluster) doUpdateClusterView() {
 	metrics := exporter.NewModuleTP(proto.UpdateClusterView)
 	defer func() { metrics.Set(nil) }()
 	c.updateClusterViewResponseCache()
+}
+
+func (c *Cluster) doServerLimitInfoRespCache() {
+	defer func() {
+		if r := recover(); r != nil {
+			log.LogWarnf("doServerLimitInfoRespCache occurred panic,err[%v]", r)
+			WarnBySpecialKey(fmt.Sprintf("%v_%v_scheduling_job_panic", c.Name, ModuleName),
+				"doServerLimitInfoRespCache occurred panic")
+		}
+	}()
+	metrics := exporter.NewModuleTP(proto.UpdateServerLimitInfoRespCache)
+	defer func() { metrics.Set(nil) }()
+	c.updateServerLimitInfoRespCache()
 }
 
 func (c *Cluster) doUpdateFlashGroupResponseCache() {
