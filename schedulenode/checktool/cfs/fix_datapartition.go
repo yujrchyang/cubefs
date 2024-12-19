@@ -17,7 +17,6 @@ import (
 
 const (
 	cfgFixBadPartition         = "fixBadPartition"
-	cfgUmpAPiToken             = "umpToken"
 	dpNotRecoverEndPoint       = "spark_master_dp_has_not_recover"
 	dpFixBadReplicaNumEndPoint = "spark_master_dp_replica_num"
 	umpOpenAPiDomain           = "open.ump.jd.com"
@@ -127,8 +126,7 @@ func parseNotRecoverPartition(content string) (dps []uint64) {
 		}
 	}()
 	log.LogWarnf("action[parseNotRecoverPartition] content:%v", content)
-	if !strings.Contains(content, "has offlined more than 24 hours") && !strings.Contains(content, "has migrated more than 24 hours") {
-		fmt.Printf("1")
+	if !strings.Contains(content, "has offlined more than") && !strings.Contains(content, "has migrated more than") {
 		return
 	}
 	dpStrArr := notRecoverDpRegex.FindAllString(content, -1)

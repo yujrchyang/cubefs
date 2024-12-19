@@ -1,6 +1,7 @@
 package ump
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -30,6 +31,9 @@ func doPost(url string, body []byte, headers map[string]string) (resultBody []by
 	resultBody, err = io.ReadAll(resp.Body)
 	if err != nil {
 		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		err = fmt.Errorf("http status code: %d, response: %v", resp.StatusCode, resultBody)
 	}
 	return
 }
