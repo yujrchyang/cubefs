@@ -25,6 +25,7 @@ import (
 	"path"
 	"runtime/debug"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -555,7 +556,7 @@ func (mp *metaPartition) doBatchTrashExtents(ctx context.Context, dp *topology.D
 			log.LogDebugf("doDeleteMarkedInodes vol(%s) dataPartition(%v) not exist in host(%v)," +
 				" force fetch data partition view", mp.config.VolName, ext.PartitionId, dp.Hosts[0])
 		}
-		if p.ResultCode == proto.OpArgMismatchErr {
+		if p.ResultCode == proto.OpArgMismatchErr && strings.Contains(string(p.Data), "unknown opcode"){
 			isMismatchOp = true
 			log.LogDebugf("doDeleteMarkedInodes vol(%s) dataPartition(%v) need use old op, host(%v),",
 				mp.config.VolName, ext.PartitionId, dp.Hosts[0])
