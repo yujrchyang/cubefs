@@ -593,11 +593,11 @@ func repairDp(release bool, host string, replica PeerReplica) {
 			log.LogErrorf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] repair-delDpReplica failed, err:%v", host, replica.ReplicationID, replica.PeerErrorInfo, err)
 			break
 		}
-		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] has been automatically repaired, cmd[cfs-cli datapartition add-replica %v %v && sleep 3 && cfs-cli datapartition del-replica %v %v]",
-			host, replica.ReplicationID, replica.PeerErrorInfo, replica.PeerAddr, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
+		log.LogWarnf("[Domain: %v, PartitionID: %-2v , ErrorType: %v] has been automatically repaired, cmd[add replica %v, sleep 3s, delete replica %v]",
+			host, replica.ReplicationID, replica.PeerErrorInfo, replica.PeerAddr, replica.PeerAddr)
 	case "LACK_HOST":
-		outputStr := fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] recommond cmd: cfs-cli datapartition add-replica %v %v",
-			host, replica.ReplicationID, replica.PeerAddr, replica.ReplicationID)
+		outputStr := fmt.Sprintf("[Domain: %v, PartitionID: %-2v , ErrorType: HOST2_PEER3] recommond add replica: %v",
+			host, replica.ReplicationID, replica.PeerAddr)
 		warnBySpecialUmpKeyWithPrefix(UMPKeyDataPartitionPeerInconsistency, outputStr)
 	default:
 		log.LogErrorf("wrong error info, %v", replica.PeerErrorInfo)
