@@ -98,6 +98,7 @@ const (
 	AdminAPISetNodesLiveRatio      = "/nodesLiveRatio/set"
 
 	AdminAPISetUnrecoverableDuration      = "/unrecoverableDuration/set"
+	AdminAPISetPingRule                   = "/pingRule/set"
 	AdminSmartVolList                     = "/admin/smartVol/list"
 	AdminHddPartitions                    = "/admin/hddPartitions"
 	AdminGetUnavailDataPartitions         = "/admin/getUnavailDps"
@@ -1742,6 +1743,7 @@ type ClientClusterConf struct {
 	RemoteCacheBoostEnable bool
 	RemoteReadTimeoutMs    int64
 	ZoneConnConfig         map[string]ConnConfig
+	TwoZoneHATypePingRule  string // ai跨两机房 ping规则
 }
 type ConsistencyMode uint32
 

@@ -203,3 +203,15 @@ func (c *Cluster) SetUnrecoverableDuration(val int64) (err error) {
 	}
 	return
 }
+
+func (c *Cluster) setTwoZoneHATypePingRule(val string) (err error) {
+	oldVal := c.cfg.TwoZoneHATypePingRule
+	c.cfg.TwoZoneHATypePingRule = val
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setTwoZoneHATypePingRule] from %v to %v failed,err[%v]", oldVal, val, err)
+		c.cfg.TwoZoneHATypePingRule = oldVal
+		err = errors.New("persistence by raft occurred error")
+		return
+	}
+	return
+}

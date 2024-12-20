@@ -5120,3 +5120,20 @@ func TestSetUnrecoverableDuration(t *testing.T) {
 		return
 	}
 }
+
+func TestSetPingRule(t *testing.T) {
+	pingRule := "200-400-600,4000"
+	reqURL := fmt.Sprintf("%v%v?pingRule=%v", hostAddr, proto.AdminAPISetPingRule, pingRule)
+	process(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.ClientConfCluster)
+	reply := processReturnRawReply(reqURL, t)
+	clientConf := &proto.ClientClusterConf{}
+	err := json.Unmarshal(reply.Data, clientConf)
+	assert.NoError(t, err)
+	assert.Equal(t, pingRule, clientConf.TwoZoneHATypePingRule)
+	//invalid parameter
+	pingRule = "200+400-600,4000"
+	reqURL = fmt.Sprintf("%v%v?pingRule=%v", hostAddr, proto.AdminAPISetPingRule, pingRule)
+	httpReply := processWithError(reqURL, t)
+	assert.Contains(t, httpReply.Msg, "invalid value")
+}

@@ -184,6 +184,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminAPISetUnrecoverableDuration).
 		HandlerFunc(m.SetUnrecoverableDuration)
+	router.NewRoute().Methods(http.MethodPost, http.MethodGet).
+		Path(proto.AdminAPISetPingRule).
+		HandlerFunc(m.setPingRule)
 	// volume management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminCreateVol).

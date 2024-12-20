@@ -3978,7 +3978,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[proto.EnableUsedVolLimitInfoRespCacheKey]; ok {
 		c.cfg.DisableUsedVolLimitInfoRespCache = val.(bool)
 	}
-
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)

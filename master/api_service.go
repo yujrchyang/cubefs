@@ -2497,6 +2497,19 @@ func (m *Server) resetCorruptDataNode(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
+func (m *Server) setPingRule(w http.ResponseWriter, r *http.Request) {
+	twoZoneHATypePingRule, err := parseAndExtractTwoZoneHATypePingRule(r, m.cluster)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if err = m.cluster.setTwoZoneHATypePingRule(twoZoneHATypePingRule); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set twoZoneHATypePingRule  to %v  successfully", twoZoneHATypePingRule)))
+}
+
 func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	var (
 		params map[string]interface{}
@@ -2508,7 +2521,6 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-
 	err = m.cluster.setClusterConfig(params)
 	if err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
@@ -5309,6 +5321,23 @@ func parseAndExtractHours(r *http.Request) (delay int64, err error) {
 	return
 }
 
+func parseAndExtractTwoZoneHATypePingRule(r *http.Request, c *Cluster) (twoZoneHATypePingRule string, err error) {
+
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	val, exist := r.Form[pingRuleKey]
+	if !exist {
+		twoZoneHATypePingRule = c.cfg.TwoZoneHATypePingRule
+		return
+	}
+	if !pingRuleRegexp.MatchString(val[0]) {
+		err = fmt.Errorf("invalid value:%v", val[0])
+		return
+	}
+	return val[0], nil
+}
+
 func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interface{}, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -5364,6 +5393,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 			return
 		}
 	}
+
 	if len(params) == 0 {
 		err = errors.NewErrorf("no valid parameters")
 		return
@@ -7121,6 +7151,7 @@ func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
 		RemoteCacheBoostEnable: m.cluster.cfg.RemoteCacheBoostEnable,
 		RemoteReadTimeoutMs:    m.cluster.cfg.RemoteReadConnTimeoutMs,
 		ZoneConnConfig:         m.cluster.cfg.getZoneNetConnConfigMap(),
+		TwoZoneHATypePingRule:  m.cluster.cfg.TwoZoneHATypePingRule,
 	}
 	cf.DataNodes = m.cluster.allDataNodesForClient()
 	cf.EcNodes = m.cluster.allEcNodes()

@@ -183,6 +183,7 @@ type clusterConfig struct {
 	MqProducerState                     bool
 	UnrecoverableDuration               int64
 	DisableUsedVolLimitInfoRespCache    bool
+	TwoZoneHATypePingRule               string
 }
 
 func newClusterConfig() (cfg *clusterConfig) {

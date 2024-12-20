@@ -61,6 +61,7 @@ const (
 	keywordsKey                         = "keywords"
 	moduleKey                           = "module"
 	zoneNameKey                         = "zoneName"
+	pingRuleKey                         = "pingRule"
 	autoRepairKey                       = "autoRepair"
 	tokenKey                            = "token"
 	tokenTypeKey                        = "tokenType"

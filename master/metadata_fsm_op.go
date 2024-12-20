@@ -119,6 +119,7 @@ type clusterValue struct {
 	MqProducerState                     bool
 	UnrecoverableDuration               int64
 	DisableUsedVolLimitInfoRespCache    bool
+	TwoZoneHATypePingRule               string
 }
 
 func newClusterValue(c *Cluster) (cv *clusterValue) {
@@ -205,6 +206,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		MqProducerState:                     c.cfg.MqProducerState,
 		UnrecoverableDuration:               c.cfg.UnrecoverableDuration,
 		DisableUsedVolLimitInfoRespCache:    c.cfg.DisableUsedVolLimitInfoRespCache,
+		TwoZoneHATypePingRule:               c.cfg.TwoZoneHATypePingRule,
 	}
 	return cv
 }
@@ -1283,6 +1285,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 			atomic.StoreInt64(&c.cfg.UnrecoverableDuration, cv.UnrecoverableDuration)
 		}
 		c.cfg.DisableUsedVolLimitInfoRespCache = cv.DisableUsedVolLimitInfoRespCache
+		c.cfg.TwoZoneHATypePingRule = cv.TwoZoneHATypePingRule
 		log.LogInfof("action[loadClusterValue], cv[%v]", cv)
 		log.LogInfof("action[loadClusterValue], metaNodeThreshold[%v]", cv.Threshold)
 	}
