@@ -112,8 +112,8 @@ func (c *Cluster) checkDiskRecoveryProgress() {
 			}
 			return true
 		}
-		if len(partition.Replicas) >= int(replicaNum) && len(partition.Hosts) >= int(replicaNum) &&
-			partition.allReplicaHasRecovered() && passedTime > 2*defaultIntervalToCheckHeartbeat {
+		if vol.Status == proto.VolStMarkDelete || (len(partition.Replicas) >= int(replicaNum) && len(partition.Hosts) >= int(replicaNum) &&
+			partition.allReplicaHasRecovered() && passedTime > 2*defaultIntervalToCheckHeartbeat) {
 			partition.RLock()
 			if partition.isRecover {
 				partition.isRecover = false

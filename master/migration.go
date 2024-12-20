@@ -2,6 +2,7 @@ package master
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"strings"
 	"sync/atomic"
@@ -38,7 +39,7 @@ func (c *Cluster) checkMigratedDataPartitionsRecoveryProgress() {
 			return true
 		}
 		passedTime = time.Now().Unix() - partition.modifyTime
-		if partition.isDataCatchUpInStrictMode() && partition.allReplicaHasRecovered() && passedTime > 2*defaultIntervalToCheckHeartbeat {
+		if vol.Status == proto.VolStMarkDelete || (partition.isDataCatchUpInStrictMode() && partition.allReplicaHasRecovered() && passedTime > 2*defaultIntervalToCheckHeartbeat) {
 			partition.RLock()
 			if partition.isRecover {
 				partition.isRecover = false
@@ -145,7 +146,7 @@ func (c *Cluster) checkMigratedMetaPartitionRecoveryProgress() {
 		}
 		dentryDiff = partition.getMinusOfDentryCount()
 		applyIDDiff = partition.getMinusOfApplyID()
-		if dentryDiff == 0 && applyIDDiff == 0 && partition.allReplicaHasRecovered() {
+		if vol.Status == proto.VolStMarkDelete || (dentryDiff == 0 && applyIDDiff == 0 && partition.allReplicaHasRecovered()) {
 			partition.RLock()
 			partition.IsRecover = false
 			c.syncUpdateMetaPartition(partition)

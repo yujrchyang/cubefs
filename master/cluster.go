@@ -1246,7 +1246,7 @@ func (c *Cluster) getAllMetaPartitionByMetaNode(addr string) (partitions []*Meta
 
 func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []uint64) {
 	partitionIDs = make([]uint64, 0)
-	safeVols := c.allVols()
+	safeVols := c.copyVols()
 	for _, vol := range safeVols {
 		for _, dp := range vol.dataPartitions.partitions {
 			for _, host := range dp.Hosts {
@@ -1263,7 +1263,7 @@ func (c *Cluster) getAllDataPartitionIDByDatanode(addr string) (partitionIDs []u
 
 func (c *Cluster) getAllMetaPartitionIDByMetaNode(addr string) (partitionIDs, recorderIDs []uint64) {
 	partitionIDs = make([]uint64, 0)
-	safeVols := c.allVols()
+	safeVols := c.copyVols()
 	for _, vol := range safeVols {
 		vol.mpsLock.RLock()
 		for _, mp := range vol.MetaPartitions {
@@ -2038,6 +2038,9 @@ func (c *Cluster) validateDecommissionDataPartition(dp *DataPartition, offlineAd
 
 	var vol *Vol
 	if vol, err = c.getVol(dp.VolName); err != nil {
+		return
+	}
+	if vol.isRealDelete(c.cfg.DeleteMarkDelVolInterval) {
 		return
 	}
 	if vol.dpReplicaNum > 2 {

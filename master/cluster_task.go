@@ -337,6 +337,9 @@ func (c *Cluster) validateDecommissionMetaPartition(mp *MetaPartition, nodeAddr 
 	if vol, err = c.getVol(mp.volName); err != nil {
 		return
 	}
+	if vol.isRealDelete(c.cfg.DeleteMarkDelVolInterval) {
+		return
+	}
 	if err = mp.hasMajorityLiveReplicas(nodeAddr, int(vol.mpReplicaNum), int(mp.RecorderNum)); err != nil {
 		return
 	}
