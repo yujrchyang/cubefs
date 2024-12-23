@@ -68,6 +68,7 @@ func (rw *ReBalanceWorker) processNeedDeleteReplicaDp(record *MigrateRecordTable
 			record.ClusterName, record.PartitionID, dp.Hosts, record.SrcAddr, record.DstAddr, dp.ReplicaNum)
 		exporter.WarningBySpecialUMPKey(deleteWarnKey, errMsg)
 		log.LogError(errMsg)
+		record.FinishDelete = FinishDeleteSuccess
 		return
 	}
 

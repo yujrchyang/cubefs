@@ -24,6 +24,9 @@ const (
 	TEST        = "delete_ek_test"
 	TestES      = "test-es-db"
 	TestDbBak   = "test-dbBack"
+
+	MaxRepairedPartitionCount      = 200
+	MaxMysqlRepairedPartitionCount = 100
 )
 
 func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request) (int, interface{}, error) {
@@ -63,6 +66,17 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 	if maxBatchCountStr != "" {
 		if tmp, err := strconv.Atoi(maxBatchCountStr); err == nil {
 			maxBatchCount = tmp
+		}
+	}
+	if cluster == ELASTICDB {
+		if maxBatchCount > MaxMysqlRepairedPartitionCount {
+			err = fmt.Errorf("the maximum number of repaired partitions in the mysql cluster cannot exceed %v", MaxMysqlRepairedPartitionCount)
+			return http.StatusBadRequest, nil, err
+		}
+	} else {
+		if maxBatchCount > MaxRepairedPartitionCount {
+			err = fmt.Errorf("the maximum number of repaired partitions in the cluster cannot exceed %v", MaxRepairedPartitionCount)
+			return http.StatusBadRequest, nil, err
 		}
 	}
 	migrateLimitPerDisk := defaultMigrateLimitPerDisk
