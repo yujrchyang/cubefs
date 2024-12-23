@@ -83,7 +83,15 @@ create_cluster_user() {
     fi
     # try create user
     for i in $(seq 1 300) ; do
-        ${cli} user create ${Owner} --access-key=${AccessKey} --secret-key=${SecretKey} -y > /tmp/cli_user_create
+        curl http://master.chubao.io/user/create -H "Content-Type: application/json" -X POST \
+         -d '{
+          "id":"'${Owner}'",
+          "pwd":"",
+          "ak":"'${AccessKey}'",
+          "sk":"'${SecretKey}'",
+          "type":3,
+          "description":""
+        }' > /tmp/cli_user_create
         if [[ $? -eq 0 ]] ; then
             echo -e "\033[32mdone\033[0m"
             return
@@ -101,7 +109,8 @@ create_volume() {
     if [[ $? -eq 0 ]]; then
         echo -e "\033[32mdone\033[0m"
     else
-      ${cli} volume create ${VolName} ${Owner} --capacity=30 --store-mode=1 --follower-read=false -y > /dev/null
+
+      create_volume_with_para ${VolName} ${Owner} 30 1 false > /dev/null
       if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
@@ -113,13 +122,50 @@ create_volume() {
     if [[ $? -eq 0 ]]; then
         echo -e "\033[32mdone\033[0m"
     else
-      ${cli} volume create ${RocksDBVolName} ${Owner} --capacity=30 --store-mode=2 --follower-read=false -y > /dev/null
+      create_volume_with_para ${RocksDBVolName} ${Owner} 30 2 false > /dev/null
       if [[ $? -ne 0 ]]; then
         echo -e "\033[31mfail\033[0m"
         exit 1
       fi
     fi
     echo -e "\033[32mdone\033[0m"
+}
+
+# $1:name
+# $2:owner
+# $3:capacity
+# $4:store-mode [1:Mem, 2:Rocks]
+# $5:follower-read  true/false
+create_volume_with_para() {
+  curl http://master.chubao.io/admin/createVol \
+    -d name=$1 \
+    -d owner=$2 \
+    -d mpCount=3 \
+    -d size=120 \
+    -d capacity=$3 \
+    -d ecDataNum=4 \
+    -d ecParityNum=2 \
+    -d ecEnable=false \
+    -d followerRead=$5 \
+    -d forceROW=false \
+    -d writeCache=false \
+    -d crossRegion=0 \
+    -d autoRepair=false \
+    -d replicaNum=3 \
+    -d mpReplicaNum=3 \
+    -d volWriteMutex=false \
+    -d zoneName=default \
+    -d trashRemainingDays=0 \
+    -d storeMode=$4 \
+    -d metaLayout="0,0" \
+    -d smart=false \
+    -d smartRules="" \
+    -d compactTag=false \
+    -d hostDelayInterval=0 \
+    -d batchDelInodeCnt=0 \
+    -d delInodeInterval=0 \
+    -d enableBitMapAllocator=0 \
+    -d metaOut=false
 }
 
 show_cluster_info() {
