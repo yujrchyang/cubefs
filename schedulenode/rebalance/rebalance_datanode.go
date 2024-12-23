@@ -198,7 +198,7 @@ func (dnCtrl *DNReBalanceController) migrate(disk *Disk, dp *proto.DataPartition
 	if dp.ReplicaNum == 2 {
 		if release {
 			//先加副本
-			err = dnCtrl.zoneCtrl.releaseClient.AddDataReplica(dp.PartitionID, dstNode.Addr)
+			_ = dnCtrl.zoneCtrl.releaseClient.AddDataReplica(dp.PartitionID, dstNode.Addr)
 		} else {
 			err = dnCtrl.zoneCtrl.masterClient.AdminAPI().AddDataReplica(dp.PartitionID, dstNode.Addr, proto.DefaultAddReplicaType)
 		}

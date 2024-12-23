@@ -403,6 +403,7 @@ func (rc *releaseClient) AddDataReplica(id uint64, addr string) error {
 	req.AddParam("id", strconv.FormatUint(id, 10))
 	_, err := rc.sendSimpleRequest(req)
 	if err != nil {
+		log.LogErrorf("release client add replica dpId:%v dstAddr:%v err:%v", id, addr, err)
 		return err
 	}
 	return nil
