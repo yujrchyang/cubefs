@@ -500,6 +500,10 @@ func (cv *ClusterView) checkDataNodeAlive(host *ClusterHost, s *ChubaoFSMonitor)
 		return
 	}
 
+	if time.Since(dataNodeView.ReportTime) > offlineThreshold*4 && (len(dataNodeView.DataPartitionReports) > 0 || len(dataNodeView.PersistenceDataPartitions) > 0) {
+		warnBySpecialUmpKeyWithPrefix(UMPKeyOfflineFailed, fmt.Sprintf("Domain[%v] host[%v] last report time[%v] auto offline failed, remain partitions [%v], please check", host.host, dn.Addr, dataNodeView.ReportTime, len(dataNodeView.DataPartitionReports)))
+	}
+
 	// 符合24小时内下线限制，并且且为新ip，则加入待下线DataNode Map
 	if _, ok := host.inOfflineDataNodes[dataNodeView.Addr]; !ok {
 		if len(host.inOfflineDataNodes) < host.offlineDataNodeTokenPool.getSize() && host.offlineDataNodeTokenPool.allow() {
@@ -603,8 +607,8 @@ func offlineBadDataNodeByDisk(s *ChubaoFSMonitor, host *ClusterHost) {
 		}
 		// 以半小时间隔为例，dbbak集群整机12块磁盘下线完成的总时间大概为6小时，加上2个小时的冷静期，总共8小时。
 		// 为了加快下线速度，将整机器下线的时间缩短至4小时内，每个磁盘下线间隔从下1块盘改成下2块盘。同时冷静期调整为1小时
-		offlineDataNodeDisk(host, dataNodeAddr, diskPath1, false)
-		offlineDataNodeDisk(host, dataNodeAddr, diskPath2, false)
+		offlineDataNodeDisk(host, dataNodeAddr, diskPath1, true)
+		offlineDataNodeDisk(host, dataNodeAddr, diskPath2, true)
 		host.inOfflineDataNodes[dataNodeAddr] = time.Now()
 	}
 }

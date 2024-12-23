@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/common/xbp"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/checktool"
 	"github.com/cubefs/cubefs/util/log"
@@ -150,9 +151,7 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 						if host.host == DomainMysql {
 							warnBySpecialUmpKeyWithPrefix(UMPCFSMysqlBadDiskKey, fmt.Sprintf("Domain[%v] occurred bad disk, addr[%v] disk[%v]", host.host, badDiskOnNode.Addr, badDisk))
 						} else {
-							if canOffline(host) {
-								offlineDataNodeDisk(host, badDiskOnNode.Addr, badDisk, true)
-							}
+							offlineDataNodeDisk(host, badDiskOnNode.Addr, badDisk, true)
 						}
 						host.offlineDisksIn24Hour[dataNodeBadDiskKey] = time.Now()
 					}
@@ -201,6 +200,23 @@ func (s *ChubaoFSMonitor) doCheckDataNodeDiskError(cv *ClusterDataNodeBadDisks, 
 	host.dataNodeBadDisk = newCheckedDataNodeBadDisk
 }
 
+// 轻量，但只检查坏盘，不检查磁盘坏快
+func badDiskIsEmptyV2(addr, badDisk string) bool {
+	dHost := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], profPortMap[strings.Split(addr, ":")[1]])
+	dataClient := http_client.NewDataClient(dHost, false)
+	disksReport, err := dataClient.GetDisks()
+	if err != nil {
+		return true
+	}
+	for _, d := range disksReport.Disks {
+		if d.Status == proto.Unavailable && d.Path == badDisk && d.Partitions > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// 重量，但是最准确。可检查坏快、坏盘两种故障
 func badDiskIsEmpty(host *ClusterHost, addr, badDisk string) bool {
 	dn, err := getDataNode(host, addr)
 	if err != nil || dn == nil {

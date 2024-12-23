@@ -50,6 +50,7 @@ var (
 	UmpHBaseCapBeyondLevelKey            = "hbase.cap.beyond.level"
 	UMPCFSNLInactiveNodeKey              = "cfs.nl.inactive.node"
 	UMPKeyStuckNodes                     = "chubaofs.stuck.nodes"
+	UMPKeyOfflineFailed                  = "chubaofs.offline.failed"
 )
 
 const (
