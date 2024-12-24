@@ -1082,7 +1082,7 @@ func getDataNode(host *ClusterHost, addr string) (dn *DataNodeView, err error) {
 	return
 }
 
-func offlineMetaPatition(host *ClusterHost, addr string, pid uint64) {
+func offlineMetaPatition(host *ClusterHost, addr string, pid uint64, reason string) (err error) {
 	var reqURL string
 	if host.isReleaseCluster {
 		mp, err := cfs.GetMetaPartition(host.host, pid, true)
@@ -1099,7 +1099,7 @@ func offlineMetaPatition(host *ClusterHost, addr string, pid uint64) {
 		log.LogErrorf("action[offlineMetaPartition] occurred err,url[%v],err %v", reqURL, err)
 		return
 	}
-	msg := fmt.Sprintf("action[offlineMetaPartition] reqURL[%v],data[%v]", reqURL, string(data))
+	msg := fmt.Sprintf("action[offlineMetaPartition] reqURL[%v],data[%v],reason[%v]", reqURL, string(data), reason)
 	warnBySpecialUmpKeyWithPrefix(UMPCFSNormalWarnKey, msg)
 	return
 }
@@ -1213,7 +1213,7 @@ func (cv *ClusterView) checkMetaNodeFailedMetaPartitions(host *ClusterHost) {
 		}
 
 		for _, mp := range failedMpArr {
-			offlineMetaPatition(host, metaNode.Addr, mp)
+			offlineMetaPatition(host, metaNode.Addr, mp, "meta partition start failed")
 		}
 	}
 }
