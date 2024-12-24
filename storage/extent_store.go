@@ -131,6 +131,13 @@ var (
 	}
 )
 
+type WriteMode int
+
+const (
+	Append    WriteMode = 0
+	Overwrite WriteMode = 1
+)
+
 // ExtentStore defines fields used in the storage engine.
 // Packets smaller than 128K are stored in the "tinyExtent", a place to persist the small files.
 // packets larger than or equal to 128K are stored in the normal "extent", a place to persist large files.
@@ -490,7 +497,7 @@ func (s *ExtentStore) getExtentInfoByExtentID(eid uint64) (ei *ExtentInfoBlock, 
 }
 
 // Write writes the given extent to the disk.
-func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size int64, data []byte, crc uint32, writeType int, isSync bool) (err error) {
+func (s *ExtentStore) Write(extentID uint64, offset, size int64, data []byte, crc uint32, writeMode WriteMode, isSync bool) (err error) {
 	var (
 		e *Extent
 	)
@@ -500,6 +507,10 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 		err = proto.ExtentNotFoundError
 		return
 	}
+	if !proto.IsTinyExtent(extentID) && s.IsLocked(extentID) {
+		err = ExtentLockedError
+		return
+	}
 	e, err = s.ExtentWithHeader(ei)
 	if err != nil {
 		return err
@@ -507,7 +518,7 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 	if err = s.checkOffsetAndSize(extentID, offset, size); err != nil {
 		return err
 	}
-	err = e.Write(data, offset, size, crc, writeType, isSync)
+	err = e.Write(data, offset, size, crc, writeMode, isSync)
 	if err != nil {
 		return err
 	}
@@ -1457,6 +1468,11 @@ func (s *ExtentStore) IsDeleted(extentID uint64) (deleted bool) {
 func (s *ExtentStore) IsTrashed(extentID uint64) (trashed bool) {
 	_, ok := s.trashExtents.Load(extentID)
 	return ok
+}
+
+func (s *ExtentStore) IsLocked(extentID uint64) (locked bool) {
+	_, locked = s.ttlStore.Load(extentID)
+	return
 }
 
 // GetExtentCount returns the seq of extents in the extentInfoMap

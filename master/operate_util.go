@@ -29,17 +29,20 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-func newCreateDataPartitionRequest(volName string, ID uint64, members []proto.Peer, dataPartitionSize, replicaNum int, hosts []string, createType int, learners []proto.Learner, volumeHAType proto.CrossRegionHAType) (req *proto.CreateDataPartitionRequest) {
+func newCreateDataPartitionRequest(
+	volName string, ID uint64, members []proto.Peer, dataPartitionSize, replicaNum int, hosts []string, createType int, learners []proto.Learner,
+	volumeHAType proto.CrossRegionHAType, syncMode proto.SyncMode) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
-		PartitionId:   ID,
-		PartitionSize: dataPartitionSize,
-		ReplicaNum:    replicaNum,
-		VolumeId:      volName,
-		Members:       members,
-		Learners:      learners,
-		Hosts:         hosts,
-		CreateType:    createType,
-		VolumeHAType:  volumeHAType,
+		PartitionId:     ID,
+		PartitionSize:   dataPartitionSize,
+		ReplicaNum:      replicaNum,
+		VolumeId:        volName,
+		Members:         members,
+		Learners:        learners,
+		Hosts:           hosts,
+		CreateType:      createType,
+		VolumeHAType:    volumeHAType,
+		SyncMode:        syncMode,
 	}
 	return
 }

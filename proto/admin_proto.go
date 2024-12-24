@@ -759,6 +759,7 @@ type CreateDataPartitionRequest struct {
 	Hosts         []string
 	CreateType    int
 	VolumeHAType  CrossRegionHAType
+	SyncMode      SyncMode
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.
@@ -1316,6 +1317,7 @@ type SimpleVolView struct {
 	ForceROW              bool
 	EnableWriteCache      bool
 	CrossRegionHAType     CrossRegionHAType
+	SyncMode              SyncMode
 	Tokens                map[string]*Token `graphql:"-"`
 	Description           string
 	DpSelectorName        string
@@ -1782,6 +1784,38 @@ func ConsistencyModeFromInt32(v int32) ConsistencyMode {
 const (
 	StandardMode ConsistencyMode = iota
 	StrictMode
+)
+
+type SyncMode int8
+
+func (s SyncMode) String() string {
+	switch s {
+	case SyncModeNil:
+		return "Nil"
+	case SyncModeDisabled:
+		return "Disabled"
+	case SyncModeEnabled:
+		return "Enabled"
+	default:
+	}
+	return "Unknown"
+}
+
+func (s SyncMode) Valid() bool {
+	switch s {
+	case SyncModeNil, SyncModeDisabled, SyncModeEnabled:
+		return true
+	default:
+	}
+	return false
+}
+
+const (
+	SyncModeNil      SyncMode = 0 // 未设置
+	SyncModeDisabled SyncMode = 1 // 不保证每次写入后同步落盘
+	SyncModeEnabled  SyncMode = 2 // 保证每次写入后同步落盘
+
+	DefaultSyncMode = SyncModeDisabled
 )
 
 // http ContentType

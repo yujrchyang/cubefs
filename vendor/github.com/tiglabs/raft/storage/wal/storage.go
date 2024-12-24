@@ -95,6 +95,14 @@ func NewStorage(dir string, c *Config) (*Storage, error) {
 	return s, nil
 }
 
+func (s *Storage) SetSync(sync bool) {
+	s.c.Sync = sync
+}
+
+func (s *Storage) SetSyncRotate(syncRotate bool) {
+	s.c.SyncRotate = syncRotate
+}
+
 func (s *Storage) truncateFirstDummy() error {
 	// 保证是初始化时（不能已有日志存在）
 	li, err := s.LastIndex()

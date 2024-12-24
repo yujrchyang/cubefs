@@ -15,6 +15,7 @@
 package datanode
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"math"
@@ -25,6 +26,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	rate2 "golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/util/topology"
 	atomic2 "go.uber.org/atomic"
@@ -80,6 +83,10 @@ func NewSpaceManager(dataNode *DataNode) *SpaceManager {
 	}
 	async.RunWorker(space.statUpdateScheduler, func(i interface{}) {
 		log.LogCriticalf("SPCMGR: stat update scheduler occurred panic: %v\nCallstack:\n%v",
+			i, string(debug.Stack()))
+	})
+	async.RunWorker(space.volConfigUpdateScheduler, func(i interface{}) {
+		log.LogCriticalf("SPCMGR: volume config update scheduler occurred panic: %v\nCallstack:\n%v",
 			i, string(debug.Stack()))
 	})
 	return space
@@ -346,18 +353,30 @@ func (manager *SpaceManager) minPartitionCnt() (d *Disk) {
 	return d
 }
 func (manager *SpaceManager) statUpdateScheduler() {
-	go func() {
-		ticker := time.NewTicker(10 * time.Second)
-		for {
-			select {
-			case <-ticker.C:
-				manager.updateMetrics()
-			case <-manager.stopC:
-				ticker.Stop()
-				return
-			}
+	ticker := time.NewTicker(10 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			manager.updateMetrics()
+		case <-manager.stopC:
+			ticker.Stop()
+			return
 		}
-	}()
+	}
+}
+
+func (manager *SpaceManager) volConfigUpdateScheduler() {
+	window := time.Minute
+	ticker := time.NewTicker(window)
+	for {
+		select {
+		case <-ticker.C:
+			manager.updateVolumesConfigs(window)
+		case <-manager.stopC:
+			ticker.Stop()
+			return
+		}
+	}
 }
 
 func (manager *SpaceManager) Partition(partitionID uint64) (dp *DataPartition) {
@@ -396,8 +415,8 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		ClusterID:     manager.clusterID,
 		PartitionSize: request.PartitionSize,
 		ReplicaNum:    request.ReplicaNum,
-
-		VolHAType: request.VolumeHAType,
+		VolHAType:     request.VolumeHAType,
+		SyncMode:      request.SyncMode,
 	}
 	dp = manager.Partition(dpCfg.PartitionID)
 	if dp != nil {
@@ -424,18 +443,6 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	return
 }
 
-// DeletePartition deletes a partition based on the partition id.
-func (manager *SpaceManager) DeletePartition(dpID uint64) {
-	dp := manager.Partition(dpID)
-	if dp == nil {
-		return
-	}
-	manager.partitionMutex.Lock()
-	delete(manager.partitions, dpID)
-	manager.partitionMutex.Unlock()
-	dp.Delete()
-}
-
 // ExpiredPartition marks specified partition as expired.
 // It renames data path to a new name which add 'expired_' as prefix and operation timestamp as suffix.
 // (e.g. '/disk0/datapartition_1_128849018880' to '/disk0/deleted_datapartition_1_128849018880_1600054521')
@@ -444,9 +451,7 @@ func (manager *SpaceManager) ExpiredPartition(partitionID uint64) {
 	if dp == nil {
 		return
 	}
-	manager.partitionMutex.Lock()
-	delete(manager.partitions, partitionID)
-	manager.partitionMutex.Unlock()
+	manager.DetachDataPartition(partitionID)
 	dp.Expired()
 }
 
@@ -501,9 +506,7 @@ func (manager *SpaceManager) DeletePartitionFromCache(dpID uint64) {
 	if dp == nil {
 		return
 	}
-	manager.partitionMutex.Lock()
-	delete(manager.partitions, dpID)
-	manager.partitionMutex.Unlock()
+	manager.DetachDataPartition(dpID)
 	dp.Stop()
 	dp.Disk().DetachDataPartition(dp)
 }
@@ -687,4 +690,59 @@ func parseExpiredWalPath(path string, dpid uint64) (walPath, newWalPath string, 
 	walParts := strings.Split(walPath, "_")
 	newWalPath = strings.Join(walParts[1:3], "_")
 	return
+}
+
+func (manager *SpaceManager) __walkVolume(volume string, fn func(dp *DataPartition) bool) {
+	manager.partitionMutex.RLock()
+
+	var partitions = make([]*DataPartition, 16)
+	for _, partition := range manager.partitions {
+		if partition.Volume() == volume {
+			partitions = append(partitions, partition)
+		}
+	}
+	manager.partitionMutex.RUnlock()
+
+	for _, partition := range partitions {
+		if !fn(partition) {
+			break
+		}
+	}
+}
+
+func (manager *SpaceManager) updateVolumesConfigs(window time.Duration) {
+
+	var volumeDPs = make(map[string][]*DataPartition)
+	manager.WalkPartitions(func(partition *DataPartition) bool {
+		volume := partition.Volume()
+		volumeDPs[volume] = append(volumeDPs[volume], partition)
+		return true
+	})
+	if len(volumeDPs) == 0 {
+		return
+	}
+
+	// 控制从Master拉取配置的频率
+	rate := rate2.NewLimiter(rate2.Every(window/time.Duration(len(volumeDPs))), 1)
+
+	for volume, dps := range volumeDPs {
+		if err := rate.Wait(context.Background()); err != nil {
+			continue
+		}
+		info, err := MasterClient.AdminAPI().GetVolumeSimpleInfo(volume)
+		if err != nil {
+			log.LogWarnf("SPCMGR: get volume(%v) simple info failed: %v", volume, err)
+			continue
+		}
+		var volumeConfig = &VolumeConfig{
+			CrossRegionHAType: info.CrossRegionHAType,
+			DPReplicaNum:      int(info.DpReplicaNum),
+			SyncMode:          info.SyncMode,
+		}
+		for _, dp := range dps {
+			if err := dp.ApplyVolumeConfig(volumeConfig); err != nil {
+				log.LogWarnf("SPCMGR: apply volume(%v) config to DP(%v) failed: %v", volume, dp.ID(), err)
+			}
+		}
+	}
 }

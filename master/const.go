@@ -92,6 +92,7 @@ const (
 	volWriteMutexKey                    = "volWriteMutex"
 	fixTinyDeleteRecordKey              = "fixTinyDeleteRecordKey"
 	crossRegionHAKey                    = "crossRegion"
+	syncModeKey						    = "syncMode"
 	regionNameKey                       = "regionName"
 	regionTypeKey                       = "regionType"
 	idcNameKey                          = "idcName"

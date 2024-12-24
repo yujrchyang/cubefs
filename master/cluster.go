@@ -782,7 +782,7 @@ func (c *Cluster) createDataPartition(volName, designatedZoneName string) (dp *D
 				wg.Done()
 			}()
 			var diskPath string
-			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp, dp.Peers, dp.Hosts, dp.Learners, proto.NormalCreateDataPartition, vol.CrossRegionHAType); err != nil {
+			if diskPath, err = c.syncCreateDataPartitionToDataNode(host, vol.dataPartitionSize, dp, dp.Peers, dp.Hosts, dp.Learners, proto.NormalCreateDataPartition, vol.CrossRegionHAType, vol.SyncMode); err != nil {
 				errChannel <- err
 				return
 			}
@@ -833,9 +833,9 @@ errHandler:
 }
 
 func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp *DataPartition, peers []proto.Peer,
-	hosts []string, learners []proto.Learner, createType int, volumeHAType proto.CrossRegionHAType) (
+	hosts []string, learners []proto.Learner, createType int, volumeHAType proto.CrossRegionHAType, syncMode proto.SyncMode) (
 	diskPath string, err error) {
-	task := dp.createTaskToCreateDataPartition(host, size, dp.ReplicaNum, peers, hosts, learners, createType, volumeHAType)
+	task := dp.createTaskToCreateDataPartition(host, size, dp.ReplicaNum, peers, hosts, learners, createType, volumeHAType, syncMode)
 	dataNode, err := c.dataNode(host)
 	if err != nil {
 		return
@@ -2220,7 +2220,7 @@ func (c *Cluster) createDataReplica(dp *DataPartition, addPeer proto.Peer) (err 
 	learners := make([]proto.Learner, len(dp.Learners))
 	copy(learners, dp.Learners)
 	dp.RUnlock()
-	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize, dp, peers, hosts, learners, proto.DecommissionedCreateDataPartition, vol.CrossRegionHAType)
+	diskPath, err := c.syncCreateDataPartitionToDataNode(addPeer.Addr, vol.dataPartitionSize, dp, peers, hosts, learners, proto.DecommissionedCreateDataPartition, vol.CrossRegionHAType, vol.SyncMode)
 	if err != nil {
 		return
 	}
@@ -2881,7 +2881,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 	remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool, remoteCacheTTL int64,
 	enableRemoveDupReq bool, notCacheNode bool, flock bool, truncateEKCountEveryTime int, mpSplitStep, inodeCountThreshold uint64,
 	bitMapSnapFrozenHour int64, enableCheckDelEK bool, readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool,
-	reqReservedTime, reqRecordMaxCount int32, mpZones string) (err error) {
+	reqReservedTime, reqRecordMaxCount int32, mpZones string, syncMode proto.SyncMode) (err error) {
 	var (
 		vol                  *Vol
 		volBak               *Vol
@@ -3007,6 +3007,7 @@ func (c *Cluster) updateVol(name, authKey, zoneName, description string, capacit
 		vol.volWriteMutexHolder = ""
 	}
 	vol.CrossRegionHAType = crossRegionHAType
+	vol.SyncMode = syncMode
 	if description != "" {
 		vol.description = description
 	}
@@ -3098,7 +3099,8 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	forceROW, isSmart, enableWriteCache bool, crossRegionHAType proto.CrossRegionHAType, dpWriteableThreshold float64,
 	childFileMaxCnt uint32, storeMode proto.StoreMode, mpLayout proto.MetaPartitionLayout, smartRules []string,
 	compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32,
-	bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64, readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool) (vol *Vol, err error) {
+	bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64, readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool,
+	syncMode proto.SyncMode) (vol *Vol, err error) {
 	var (
 		dataPartitionSize       uint64
 		readWriteDataPartitions int
@@ -3163,7 +3165,7 @@ func (c *Cluster) createVol(name, owner, zoneName, description string, mpCount, 
 	if vol, err = c.doCreateVol(name, owner, zoneName, description, dataPartitionSize, uint64(capacity), dpReplicaNum, mpReplicaNum, trashDays, ecDataNum, ecParityNum,
 		ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, 0, mpLearnerNum, uint8(mpRecorderNum), dpWriteableThreshold,
 		childFileMaxCnt, storeMode, proto.VolConvertStInit, mpLayout, smartRules, compactTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocatorEnable,
-		mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpFollowerRead, mpZones); err != nil {
+		mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpFollowerRead, mpZones, syncMode); err != nil {
 		goto errHandler
 	}
 	if err = vol.initMetaPartitions(c, mpCount); err != nil {
@@ -3237,7 +3239,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 	dpWriteableThreshold float64, childFileMaxCnt uint32, storeMode proto.StoreMode, convertSt proto.VolConvertState,
 	mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
 	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnable bool, mpSplitStep, inodeCountThreshold uint64,
-	readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool, mpZones string) (vol *Vol, err error) {
+	readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool, mpZones string, syncMode proto.SyncMode) (vol *Vol, err error) {
 	var (
 		id              uint64
 		smartEnableTime int64
@@ -3274,7 +3276,7 @@ func (c *Cluster) doCreateVol(name, owner, zoneName, description string, dpSize,
 		authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, createTime,
 		smartEnableTime, description, "", "", crossRegionHAType, dpLearnerNum, mpLearnerNum, mpRecorderNum,
 		dpWriteableThreshold, uint32(trashDays), childFileMaxCnt, storeMode, convertSt, mpLayout, smartRules, compactTag,
-		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB)
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, syncMode)
 	vol.EcDataNum = dataNum
 	vol.EcParityNum = parityNum
 	vol.EcEnable = enableEc

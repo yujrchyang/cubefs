@@ -150,3 +150,10 @@ func (m *MockPartition) IsAllEmptyMsg(end uint64) (isAllEmptyMsg bool, err error
 func (m *MockPartition) GetLastIndex() (li uint64, err error) {
 	return
 }
+
+
+func (m *MockPartition) SetWALSync(sync bool) {
+}
+
+func (m *MockPartition) SetWALSyncRotate(syncRotate bool) {
+}

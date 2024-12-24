@@ -310,21 +310,21 @@ func (e *Extent) Modifies() int64 {
 	return atomic.LoadInt64(&e.modifies)
 }
 
-func IsRandomWrite(writeType int) bool {
-	return writeType == RandomWriteType
+func IsOverwrite(mode WriteMode) bool {
+	return mode == Overwrite
 }
 
-func IsAppendWrite(writeType int) bool {
-	return writeType == AppendWriteType
+func IsAppend(mode WriteMode) bool {
+	return mode == Append
 }
 
 // WriteTiny performs write on a tiny extent.
-func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
+func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeMode WriteMode, isSync bool) (err error) {
 	e.Lock()
 	defer e.Unlock()
 	index := offset + size
 
-	if err = e.checkTinyWriteParameter(offset, size, writeType); err != nil {
+	if err = e.checkTinyWriteParameter(offset, size, writeMode); err != nil {
 		return
 	}
 	var interceptor = e.interceptors.Get(IOWrite)
@@ -344,7 +344,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 		}
 	}
 
-	if !IsAppendWrite(writeType) {
+	if !IsAppend(writeMode) {
 		return
 	}
 	if index%PageSize != 0 {
@@ -356,7 +356,7 @@ func (e *Extent) WriteTiny(data []byte, offset, size int64, crc uint32, writeTyp
 }
 
 // Write writes data to an extent.
-func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType int, isSync bool) (err error) {
+func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeMode WriteMode, isSync bool) (err error) {
 	defer func() {
 		if err == nil {
 			if isSync {
@@ -369,14 +369,14 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		}
 	}()
 	if proto.IsTinyExtent(e.extentID) {
-		err = e.WriteTiny(data, offset, size, crc, writeType, isSync)
+		err = e.WriteTiny(data, offset, size, crc, writeMode, isSync)
 		return
 	}
 
 	if err = e.checkOffsetAndSize(offset, size); err != nil {
 		return
 	}
-	if err = e.checkWriteParameter(offset, size, writeType); err != nil {
+	if err = e.checkWriteParameter(offset, size, writeMode); err != nil {
 		return
 	}
 	var interceptor = e.interceptors.Get(IOWrite)
@@ -391,11 +391,11 @@ func (e *Extent) Write(data []byte, offset, size int64, crc uint32, writeType in
 		return
 	}
 	defer func() {
-		if IsAppendWrite(writeType) {
+		if IsAppend(writeMode) {
 			atomic.StoreInt64(&e.modifyTime, time.Now().Unix())
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 		}
-		if IsRandomWrite(writeType) && offset+size > e.dataSize {
+		if IsOverwrite(writeMode) && offset+size > e.dataSize {
 			e.dataSize = int64(math.Max(float64(e.dataSize), float64(offset+size)))
 		}
 	}()
@@ -566,21 +566,21 @@ const (
 	IllegalOverWriteError = "illegal overwrite"
 )
 
-func (e *Extent) checkWriteParameter(offset, size int64, writeType int) error {
-	if IsAppendWrite(writeType) && offset != e.dataSize {
+func (e *Extent) checkWriteParameter(offset, size int64, mode WriteMode) error {
+	if IsAppend(mode) && offset != e.dataSize {
 		return NewParameterMismatchErr(fmt.Sprintf("illegal append: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
 	}
-	if IsRandomWrite(writeType) && offset > e.dataSize {
+	if IsOverwrite(mode) && offset > e.dataSize {
 		return NewParameterMismatchErr(fmt.Sprintf("%v: offset=%v size=%v extentsize=%v", IllegalOverWriteError, offset, size, e.dataSize))
 	}
 	return nil
 }
 
-func (e *Extent) checkTinyWriteParameter(offset, size int64, writeType int) error {
-	if IsAppendWrite(writeType) && offset != e.dataSize {
+func (e *Extent) checkTinyWriteParameter(offset, size int64, mode WriteMode) error {
+	if IsAppend(mode) && offset != e.dataSize {
 		return NewParameterMismatchErr(fmt.Sprintf("illegal append: offset=%v size=%v extentsize=%v", offset, size, e.dataSize))
 	}
-	if IsRandomWrite(writeType) && offset+size > e.dataSize {
+	if IsOverwrite(mode) && offset+size > e.dataSize {
 		return NewParameterMismatchErr(fmt.Sprintf("%v: offset=%v size=%v extentsize=%v", IllegalOverWriteError, offset, size, e.dataSize))
 	}
 	return nil

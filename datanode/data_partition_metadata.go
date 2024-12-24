@@ -1,10 +1,11 @@
 package datanode
 
 import (
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
 	"reflect"
 	"strings"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/errors"
 )
 
 type DataPartitionMetadata struct {
@@ -20,6 +21,7 @@ type DataPartitionMetadata struct {
 	LastTruncateID          uint64
 	VolumeHAType            proto.CrossRegionHAType
 	ConsistencyMode         proto.ConsistencyMode
+	SyncMode                proto.SyncMode
 
 	// 该BOOL值表示Partition是否已经就绪，该值默认值为false，
 	// 新创建的DP成员为默认值，表示未完成第一次Raft恢复，Raft未就绪。
@@ -43,7 +45,8 @@ func (md *DataPartitionMetadata) Equals(other *DataPartitionMetadata) bool {
 			md.VolumeHAType == other.VolumeHAType) &&
 			md.IsCatchUp == other.IsCatchUp &&
 			md.NeedServerFaultCheck == other.NeedServerFaultCheck &&
-			md.ConsistencyMode == other.ConsistencyMode
+			md.ConsistencyMode == other.ConsistencyMode &&
+			md.SyncMode == other.SyncMode
 }
 
 func (md *DataPartitionMetadata) Validate() (err error) {

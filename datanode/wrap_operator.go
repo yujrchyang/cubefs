@@ -5,6 +5,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"hash/crc32"
+	"io"
+	"math"
+	"net"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/storage"
@@ -17,13 +25,6 @@ import (
 	"github.com/tiglabs/raft"
 	raftProto "github.com/tiglabs/raft/proto"
 	"golang.org/x/net/context"
-	"hash/crc32"
-	"io"
-	"math"
-	"net"
-	"strconv"
-	"strings"
-	"time"
 )
 
 // wrap_operator
@@ -415,9 +416,11 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 		return
 	}
 
+	var sync = p.IsSyncWrite() || partition.IsSyncModeEnabled()
+
 	store := partition.ExtentStore()
 	if p.ExtentType == proto.TinyExtentType {
-		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data[0:p.Size], p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data[0:p.Size], p.CRC, storage.Append, sync)
 		s.incDiskErrCnt(p.PartitionID, err, WriteFlag)
 		return
 	}
@@ -428,7 +431,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 	}
 
 	if p.Size <= unit.BlockSize {
-		err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data[0:p.Size], p.CRC, storage.AppendWriteType, p.IsSyncWrite())
+		err = store.Write(p.ExtentID, p.ExtentOffset, int64(p.Size), p.Data[0:p.Size], p.CRC, storage.Append, sync)
 		partition.checkIsPartitionError(err)
 	} else {
 		size := p.Size
@@ -440,7 +443,7 @@ func (s *DataNode) handleWritePacket(p *repl.Packet) {
 			currSize := unit.Min(int(size), unit.BlockSize)
 			data := p.Data[offset : offset+currSize]
 			crc := crc32.ChecksumIEEE(data)
-			err = store.Write(p.Ctx(), p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data[0:currSize], crc, storage.AppendWriteType, p.IsSyncWrite())
+			err = store.Write(p.ExtentID, p.ExtentOffset+int64(offset), int64(currSize), data[0:currSize], crc, storage.Append, sync)
 			partition.checkIsPartitionError(err)
 			if err != nil {
 				break
@@ -561,7 +564,7 @@ func (s *DataNode) handleStreamReadPacket(p *repl.Packet, connect net.Conn, isRe
 		return
 	}
 
-	// 检查所请求Partition的一致性模式(Consistency Mode)， 若为标准模式(StandardMode)则仅在当前Partition实例Raft复制组内Leader角色时才提供服务。
+	// 检查所请求Partition的一致性模式(ConsistencyMode)， 若为标准模式(StandardMode)则仅在当前Partition实例Raft复制组内Leader角色时才提供服务。
 	// 标准模式(StandardMode)下Raft采用标准的超半数复制提交机制，这种模式下仅Leader角色可以保证数据的绝对正确。
 	// 严格模式(StrictMode)下Raft实例使用了特殊的复制提交机制，数据操作请求被强行要求所有成员全部复制成功才会被提交，所以不需要检查当前实例是否为Leader角色。
 	if partition.GetConsistencyMode() == proto.StandardMode {

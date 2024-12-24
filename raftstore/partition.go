@@ -111,6 +111,10 @@ type Partition interface {
 
 	IsAllEmptyMsg(end uint64) (bool, error)
 	GetLastIndex() (li uint64, err error)
+
+	SetWALSync(sync bool)
+
+	SetWALSyncRotate(syncRotate bool)
 }
 
 // Default implementation of the Partition interface.
@@ -304,7 +308,7 @@ func (p *partition) Start() (err error) {
 		peers = append(peers, peerAddress.Peer)
 	}
 	var applied = p.config.GetStartIndex.Get(fi, li)
-	if p.config.LogIndexCheck && (applied > li || (fi > 1 && applied < fi - 1)) {
+	if p.config.LogIndexCheck && (applied > li || (fi > 1 && applied < fi-1)) {
 		err = fmt.Errorf("%v, applyID: %v, firstIndex: %v, lastIndex: %v", raft.ErrLackOfRaftLog, applied, fi, li)
 		return
 	}
@@ -384,6 +388,24 @@ func (p *partition) SetWALFileSize(filesize int) {
 		p.config.WALFileSize = filesize
 		if p.ws != nil {
 			p.ws.SetFileSize(filesize)
+		}
+	}
+}
+
+func (p *partition) SetWALSync(sync bool) {
+	if p != nil && p.config != nil {
+		p.config.WALSync = sync
+		if p.ws != nil {
+			p.ws.SetSync(sync)
+		}
+	}
+}
+
+func (p *partition) SetWALSyncRotate(syncRotate bool) {
+	if p != nil && p.config != nil {
+		p.config.WALSyncRotate = syncRotate
+		if p.ws != nil {
+			p.ws.SetSyncRotate(syncRotate)
 		}
 	}
 }

@@ -103,7 +103,6 @@ type DataPartition struct {
 	applyStatus           *WALApplyStatus
 
 	repairPropC              chan struct{}
-	updateVolInfoPropC       chan struct{}
 	latestPropUpdateReplicas int64 // 记录最近一次申请更新Replicas信息的时间戳，单位为秒
 
 	stopOnce  sync.Once
@@ -134,6 +133,10 @@ type DataPartition struct {
 
 func (dp *DataPartition) ID() uint64 {
 	return dp.partitionID
+}
+
+func (dp *DataPartition) Volume() string {
+	return dp.volumeID
 }
 
 func (dp *DataPartition) AllocateExtentID() (id uint64, err error) {
@@ -222,7 +225,6 @@ func newDataPartition(dpCfg *dataPartitionCfg, disk *Disk, isCreatePartition boo
 		partitionSize:           dpCfg.PartitionSize,
 		replicas:                make([]string, 0),
 		repairPropC:             make(chan struct{}, 1),
-		updateVolInfoPropC:      make(chan struct{}, 1),
 		stopC:                   make(chan bool, 0),
 		stopRaftC:               make(chan uint64, 0),
 		snapshot:                make([]*proto.File, 0),
@@ -367,6 +369,10 @@ func (dp *DataPartition) IsLocalAddress(addr string) bool {
 func (dp *DataPartition) IsRandomWriteDisabled() (disabled bool) {
 	disabled = dp.config.VolHAType == proto.CrossRegionHATypeQuorum
 	return
+}
+
+func (dp *DataPartition) IsSyncModeEnabled() (enabled bool) {
+	return dp.config.SyncMode == proto.SyncModeEnabled
 }
 
 func (dp *DataPartition) IsRaftLearner() bool {
@@ -599,19 +605,10 @@ func (dp *DataPartition) proposeRepair() {
 	}
 }
 
-func (dp *DataPartition) proposeUpdateVolumeInfo() {
-	select {
-	case dp.updateVolInfoPropC <- struct{}{}:
-	default:
-	}
-}
-
 func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	rand := rand.New(rand.NewSource(time.Now().UnixNano()))
 	repairTimer := time.NewTimer(time.Minute + time.Duration(rand.Intn(120))*time.Second)
 	validateCRCTimer := time.NewTimer(DefaultIntervalDataPartitionValidateCRC)
-	retryUpdateVolInfoTimer := time.NewTimer(0)
-	retryUpdateVolInfoTimer.Stop()
 	persistDpLastUpdateTimer := time.NewTimer(time.Hour) //for persist dp lastUpdateTime
 	var index int
 	for {
@@ -649,14 +646,6 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 		case <-validateCRCTimer.C:
 			dp.runValidateCRC(ctx)
 			validateCRCTimer.Reset(DefaultIntervalDataPartitionValidateCRC)
-		case <-dp.updateVolInfoPropC:
-			if err := dp.updateVolumeInfoFromMaster(); err != nil {
-				retryUpdateVolInfoTimer.Reset(time.Minute)
-			}
-		case <-retryUpdateVolInfoTimer.C:
-			if err := dp.updateVolumeInfoFromMaster(); err != nil {
-				retryUpdateVolInfoTimer.Reset(time.Minute)
-			}
 		case <-persistDpLastUpdateTimer.C:
 			_ = dp.persistMetaDataOnly()
 			persistDpLastUpdateTimer.Reset(time.Hour)
@@ -664,25 +653,29 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	}
 }
 
-func (dp *DataPartition) updateVolumeInfoFromMaster() (err error) {
-	var simpleVolView *proto.SimpleVolView
-	if simpleVolView, err = MasterClient.AdminAPI().GetVolumeSimpleInfo(dp.volumeID); err != nil {
+type VolumeConfig struct {
+	CrossRegionHAType proto.CrossRegionHAType
+	DPReplicaNum      int
+	SyncMode          proto.SyncMode
+}
+
+func (dp *DataPartition) ApplyVolumeConfig(config *VolumeConfig) (err error) {
+	if dp.config.VolHAType == config.CrossRegionHAType &&
+		dp.config.ReplicaNum == config.DPReplicaNum &&
+		dp.config.SyncMode == config.SyncMode {
+		// Nothing to be changed.
+		return nil
+	}
+
+	dp.config.VolHAType = config.CrossRegionHAType
+	dp.config.ReplicaNum = config.DPReplicaNum
+	dp.config.SyncMode = config.SyncMode
+	if err = dp.persistMetaDataOnly(); err != nil {
 		return
 	}
-	// Process CrossRegionHAType
-	var changed bool
-	if dp.config.VolHAType != simpleVolView.CrossRegionHAType {
-		dp.config.VolHAType = simpleVolView.CrossRegionHAType
-		changed = true
-	}
-	if dp.config.ReplicaNum != int(simpleVolView.DpReplicaNum) {
-		dp.config.ReplicaNum = int(simpleVolView.DpReplicaNum)
-		changed = true
-	}
-	if changed {
-		if err = dp.persistMetaDataOnly(); err != nil {
-			return
-		}
+	if dp.raftPartition != nil {
+		dp.raftPartition.SetWALSync(dp.config.SyncMode == proto.SyncModeEnabled)
+		dp.raftPartition.SetWALSyncRotate(dp.config.SyncMode == proto.SyncModeEnabled)
 	}
 	return
 }
@@ -1313,7 +1306,7 @@ func (dp *DataPartition) checkDeleteOnAllHosts(extentId uint64) bool {
 }
 
 // ApplyRandomWrite random write apply
-func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint64) (resp interface{}, err error) {
+func (dp *DataPartition) applyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint64) (resp interface{}, err error) {
 	start := time.Now().UnixMicro()
 	toObject := dp.monitorData[proto.ActionOverWrite].BeforeTp()
 	defer func() {
@@ -1339,7 +1332,7 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		}
 	}()
 	for i := 0; i < 2; i++ {
-		err = dp.ExtentStore().Write(nil, opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
+		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
 		if err == nil {
 			break
 		}
@@ -1592,7 +1585,8 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	metadata.VolumeHAType = dp.config.VolHAType
 	metadata.IsCatchUp = dp.isCatchUp
 	metadata.NeedServerFaultCheck = dp.needServerFaultCheck
-	metadata.ConsistencyMode = dp.config.Mode
+	metadata.ConsistencyMode = dp.config.ConsistencyMode
+	metadata.SyncMode = dp.config.SyncMode
 
 	if dp.persistedMetadata != nil {
 		metadata.CreateTime = dp.persistedMetadata.CreateTime
@@ -1634,7 +1628,7 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 		return
 	}
 	dp.persistedMetadata = metadata
-	log.LogInfof("PersistMetadata DataPartition(%v) data(%v)", dp.partitionID, string(newData))
+	log.LogInfof("DP(%v): persisted metadata: %v", dp.partitionID, string(newData))
 	return
 }
 
@@ -1748,9 +1742,9 @@ func (dp *DataPartition) startRaft() (err error) {
 		GetStartIndex:      getStartIndex,
 		WALContinuityCheck: dp.isNeedFaultCheck(),
 		WALContinuityFix:   dp.isNeedFaultCheck(),
-		WALSync:            true,
-		WALSyncRotate:      true,
-		Mode:               dp.config.Mode,
+		WALSync:            dp.config.SyncMode == proto.SyncModeEnabled,
+		WALSyncRotate:      dp.config.SyncMode == proto.SyncModeEnabled,
+		Mode:               dp.config.ConsistencyMode,
 		StorageListener: raftstore.NewStorageListenerBuilder().
 			ListenStoredEntry(dp.listenStoredRaftLogEntry).
 			Build(),
@@ -2308,8 +2302,8 @@ func (dp *DataPartition) SetConsistencyMode(mode proto.ConsistencyMode) {
 	if mode == proto.StrictMode && dp.config.ReplicaNum < StrictModeMinReplicaNum {
 		mode = proto.StandardMode
 	}
-	if current := dp.config.Mode; current != mode {
-		dp.config.Mode = mode
+	if current := dp.config.ConsistencyMode; current != mode {
+		dp.config.ConsistencyMode = mode
 		if dp.raftPartition != nil {
 			dp.raftPartition.SetConsistencyMode(mode)
 		}
@@ -2326,7 +2320,7 @@ func (dp *DataPartition) GetConsistencyMode() proto.ConsistencyMode {
 	if dp.raftPartition != nil {
 		return dp.raftPartition.GetConsistencyMode()
 	}
-	return dp.config.Mode
+	return dp.config.ConsistencyMode
 }
 
 func (dp *DataPartition) findMinID(allIDs map[string]uint64) (minID uint64, host string) {
@@ -4087,7 +4081,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				return
 			}
 			var tpObject = dp.monitorData[proto.ActionRepairWrite].BeforeTp()
-			err = store.Write(ctx, extentID, int64(currFixOffset), int64(reply.Size), reply.Data[0:reply.Size], reply.CRC, storage.AppendWriteType, BufferWrite)
+			err = store.Write(extentID, int64(currFixOffset), int64(reply.Size), reply.Data[0:reply.Size], reply.CRC, storage.AppendWriteType, BufferWrite)
 			tpObject.AfterTp(uint64(reply.Size))
 		}
 
@@ -4132,7 +4126,7 @@ func (dp *DataPartition) handleRaftApply(command []byte, index uint64) (resp int
 		resp = proto.OpErr
 		return
 	}
-	resp, err = dp.ApplyRandomWrite(opItem, index)
+	resp, err = dp.applyRandomWrite(opItem, index)
 	PutRandomWriteOpItem(opItem)
 	return
 }
@@ -4201,7 +4195,6 @@ func (dp *DataPartition) handleRaftApplyMemberChange(confChange *raftProto.ConfC
 			return
 		}
 	}
-	dp.proposeUpdateVolumeInfo()
 	return
 }
 

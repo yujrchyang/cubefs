@@ -119,6 +119,12 @@ func (m mockRaftPartition) GetTruncateIndex() (index uint64) {
 	return
 }
 
+func (m mockRaftPartition) SetWALSync(sync bool) {
+}
+
+func (m mockRaftPartition) SetWALSyncRotate(syncRotate bool) {
+}
+
 type mockRaftStore struct {
 	cfg *raft.Config
 }

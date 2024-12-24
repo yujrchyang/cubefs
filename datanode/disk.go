@@ -1412,8 +1412,9 @@ func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error)
 		ClusterID:     d.space.GetClusterID(),
 		CreationType:  meta.DataPartitionCreateType,
 
-		VolHAType: meta.VolumeHAType,
-		Mode:      meta.ConsistencyMode,
+		VolHAType:       meta.VolumeHAType,
+		ConsistencyMode: meta.ConsistencyMode,
+		SyncMode:        meta.SyncMode,
 	}
 	if dp, err = newDataPartition(dpCfg, d, false, d.topoManager, d.interceptors); err != nil {
 		return

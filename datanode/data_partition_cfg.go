@@ -20,5 +20,6 @@ type dataPartitionCfg struct {
 
 	VolHAType proto.CrossRegionHAType `json:"vol_ha_type"`
 
-	Mode proto.ConsistencyMode `json:"-"`
+	ConsistencyMode proto.ConsistencyMode `json:"-"`
+	SyncMode        proto.SyncMode        `json:"-"`
 }

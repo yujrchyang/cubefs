@@ -123,7 +123,7 @@ func (info *InodeInfo) String() string {
 	if info == nil {
 		return ""
 	}
-	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
+	return fmt.Sprintf("Inode(%v) ConsistencyMode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v)", info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation)
 }
 
 func (info *InodeInfo) TargetStr() (t string) {
@@ -943,7 +943,7 @@ type DeletedInodeInfo struct {
 }
 
 func (info *DeletedInodeInfo) String() string {
-	return fmt.Sprintf("Inode(%v) Mode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v), Time(%v), IsDeleted(%v)",
+	return fmt.Sprintf("Inode(%v) ConsistencyMode(%v) OsMode(%v) Nlink(%v) Size(%v) Uid(%v) Gid(%v) Gen(%v), Time(%v), IsDeleted(%v)",
 		info.Inode, info.Mode, OsMode(info.Mode), info.Nlink, info.Size, info.Uid, info.Gid, info.Generation, info.DeleteTime, info.IsDeleted)
 }
 

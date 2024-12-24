@@ -1731,6 +1731,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		dpWriteableThreshold  float64
 		ossBucketPolicy       proto.BucketAccessPolicy
 		crossRegionHAType     proto.CrossRegionHAType
+		syncMode 			  proto.SyncMode
 		trashRemainingDays    uint32
 		storeMode             int
 		mpLayout              proto.MetaPartitionLayout
@@ -1825,6 +1826,12 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	crossRegionHAType, err = parseCrossRegionHATypeToUpdateVol(r, vol)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+
+	syncMode, err = parseSyncModeToUpdateVol(r, vol)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -1949,7 +1956,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		trashInterVal, batchDelInodeCnt, delInodeInterval, umpCollectWay, umpKeyPrefix, trashItemCleanMaxCount, trashCleanDuration,
 		enableBitMapAllocator, remoteCacheBoostPath, remoteCacheBoostEnable, remoteCacheAutoPrepare, remoteCacheTTL, enableRemoveDupReq,
 		notCacheNode, flock, truncateEKCountEveryTime, mpSplitStep, inodeCountThreshold, bitMapSnapFrozenHour, enableCheckDelEK, readAheadMemMB, readAheadWindowMB, MetaOut,
-		mpFollowerRead, reqRecordReservedTime, reqRecordMaxCount, mpZones); err != nil {
+		mpFollowerRead, reqRecordReservedTime, reqRecordMaxCount, mpZones, syncMode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -2028,6 +2035,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 		forceROW             bool
 		enableWriteCache     bool
 		crossRegionHAType    proto.CrossRegionHAType
+		syncMode             proto.SyncMode
 		zoneName             string
 		description          string
 		dpWriteableThreshold float64
@@ -2057,7 +2065,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	defer func() { metrics.Set(err) }()
 	if name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size, capacity, storeMode, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate,
 		enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache, crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, mpLayout, smartRules, compactTag,
-		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpFollowerRead, err = parseRequestToCreateVol(r); err != nil {
+		dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval, bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpFollowerRead, syncMode, err = parseRequestToCreateVol(r); err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
@@ -2101,7 +2109,7 @@ func (m *Server) createVol(w http.ResponseWriter, r *http.Request) {
 	if vol, err = m.cluster.createVol(name, owner, zoneName, description, mpCount, dpReplicaNum, mpReplicaNum, mpRecorderNum, size,
 		capacity, trashDays, ecDataNum, ecParityNum, ecEnable, followerRead, authenticate, enableToken, autoRepair, volWriteMutexEnable, forceROW, isSmart, enableWriteCache,
 		crossRegionHAType, dpWriteableThreshold, childFileMaxCnt, proto.StoreMode(storeMode), mpLayout, smartRules, cmpTag, dpFolReadDelayCfg, batchDelInodeCnt, delInodeInterval,
-		bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpFollowerRead); err != nil {
+		bitMapAllocator, mpSplitStep, inodeCountThreshold, readAheadMemMB, readAheadWindowMB, metaOut, mpFollowerRead, syncMode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3900,6 +3908,24 @@ func parseCrossRegionHATypeToUpdateVol(r *http.Request, vol *Vol) (hAType proto.
 	return
 }
 
+func parseSyncModeToUpdateVol(r *http.Request, vol *Vol) (proto.SyncMode, error) {
+	if err := r.ParseForm(); err != nil {
+		return proto.SyncModeNil, err
+	}
+	if syncModeStr := r.FormValue(syncModeKey); syncModeStr != "" {
+		intVal, err := strconv.ParseUint(syncModeStr, 10, 64)
+		if err != nil {
+			return proto.SyncModeNil, unmatchedKey(syncModeKey)
+		}
+		mode := proto.SyncMode(intVal)
+		if !mode.Valid() {
+			return proto.SyncModeNil, unmatchedKey(syncModeKey)
+		}
+		return mode, nil
+	}
+	return proto.SyncModeNil, nil
+}
+
 func parseSmartToUpdateVol(r *http.Request, vol *Vol) (isSmart bool, smartRules []string, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
@@ -4323,7 +4349,7 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 	crossRegionHAType proto.CrossRegionHAType, dpWritableThreshold float64, childFileMaxCnt uint32,
 	layout proto.MetaPartitionLayout, smartRules []string, compactTag string, dpFolReadDelayCfg proto.DpFollowerReadDelayConfig,
 	batchDelInodeCnt, delInodeInterval uint32, bitMapAllocatorEnableState bool, mpSplitStep, inodeCountThreshold uint64,
-	readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool, err error) {
+	readAheadMemMB, readAheadWindowMB int64, metaOut, mpFollowerRead bool, syncMode proto.SyncMode, err error) {
 	if err = r.ParseForm(); err != nil {
 		return
 	}
@@ -4395,6 +4421,9 @@ func parseRequestToCreateVol(r *http.Request) (name, owner, zoneName, descriptio
 		return
 	}
 	if crossRegionHAType, err = extractCrossRegionHA(r); err != nil {
+		return
+	}
+	if syncMode, err = extractSyncMode(r); err != nil {
 		return
 	}
 
@@ -5274,6 +5303,22 @@ func extractCrossRegionHA(r *http.Request) (crossRegionHAType proto.CrossRegionH
 		crossRegionHAType = proto.DefaultCrossRegionHAType
 	}
 	return
+}
+
+func extractSyncMode(r *http.Request) (proto.SyncMode, error) {
+	value := r.FormValue(syncModeKey)
+	if value == "" {
+		return proto.SyncModeNil, nil
+	}
+	intValue, err := strconv.Atoi(value)
+	if err != nil {
+		return proto.SyncModeNil, err
+	}
+	mode := proto.SyncMode(intValue)
+	if !mode.Valid() {
+		return proto.SyncModeNil, fmt.Errorf("invalid sync mode: %d", intValue)
+	}
+	return mode, nil
 }
 
 func parseAndExtractThreshold(r *http.Request) (threshold float64, err error) {
