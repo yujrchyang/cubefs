@@ -30,7 +30,7 @@ type ClusterReleaserHost struct {
 	DataNodeHttpPort string `json:"dataNodeHttpPort"`
 	IsEnable         bool   `json:"isEnable"`
 	KeepSec          int    `json:"keepSec"`
-	isDbbak          bool   `json:"isDbbak"`
+	IsDbbak          bool   `json:"isDbbak"`
 	TimeLocation     string `json:"timeLocation"`
 }
 
@@ -77,7 +77,7 @@ func (s *ChubaoFSDPReleaser) extractCFSReleaserDomains(cfg *config.Config) (err 
 			IsEnable         bool   `json:"isEnable"`
 			KeepSec          int    `json:"keepSec"`
 			DataNodeHTTPPort string `json:"dataNodeHttpPort"`
-			isDbbak          bool   `json:"isDbbak"`
+			IsDbbak          bool   `json:"isDbbak"`
 			TimeLocation     string `json:"timeLocation"`
 		} `json:"cfsDomains"`
 	}
@@ -94,14 +94,15 @@ func (s *ChubaoFSDPReleaser) extractCFSReleaserDomains(cfg *config.Config) (err 
 
 	clusterHosts := make([]*ClusterReleaserHost, 0)
 	for _, domain := range detail.CfsDomains {
-		log.LogInfof("extractCFSReleaserDomains, host:%v, port:%v, enable:%v, keepSec:%v, TimeLocation:%v", domain.Host, domain.DataNodeHTTPPort, domain.IsEnable, domain.KeepSec, domain.TimeLocation)
+		log.LogInfof("extractCFSReleaserDomains, host:%v, port:%v, enable:%v, isDbbak:%v, keepSec:%v, TimeLocation:%v", domain.Host, domain.DataNodeHTTPPort, domain.IsEnable, domain.IsDbbak, domain.KeepSec, domain.TimeLocation)
 		clusterHosts = append(clusterHosts, &ClusterReleaserHost{
-			host:             newClusterHost(domain.Host, domain.isDbbak),
+			host:             newClusterHost(domain.Host, domain.IsDbbak),
 			Host:             domain.Host,
 			DataNodeHttpPort: domain.DataNodeHTTPPort,
 			IsEnable:         domain.IsEnable,
 			KeepSec:          domain.KeepSec,
 			TimeLocation:     domain.TimeLocation,
+			IsDbbak:          domain.IsDbbak,
 		})
 	}
 
