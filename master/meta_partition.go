@@ -71,7 +71,7 @@ type MetaPartition struct {
 	RecordersInfo        []*MetaRecorder
 	ReplicaNum           uint8
 	LearnerNum           uint8
-	RecorderNum			 uint8
+	RecorderNum          uint8
 	Status               int8
 	IsRecover            bool
 	isOffline            bool
@@ -80,7 +80,7 @@ type MetaPartition struct {
 	Hosts                []string
 	Peers                []proto.Peer
 	Learners             []proto.Learner
-	Recorders       	 []string
+	Recorders            []string
 	MissNodes            map[string]int64 `graphql:"-"`
 	OfflinePeerID        uint64
 	modifyTime           int64
@@ -88,7 +88,7 @@ type MetaPartition struct {
 	CreateTime           int64
 	PrePartitionID       uint64
 	PanicHosts           []string //PanicHosts records the hosts discard by reset peer action.
-	PanicRecorders		 []string
+	PanicRecorders       []string
 	LoadResponse         []*proto.MetaPartitionLoadResponse
 	offlineMutex         sync.RWMutex
 	sync.RWMutex
@@ -342,7 +342,7 @@ func (mp *MetaPartition) checkStatus(writeLog bool, replicaNum, recorderNum int,
 	defer mp.Unlock()
 	liveReplicas := mp.getLiveReplicas()
 	liveRecorders := mp.getLiveRecorders()
-	if (len(liveReplicas)+len(liveRecorders)) <= (replicaNum+recorderNum)/2 {
+	if (len(liveReplicas) + len(liveRecorders)) <= (replicaNum+recorderNum)/2 {
 		mp.Status = proto.Unavailable
 	} else {
 		mr, err := mp.getMetaReplicaLeader()
@@ -413,6 +413,9 @@ func (mp *MetaPartition) getMetaReplicaLeader() (mr *MetaReplica, err error) {
 func (mp *MetaPartition) checkReplicaNum(c *Cluster, volName string, replicaNum uint8) {
 	mp.RLock()
 	defer mp.RUnlock()
+	if mp.isOffline || mp.IsRecover {
+		return
+	}
 	if mp.ReplicaNum != replicaNum {
 		msg := fmt.Sprintf("FIX MetaPartition replicaNum clusterID[%v] vol[%v] mp[%v] expect replica num[%v],current num[%v]",
 			c.Name, volName, mp.PartitionID, replicaNum, mp.ReplicaNum)
@@ -486,13 +489,13 @@ func (mp *MetaPartition) updateMetaPartition(mgr *proto.MetaPartitionReport, met
 func (mp *MetaPartition) hasMajorityLiveReplicas(nodeAddr string, replicaNum, recorderNum int) (err error) {
 	liveReplicas := mp.getLiveReplicas()
 	liveRecorders := mp.getLiveRecorders()
-	if len(liveReplicas) + len(liveRecorders) < int((mp.ReplicaNum+mp.RecorderNum)/2+1) {
+	if len(liveReplicas)+len(liveRecorders) < int((mp.ReplicaNum+mp.RecorderNum)/2+1) {
 		err = proto.ErrNoEnoughReplica
 		return
 	}
 	liveAddrs := mp.getLiveReplicasAddr(liveReplicas)
 	liveAddrs = append(liveAddrs, mp.getLiveRecordersAddr(liveRecorders)...)
-	if (len(liveReplicas) + len(liveRecorders)) == ((replicaNum+recorderNum)/2+1) && contains(liveAddrs, nodeAddr) {
+	if (len(liveReplicas)+len(liveRecorders)) == ((replicaNum+recorderNum)/2+1) && contains(liveAddrs, nodeAddr) {
 		err = fmt.Errorf("live replicas num will be less than majority after offline nodeAddr: %v, liveReplicasNum(%v), liveRecordersNum(%v)",
 			nodeAddr, len(liveReplicas), len(liveRecorders))
 		return
@@ -723,7 +726,7 @@ func (mp *MetaPartition) checkRecordersInfo(c *Cluster, volName string, alarmInt
 		mp.offlineMutex.Unlock()
 	}()
 
-	if time.Now().Unix() - mp.CreateTime < defaultIntervalToCheckHeartbeat {
+	if time.Now().Unix()-mp.CreateTime < defaultIntervalToCheckHeartbeat {
 		return
 	}
 	if len(mp.Recorders) != int(mp.RecorderNum) {
@@ -761,7 +764,7 @@ func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers
 		Members:      peers,
 		VolName:      volName,
 		Learners:     mp.Learners,
-		Recorders: 	  mp.Recorders,
+		Recorders:    mp.Recorders,
 		StoreMode:    storeMode,
 		TrashDays:    trashDays,
 		CreationType: proto.NormalCreateMetaPartition,
@@ -805,7 +808,7 @@ func (mp *MetaPartition) createTaskToCreateReplica(host string, storeMode proto.
 		Members:      mp.Peers,
 		VolName:      mp.volName,
 		Learners:     mp.Learners,
-		Recorders: 	  mp.Recorders,
+		Recorders:    mp.Recorders,
 		StoreMode:    storeMode,
 		CreationType: proto.DecommissionedCreateMetaPartition,
 	}
@@ -848,11 +851,11 @@ func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (t 
 
 func (mp *MetaPartition) createTaskToCreateRecorder(host string) (t *proto.AdminTask) {
 	req := &proto.CreateMetaRecorderRequest{
-		PartitionID:  mp.PartitionID,
-		Members:      mp.Peers,
-		VolName:      mp.volName,
-		Learners:     mp.Learners,
-		Recorders: 	  mp.Recorders,
+		PartitionID: mp.PartitionID,
+		Members:     mp.Peers,
+		VolName:     mp.volName,
+		Learners:    mp.Learners,
+		Recorders:   mp.Recorders,
 	}
 	t = proto.NewAdminTask(proto.OpCreateMetaRecorder, host, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)
@@ -1347,7 +1350,7 @@ func (mp *MetaPartition) RepairZone(vol *Vol, c *Cluster) (err error) {
 	rps := mp.getLiveReplicas()
 	rcs := mp.getLiveRecorders()
 	if len(rps) < int(vol.mpReplicaNum) || len(rcs) < int(vol.mpRecorderNum) {
-		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than mpReplicaNum[%v], " +
+		log.LogDebugf("action[RepairZone], vol[%v], zoneName[%v], live Replicas [%v] less than mpReplicaNum[%v], "+
 			"or live Recorders [%v] less than mpRecorderNum[%v], can not be automatically repaired",
 			vol.Name, vol.zoneName, len(rps), vol.mpReplicaNum, len(rcs), vol.mpRecorderNum)
 		return

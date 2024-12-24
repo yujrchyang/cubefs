@@ -481,7 +481,7 @@ func (partition *DataPartition) hasReplica(host string) (replica *DataReplica, o
 func (partition *DataPartition) checkReplicaNumAndSize(c *Cluster, vol *Vol) {
 	partition.RLock()
 	defer partition.RUnlock()
-	if partition.isOffline {
+	if partition.isOffline || partition.isRecover {
 		return
 	}
 	if int(partition.ReplicaNum) != len(partition.Hosts) {
