@@ -3,6 +3,7 @@ package sortedextent
 import (
 	"context"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"reflect"
 	"strconv"
@@ -1055,7 +1056,7 @@ func TestSortedExtents_Merge1(t *testing.T) {
 		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
 		{FileOffset: 6, Size: 4, PartitionId: 5, ExtentId: 5},
 	}
-	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
+	deleteExtents, merged, msg := se.FileMigMerge([]proto.ExtentKey{newEk}, oldEks, 1)
 	if !merged {
 		t.Fatalf("There should be no error, current error:%v", msg)
 	}
@@ -1067,7 +1068,7 @@ func TestSortedExtents_Merge1(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	deleteExtents, merged, msg = se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
+	deleteExtents, merged, msg = se.FileMigMerge([]proto.ExtentKey{newEk}, oldEks, 1)
 	if !merged {
 		t.Fatalf("There should be no error, current error:%v", msg)
 	}
@@ -1103,7 +1104,7 @@ func TestSortedExtents_Merge2(t *testing.T) {
 		{FileOffset: 3, Size: 3, PartitionId: 4, ExtentId: 4},
 		shouldNotContainEk,
 	}
-	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
+	deleteExtents, merged, msg := se.FileMigMerge([]proto.ExtentKey{newEk}, oldEks, 1)
 	if !merged {
 		t.Fatalf("There should be no error, current error:%v", msg)
 	}
@@ -1145,7 +1146,7 @@ func TestSortedExtents_Merge3(t *testing.T) {
 		shouldNotContainEk1,
 		shouldNotContainEk2,
 	}
-	deleteExtents, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
+	deleteExtents, merged, msg := se.FileMigMerge([]proto.ExtentKey{newEk}, oldEks, 1)
 	if !merged {
 		t.Fatalf("Merge should have no error, current error:%v", msg)
 	}
@@ -1188,7 +1189,7 @@ func TestSortedExtents_Merge4(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	_, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
+	_, merged, msg := se.FileMigMerge([]proto.ExtentKey{newEk}, oldEks, 1)
 	fmt.Println(msg)
 	if merged {
 		t.Fatalf("Merge should hava error")
@@ -1199,7 +1200,7 @@ func TestSortedExtents_Merge4(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	_, merged, msg = se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
+	_, merged, msg = se.FileMigMerge([]proto.ExtentKey{newEk}, oldEks, 1)
 	fmt.Println(msg)
 	if merged {
 		t.Fatalf("Merge should hava error")
@@ -1232,11 +1233,9 @@ func TestSortedExtents_Merge5(t *testing.T) {
 		{FileOffset: 10, Size: 5, PartitionId: 6, ExtentId: 6},
 		{FileOffset: 15, Size: 6, PartitionId: 7, ExtentId: 7},
 	}
-	_, merged, msg := se.Merge([]proto.ExtentKey{newEk}, oldEks, 1)
+	_, merged, msg := se.FileMigMerge([]proto.ExtentKey{newEk}, oldEks, 1)
 	fmt.Println(msg)
-	if merged {
-		t.Fatalf("Merge should hava error")
-	}
+	assert.Equal(t, merged, true)
 }
 
 func TestSortedExtents_Merge6(t *testing.T) {
@@ -1301,7 +1300,7 @@ func TestSortedExtents_Merge6(t *testing.T) {
 		{FileOffset: 0, PartitionId: 473212, ExtentId: 27752, ExtentOffset: 0, Size: 129197},
 	}
 
-	delEK, merged, msg := se.Merge(newEK, oldEK, 10)
+	delEK, merged, msg := se.FileMigMerge(newEK, oldEK, 10)
 	if !merged {
 		t.Errorf("merge failed:%v", msg)
 		t.FailNow()
@@ -1312,7 +1311,7 @@ func TestSortedExtents_Merge6(t *testing.T) {
 		t.FailNow()
 	}
 
-	delEK, merged, msg = se.Merge(newEK, oldEK, 10)
+	delEK, merged, msg = se.FileMigMerge(newEK, oldEK, 10)
 	if !merged {
 		t.Errorf("merge expect success")
 		t.FailNow()
@@ -1384,7 +1383,7 @@ func TestSortedExtents_Merge7(t *testing.T) {
 		{FileOffset: 0, PartitionId: 473212, ExtentId: 27752, ExtentOffset: 0, Size: 798},
 	}
 
-	delEKs, merged, msg := se.Merge(newEK, oldEK, 10)
+	delEKs, merged, msg := se.FileMigMerge(newEK, oldEK, 10)
 	if !merged {
 		t.Errorf("merge failed:%v", msg)
 		t.FailNow()
@@ -1406,7 +1405,7 @@ func TestSortedExtents_Merge7(t *testing.T) {
 		{FileOffset: 0, PartitionId: 473011, ExtentId: 10496, ExtentOffset: 0, Size: 1462},
 	}
 
-	delEKs, merged, msg = se.Merge(newEK, oldEK, 10)
+	delEKs, merged, msg = se.FileMigMerge(newEK, oldEK, 10)
 	if merged {
 		t.Errorf("merge expect failed, but success")
 		t.FailNow()
