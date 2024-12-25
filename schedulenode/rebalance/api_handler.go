@@ -24,6 +24,9 @@ const (
 	TEST        = "delete_ek_test"
 	TestES      = "test-es-db"
 	TestDbBak   = "test-dbBack"
+
+	MaxRepairedPartitionCount      = 200
+	MaxMysqlRepairedPartitionCount = 100
 )
 
 func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request) (int, interface{}, error) {
@@ -52,6 +55,8 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 	// nodesMigrate
 	srcNodesStr := req.URL.Query().Get(ParamSrcNodesList)
 	dstNodesStr := req.URL.Query().Get(ParamDstNodesList)
+	migVolumesStr := req.URL.Query().Get(ParamMigVolumesList)
+	outMigRatioStr := req.URL.Query().Get(ParamOutMigRatio)
 	// common
 	maxBatchCountStr := req.URL.Query().Get(ParamClusterMaxBatchCount)
 	migrateLimitPerDiskStr := req.URL.Query().Get(ParamMigrateLimitPerDisk)
@@ -61,6 +66,17 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 	if maxBatchCountStr != "" {
 		if tmp, err := strconv.Atoi(maxBatchCountStr); err == nil {
 			maxBatchCount = tmp
+		}
+	}
+	if cluster == ELASTICDB {
+		if maxBatchCount > MaxMysqlRepairedPartitionCount {
+			err = fmt.Errorf("the maximum number of repaired partitions in the mysql cluster cannot exceed %v", MaxMysqlRepairedPartitionCount)
+			return http.StatusBadRequest, nil, err
+		}
+	} else {
+		if maxBatchCount > MaxRepairedPartitionCount {
+			err = fmt.Errorf("the maximum number of repaired partitions in the cluster cannot exceed %v", MaxRepairedPartitionCount)
+			return http.StatusBadRequest, nil, err
 		}
 	}
 	migrateLimitPerDisk := defaultMigrateLimitPerDisk
@@ -110,12 +126,39 @@ func (rw *ReBalanceWorker) handleStart(w http.ResponseWriter, req *http.Request)
 		if !isValid {
 			return http.StatusBadRequest, nil, fmt.Errorf("%v: %v", ErrInputNodesInvalid, commonNode)
 		}
-		_, err = rw.NodesMigrateStart(cluster, rType, maxBatchCount, dstMetaNodePartitionMaxCount, srcNodeList, dstNodeList)
+		migVolList := strings.Split(strings.TrimSpace(migVolumesStr), ",")
+		if len(migVolList) > MaxMigrateVolumeNum {
+			return http.StatusBadRequest, nil, fmt.Errorf("%v, should be less than %v", ErrMigVolumesTooMany, MaxMigrateVolumeNum)
+		}
+		var (
+			outMigRatio float64
+		)
+		if outMigRatioStr == "" {
+			outMigRatio = 1
+		} else {
+			outMigRatio, err = strconv.ParseFloat(outMigRatioStr, 64)
+			if err != nil {
+				return http.StatusBadRequest, nil, err
+			}
+		}
+		_, err = rw.NodesMigrateStart(cluster, rType, maxBatchCount, dstMetaNodePartitionMaxCount, srcNodeList, dstNodeList, migVolList, outMigRatio)
 		if err != nil {
 			return http.StatusInternalServerError, nil, err
 		}
 	}
 	return http.StatusOK, nil, nil
+}
+
+func getMigVolMap(migVolList []string) (volMap map[string]struct{}){
+	volMap = make(map[string]struct{})
+	for _, vol := range migVolList {
+		vol = strings.Replace(vol, " ", "", -1)
+		if vol == "" {
+			continue
+		}
+		volMap[vol] = struct{}{}
+	}
+	return
 }
 
 func checkInputAddrValid(srcNodes, dstNodes string) (bool, []string, []string, []string) {
@@ -688,6 +731,30 @@ func (rw *ReBalanceWorker) handleVolMigStop(w http.ResponseWriter, r *http.Reque
 	}
 	rw.volMigrateMap.Delete(ctrl.taskId)
 	err = rw.updateRunningVolStatus(id)
+	if err != nil {
+		return http.StatusInternalServerError, nil, err
+	}
+	return http.StatusOK, nil, nil
+}
+
+func (rw *ReBalanceWorker) offlineStopTask(w http.ResponseWriter, r *http.Request) (code int, data interface{}, err error) {
+	if err = r.ParseForm(); err != nil {
+		return http.StatusBadRequest, data, err
+	}
+	iDStr := r.FormValue(ParamQueryTaskId)
+	if iDStr == "" {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	var id uint64
+	if id, err = strconv.ParseUint(iDStr, 10, 64); err != nil {
+		return http.StatusBadRequest, data, ErrParamsNotFount
+	}
+	var taskInfo *RebalancedInfoTable
+	taskInfo, err = rw.GetRebalancedInfoByID(id)
+	if err != nil {
+		return
+	}
+	err = rw.stopMigrateTaskStatus(taskInfo.ZoneName, taskInfo.ID, int(StatusTerminating))
 	if err != nil {
 		return http.StatusInternalServerError, nil, err
 	}

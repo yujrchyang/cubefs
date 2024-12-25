@@ -7,6 +7,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/worker"
 	"github.com/cubefs/cubefs/util/config"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"gorm.io/gorm"
 	"net/http"
@@ -51,7 +52,7 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 		log.LogErrorf("[doStart] parse config info failed, error(%v)", err)
 		return
 	}
-
+	exporter.Init(exporter.NewOption().WithCluster(proto.RoleDPReBalanceWorker).WithModule(proto.RoleReBalance))
 	err = rw.OpenSql()
 	if err != nil {
 		return err
@@ -110,7 +111,7 @@ func (rw *ReBalanceWorker) registerHandler() {
 	http.HandleFunc(VolMigrateResetControl, responseHandler(rw.handleVolMigResetControl))
 	http.HandleFunc(VolMigrateStop, responseHandler(rw.handleVolMigStop))
 	http.HandleFunc(VolMigrateStatus, responseHandler(rw.handleVolMigTaskStatus))
-	//http.HandleFunc(VolMigrateQueryRecords)
+	http.HandleFunc("/offline", responseHandler(rw.offlineStopTask))
 }
 
 func (rw *ReBalanceWorker) getClusterHost(cluster string) (host string) {

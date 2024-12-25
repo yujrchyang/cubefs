@@ -68,6 +68,7 @@ func (rw *ReBalanceWorker) processNeedDeleteReplicaDp(record *MigrateRecordTable
 			record.ClusterName, record.PartitionID, dp.Hosts, record.SrcAddr, record.DstAddr, dp.ReplicaNum)
 		exporter.WarningBySpecialUMPKey(deleteWarnKey, errMsg)
 		log.LogError(errMsg)
+		record.FinishDelete = FinishDeleteSuccess
 		return
 	}
 
@@ -125,9 +126,9 @@ func (rw *ReBalanceWorker) restartRunningTask(info *RebalancedInfoTable) (taskID
 
 	case NodesMigrate:
 		ctrl, err = rw.newNodeMigrationCtrl(info.Cluster, info.RType, info.MaxBatchCount, info.DstMetaNodePartitionMaxCount,
-			strings.Split(info.SrcNodes, ","), strings.Split(info.DstNodes, ","), isRestart, info.ID)
-		if err != nil {
-			rw.stopRebalanced(ctrl.Id, false)
+			strings.Split(info.SrcNodes, ","), strings.Split(info.DstNodes, ","), strings.Split(info.VolName, ","), info.OutMigRatio, true, info.ID)
+		if err != nil && ctrl != nil {
+			_ = rw.stopRebalanced(ctrl.Id, false)
 			return
 		}
 		taskID = ctrl.Id
@@ -147,10 +148,9 @@ func (rw *ReBalanceWorker) restartRunningTask(info *RebalancedInfoTable) (taskID
 }
 
 func (rw *ReBalanceWorker) NodesMigrateStart(cluster string, rType RebalanceType, maxBatchCount int, dstMetaNodePartitionMaxCount int,
-	srcNodes, dstNodes []string) (taskID uint64, err error) {
+	srcNodes, dstNodes []string, migVols []string, outMigRatio float64) (taskID uint64, err error) {
 
-	isRestart := false
-	ctrl, err := rw.newNodeMigrationCtrl(cluster, rType, maxBatchCount, dstMetaNodePartitionMaxCount, srcNodes, dstNodes, isRestart, 0)
+	ctrl, err := rw.newNodeMigrationCtrl(cluster, rType, maxBatchCount, dstMetaNodePartitionMaxCount, srcNodes, dstNodes, migVols, outMigRatio, false, 0)
 	if err != nil {
 		return
 	}
@@ -176,11 +176,13 @@ func (rw *ReBalanceWorker) ZoneReBalanceStart(cluster, zoneName string, rType Re
 
 // 节点的control，先校验再插表
 func (rw *ReBalanceWorker) newNodeMigrationCtrl(cluster string, rType RebalanceType, maxBatchCount int, dstMetaNodeMaxPartitionCount int,
-	srcNodeList, dstNodeList []string, isRestart bool, taskID uint64) (ctrl *ZoneReBalanceController, err error) {
+	srcNodeList, dstNodeList, migVolList []string, outMigRatio float64, isRestart bool, taskID uint64) (ctrl *ZoneReBalanceController, err error) {
 	srcNodes := strings.Join(srcNodeList, ",")
 	dstNodes := strings.Join(dstNodeList, ",")
+	migVols := strings.Join(migVolList, ",")
 
-	ctrl = newNodeMigrateController(taskID, cluster, rType, srcNodeList, dstNodeList, rw)
+	migVolMap := getMigVolMap(migVolList)
+	ctrl = newNodeMigrateController(taskID, cluster, rType, srcNodeList, dstNodeList, migVolMap, outMigRatio, rw)
 
 	var rInfo *RebalancedInfoTable
 	if taskID > 0 {
@@ -195,7 +197,7 @@ func (rw *ReBalanceWorker) newNodeMigrationCtrl(cluster string, rType RebalanceT
 		}
 	}
 	if !isRestart {
-		rInfo, err = rw.createNodesRebalanceInfo(cluster, rType, maxBatchCount, dstMetaNodeMaxPartitionCount, srcNodes, dstNodes, StatusRunning)
+		rInfo, err = rw.createNodesRebalanceInfo(cluster, rType, maxBatchCount, dstMetaNodeMaxPartitionCount, srcNodes, dstNodes, migVols, outMigRatio, StatusRunning)
 		if err != nil {
 			log.LogWarnf("node迁移任务创建失败：%v", err)
 			return
@@ -219,6 +221,10 @@ func (rw *ReBalanceWorker) newZoneRebalanceCtrl(cluster, zoneName string, rType 
 	var rInfo *RebalancedInfoTable
 	rInfo, err = rw.GetRebalancedInfoByZone(cluster, zoneName, rType)
 	if err != nil && err.Error() != RECORD_NOT_FOUND {
+		return
+	}
+	if rInfo == nil {
+		err = fmt.Errorf("get rebalance info by zone cluster:%v zoneName:%v rType:%v err:%v", cluster, zoneName, rType, err)
 		return
 	}
 	if rInfo.ID > 0 && !isRestart {

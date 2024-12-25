@@ -46,6 +46,8 @@ type ZoneReBalanceController struct {
 
 	srcNodeList []string // 节点迁移指定的 节点列表
 	dstNodeList []string
+	migVolMap   map[string]struct{}
+	outMigRatio float64
 	taskType    TaskType // 节点迁移任务 or rebalance任务
 
 	isManualStop         bool     // 是否人为停止
@@ -82,7 +84,7 @@ func newZoneReBalanceController(id uint64, cluster, zoneName string, rType Rebal
 	return zoneCtrl
 }
 
-func newNodeMigrateController(id uint64, cluster string, rType RebalanceType, srcNodeList, dstNodeList []string, rw *ReBalanceWorker) *ZoneReBalanceController {
+func newNodeMigrateController(id uint64, cluster string, rType RebalanceType, srcNodeList, dstNodeList []string, migVolMap map[string]struct{}, outMigRatio float64, rw *ReBalanceWorker) *ZoneReBalanceController {
 	zoneCtrl := &ZoneReBalanceController{
 		Id:                           id,
 		cluster:                      cluster,
@@ -96,6 +98,8 @@ func newNodeMigrateController(id uint64, cluster string, rType RebalanceType, sr
 		dstMetaNodeMaxPartitionCount: defaultDstMetaNodePartitionMaxCount,
 		srcNodeList:                  srcNodeList,
 		dstNodeList:                  dstNodeList,
+		migVolMap:                    migVolMap,
+		outMigRatio:                  outMigRatio,
 	}
 	if isRelease(cluster) {
 		zoneCtrl.releaseClient = newReleaseClient([]string{rw.getClusterHost(cluster)}, cluster)
@@ -307,8 +311,8 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 	}
 
 	for _, srcNode := range zoneCtrl.srcDataNodes {
-		err := srcNode.updateDataNode()
-		if err != nil {
+		var err error
+		if err = srcNode.updateDataNode(); err != nil {
 			log.LogErrorf("doDataReBalance: updateDataNode failed, zone(%v) node(%v) err(%v)", zoneCtrl.zoneName, srcNode.nodeInfo.Addr, err)
 		}
 		for srcNode.NeedReBalance(zoneCtrl.goalRatio) {
@@ -319,8 +323,8 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 				return
 			default:
 			}
-
-			inRecoveringDPMap, err := IsInRecoveringMoreThanMaxBatchCount(zoneCtrl.masterClient, zoneCtrl.releaseClient, zoneCtrl.rType, zoneCtrl.clusterMaxBatchCount)
+			var inRecoveringDPMap map[uint64]int
+			inRecoveringDPMap, err = IsInRecoveringMoreThanMaxBatchCount(zoneCtrl.masterClient, zoneCtrl.releaseClient, zoneCtrl.rType, zoneCtrl.clusterMaxBatchCount)
 			if err != nil {
 				log.LogWarnf("doDataReBalance: %v", err.Error())
 				// 等cluster中badPartition恢复
@@ -328,6 +332,9 @@ func (zoneCtrl *ZoneReBalanceController) doDataReBalance() {
 				continue
 			}
 			clusterDpCurrency := zoneCtrl.clusterMaxBatchCount - len(inRecoveringDPMap)
+			if clusterDpCurrency > srcNode.maxMigrateDpCnt-srcNode.hasMigrateDpCnt {
+				clusterDpCurrency = srcNode.maxMigrateDpCnt - srcNode.hasMigrateDpCnt
+			}
 			log.LogInfof("doDataReBalance: taskID(%v) srcNode(%v) canBeMigCount(%v)", zoneCtrl.Id, srcNode.nodeInfo.Addr, clusterDpCurrency)
 			err = srcNode.doMigrate(clusterDpCurrency)
 			if err != nil {
@@ -762,5 +769,14 @@ func convertDiskView(diskMap map[string]*Disk) (diskView []DiskView) {
 	sort.Slice(diskView, func(i, j int) bool {
 		return diskView[i].Path < diskView[j].Path
 	})
+	return
+}
+
+func (zoneCtrl *ZoneReBalanceController) CheckMigVolumeExist(volume string) (exist bool) {
+	if len(zoneCtrl.migVolMap) == 0 {
+		exist = true
+		return
+	}
+	_, exist = zoneCtrl.migVolMap[volume]
 	return
 }

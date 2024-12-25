@@ -218,6 +218,7 @@ type RebalancedInfoTable struct {
 	DstMetaNodePartitionMaxCount int           `gorm:"column:dst_metanode_partition_max_count"`
 	SrcNodes                     string        `gorm:"column:src_nodes_list"`
 	DstNodes                     string        `gorm:"column:dst_nodes_list"`
+	OutMigRatio                  float64       `gorm:"column:out_mig_ratio"`
 	CreatedAt                    time.Time     `gorm:"column:created_at"`
 	UpdatedAt                    time.Time     `gorm:"column:updated_at"`
 	// vols迁移, srcZone用zone_name字段
@@ -260,7 +261,7 @@ func (rw *ReBalanceWorker) GetRebalancedInfoByID(id uint64) (info *RebalancedInf
 func (rw *ReBalanceWorker) GetRebalancedInfoByZone(cluster, zoneName string, rType RebalanceType) (rebalancedInfo *RebalancedInfoTable, err error) {
 	rebalancedInfo = &RebalancedInfoTable{}
 	err = rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).
-		Where("cluster = ? and zone_name=? and rebalance_type=?", cluster, zoneName, rType).
+		Where("cluster = ? and zone_name=? and rebalance_type=? and task_type=?", cluster, zoneName, rType, ZoneAutoReBalance).
 		First(rebalancedInfo).Error
 	return
 }
@@ -333,7 +334,7 @@ func (rw *ReBalanceWorker) updateNodesRebalanceInfo(taskId uint64, maxBatchCount
 }
 
 func (rw *ReBalanceWorker) createNodesRebalanceInfo(cluster string, rType RebalanceType, maxBatchCount int, dstMNPartitionMaxCount int,
-	srcNodes, dstNodes string, status Status) (rInfo *RebalancedInfoTable, err error) {
+	srcNodes, dstNodes, migVols string, outMigRatio float64, status Status) (rInfo *RebalancedInfoTable, err error) {
 
 	rInfo = new(RebalancedInfoTable)
 	rInfo.Cluster = cluster
@@ -346,6 +347,8 @@ func (rw *ReBalanceWorker) createNodesRebalanceInfo(cluster string, rType Rebala
 	rInfo.DstMetaNodePartitionMaxCount = dstMNPartitionMaxCount
 	rInfo.SrcNodes = srcNodes
 	rInfo.DstNodes = dstNodes
+	rInfo.VolName = migVols
+	rInfo.OutMigRatio = outMigRatio
 	rInfo.CreatedAt = time.Now()
 	rInfo.UpdatedAt = rInfo.CreatedAt
 	err = rw.PutRebalancedInfoToDB(rInfo)
@@ -389,6 +392,9 @@ func (rw *ReBalanceWorker) GetRebalancedInfoTotalCount(cluster, zoneName, volume
 	if rType < MaxRebalanceType {
 		tx.Where("rebalance_type = ?", rType)
 	}
+	if taskType == 0 {
+		tx.Where("task_type in ?", []TaskType{ZoneAutoReBalance, NodesMigrate})
+	}
 	if taskType > 0 && taskType < MaxTaskType {
 		tx.Where("task_type = ?", taskType)
 	}
@@ -416,6 +422,9 @@ func (rw *ReBalanceWorker) GetRebalancedInfoList(cluster, zoneName, volume strin
 	}
 	if rType < MaxRebalanceType {
 		tx.Where("rebalance_type = ?", rType)
+	}
+	if taskType == 0 {
+		tx.Where("task_type in ?", []TaskType{ZoneAutoReBalance, NodesMigrate})
 	}
 	if taskType > 0 && taskType < MaxTaskType {
 		tx.Where("task_type = ?", taskType)
@@ -475,6 +484,19 @@ func (rw *ReBalanceWorker) updateMigrateControl(taskID uint64, clusterCurrency, 
 		}).Error
 	if err != nil {
 		log.LogErrorf("updateMigrateControl: taskID(%v) err(%v)", taskID, err)
+	}
+	return err
+}
+
+func (rw *ReBalanceWorker) stopMigrateTaskStatus(taskZone string, taskID uint64, status int) error {
+	err := rw.dbHandle.Table(RebalancedInfoTable{}.TableName()).Where("id = ?", taskID).
+		Updates(map[string]interface{}{
+			"zone_name":  fmt.Sprintf("%v#%v", taskZone, taskID),
+			"status":     status,
+			"updated_at": time.Now(),
+		}).Error
+	if err != nil {
+		log.LogErrorf("updateMigrateTaskStatus: taskID(%v) status(%v) err(%v)", taskID, status, err)
 	}
 	return err
 }

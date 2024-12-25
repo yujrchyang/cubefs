@@ -22,6 +22,8 @@ type DNReBalanceController struct {
 
 	minWritableDPNum    int // 最小可写dp限制
 	migrateLimitPerDisk int
+	maxMigrateDpCnt     int
+	hasMigrateDpCnt     int
 	isFinished          bool
 }
 
@@ -36,6 +38,11 @@ func NewDNReBalanceController(zoneCtrl *ZoneReBalanceController, info *DataNodeS
 		masterAddr:          masterAddr,
 		minWritableDPNum:    minWritableDPNum,
 		migrateLimitPerDisk: migrateLimitPerDisk,
+	}
+	if zoneCtrl.outMigRatio > 0 {
+		dnCtrl.maxMigrateDpCnt = int(float64(len(dnCtrl.nodeInfo.PartitionReports))*zoneCtrl.outMigRatio)
+	} else {
+		dnCtrl.maxMigrateDpCnt = len(dnCtrl.nodeInfo.PartitionReports)
 	}
 
 	err := dnCtrl.updateDisks()
@@ -53,9 +60,11 @@ func NewDNReBalanceController(zoneCtrl *ZoneReBalanceController, info *DataNodeS
 
 // NeedReBalance 判断当前DataNode是否需要迁移，goalRatio为0，表示一直迁移
 func (dnCtrl *DNReBalanceController) NeedReBalance(goalRatio float64) bool {
-	needRebalance := dnCtrl.Usage() > goalRatio
-	log.LogInfof("NeedReBalance(%v): data(%s) usage(%v) goal(%v)", needRebalance, dnCtrl.nodeInfo.Addr, dnCtrl.Usage(), goalRatio)
-	return needRebalance
+	usageRatioNeedRebalance := dnCtrl.Usage() > goalRatio
+	dpMigCntNeedRebalance := dnCtrl.hasMigrateDpCnt < dnCtrl.maxMigrateDpCnt
+	log.LogInfof("dataNode needReBalance addr(%v) usageRatioNeedRebalance(%v) usage(%v) goalRatio(%v), dpMigCntNeedRebalance(%v) hasMigrateDpCnt(%v) maxMigrateDpCnt(%v)",
+		dnCtrl.nodeInfo.Addr, usageRatioNeedRebalance, dnCtrl.Usage(), goalRatio, dpMigCntNeedRebalance, dnCtrl.hasMigrateDpCnt, dnCtrl.maxMigrateDpCnt)
+	return usageRatioNeedRebalance && dpMigCntNeedRebalance
 }
 
 func (dnCtrl *DNReBalanceController) selectDP(goalRatio float64) (*Disk, *proto.DataPartitionInfo, error) {
@@ -87,7 +96,11 @@ func (dnCtrl *DNReBalanceController) selectDstNode(dpInfo *proto.DataPartitionIn
 	for offset < len(dnCtrl.zoneCtrl.dstDataNodes) {
 		index := (dnCtrl.zoneCtrl.dstIndex + offset) % len(dnCtrl.zoneCtrl.dstDataNodes)
 		node = dnCtrl.zoneCtrl.dstDataNodes[index]
-		if node.UsageRatio < dnCtrl.zoneCtrl.goalRatio && !utils.Contains(dpInfo.Hosts, node.Addr) {
+		var goalRatio = dnCtrl.zoneCtrl.goalRatio
+		if dnCtrl.zoneCtrl.goalRatio == 0 {
+			goalRatio = 0.8
+		}
+		if node.UsageRatio < goalRatio && !utils.Contains(dpInfo.Hosts, node.Addr) {
 			break
 		}
 		offset++
@@ -131,32 +144,39 @@ func (dnCtrl *DNReBalanceController) doMigrate(clusterDpCurrency int) (err error
 		case <-dnCtrl.zoneCtrl.ctx.Done():
 			dnCtrl.zoneCtrl.SetIsManualStop(true)
 			log.LogInfof("doMigrate stop: taskID(%v) cluster(%v) zone(%v) srcDataNode(%v)", dnCtrl.zoneCtrl.Id, dnCtrl.zoneCtrl.cluster, dnCtrl.zoneCtrl.zoneName, dnCtrl.nodeInfo.Addr)
-			return nil
+			return
 		default:
 		}
+		var (
+			disk *Disk
+			dpInfo *proto.DataPartitionInfo
+			dstNode *DataNodeStatsWithAddr
+		)
 		// 选择srcNode中的一个可用dp
-		disk, dpInfo, err := dnCtrl.selectDP(dnCtrl.zoneCtrl.goalRatio)
+		disk, dpInfo, err = dnCtrl.selectDP(dnCtrl.zoneCtrl.goalRatio)
 		if err != nil {
 			// 当前srcNode已经没有可选的dp，break
 			log.LogWarnf("dataNode select dp error Zone: %v DataNode: %v %v", dnCtrl.zoneCtrl.zoneName, dnCtrl.nodeInfo.Addr, err.Error())
-			return err
+			return
 		}
 
 		// 根据选择的dp指定一个目标机器
-		dstNode, err := dnCtrl.selectDstNode(dpInfo)
+		dstNode, err = dnCtrl.selectDstNode(dpInfo)
 		if err != nil {
 			// 根据当前选定的dp找不到合适的dstNode，继续下一轮循环，选择新的dp
 			continue
 		}
 		clusterDpCurrency--
+		dnCtrl.hasMigrateDpCnt++
 		// 执行迁移
 		dnCtrl.migrate(disk, dpInfo, dstNode)
 	}
-	return nil
+	return
 }
 
 // 执行迁移
-func (dnCtrl *DNReBalanceController) migrate(disk *Disk, dp *proto.DataPartitionInfo, dstNode *DataNodeStatsWithAddr) (err error) {
+func (dnCtrl *DNReBalanceController) migrate(disk *Disk, dp *proto.DataPartitionInfo, dstNode *DataNodeStatsWithAddr) {
+	var err error
 	defer func() {
 		msg := fmt.Sprintf("migrate dp: taskID(%v) cluster(%v) vol(%v) dp(%v) src(%v) dest(%v)",
 			dnCtrl.zoneCtrl.Id, dnCtrl.zoneCtrl.cluster, dp.VolName, dp.PartitionID, dnCtrl.nodeInfo.Addr, dstNode.Addr)
@@ -168,7 +188,8 @@ func (dnCtrl *DNReBalanceController) migrate(disk *Disk, dp *proto.DataPartition
 	}()
 
 	if dstNode == nil {
-		return fmt.Errorf("doMigrate dpId:%v dstNode is nil", dp.PartitionID)
+		err = fmt.Errorf("doMigrate dpId:%v dstNode is nil", dp.PartitionID)
+		return
 	}
 	dnCtrl.zoneCtrl.RecordMigratePartition(dp.PartitionID)
 	needDeleteReplica := DeleteFlagForThreeReplica
@@ -177,7 +198,7 @@ func (dnCtrl *DNReBalanceController) migrate(disk *Disk, dp *proto.DataPartition
 	if dp.ReplicaNum == 2 {
 		if release {
 			//先加副本
-			err = dnCtrl.zoneCtrl.releaseClient.AddDataReplica(dp.PartitionID, dstNode.Addr)
+			_ = dnCtrl.zoneCtrl.releaseClient.AddDataReplica(dp.PartitionID, dstNode.Addr)
 		} else {
 			err = dnCtrl.zoneCtrl.masterClient.AdminAPI().AddDataReplica(dp.PartitionID, dstNode.Addr, proto.DefaultAddReplicaType)
 		}
@@ -191,7 +212,7 @@ func (dnCtrl *DNReBalanceController) migrate(disk *Disk, dp *proto.DataPartition
 		}
 	}
 	if err != nil {
-		return err
+		return
 	}
 	oldUsage, oldDiskUsage := dnCtrl.Usage(), disk.Usage()
 	dnCtrl.UpdateMigratedDP(disk, dp)
@@ -221,7 +242,6 @@ func (dnCtrl *DNReBalanceController) migrate(disk *Disk, dp *proto.DataPartition
 			break
 		}
 	}
-	return err
 }
 
 // 更新当前dataNode的信息

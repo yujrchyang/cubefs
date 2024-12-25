@@ -17,14 +17,22 @@ type MetaNodeReBalanceController struct {
 	inodeTotalCnt                    uint64
 	sortedMetaPartitions             []*proto.MetaPartitionInfo // 按mp inode数排序 降序
 	alreadyMigrateFinishedPartitions map[uint64]bool
+	maxMigrateDpCnt                  int
+	hasMigrateDpCnt                  int
 }
 
-func NewMetaNodeReBalanceController(nodeInfo *proto.MetaNodeInfo, zoneCtrl *ZoneReBalanceController) *MetaNodeReBalanceController {
-	return &MetaNodeReBalanceController{
+func NewMetaNodeReBalanceController(nodeInfo *proto.MetaNodeInfo, zoneCtrl *ZoneReBalanceController) (ctrl *MetaNodeReBalanceController) {
+	ctrl = &MetaNodeReBalanceController{
 		nodeInfo:                         nodeInfo,
 		zoneCtrl:                         zoneCtrl,
 		alreadyMigrateFinishedPartitions: make(map[uint64]bool),
 	}
+	if zoneCtrl.outMigRatio > 0 {
+		ctrl.maxMigrateDpCnt = int(float64(len(nodeInfo.PersistenceMetaPartitions)) * zoneCtrl.outMigRatio)
+	} else {
+		ctrl.maxMigrateDpCnt = len(nodeInfo.PersistenceMetaPartitions)
+	}
+	return ctrl
 }
 
 func (mnCtrl *MetaNodeReBalanceController) updateSortedMetaPartitions() (err error) {
@@ -76,10 +84,11 @@ func (mnCtrl *MetaNodeReBalanceController) getCanBeMigrateInodeCnt() uint64 {
 }
 
 func (mnCtrl *MetaNodeReBalanceController) NeedReBalance(goalRatio float64) bool {
-	// goalRatio为0，表示一直迁移
-	needRebalance := mnCtrl.nodeInfo.Ratio > goalRatio
-	log.LogInfof("NeedReBalance(%v): meta(%s) usage(%v) goal(%v)", needRebalance, mnCtrl.nodeInfo.Addr, mnCtrl.nodeInfo.Ratio, goalRatio)
-	return needRebalance
+	usageRatioNeedRebalance := mnCtrl.nodeInfo.Ratio > goalRatio
+	mpMigCntNeedRebalance := mnCtrl.hasMigrateDpCnt < mnCtrl.maxMigrateDpCnt
+	log.LogInfof("metaNode needReBalance addr(%v) usageRatioNeedRebalance(%v) usage(%v) goalRatio(%v), mpMigCntNeedRebalance(%v) hasMigrateDpCnt(%v) maxMigrateDpCnt(%v)",
+		mnCtrl.nodeInfo.Addr, usageRatioNeedRebalance, mnCtrl.nodeInfo.Ratio, goalRatio, mpMigCntNeedRebalance, mnCtrl.hasMigrateDpCnt, mnCtrl.maxMigrateDpCnt)
+	return usageRatioNeedRebalance && mpMigCntNeedRebalance
 }
 
 func (mnCtrl *MetaNodeReBalanceController) selectDstMetaNodes(mpID uint64, hosts []string) (dstMetaNodeAddr string, err error) {
@@ -121,6 +130,10 @@ func canBeSelectedForMigrate(dstMetaNodeInfo *proto.MetaNodeInfo, goalRatio floa
 
 func (mnCtrl *MetaNodeReBalanceController) selectMP() (metaPartition *proto.MetaPartitionInfo, err error) {
 	for _, partition := range mnCtrl.sortedMetaPartitions {
+		exist := mnCtrl.zoneCtrl.CheckMigVolumeExist(partition.VolName)
+		if !exist {
+			continue
+		}
 		mpID := partition.PartitionID
 		if _, ok := mnCtrl.alreadyMigrateFinishedPartitions[mpID]; ok {
 			continue
@@ -174,6 +187,10 @@ func (mnCtrl *MetaNodeReBalanceController) doMigrate() error {
 	alreadyMigrateInodeCnt := uint64(0)
 
 	for alreadyMigrateInodeCnt < canBeMigrateInodeCnt {
+		if mnCtrl.hasMigrateDpCnt >= mnCtrl.maxMigrateDpCnt {
+			log.LogInfof("doMigrate finish: task(%v) srcNode(%v) hasMig(%v) maxMig(%v)", mnCtrl.zoneCtrl.Id, mnCtrl.nodeInfo.Addr, mnCtrl.hasMigrateDpCnt, mnCtrl.maxMigrateDpCnt)
+			return nil
+		}
 		inRecoveringMPMap, err := IsInRecoveringMoreThanMaxBatchCount(mnCtrl.zoneCtrl.masterClient, mnCtrl.zoneCtrl.releaseClient, mnCtrl.zoneCtrl.rType, mnCtrl.zoneCtrl.clusterMaxBatchCount)
 		if err != nil {
 			log.LogWarnf("doMigrate err:%v", err.Error())
@@ -181,6 +198,9 @@ func (mnCtrl *MetaNodeReBalanceController) doMigrate() error {
 			continue
 		}
 		clusterMPCurrency := mnCtrl.zoneCtrl.clusterMaxBatchCount - len(inRecoveringMPMap)
+		if clusterMPCurrency > mnCtrl.maxMigrateDpCnt-mnCtrl.hasMigrateDpCnt {
+			clusterMPCurrency = mnCtrl.maxMigrateDpCnt - mnCtrl.hasMigrateDpCnt
+		}
 		for clusterMPCurrency > 0 {
 			select {
 			case <-mnCtrl.zoneCtrl.ctx.Done():
@@ -206,6 +226,7 @@ func (mnCtrl *MetaNodeReBalanceController) doMigrate() error {
 				continue
 			}
 			clusterMPCurrency--
+			mnCtrl.hasMigrateDpCnt++
 			alreadyMigrateInodeCnt += migratePartitionInfo.InodeCount
 			//do migrate
 			mnCtrl.migrate(migratePartitionInfo, dstMetaNodeAddr)
