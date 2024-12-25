@@ -466,7 +466,7 @@ func (mp *metaPartition) doDeleteMarkedInodes(ctx context.Context, ext *proto.Me
 	}
 
 	// delete the data node
-	if ext.SrcType != uint64(proto.DelEkSrcTypeFromFileMigMerge) {
+	if proto.IsTinyExtent(ext.ExtentId) || ext.SrcType != uint64(proto.DelEkSrcTypeFromFileMigMerge) {
 		err = mp.doMarkDelete(ctx, dp, ext)
 	} else {
 		var isMismatchOp = false
