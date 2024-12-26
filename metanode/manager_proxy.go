@@ -40,8 +40,16 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 	defer func() {
 		p.proxyFinishTimestamp = time.Now().Unix()
 	}()
+
+	if p.IsReadMetaPkt() && p.IsFollowerReadMetaPkt() {
+		return m.serveProxyFollowerReadPacket(conn, mp, p)
+	} else {
+		return m.serveProxyLeaderPacket(conn, mp, p, req)
+	}
+}
+
+func (m *metadataManager) serveProxyLeaderPacket(conn net.Conn, mp MetaPartition, p *Packet, req interface{}) (ok bool){
 	var (
-		mConn           *net.TCPConn
 		leaderAddr      string
 		oldLeaderAddr   string
 		err             error
@@ -49,11 +57,6 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		reqOp           = p.Opcode
 		needTryToLeader = false
 	)
-	if p.IsReadMetaPkt() && p.IsFollowerReadMetaPkt() {
-		log.LogDebugf("read from follower: p(%v), arg(%v)", p, p.Arg)
-		return true
-	}
-
 	if leaderAddr, ok = mp.IsLeader(); ok {
 		if p.IsReadMetaPkt() && mp.IsRaftHang(){
 			//disk error, do nothing
@@ -65,84 +68,133 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		return
 	}
 
+	if leaderAddr == "" {
+		err = ErrNoLeader
+		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+		goto end
+	}
 
-	for retryCnt := 0; retryCnt < ProxyTryToLeaderRetryCnt; {
-		needTryToLeader = false
-		if leaderAddr, ok = mp.IsLeader(); ok {
-			//leader changed, now is myself return
-			return
+	oldLeaderAddr = leaderAddr
+	p.ResetPackageData(req)
+	if err = m.forwardPacket(leaderAddr, p); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		if strings.Contains(err.Error(), "i/o timeout") {
+			// leader no response, retry and set try to leader flag true
+			needTryToLeader = true
 		}
-
-		if leaderAddr == "" {
-			err = ErrNoLeader
-			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
-			goto end
-		}
-
-		if oldLeaderAddr != leaderAddr {
-			retryCnt = 0
-		}
-		oldLeaderAddr = leaderAddr
-
-		mConn, err = m.connPool.GetConnect(leaderAddr)
-		if err != nil {
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			m.connPool.PutConnect(mConn, ForceClosedConnect)
-			goto end
-		}
-
-		// send to master connection
-		p.ResetPackageData(req)
-		if err = p.WriteToConn(mConn, ProxyWriteTimeoutSec); err != nil {
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			m.connPool.PutConnect(mConn, ForceClosedConnect)
-			goto end
-		}
-
-		// read connection from the master
-		if err = p.ReadFromConn(mConn, ProxyReadTimeoutSec); err != nil {
-			if strings.Contains(err.Error(), "i/o timeout") {
-				// leader no response, retry and set try to leader flag true
-				m.connPool.PutConnect(mConn, ForceClosedConnect)
-				needTryToLeader = true
-				retryCnt++
-				continue
-			}
-			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
-			m.connPool.PutConnect(mConn, ForceClosedConnect)
-			goto end
-		}
-		m.connPool.PutConnect(mConn, NoClosedConnect)
-		break
+		goto end
 	}
 
 	if reqID != p.ReqID || reqOp != p.Opcode {
-		log.LogErrorf("serveProxy: send and received packet mismatch: req(%v_%v) resp(%v_%v)",
-			reqID, reqOp, p.ReqID, p.Opcode)
+		log.LogErrorf("serveProxy: send and received packet mismatch: mp(%v) req(%v_%v) resp(%v_%v)",
+			mp.GetBaseConfig().PartitionId, reqID, reqOp, p.ReqID, p.Opcode)
 	}
 end:
-	if needTryToLeader {
-		p.PacketErrorWithBody(proto.OpErr, []byte(fmt.Sprintf("proxy to leader[%s] err:%v, try to leader", leaderAddr, err)))
+	if err != nil {
+		log.LogErrorf("serveProxy: mp: %v, req: %d - %v, err: %s", mp.GetBaseConfig().PartitionId, p.GetReqID(),
+			p.GetOpMsg(), err.Error())
 	}
+	log.LogDebugf("serveProxy: mp: %v, req: %d - %v, resp: %v", mp.GetBaseConfig().PartitionId, p.GetReqID(), p.GetOpMsg(),
+		p.GetResultMsg())
 
 	leaderAddr, _ = mp.IsLeader()
 	if leaderAddr == oldLeaderAddr && needTryToLeader && p.ShallTryToLeader() {
+		p.PacketErrorWithBody(proto.OpErr, []byte(fmt.Sprintf("proxy to leader[%s] err:%v, try to leader", leaderAddr, err)))
 		log.LogErrorf("mp[%v] leader(%s) is not response, now try to elect to be leader", mp.GetBaseConfig().PartitionId, leaderAddr)
 		_ = mp.TryToLeader(mp.GetBaseConfig().PartitionId)
-		errMsg := "proxy failed "
-		if err != nil {
-			errMsg += err.Error()
-		}
-		p.PacketErrorWithBody(proto.OpErr, []byte(errMsg))
 	}
 
 	ok = false
 	m.respondToClient(conn, p)
-	if err != nil {
-		log.LogErrorf("[serveProxy]: req: %d - %v, %s", p.GetReqID(),
-			p.GetOpMsg(), err.Error())
+	return
+}
+
+func (m *metadataManager) serveProxyFollowerReadPacket(conn net.Conn, mp MetaPartition, p *Packet) (ok bool){
+	if len(mp.GetBaseConfig().Recorders) == 0 {
+		//recorder disabled, no need do read consistent by self,  do follower read
+		log.LogDebugf("read from follower: mp(%v), p(%v), arg(%v)", mp.GetBaseConfig().PartitionId, p, p.Arg)
+		ok = true
+		return
 	}
-	log.LogDebugf("[serveProxy] req: %d - %v, resp: %v", p.GetReqID(), p.GetOpMsg(),
-		p.GetResultMsg())
+
+	//already is forward packet, do follower read
+	if p.IsForwardFollowerReadMetaPkt() {
+		log.LogDebugf("forward follower read packet: mp(%v), p(%v), arg(%v)",
+			mp.GetBaseConfig().PartitionId, p, p.Arg)
+		ok = true
+		return
+	}
+
+	//if enable recorder, meta node do read consistent by self
+	partition := mp.(*metaPartition)
+	isSelf, targetHosts, err := partition.getTargetHostsForReadConsistent()
+	if isSelf {
+		//do follower read
+		log.LogDebugf("do follower read on current node, packet: mp(%v), p(%v), arg(%v)",
+			mp.GetBaseConfig().PartitionId, p, p.Arg)
+		ok = true
+		return
+	}
+
+	//read from other host
+	defer func() {
+		ok = false
+		m.respondToClient(conn, p)
+	}()
+	if err != nil {
+		log.LogErrorf("get target hosts failed, packet: mp(%v), p(%v), arg(%v), err(%v)",
+			mp.GetBaseConfig().PartitionId, p, p.Arg, err)
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+
+	if len(targetHosts) == 0 {
+		log.LogErrorf("no reachable host for follower read, packet: mp(%v), p(%v), arg(%v)",
+			mp.GetBaseConfig().PartitionId, p, p.Arg)
+		p.PacketErrorWithBody(proto.OpErr, []byte("no reachable host"))
+		return
+	}
+
+	//forward to target hosts
+	p.ResetPktDataForFollowerReadForward()
+	for _, host := range targetHosts {
+		err = m.forwardPacket(host, p)
+		if err == nil {
+			return
+		}
+		log.LogErrorf("forward failed mp(%v) addr(%v) reqID(%v) err(%v), try next host",
+			partition.config.PartitionId, host, p.ReqID, err)
+	}
+
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+	}
+	return
+}
+
+func (m *metadataManager) forwardPacket(addr string, p *Packet) (err error) {
+	var mConn *net.TCPConn
+	if mConn, err = m.connPool.GetConnect(addr); err != nil {
+		return
+	}
+
+	defer func() {
+		if err != nil {
+			m.connPool.PutConnect(mConn, ForceClosedConnect)
+		} else {
+			m.connPool.PutConnect(mConn, NoClosedConnect)
+		}
+	}()
+
+	// forward
+	if err = p.WriteToConn(mConn, ProxyWriteTimeoutSec); err != nil {
+		log.LogErrorf("write to %s failed, packet: mp(%v), p(%v), arg(%v)", p.PartitionID, p, p.Arg)
+		return
+	}
+
+	if err = p.ReadFromConn(mConn, ProxyReadTimeoutSec); err != nil {
+		log.LogErrorf("read from %s failed, packet: mp(%v), p(%v), arg(%v)", p.PartitionID, p, p.Arg)
+		return
+	}
 	return
 }

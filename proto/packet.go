@@ -289,7 +289,10 @@ const (
 	DecommissionedCreateMetaPartition = 1
 )
 
-const FollowerReadFlag = 'F'
+const (
+	FollowerReadFlag        = 'F'
+	FollowerReadForwardFlag = 'T'
+)
 
 var GReadOps = []uint8{OpMetaLookup, OpMetaReadDir, OpMetaInodeGet, OpMetaBatchInodeGet, OpMetaExtentsList, OpMetaGetXAttr,
 	OpMetaListXAttr, OpMetaBatchGetXAttr, OpMetaGetAppliedID, OpGetMultipart, OpListMultiparts}
@@ -1047,10 +1050,26 @@ func (p *Packet) IsRandomWrite() bool {
 }
 
 func (p *Packet) IsFollowerReadMetaPkt() bool {
-	if p.ArgLen == 1 && p.Arg[0] == FollowerReadFlag {
+	if p.ArgLen >= 1 && p.Arg[0] == FollowerReadFlag {
 		return true
 	}
 	return false
+}
+
+func (p *Packet) IsForwardFollowerReadMetaPkt() bool {
+	if p.ArgLen >= 2 && p.Arg[0] == FollowerReadFlag && p.Arg[1] == FollowerReadForwardFlag {
+		return true
+	}
+	return false
+}
+
+func (p *Packet) ResetPktDataForFollowerReadForward() {
+	if p.ArgLen >= 2 {
+		p.Arg[1] = FollowerReadForwardFlag
+	} else {
+		p.Arg = append(p.Arg, FollowerReadForwardFlag)
+		p.ArgLen++
+	}
 }
 
 func (p *Packet) ShallTryToLeader() bool {
