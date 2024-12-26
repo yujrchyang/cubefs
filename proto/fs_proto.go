@@ -710,6 +710,7 @@ type ListMultipartResponse struct {
 type GetAppliedIDRequest struct {
 	VolName     string `json:"vol"`
 	PartitionId uint64 `json:"pid"`
+	IsRecorder	bool   `json:"is_recorder"`
 }
 
 type GetTruncateIndexRequest struct {

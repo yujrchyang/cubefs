@@ -262,6 +262,7 @@ func (r *Recorder) HandleRaftApplySnapshot(peers []raftproto.Peer, iterator raft
 			return nil
 		}
 	}
+	// todo 赋值applyID
 }
 
 func (r *Recorder) StartRaft(fsm *FunctionalPartitionFsm) (err error) {

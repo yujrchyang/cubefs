@@ -1894,14 +1894,30 @@ func (m *metadataManager) opGetAppliedID(conn net.Conn, p *Packet, remoteAddr st
 		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
 		return
 	}
-	mp, err := m.getPartition(req.PartitionId)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
-		return
+	var (
+		mr			*metaRecorder
+		mp			MetaPartition
+		appliedID	uint64
+	)
+	if req.IsRecorder {
+		mr, err = m.GetRecorder(req.PartitionId)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+			return
+		}
+		appliedID = mr.Recorder().GetApplyID()
+	} else {
+		mp, err = m.getPartition(req.PartitionId)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			err = errors.NewErrorf("[%v],req[%v],err[%v]", p.GetOpMsgWithReqAndResult(), req, string(p.Data))
+			return
+		}
+		appliedID = mp.GetAppliedID()
 	}
-	appliedID := mp.GetAppliedID()
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, appliedID)
 	p.PacketOkWithBody(buf)

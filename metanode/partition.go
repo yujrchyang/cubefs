@@ -1720,7 +1720,7 @@ func (mp *metaPartition) checkRecoverAfterStart() {
 				continue
 			}
 
-			applyID, err := mp.GetLeaderRaftApplyID(leaderAddr)
+			applyID, err := mp.GetTargetRaftApplyID(leaderAddr, false)
 			if err != nil {
 				log.LogErrorf("CheckRecoverAfterStart mp[%v] get leader raft apply id failed:%v",
 					mp.config.PartitionId, err)
@@ -1743,7 +1743,7 @@ func (mp *metaPartition) checkRecoverAfterStart() {
 	}
 }
 
-func (mp *metaPartition) GetLeaderRaftApplyID(target string) (applyID uint64, err error) {
+func (mp *metaPartition) GetTargetRaftApplyID(target string, isRecorder bool) (applyID uint64, err error) {
 	var conn *net.TCPConn
 	defer func() {
 		if err != nil {
@@ -1754,22 +1754,22 @@ func (mp *metaPartition) GetLeaderRaftApplyID(target string) (applyID uint64, er
 	}()
 	conn, err = mp.config.ConnPool.GetConnect(target)
 	if err != nil {
-		log.LogErrorf("GetLeaderRaftApplyID mp[%v] get connect failed:%v", mp.config.PartitionId, err)
+		log.LogErrorf("GetTargetRaftApplyID mp[%v] get connect failed:%v", mp.config.PartitionId, err)
 		return
 	}
-	packet := NewPacketToGetApplyID(context.Background(), mp.config.PartitionId)
+	packet := NewPacketToGetApplyID(context.Background(), mp.config.PartitionId, isRecorder)
 	if err = packet.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
-		log.LogErrorf("GetLeaderRaftApplyID mp[%v] write to connection failed:%v", mp.config.PartitionId, err)
+		log.LogErrorf("GetTargetRaftApplyID mp[%v] write to connection failed:%v", mp.config.PartitionId, err)
 		return
 	}
 
 	if err = packet.ReadFromConn(conn, proto.ReadDeadlineTime); err != nil {
-		log.LogErrorf("GetLeaderRaftApplyID mp[%v] read from connection failed:%v", mp.config.PartitionId, err)
+		log.LogErrorf("GetTargetRaftApplyID mp[%v] read from connection failed:%v", mp.config.PartitionId, err)
 		return
 	}
 
 	if packet.ResultCode != proto.OpOk {
-		log.LogErrorf("GetLeaderRaftApplyID mp[%v] resultCode:0x%x", mp.config.PartitionId, packet.ResultCode)
+		log.LogErrorf("GetTargetRaftApplyID mp[%v] resultCode:0x%x", mp.config.PartitionId, packet.ResultCode)
 		err = fmt.Errorf("get raft apply id failed with code 0x%x", packet.ResultCode)
 		return
 	}
@@ -2054,5 +2054,66 @@ func (mp *metaPartition) checkDirInodeNlink() (nlinkWithUnexpectInodes []uint64,
 		actualNlink++
 		return true, nil
 	})
+	return
+}
+
+func (mp *metaPartition) getTargetHostsForReadConsistent() (isSelf bool, targetHosts []string, err error) {
+	peers := mp.config.Peers
+	appliedIDMap := make(map[string]uint64)
+	errSlice := make(map[string]error)
+	var (
+		wg           sync.WaitGroup
+		lock         sync.Mutex
+		maxAppliedID uint64
+	)
+	for _, peer := range peers {
+		if peer.ID == mp.config.NodeId {
+			continue
+		}
+		wg.Add(1)
+		go func(p proto.Peer) {
+			defer wg.Done()
+			// todo 超时时间设置
+			appliedID, err := mp.GetTargetRaftApplyID(p.Addr, p.IsRecorder())
+			lock.Lock()
+			if err != nil {
+				errSlice[p.Addr] = err
+			} else if !p.IsRecorder() {
+				appliedIDMap[p.Addr] = appliedID
+			}
+			lock.Unlock()
+		}(peer)
+	}
+	wg.Wait()
+	if len(errSlice) >= (len(peers)+1)/2 {
+		err = fmt.Errorf("mp[%v] get apply id errMap[%v]", mp.config.PartitionId, errSlice)
+		log.LogWarnf("err[%v] getAppliedID[%v]", err, appliedIDMap)
+		return
+	}
+	isSelf, targetHosts, maxAppliedID = mp.getMaxApplyIDHosts(appliedIDMap)
+	if log.IsDebugEnabled() {
+		log.LogDebugf("mp[%v] get max apply id[%v] from hosts[%v] isSelf[%v]", mp.config.PartitionId, maxAppliedID, targetHosts, isSelf)
+	}
+	return
+}
+
+func (mp *metaPartition) getMaxApplyIDHosts(appliedIDMap map[string]uint64) (isSelf bool, targetHosts []string, maxID uint64) {
+	maxID = uint64(0)
+	targetHosts = make([]string, 0)
+	for _, id := range appliedIDMap {
+		if id >= maxID {
+			maxID = id
+		}
+	}
+	if mp.GetAppliedID() >= maxID {
+		maxID = mp.GetAppliedID()
+		isSelf = true
+		return
+	}
+	for addr, id := range appliedIDMap {
+		if id == maxID {
+			targetHosts = append(targetHosts, addr)
+		}
+	}
 	return
 }

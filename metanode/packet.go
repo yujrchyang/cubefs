@@ -286,12 +286,12 @@ func NewPacketToBatchDeleteEcExtent(ctx context.Context, dp *topology.DataPartit
 	return p
 }
 
-func NewPacketToGetApplyID(ctx context.Context, mpID uint64) *Packet {
+func NewPacketToGetApplyID(ctx context.Context, mpID uint64, isRecorder bool) *Packet {
 	p := new(Packet)
 	p.Magic = proto.ProtoMagic
 	p.Opcode = proto.OpMetaGetAppliedID
 	p.ReqID = proto.GenerateRequestID()
-	p.Data, _ = json.Marshal(&proto.GetAppliedIDRequest{PartitionId: mpID})
+	p.Data, _ = json.Marshal(&proto.GetAppliedIDRequest{PartitionId: mpID, IsRecorder: isRecorder})
 	p.Size = uint32(len(p.Data))
 	p.SetCtx(ctx)
 	return p

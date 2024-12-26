@@ -377,7 +377,7 @@ func (mr *metaRecorder) GetRemoteTruncateIndex(ctx context.Context, target strin
 }
 
 func (mr *metaRecorder) GetLeaderRaftApplyID(target string) (applyID uint64, err error) {
-	packet := NewPacketToGetApplyID(context.Background(), mr.partitionID)
+	packet := NewPacketToGetApplyID(context.Background(), mr.partitionID, false)
 	if packet, err = mr.sendTcpPacket(packet, target); err != nil {
 		return
 	}
