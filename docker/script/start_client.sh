@@ -62,14 +62,17 @@ create_cluster_user() {
     fi
     # try create user
     for i in $(seq 1 300) ; do
-        curl -H "Content-Type: application/json" -X POST -d '
-          "id":"'${Owner}'",
-          "pwd":"",
-          "ak":"'${AccessKey}'",
-          "sk":"'${SecretKey}'",
-          "type":"",
-          "description":""
-        ' > /tmp/cli_user_create
+        curl -H "Content-Type: application/json" -X POST \
+          "http://master.chubao.io/user/create" -d '
+          {
+              "id":"'${Owner}'",
+              "pwd":"",
+              "ak":"'${AccessKey}'",
+              "sk":"'${SecretKey}'",
+              "type":3,
+              "description":""
+          }
+        ' > /tmp/cli_user_create 2>&1
         if [[ $? -eq 0 ]] ; then
             echo -e "\033[32m done\033[0m"
             return
