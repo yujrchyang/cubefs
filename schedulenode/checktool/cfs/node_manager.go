@@ -1085,7 +1085,8 @@ func getDataNode(host *ClusterHost, addr string) (dn *DataNodeView, err error) {
 func offlineMetaPatition(host *ClusterHost, addr string, pid uint64, reason string) (err error) {
 	var reqURL string
 	if host.isReleaseCluster {
-		mp, err := cfs.GetMetaPartition(host.host, pid, true)
+		var mp *cfs.MetaPartition
+		mp, err = cfs.GetMetaPartition(host.host, pid, true)
 		if err != nil {
 			log.LogErrorf("action[offlineMetaPartition] reqURL[%v], get metapartition failed, err: %v", reqURL, err)
 			return
