@@ -687,6 +687,7 @@ type LimitInfo struct {
 	DataNodeFlushFDInterval          uint32
 	DataNodeFlushFDParallelismOnDisk uint64
 	DataPartitionConsistencyMode     ConsistencyMode
+	SyncMode						 SyncMode
 
 	MonitorSummarySec uint64
 	MonitorReportSec  uint64

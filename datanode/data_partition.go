@@ -653,23 +653,23 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 	}
 }
 
-type VolumeConfig struct {
+type PartitionSetting struct {
 	CrossRegionHAType proto.CrossRegionHAType
 	DPReplicaNum      int
 	SyncMode          proto.SyncMode
 }
 
-func (dp *DataPartition) ApplyVolumeConfig(config *VolumeConfig) (err error) {
-	if dp.config.VolHAType == config.CrossRegionHAType &&
-		dp.config.ReplicaNum == config.DPReplicaNum &&
-		dp.config.SyncMode == config.SyncMode {
+func (dp *DataPartition) ApplySetting(setting *PartitionSetting) (err error) {
+	if dp.config.VolHAType == setting.CrossRegionHAType &&
+		dp.config.ReplicaNum == setting.DPReplicaNum &&
+		dp.config.SyncMode == setting.SyncMode {
 		// Nothing to be changed.
 		return nil
 	}
 
-	dp.config.VolHAType = config.CrossRegionHAType
-	dp.config.ReplicaNum = config.DPReplicaNum
-	dp.config.SyncMode = config.SyncMode
+	dp.config.VolHAType = setting.CrossRegionHAType
+	dp.config.ReplicaNum = setting.DPReplicaNum
+	dp.config.SyncMode = setting.SyncMode
 	if err = dp.persistMetaDataOnly(); err != nil {
 		return
 	}
@@ -678,6 +678,15 @@ func (dp *DataPartition) ApplyVolumeConfig(config *VolumeConfig) (err error) {
 		dp.raftPartition.SetWALSyncRotate(dp.config.SyncMode == proto.SyncModeEnabled)
 	}
 	return
+}
+
+func (dp *DataPartition) CurrentSetting() *PartitionSetting {
+	setting := &PartitionSetting{
+		CrossRegionHAType: dp.config.VolHAType,
+		DPReplicaNum:      dp.config.ReplicaNum,
+		SyncMode:          dp.config.SyncMode,
+	}
+	return setting
 }
 
 func (dp *DataPartition) statusUpdate() {

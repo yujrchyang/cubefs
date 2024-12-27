@@ -701,13 +701,16 @@ func (s *DataNode) updateNodeBaseInfo() {
 	}
 	deleteLimiteRater.SetLimit(l)
 
-	s.space.SetDiskFixTinyDeleteRecordLimit(limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
-	s.space.SetForceFlushFDInterval(limitInfo.DataNodeFlushFDInterval)
-	s.space.SetSyncWALOnUnstableEnableState(limitInfo.DataSyncWALOnUnstableEnableState)
-	s.space.SetForceFlushFDParallelismOnDisk(limitInfo.DataNodeFlushFDParallelismOnDisk)
-	s.space.SetPartitionConsistencyMode(limitInfo.DataPartitionConsistencyMode)
+	var ss = &SpaceSetting{
+		FixTinyDeleteRecordLimitOnDisk: limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk,
+		FlushFDIntervalSecond:          limitInfo.DataNodeFlushFDInterval,
+		SyncWALOnUnstableEnableState:   limitInfo.DataSyncWALOnUnstableEnableState,
+		FlushFDParallelismOnDisk:       limitInfo.DataNodeFlushFDParallelismOnDisk,
+		ConsistencyMode:                limitInfo.DataPartitionConsistencyMode,
+		SyncMode:                       limitInfo.SyncMode,
+	}
+	s.space.ApplySetting(ss)
 
-	s.space.SetNormalExtentDeleteExpireTime(limitInfo.DataNodeNormalExtentDeleteExpire)
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)
 		statistics.StatisticsModule.UpdateMonitorReportTime(limitInfo.MonitorReportSec)

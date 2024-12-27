@@ -110,6 +110,9 @@ type Disk struct {
 	devName           string
 	PhysicalUsedRatio uint32 //physical space usage ratio
 	CompressionRatio  uint32 //full disk compression ratio
+
+	flushTicker   *time.Ticker
+	flushInterval time.Duration
 }
 
 type CheckExpired func(id uint64) bool
@@ -138,6 +141,8 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 		forceFlushFDParallelism:  DefaultForceFlushFDParallelismOnDisk,
 		topoManager:              topoManager,
 		monitorData:              statistics.InitMonitorData(statistics.ModelDataNode),
+		flushInterval:            time.Second * DefaultForceFlushFDSecond,
+		flushTicker:              time.NewTicker(time.Second * DefaultForceFlushFDSecond),
 	}
 
 	d.initInterceptors()
@@ -451,22 +456,15 @@ func (d *Disk) incWriteErrCnt() {
 }
 
 func (d *Disk) flushFPScheduler() {
-	flushFDSecond := d.space.flushFDIntervalSec
-	if flushFDSecond == 0 {
-		flushFDSecond = DefaultForceFlushFDSecond
-	}
 
-	var (
-		flushTicker = time.NewTicker(time.Duration(flushFDSecond) * time.Second)
-		flushWindow = time.Duration(flushFDSecond) * time.Second
-	)
+	d.flushTicker.Reset(d.flushInterval)
 
 	defer func() {
-		flushTicker.Stop()
+		d.flushTicker.Stop()
 	}()
 	for {
 		select {
-		case <-flushTicker.C:
+		case <-d.flushTicker.C:
 			if !gHasLoadDataPartition {
 				continue
 			}
@@ -485,18 +483,18 @@ func (d *Disk) flushFPScheduler() {
 			if parallelism <= 0 {
 				parallelism = DefaultForceFlushFDParallelismOnDisk
 			}
-			d.__flushInWindow(int(parallelism), flushWindow)
+			d.__flushInWindow(int(parallelism), d.flushInterval)
 		}
-		if d.maybeUpdateFlushFDInterval(flushFDSecond) {
-			log.LogDebugf("action[startFlushFPScheduler] disk(%v) update ticker from(%v) to (%v)", d.Path, flushFDSecond, d.space.flushFDIntervalSec)
-			oldFlushFDSecond := flushFDSecond
-			flushFDSecond = d.space.flushFDIntervalSec
-			if flushFDSecond > 0 {
-				flushTicker.Reset(time.Duration(flushFDSecond) * time.Second)
-				flushWindow = time.Duration(flushFDSecond) * time.Second
-			} else {
-				flushFDSecond = oldFlushFDSecond
-			}
+	}
+}
+
+func (d *Disk) SetFlushInterval(seconds uint32) {
+	prev := d.flushInterval
+	d.flushInterval = time.Second * time.Duration(seconds)
+	if d.flushInterval != prev {
+		d.flushTicker.Reset(d.flushInterval)
+		if log.IsDebugEnabled() {
+			log.LogDebugf("Disk(%v): flush interval changed, prev %v, new %v", d.Path, prev, d.flushInterval)
 		}
 	}
 }
@@ -517,13 +515,6 @@ func (d *Disk) checkSfxIssueDiskStatus() error {
 		return errors.New("issue disk status detected")
 	}
 	return nil
-}
-
-func (d *Disk) maybeUpdateFlushFDInterval(oldVal uint32) bool {
-	if d.space.flushFDIntervalSec > 0 && oldVal != d.space.flushFDIntervalSec {
-		return true
-	}
-	return false
 }
 
 func (d *Disk) managementScheduler() {
@@ -1088,7 +1079,7 @@ func (d *Disk) evictExpiredExtentDeleteCache() {
 	var expireTime uint64
 	log.LogDebugf("action[evictExpiredExtentDeleteCache] disk(%v) evict start", d.Path)
 	d.RLock()
-	expireTime = d.space.normalExtentDeleteExpireTime
+	expireTime = DefaultNormalExtentDeleteExpireTime
 	var partitions = make([]*DataPartition, 0, len(d.partitionMap))
 	for _, partition := range d.partitionMap {
 		partitions = append(partitions, partition)
@@ -1438,18 +1429,6 @@ func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error)
 
 	d.AddSize(uint64(dp.Size()))
 	dp.ForceLoadHeader()
-
-	// 检查是否有需要更新Volume信息
-	var maybeNeedUpdateCrossRegionHAType = func() bool {
-		return (len(dp.config.Hosts) > 3 && dp.config.VolHAType == proto.DefaultCrossRegionHAType) ||
-			(len(dp.config.Hosts) <= 3 && dp.config.VolHAType == proto.CrossRegionHATypeQuorum)
-	}
-	var maybeNeedUpdateReplicaNum = func() bool {
-		return dp.config.ReplicaNum == 0 || len(dp.config.Hosts) != dp.config.ReplicaNum
-	}
-	if maybeNeedUpdateCrossRegionHAType() || maybeNeedUpdateReplicaNum() {
-		dp.proposeUpdateVolumeInfo()
-	}
 
 	dp.persistedApplied = appliedID
 	dp.persistedMetadata = meta
