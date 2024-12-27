@@ -1716,7 +1716,7 @@ func (dp *DataPartition) startRaft() (err error) {
 	}
 
 	var maxCommitID uint64
-	if dp.isNeedFaultCheck() {
+	if dp.isNeedFaultCheck() && dp.config.SyncMode != proto.SyncModeEnabled {
 		if maxCommitID, err = dp.getMaxCommitID(context.Background()); err != nil {
 			return
 		}
