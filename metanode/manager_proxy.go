@@ -188,12 +188,12 @@ func (m *metadataManager) forwardPacket(addr string, p *Packet) (err error) {
 
 	// forward
 	if err = p.WriteToConn(mConn, ProxyWriteTimeoutSec); err != nil {
-		log.LogErrorf("write to %s failed, packet: mp(%v), p(%v), arg(%v)", p.PartitionID, p, p.Arg)
+		log.LogErrorf("write to %s failed, packet: mp(%v), p(%v), arg(%v)", addr, p.PartitionID, p, p.Arg)
 		return
 	}
 
 	if err = p.ReadFromConn(mConn, ProxyReadTimeoutSec); err != nil {
-		log.LogErrorf("read from %s failed, packet: mp(%v), p(%v), arg(%v)", p.PartitionID, p, p.Arg)
+		log.LogErrorf("read from %s failed, packet: mp(%v), p(%v), arg(%v)", addr, p.PartitionID, p, p.Arg)
 		return
 	}
 	return
