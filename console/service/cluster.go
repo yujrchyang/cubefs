@@ -1061,7 +1061,7 @@ func getMetaPartition(cluster string, mpIDs []uint64, api *api.APIManager) []*cp
 	} else {
 		mc := api.GetMasterClient(cluster)
 		for _, mpID := range mpIDs {
-			mp, err := mc.ClientAPI().GetMetaPartition(mpID, "")
+			mp, err := mc.ClientAPI().GetMetaPartition(mpID, proto.PlaceholderVol)
 			if err != nil {
 				log.LogWarnf("getMetaPartition: getMpInfo failed, cluster(%v) mpID(%v) err(%v)", cluster, mpID, err)
 				continue
@@ -2153,7 +2153,7 @@ func (cs *ClusterService) resetCursor(ctx context.Context, args struct {
 		force = *args.Force
 	}
 	client := cs.api.GetMasterClient(cluster)
-	mp, err := client.ClientAPI().GetMetaPartition(args.ID, "")
+	mp, err := client.ClientAPI().GetMetaPartition(args.ID, proto.PlaceholderVol)
 	if err != nil {
 		return nil, err
 	}

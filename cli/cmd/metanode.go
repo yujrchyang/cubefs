@@ -155,7 +155,7 @@ func newMetaNodeInfoCmd(client *master.MasterClient) *cobra.Command {
 				return
 			}
 			for _, mpId := range metanodeInfo.PersistenceMetaPartitions {
-				if mp, err = client.ClientAPI().GetMetaPartition(mpId, ""); err != nil {
+				if mp, err = client.ClientAPI().GetMetaPartition(mpId, proto.PlaceholderVol); err != nil {
 					continue
 				}
 				dentryCountList = append(dentryCountList, &dentryCount{partitionID: mp.PartitionID, dentryCount: mp.DentryCount})

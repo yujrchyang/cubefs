@@ -450,10 +450,6 @@ func TestDeleteOldExtents(t *testing.T) {
 	assert.Nil(t, err)
 }
 
-var (
-// inodeOp *MigrateInode
-)
-
 func TestCalcCmpExtents(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: 100,
@@ -754,7 +750,7 @@ func TestMetaMergeExtents(t *testing.T) {
 	mpOp.mpId = mpID
 	var mpInfo *proto.MetaPartitionInfo
 	cMP := &meta.MetaPartition{PartitionID: mpID}
-	mpInfo, err = mpOp.mc.ClientAPI().GetMetaPartition(mpID, "")
+	mpInfo, err = mpOp.mc.ClientAPI().GetMetaPartition(mpID, ltptestVolume)
 	if err != nil {
 		t.Fatalf("get meta partition(%v) info failed, err(%v)", mpID, err)
 	}
@@ -778,9 +774,8 @@ func TestMetaMergeExtents(t *testing.T) {
 	}
 	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
 	subTask, _ := NewMigrateInode(mpOp, cmpInode)
-	remainEkCnt := 2
 	subTask.startIndex = 0
-	subTask.endIndex = len(extents) - remainEkCnt
+	subTask.endIndex = len(extents)
 	_ = subTask.Init()
 	_ = subTask.OpenFile()
 	err = subTask.ReadAndWriteEkData()
@@ -788,7 +783,7 @@ func TestMetaMergeExtents(t *testing.T) {
 		assert.FailNow(t, err.Error())
 		return
 	}
-	afterCompactEkLen := len(subTask.newEks) + remainEkCnt
+	afterCompactEkLen := len(subTask.newEks)
 	err = subTask.MetaMergeExtents()
 	if err != nil {
 		t.Fatalf("inode task MetaMergeExtents failed: err(%v)", err)
@@ -819,6 +814,31 @@ func TestMetaMergeExtentsError(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
+	_, mpID, err := util_sdk.LocateInode(stat.Ino, mpOp.mc, ltptestVolume)
+	if !assert.NoError(t, err) {
+		return
+	}
+	mpOp.mpId = mpID
+	var mpInfo *proto.MetaPartitionInfo
+	cMP := &meta.MetaPartition{PartitionID: mpID}
+	mpInfo, err = mpOp.mc.ClientAPI().GetMetaPartition(mpID, ltptestVolume)
+	if !assert.NoError(t, err) {
+		return
+	}
+	for _, replica := range mpInfo.Replicas {
+		cMP.Members = append(cMP.Members, replica.Addr)
+		if replica.IsLeader {
+			cMP.LeaderAddr = proto.NewAtomicString(replica.Addr)
+		}
+		if replica.IsLearner {
+			cMP.Learners = append(cMP.Learners, replica.Addr)
+		}
+	}
+	cMP.Status = mpInfo.Status
+	cMP.Start = mpInfo.Start
+	cMP.End = mpInfo.End
+	mpOp.mpInfo = cMP
+	mpOp.leader = cMP.GetLeaderAddr()
 	mpOp.vol.NormalDataClient = ec
 	mpOp.vol.MetaClient = mw
 	ctx := context.Background()
@@ -840,7 +860,7 @@ func TestMetaMergeExtentsError(t *testing.T) {
 	if err := ec.Flush(ctx, stat.Ino); err != nil {
 		t.Fatalf("Flush failed, err(%v)", err)
 	}
-	err := subTask.MetaMergeExtents()
+	err = subTask.MetaMergeExtents()
 	if err == nil {
 		t.Fatalf("inode task MetaMergeExtents should hava error, but it does not hava, inodeId(%v)", stat.Ino)
 	}

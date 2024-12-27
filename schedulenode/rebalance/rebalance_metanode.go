@@ -44,7 +44,7 @@ func (mnCtrl *MetaNodeReBalanceController) updateSortedMetaPartitions() (err err
 		// 出错会使统计的inode总数变少 迁的会少 无法达到目标阈值
 		var partition *proto.MetaPartitionInfo
 		if mnCtrl.zoneCtrl.masterClient != nil {
-			partition, err = mnCtrl.zoneCtrl.masterClient.ClientAPI().GetMetaPartition(mpID, "")
+			partition, err = mnCtrl.zoneCtrl.masterClient.ClientAPI().GetMetaPartition(mpID, proto.PlaceholderVol)
 		} else if mnCtrl.zoneCtrl.releaseClient != nil {
 			partition, err = mnCtrl.zoneCtrl.releaseClient.GetMetaPartition("", mpID)
 		}
@@ -144,7 +144,7 @@ func (mnCtrl *MetaNodeReBalanceController) selectMP() (metaPartition *proto.Meta
 		mnCtrl.alreadyMigrateFinishedPartitions[mpID] = true
 
 		if mnCtrl.zoneCtrl.masterClient != nil {
-			metaPartition, err = mnCtrl.zoneCtrl.masterClient.ClientAPI().GetMetaPartition(mpID, "")
+			metaPartition, err = mnCtrl.zoneCtrl.masterClient.ClientAPI().GetMetaPartition(mpID, proto.PlaceholderVol)
 		} else if mnCtrl.zoneCtrl.releaseClient != nil {
 			metaPartition, err = mnCtrl.zoneCtrl.releaseClient.GetMetaPartition("", mpID)
 			if metaPartition != nil {

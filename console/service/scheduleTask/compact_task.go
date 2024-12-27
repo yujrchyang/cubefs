@@ -192,7 +192,7 @@ func checkMps(mc *master.MasterClient, mps []*proto.MetaPartitionView, request *
 	for _, mp := range mps {
 		wg.Add(1)
 		ch <- struct{}{}
-		go func(mp *proto.MetaPartitionView, ek *ekInfo, baseInfos []*ekBaseInfo, mutex *sync.Mutex) {
+		go func(mp *proto.MetaPartitionView, ek *ekInfo, baseInfos []*ekBaseInfo, mutex *sync.Mutex, volume string) {
 			defer func() {
 				wg.Done()
 				<-ch
@@ -201,7 +201,7 @@ func checkMps(mc *master.MasterClient, mps []*proto.MetaPartitionView, request *
 				mpInfo *proto.MetaPartitionInfo
 				err    error
 			)
-			if mpInfo, err = mc.ClientAPI().GetMetaPartition(mp.PartitionID, ""); err != nil {
+			if mpInfo, err = mc.ClientAPI().GetMetaPartition(mp.PartitionID, volume); err != nil {
 				log.LogErrorf("checkMps: getMetaPartition failed, vol(%s) mp(%v) err(%v)", request.Volume, mp.PartitionID, err)
 				return
 			}
@@ -222,7 +222,7 @@ func checkMps(mc *master.MasterClient, mps []*proto.MetaPartitionView, request *
 				return
 			}
 			inodeInfoCheck(mp.PartitionID, inodeIds.Inodes, leaderIpPort, request, sizeRanges, ek, baseInfos, mutex)
-		}(mp, ek, ekbaseInfos, &ekInfosMutex)
+		}(mp, ek, ekbaseInfos, &ekInfosMutex, request.Volume)
 	}
 	wg.Wait()
 	// check Frag file

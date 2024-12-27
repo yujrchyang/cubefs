@@ -554,6 +554,12 @@ func (migInode *MigrateInode) checkMigExtentCanDelete(migEks []proto.ExtentKey) 
 }
 
 func (migInode *MigrateInode) addInodeMigrateLog(oldEks, newEks []proto.ExtentKey) {
+	defer func() {
+		if r := recover(); r != nil {
+			msg := fmt.Sprintf("action[addInodeMigrateLog] panic r:%v", r)
+			log.LogWarn(msg)
+		}
+	}()
 	var (
 		oldEksByte []byte
 		newEksByte []byte

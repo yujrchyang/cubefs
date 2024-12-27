@@ -566,14 +566,14 @@ func checkMps(index int, volName string, mps []*proto.MetaPartitionView, client 
 	for _, mp := range mps {
 		wg.Add(1)
 		ch <- struct{}{}
-		go func(mp *proto.MetaPartitionView) {
+		go func(mp *proto.MetaPartitionView, volName string) {
 			defer func() {
 				wg.Done()
 				<-ch
 			}()
 			var mpInfo *proto.MetaPartitionInfo
 			var err error
-			if mpInfo, err = client.ClientAPI().GetMetaPartition(mp.PartitionID, ""); err != nil {
+			if mpInfo, err = client.ClientAPI().GetMetaPartition(mp.PartitionID, volName); err != nil {
 				stdout("Volume(%v) mpId(%v) get MetaPartition failed, err:%v\n", volName, mp.PartitionID, err)
 				return
 			}
@@ -594,7 +594,7 @@ func checkMps(index int, volName string, mps []*proto.MetaPartitionView, client 
 				return
 			}
 			inodeInfoCheck(mp.PartitionID, inodeIds.Inodes, leaderIpPort, volName, ekMinLength, ekMaxAvgSize, inodeMinSize, inodeConcurrency, sizeRanges)
-		}(mp)
+		}(mp, volName)
 	}
 	wg.Wait()
 

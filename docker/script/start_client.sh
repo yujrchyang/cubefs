@@ -171,6 +171,31 @@ show_cluster_info() {
     grep -v "Master address" /tmp/collect_cluster_info
 }
 
+create_idc() {
+    echo -n "Checking idc  ... "
+    curl -s "${LeaderAddr}/idc/get?name=huitian" | grep '"default":"hdd"' &> /dev/null
+    if [[ $? -eq 0 ]] ; then
+        echo -e "\033[32m done\033[0m"
+        return
+    fi
+    echo -n "Create huitian idc   ... "
+    curl -s "${LeaderAddr}/idc/create?name=huitian" | grep '"code":0' &> /dev/null
+    if [[ $? -eq 0 ]] ; then
+        echo -e "\033[32m done\033[0m"
+    else
+        echo -e "\033[31m fail\033[0m"
+        exit 1
+    fi
+    echo -n "Set idc default zone mediumType hdd   ... "
+    curl -s "${LeaderAddr}/zone/setIDC?zoneName=default&idcName=huitian&mediumType=hdd" | grep '"code":0' &> /dev/null
+    if [[ $? -eq 0 ]] ; then
+         echo -e "\033[32m done\033[0m"
+    else
+        echo -e "\033[31m fail\033[0m"
+        exit 1
+    fi
+}
+
 start_client() {
     echo -n "Starting client   ... "
     /cfs/bin/cfs-client-inner -c /cfs/conf/client.json
@@ -200,6 +225,7 @@ create_cluster_user
 ensure_node_writable "metanode"
 ensure_node_writable "datanode"
 create_volume
+create_idc
 show_cluster_info
 start_client
 start_repair_server

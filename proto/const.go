@@ -57,3 +57,7 @@ const (
 const (
     XAttrKeyOSSMultipart = "oss:multipart"
 )
+
+const (
+    PlaceholderVol = "PlaceholderVol8g1e56b213358b216dbd053626c6134210c"
+)
