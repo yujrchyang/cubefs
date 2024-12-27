@@ -5,6 +5,7 @@ import (
 	"github.com/cubefs/cubefs/console/cutil"
 	cproto "github.com/cubefs/cubefs/console/proto"
 	"github.com/cubefs/cubefs/util/log"
+	"strings"
 )
 
 const (
@@ -61,15 +62,19 @@ func (f *FlowSchedule) VolDetailsFromClickHouse(req *cproto.TrafficRequest) (res
 			"event_date >= '%s' AND event_date <= '%s' "+
 			"AND cluster_name = '%s' "+
 			"AND module = '%s' "+
-			"AND volume_name = '%s' "+
+			"AND volume_name = '%s' ",
+			table, parseTimestampToDataTime(req.StartTime), parseTimestampToDataTime(req.EndTime), req.ClusterName, req.Module, req.VolumeName)
+		if req.Module == strings.ToLower(cproto.ModuleMetaNode) {
+			topActionSqlLine += "AND action LIKE 'op%' "
+		}
+		topActionSqlLine += fmt.Sprintf(""+
 			"GROUP BY "+
 			"action "+
 			"ORDER BY "+
 			"SUM(%s) DESC "+
 			"LIMIT "+
 			"%v",
-			table, parseTimestampToDataTime(req.StartTime), parseTimestampToDataTime(req.EndTime),
-			req.ClusterName, req.Module, req.VolumeName, req.OrderBy, req.TopN)
+			req.OrderBy, req.TopN)
 		sqlLine += fmt.Sprintf("AND action global in (%s) ", topActionSqlLine)
 	} else {
 		// 统计某个op(module) 某个vol

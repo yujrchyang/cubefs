@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	cproto "github.com/cubefs/cubefs/console/proto"
 	"net/http"
 	"strconv"
 	"strings"
@@ -35,6 +36,9 @@ func NewFileService(clusters []*model.ConsoleCluster) *FileService {
 	}
 }
 
+func (fs *FileService) SType() cproto.ServiceType {
+	return cproto.FileService
+}
 func (fs *FileService) Schema() *graphql.Schema {
 	schema := schemabuilder.NewSchema()
 
@@ -72,6 +76,10 @@ func (fs *FileService) registerMutation(schema *schemabuilder.Schema) {
 	mutation.FieldFunc("deleteFile", fs.deleteFile)
 	mutation.FieldFunc("recoverPath", fs.recoverPath)
 	mutation.FieldFunc("clearTrash", fs.clearTrash)
+}
+
+func (fs *FileService) DoXbpApply(apply *model.XbpApplyInfo) error {
+	return nil
 }
 
 type volPerm int
@@ -479,7 +487,6 @@ func (fs *FileService) DownFile(writer http.ResponseWriter, request *http.Reques
 	if _, err := reader.WriteTo(writer, 0, uint64(reader.FileInfo().Size)); err != nil {
 		return err
 	}
-
 	return nil
 }
 

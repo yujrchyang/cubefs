@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/cubefs/cubefs/console/cutil"
 	cproto "github.com/cubefs/cubefs/console/proto"
+	"strings"
 )
 
 const (
@@ -36,7 +37,8 @@ func (f *FlowSchedule) IPDetailsFromClickHouse(req *cproto.TrafficRequest) (resu
 			"CEIL(sum(size) / sum(count)) as avg_size ")
 		table = getOriginalTable(false)
 	}
-	sqlLine = fmt.Sprintf("SELECT "+
+	sqlLine = fmt.Sprintf(""+
+		"SELECT "+
 		"%s, "+
 		"action, "+
 		"%s "+
@@ -54,7 +56,6 @@ func (f *FlowSchedule) IPDetailsFromClickHouse(req *cproto.TrafficRequest) (resu
 			"AND disk_path = '%s' ", req.Disk)
 	}
 	if req.OperationType == "" {
-		// todo：和上面同一张聚合表
 		topActionSqlLine := fmt.Sprintf(""+
 			"SELECT "+
 			"action "+
@@ -64,15 +65,19 @@ func (f *FlowSchedule) IPDetailsFromClickHouse(req *cproto.TrafficRequest) (resu
 			"event_date >= '%s' AND event_date <= '%s' "+
 			"AND cluster_name = '%s' "+
 			"AND module = '%s' "+
-			"AND ip = '%s' "+
+			"AND ip = '%s' ",
+			table, parseTimestampToDataTime(req.StartTime), parseTimestampToDataTime(req.EndTime), req.ClusterName, req.Module, req.IpAddr)
+		if req.Module == strings.ToLower(cproto.ModuleMetaNode) {
+			topActionSqlLine += "AND action LIKE 'op%' "
+		}
+		topActionSqlLine += fmt.Sprintf(""+
 			"GROUP BY "+
 			"action "+
 			"ORDER BY "+
 			"SUM(%s) DESC "+
 			"LIMIT "+
 			"%v",
-			table, parseTimestampToDataTime(req.StartTime), parseTimestampToDataTime(req.EndTime),
-			req.ClusterName, req.Module, req.IpAddr, req.OrderBy, req.TopN)
+			req.OrderBy, req.TopN)
 		sqlLine += fmt.Sprintf(""+
 			"AND action global in (%s) ", topActionSqlLine)
 	} else {
