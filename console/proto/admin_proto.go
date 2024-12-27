@@ -36,6 +36,20 @@ const (
 	ConsoleCli              = "/cli"
 )
 
+// todo: service type  -- 根据service type 获取对应的服务
+type ServiceType int
+
+const (
+	LoginService ServiceType = iota
+	MonitorService
+	FileService
+	VolumeService
+	ClusterService
+	TrafficService
+	CliService
+	ScheduleService
+)
+
 var (
 	ErrUnSupportOperation = errors.New("unsupported operation for release_db cluster")
 )
@@ -111,6 +125,6 @@ func writeResp(w http.ResponseWriter, resp *GeneralResp) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if _, err = w.Write(data); err != nil {
-		log.LogError("writeResp err: %v", err)
+		log.LogErrorf("writeResp err: %v", err)
 	}
 }

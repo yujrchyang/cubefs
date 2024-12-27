@@ -2,6 +2,7 @@ package proto
 
 import (
 	"github.com/cubefs/cubefs/proto"
+	"time"
 )
 
 const (
@@ -179,6 +180,7 @@ type ZoneInfo struct {
 	ZoneName   string
 	NodeNumber int
 	IpList     []string
+	Sources    string // separate by ,
 }
 type DataCenterInfo struct {
 	DataCenterName    string
@@ -329,6 +331,15 @@ type NodeViewDetail struct {
 	ReportTime     string   // 汇报时间
 	IsWritable     bool     // 可写
 	Disk           []string // 磁盘下线用
+	// data
+	RiskCount        int
+	RiskFixerRunning bool
+	// rdma
+	IsRDMA          bool
+	Pod             string
+	NodeRDMAService bool
+	NodeRDMASend    bool
+	NodeRDMARecv    bool
 }
 
 // todo: 加上code，当且仅当code有值 才取数据
@@ -434,4 +445,138 @@ type CFSTopology struct {
 	DataMap  map[string]*ZoneView
 	MetaMap  map[string]*ZoneView
 	FlashMap map[string]*ZoneView
+}
+
+type SourceUsageResponse struct {
+	Data [][]*SourceUsedInfo
+}
+
+type SourceUsedInfo struct {
+	Date   uint64 `gorm:"column:update_time"`
+	Source string `gorm:"column:source"`
+	UsedGB uint64 `gorm:"column:total_used"`
+}
+
+const (
+	AdminSetRDMAConf      = "/rdmaConf/set"
+	AdminRDMAConf         = "/rdma/conf"
+	NodeSetRDMASendEnable = "/SetRDMASendEnable"
+	NodeSetRDMAConnEnable = "/SetRDMAConnEnable"
+	NodeGetRDMAStatus     = "/rdmaStatus"
+	NodeGetStats          = "/stats"
+	NodeGetAllRDMAConn    = "/GetAllRDMAConn"
+)
+
+type RDMAConfInfo struct {
+	ClusterRDMA         bool
+	ClusterRDMASend     bool
+	RDMAReConnDelayTime int64
+	RDMANodeMap         map[uint64]*NodeRDMAConf
+}
+
+type NodeRDMAConf struct {
+	ID          uint64
+	Addr        string
+	ReportTime  time.Time
+	Pod         string
+	IsBond      bool
+	RDMAConf    *RDMAConf
+	RDMAService bool
+	RDMASend    bool
+	RDMARecv    bool
+}
+
+type RDMAConf struct {
+	FWVersion     string
+	DriverVersion string
+	Vendor        []string
+	SlaveName     []string
+}
+
+type NodeRDMAStatus struct {
+	ClusterRDMA          bool
+	ClusterRDMASend      bool
+	Pod                  string
+	RDMAService          bool
+	RDMASend             bool
+	RDMARecv             bool
+	EnableSend           bool
+	NodeCount            int
+	PermanentClosedCount int
+	RdmaNodeAddrMap      map[string]*ConnNodeInfo
+}
+
+type NodeStats struct {
+	IsBond   bool
+	RDMAConf *RDMAConf
+}
+
+/*      前端view       */
+type ClusterRDMAConfView struct {
+	ClusterRDMAEnable bool
+	ClusterRDMASend   bool
+	ReConnDelayTime   int64
+}
+
+type RDMANodeViewResponse struct {
+	Total int
+	Data  []*RDMANodeView
+}
+
+// rdma节点列表视图
+type RDMANodeView struct {
+	ID              uint64
+	Addr            string
+	Pod             string
+	IsBond          bool
+	Vendor          string
+	NodeRDMAService bool
+	NodeRDMASend    bool
+	NodeRDMARecv    bool
+	ReportTime      string
+}
+
+type RDMAVolumeListResponse struct {
+	Total int
+	Data  []*RDMAVolumeView
+}
+
+// rdma vol列表视图
+type RDMAVolumeView struct {
+	Volume     string
+	EnableRDMA bool
+}
+
+// rdma节点详情视图
+type RDMANodeStatusView struct {
+	NodeRDMAStatus *NodeRDMAStatusView
+	NodeRDMAConf   *NodeRDMAConfView
+	ConnNodes      []*ConnNodeInfo
+}
+
+type NodeRDMAStatusView struct {
+	Pod                  string
+	ClusterRDMAEnable    bool
+	ClusterRDMASend      bool
+	NodeRDMAService      bool
+	NodeRDMASend         bool
+	NodeRDMARecv         bool
+	EnableSend           bool
+	NodeCount            int
+	PermanentClosedCount int
+}
+
+type NodeRDMAConfView struct {
+	FWVersion     string
+	DriverVersion string
+	Vendor        string
+	SlaveName     string
+}
+
+type ConnNodeInfo struct {
+	Addr            string
+	EnableConn      bool `json:"Ok"`
+	PermanentClosed bool
+	ErrConnCount    int
+	ReConnTime      string
 }

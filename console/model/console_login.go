@@ -9,22 +9,37 @@ import (
 
 type ConsoleUserInfo struct {
 	ID         uint64    `gorm:"column:id"`
-	User       string    `gorm:"column:user"` // 唯一索引
+	User       string    `gorm:"column:user"`
 	Password   string    `gorm:"column:password"`
 	Role       int8      `gorm:"column:role"`
-	CreateTime time.Time `gorm:"column:create_time"`
+	CreateTime time.Time `gorm:"column:create_time;default:current_timestamp"`
 }
 
 func (ConsoleUserInfo) TableName() string {
 	return "console_user"
 }
 
-func (table ConsoleUserInfo) InsertConsoleUser(info *ConsoleUserInfo) error {
-	if err := cutil.CONSOLE_DB.Table(table.TableName()).Create(&info).Error; err != nil {
-		log.LogErrorf("InsertConsoleUser failed: err(%v)", err)
-		return err
+func (table ConsoleUserInfo) InsertConsoleUser(user string, role int8) error {
+	info := &ConsoleUserInfo{
+		User:       user,
+		Role:       role,
+		CreateTime: time.Now(),
 	}
-	return nil
+	err := cutil.CONSOLE_DB.Table(table.TableName()).Create(&info).Error
+	if err != nil {
+		log.LogErrorf("InsertConsoleUser failed: user(%v) role(%v) err(%v)", user, role, err)
+	}
+	return err
+}
+
+func (table ConsoleUserInfo) UpdateUserRole(user string, role int8) error {
+	err := cutil.CONSOLE_DB.Table(table.TableName()).
+		Where("user = ?", user).
+		Update("role", role).Error
+	if err != nil {
+		log.LogErrorf("UpdateUserRole failed: user(%v) role(%v) err(%v)", user, role, err)
+	}
+	return err
 }
 
 func (table ConsoleUserInfo) GetUserInfoByUser(name string) (info *ConsoleUserInfo, err error) {
@@ -84,17 +99,18 @@ func (table ConsoleAdminOpPassword) InsertAdminOpPassword(user, password string)
 	return nil
 }
 
-// 要么无 要么有， 要么error  error就返回给用户请重试
 func (table ConsoleAdminOpPassword) GetLatestOpPassword(user string) (entry *ConsoleAdminOpPassword, err error) {
-	if err = cutil.CONSOLE_DB.Table(table.TableName()).Where("user = ?", user).
-		Order("create_time DESC").Limit(1).Scan(&entry).Error; err != nil {
+	err = cutil.CONSOLE_DB.Table(table.TableName()).
+		Where("user = ?", user).
+		Order("create_time DESC").
+		Limit(1).
+		Scan(&entry).Error
+	if err != nil {
 		log.LogErrorf("GetLatestOpPassword failed: user(%v) err(%v)", user, err)
-		return nil, err
 	}
 	return
 }
 
-// 是否过期
 func IsExpiredOpPassword(key *ConsoleAdminOpPassword) bool {
 	if key == nil {
 		return true

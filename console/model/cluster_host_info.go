@@ -49,5 +49,3 @@ func StoreHostInfoRecords(records []*ClusterHostInfo) (err error) {
 	}
 	return
 }
-
-// 查询
