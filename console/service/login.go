@@ -37,6 +37,10 @@ func NewLoginService(clusters []*model.ConsoleCluster) *LoginService {
 	return ls
 }
 
+func (ls *LoginService) SType() cproto.ServiceType {
+	return cproto.LoginService
+}
+
 func (ls *LoginService) loadMasterClient(cluster string) *sdk.MasterGClient {
 	ls.RLock()
 	defer ls.RUnlock()
@@ -53,6 +57,10 @@ func (ls *LoginService) Schema() *graphql.Schema {
 	query.FieldFunc("adminGetOpPassword", ls.getOpPassword)
 	query.FieldFunc("verifyOpPassword", ls.verifyOpPassword)
 	return schema.MustBuild()
+}
+
+func (ls *LoginService) DoXbpApply(apply *model.XbpApplyInfo) error {
+	return nil
 }
 
 func (ls *LoginService) getLoginEnv(ctx context.Context, args struct {
@@ -226,10 +234,9 @@ func (ls *LoginService) getOpPassword(ctx context.Context, args struct {
 
 type VerifyResponse struct {
 	Passed bool
-	Msg    string // 未通过的提示信息
+	Msg    string
 }
 
-// pin 和 密码 一起查，没找到就是密码错误， 找到了看是否有效，失效了提示重新生成，校验成功
 func (ls *LoginService) verifyOpPassword(ctx context.Context, args struct {
 	Password string
 }) (*VerifyResponse, error) {

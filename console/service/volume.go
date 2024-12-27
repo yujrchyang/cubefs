@@ -41,6 +41,10 @@ func NewVolumeService(clusters []*model.ConsoleCluster) *VolumeService {
 	}
 }
 
+func (v *VolumeService) SType() cproto.ServiceType {
+	return cproto.VolumeService
+}
+
 func (v *VolumeService) Schema() *graphql.Schema {
 	schema := schemabuilder.NewSchema()
 
@@ -72,6 +76,10 @@ func (v *VolumeService) registerMutation(schema *schemabuilder.Schema) {
 
 	mutation.FieldFunc("createVolume", v.createVolume)
 	mutation.FieldFunc("updateVolume", v.updateVolume) // vol编辑页(不全，只有一部分)
+}
+
+func (v *VolumeService) DoXbpApply(apply *model.XbpApplyInfo) error {
+	return nil
 }
 
 func (v *VolumeService) volPermission(ctx context.Context, args struct {
@@ -203,7 +211,7 @@ func getVolDataPartitions(cluster string, data interface{}, page, pageSize int) 
 				PartitionID: dp.PartitionID,
 				Status:      formatPartitionStatus(dp.Status),
 				Hosts:       cluster_service.FormatHost(dp.Hosts, make([]string, len(dp.Hosts))),
-				ReplicaNum:  len(dp.Hosts),
+				ReplicaNum:  int(dp.ReplicaNum),
 			}
 			result = append(result, view)
 		}
@@ -218,7 +226,7 @@ func getVolDataPartitions(cluster string, data interface{}, page, pageSize int) 
 		for _, dp := range dps {
 			view := &cproto.PartitionViewDetail{
 				PartitionID:     dp.PartitionID,
-				ReplicaNum:      len(dp.Hosts),
+				ReplicaNum:      int(dp.ReplicaNum),
 				Status:          formatPartitionStatus(dp.Status),
 				EcMigrateStatus: cluster_service.EcStatusMap[dp.EcMigrateStatus],
 				IsRecover:       dp.IsRecover,
@@ -723,7 +731,7 @@ func (v *VolumeService) DownloadCfsClient(w http.ResponseWriter, r *http.Request
 	}
 	absPath, err := v.vs.GetVolClientListCSV(cluster, volName)
 	if err != nil {
-		log.LogErrorf("DownloadCfsClient failed: cluster(%v) volName(%v) err(%v)")
+		log.LogErrorf("DownloadCfsClient failed: cluster(%v) volName(%v) err(%v)", cluster, volName, err)
 		return err
 	}
 	file, err := os.Open(absPath)

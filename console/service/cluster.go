@@ -31,6 +31,7 @@ type ClusterService struct {
 	masterAddrs        map[string][]string
 	clusters           []*model.ConsoleCluster
 	api                *api.APIManager
+	rdma               *cluster_service.RDMAService
 
 	clusterInfoCache []*model.ClusterInfo // 集群缓存
 	cacheExpire      time.Time
@@ -44,21 +45,17 @@ func NewClusterService(clusters []*model.ConsoleCluster) *ClusterService {
 	}
 
 	log.LogInfof("NewClusterService: masters(%v)", masters)
-	return &ClusterService{
+	cs := &ClusterService{
 		masterAddrs: masters,
 		clusters:    clusters,
 		api:         api.NewAPIManager(clusters),
 	}
+	cs.rdma = cluster_service.NewRDMAService(cs.api)
+	return cs
 }
 
-func (cs *ClusterService) getCluster(name string) *model.ConsoleCluster {
-	clusters := cs.clusters
-	for _, cluster := range clusters {
-		if cluster.ClusterName == name {
-			return cluster
-		}
-	}
-	return nil
+func (cs *ClusterService) SType() cproto.ServiceType {
+	return cproto.ClusterService
 }
 
 func (cs *ClusterService) Schema() *graphql.Schema {
@@ -67,11 +64,11 @@ func (cs *ClusterService) Schema() *graphql.Schema {
 	cs.registerObject(schema)
 	cs.registerQuery(schema)
 	cs.registerMutation(schema)
+	cs.registerRDMAAction(schema)
 	return schema.MustBuild()
 }
 
-func (cs *ClusterService) registerObject(schema *schemabuilder.Schema) {
-}
+func (cs *ClusterService) registerObject(schema *schemabuilder.Schema) {}
 
 func (cs *ClusterService) registerQuery(schema *schemabuilder.Schema) {
 	query := schema.Query()
@@ -81,6 +78,8 @@ func (cs *ClusterService) registerQuery(schema *schemabuilder.Schema) {
 	query.FieldFunc("zoneList", cs.getZoneList)                       // todo: 这个zoneList有问题，有些不用的了zone还在列表
 	query.FieldFunc("clusterCapacity", cs.clusterZoneCurve)           // 数据库查询-zone容量曲线
 	query.FieldFunc("zoneUsageOverView", cs.zoneUsageOverView)        // 各zone使用率柱状图
+	query.FieldFunc("sourceUsageOverview", cs.sourceUsageOverview)    // source使用率曲线
+	query.FieldFunc("sourceList", cs.getSourceListFromJED)
 
 	query.FieldFunc("clusterView", cs.clusterView)
 	query.FieldFunc("masterList", cs.masterList)
@@ -92,34 +91,40 @@ func (cs *ClusterService) registerQuery(schema *schemabuilder.Schema) {
 	query.FieldFunc("flashGroupList", cs.flashGroupList) // 带分页(个位数 检索由前端做)
 	query.FieldFunc("flashNodeList", cs.flashNodeList)   // 增加入参fgID
 	query.FieldFunc("getFlashGroup", cs.getFlashGroup)
+	query.FieldFunc("dataNodeView", cs.getDataNodeView)
 }
 
+// todo: 要想xbp回调，操作需要单独封装函数
 func (cs *ClusterService) registerMutation(schema *schemabuilder.Schema) {
 	mutation := schema.Mutation()
-	mutation.FieldFunc("resetMetaNode", cs.resetMetaNode)
+	// data
 	mutation.FieldFunc("resetDataNode", cs.resetDataNode)
-	mutation.FieldFunc("decommissionMetaNode", cs.decommissionMetaNode)
+	mutation.FieldFunc("startRiskFixDataNode", cs.startRiskFixDataNode)
+	mutation.FieldFunc("stopRiskFixDataNode", cs.stopRiskFixDataNode)
 	mutation.FieldFunc("decommissionDataNode", cs.decommissionDataNode)
-	mutation.FieldFunc("decommissionFlashNode", cs.decommissionFlashNode)
 	mutation.FieldFunc("decommissionDisk", cs.decommissionDisk)
-
-	mutation.FieldFunc("decommissionMetaPartition", cs.decommissionMetaPartition)
 	mutation.FieldFunc("decommissionDataPartition", cs.decommissionDataPartition)
 	mutation.FieldFunc("reloadDataPartition", cs.reloadDataPartition) //加载
+	mutation.FieldFunc("resetDataPartition", cs.resetDataPartition)   //重置
+	mutation.FieldFunc("stopDataPartition", cs.stopDataPartition)
+	mutation.FieldFunc("setRecoverDataPartition", cs.setRecoverDataPartition)
+	mutation.FieldFunc("addDataReplica", cs.addDataReplica)
+	mutation.FieldFunc("deleteDataReplica", cs.deleteDataReplica)
+	mutation.FieldFunc("addDataLearner", cs.addDataLearner)
+	mutation.FieldFunc("promoteDataLearner", cs.promoteDataLearner)
+	// meta
+	mutation.FieldFunc("resetMetaNode", cs.resetMetaNode)
+	mutation.FieldFunc("decommissionMetaNode", cs.decommissionMetaNode)
+	mutation.FieldFunc("decommissionFlashNode", cs.decommissionFlashNode)
+	mutation.FieldFunc("decommissionMetaPartition", cs.decommissionMetaPartition)
 	mutation.FieldFunc("reloadMetaPartition", cs.reloadMetaPartition)
-	mutation.FieldFunc("resetDataPartition", cs.resetDataPartition) //重置
 	mutation.FieldFunc("resetMetaPartition", cs.resetMetaPartition)
 	mutation.FieldFunc("resetCursor", cs.resetCursor)
-
 	mutation.FieldFunc("addMetaReplica", cs.addMetaReplica)
-	mutation.FieldFunc("addDataReplica", cs.addDataReplica)
 	mutation.FieldFunc("deleteMetaReplica", cs.deleteMetaReplica)
-	mutation.FieldFunc("deleteDataReplica", cs.deleteDataReplica)
 	mutation.FieldFunc("addMetaLearner", cs.addMetaLearner)
-	mutation.FieldFunc("addDataLearner", cs.addDataLearner)
 	mutation.FieldFunc("promoteMetaLearner", cs.promoteMetaLearner)
-	mutation.FieldFunc("promoteDataLearner", cs.promoteDataLearner)
-
+	// flashnode
 	mutation.FieldFunc("createFlashGroup", cs.createFlashGroup)
 	mutation.FieldFunc("removeFlashGroup", cs.removeFlashGroup)
 	mutation.FieldFunc("updateFlashGroup", cs.updateFlashGroup) // 状态 删除节点 增加节点，入参形式
@@ -128,6 +133,39 @@ func (cs *ClusterService) registerMutation(schema *schemabuilder.Schema) {
 	mutation.FieldFunc("setStackReadFlashNode", cs.setStackReadFlashNode)
 	mutation.FieldFunc("setTimeoutFlashNode", cs.setTimeoutFlashNode)
 	mutation.FieldFunc("evictCacheFlashNode", cs.evictCacheFlashNode)
+}
+
+func (cs *ClusterService) registerRDMAAction(schema *schemabuilder.Schema) {
+	// 查询操作
+	query := schema.Query()
+	query.FieldFunc("rdmaClusterConf", cs.rdmaClusterConf)
+	query.FieldFunc("rdmaDataNodeList", cs.rdmaDataNodeList)
+	query.FieldFunc("rdmaMetaNodeList", cs.rdmaMetaNodeList)
+	query.FieldFunc("rdmaVolumeList", cs.rdmaVolumeList)
+	query.FieldFunc("rdmaNodeView", cs.rdmaNodeView)
+	//query.FieldFunc("nodeRdmaConn", cs.getNodeRdmaConn) // todo?
+	// 修改操作
+	mutation := schema.Mutation()
+	mutation.FieldFunc("setClusterRdmaConf", cs.setClusterRdmaConf)
+	mutation.FieldFunc("setNodeRdmaConf", cs.setNodeRdmaConf)
+	mutation.FieldFunc("setVolumeRdmaConf", cs.setVolumeRdmaConf)
+	mutation.FieldFunc("setSendEnable", cs.setNodeSendEnable) // 本端发送开关
+	mutation.FieldFunc("setConnEnable", cs.setNodeConnEnable) // 对端发送开关
+}
+
+func (cs *ClusterService) DoXbpApply(apply *model.XbpApplyInfo) error {
+	// todo: 集群操作增加xbp审批
+	return nil
+}
+
+func (cs *ClusterService) getCluster(name string) *model.ConsoleCluster {
+	clusters := cs.clusters
+	for _, cluster := range clusters {
+		if cluster.ClusterName == name {
+			return cluster
+		}
+	}
+	return nil
 }
 
 func (cs *ClusterService) clusterInfoList(ctx context.Context, args struct{}) ([]*model.ClusterInfo, error) {
@@ -141,6 +179,7 @@ func (cs *ClusterService) clusterInfoList(ctx context.Context, args struct{}) ([
 		var isExistFunc = func(name string) bool {
 			for _, cluster := range result {
 				if cluster.ClusterName == name {
+					cluster.ClusterNameZH = cs.getCluster(name).ClusterNameZH
 					return true
 				}
 			}
@@ -282,9 +321,35 @@ func (cs *ClusterService) clusterHealthHistoryInfo(ctx context.Context, args str
 func (cs *ClusterService) getZoneList(ctx context.Context, args struct {
 	Cluster *string
 }) []string {
-	cluster := cutil.GetClusterParam(args.Cluster)
-	zoneNameList := cs.api.GetClusterZoneNameList(cluster)
-	return zoneNameList
+	if args.Cluster == nil || *args.Cluster == "" {
+		return nil
+	}
+	return cs.api.GetClusterZoneNameList(*args.Cluster)
+}
+
+// todo: 前端修改
+func (cs *ClusterService) getZoneListV2(ctx context.Context, args struct {
+	Cluster string
+}) []*cproto.ZoneInfo {
+	zoneNameList := cs.api.GetClusterZoneNameList(args.Cluster)
+	result := make([]*cproto.ZoneInfo, 0, len(zoneNameList))
+	zoneSources := model.ZoneSourceMapper{}.GetSourcesInZone(zoneNameList)
+	var findSource = func(zone string) string {
+		for _, zs := range zoneSources {
+			if zs.Zone == zone {
+				return zs.Sources
+			}
+		}
+		return ""
+	}
+	for _, zone := range zoneNameList {
+		zInfo := &cproto.ZoneInfo{
+			ZoneName: zone,
+			Sources:  findSource(zone),
+		}
+		result = append(result, zInfo)
+	}
+	return result
 }
 
 func (cs *ClusterService) clusterZoneCurve(ctx context.Context, args struct {
@@ -318,6 +383,40 @@ func (cs *ClusterService) zoneUsageOverView(ctx context.Context, args struct {
 	Cluster string
 }) ([]*cproto.ZoneUsageOverview, error) {
 	return cs.GetZoneUsageOverview(args.Cluster)
+}
+
+func (cs *ClusterService) sourceUsageOverview(ctx context.Context, args struct {
+	Cluster      string
+	IntervalType int32 // 0-自定义时间 1-近1天 2-近1周 3-近1月
+	Start        int64 // 秒级
+	End          int64
+	Source       *string //todo: 下拉列表接口
+	Zone         *string //source zone 都是过滤项
+}) (*cproto.SourceUsageResponse, error) {
+	var (
+		zone   string
+		source string
+	)
+	if args.Zone != nil {
+		zone = *args.Zone
+	}
+	if args.Source != nil {
+		source = *args.Source
+	}
+
+	data, err := cs.getSourceUsageInfo(args.Cluster, source, zone, args.IntervalType, args.Start, args.End)
+	if err != nil {
+		return nil, err
+	}
+	return &cproto.SourceUsageResponse{
+		Data: data,
+	}, nil
+}
+
+func (cs *ClusterService) getSourceListFromJED(ctx context.Context, args struct {
+	Cluster string
+}) ([]string, error) {
+	return cluster_service.GetSourceList()
 }
 
 func (cs *ClusterService) clusterView(ctx context.Context, args struct {
@@ -368,54 +467,98 @@ func (cs *ClusterService) masterList(ctx context.Context, args struct {
 func (cs *ClusterService) metaNodeList(ctx context.Context, args struct {
 	Cluster  *string
 	Addr     *string
+	Zone     *string
 	Page     int32
 	PageSize int32
 }) (*cproto.NodeListResponse, error) {
-	cluster := cutil.GetClusterParam(args.Cluster)
 	nodes := make([]*cproto.NodeViewDetail, 0)
+	var (
+		cluster = cutil.GetClusterParam(args.Cluster)
+		zone    string
+		addr    string
+	)
+	if args.Zone != nil {
+		zone = *args.Zone
+		if cproto.IsRelease(cluster) {
+			zone = ""
+		}
+	}
 	if args.Addr != nil {
-		view := getMetaNodeView(cluster, *args.Addr, cs.api)
-		if view == nil {
-			log.LogWarnf("metaNodeList: can not find node(%v)", *args.Addr)
-		} else {
+		addr = *args.Addr
+	}
+	nodeList, err := filterMetaNodeList(cluster, zone, addr, cs.api)
+	if err != nil {
+		return nil, err
+	}
+	nodePart := cutil.Paginate(int(args.Page), int(args.PageSize), nodeList)
+	for _, node := range nodePart {
+		if view := getMetaNodeView(cluster, node, cs.api); view != nil {
 			nodes = append(nodes, view)
 		}
-		return cproto.NewNodeListResponse(len(nodes), cutil.Paginate(int(args.Page), int(args.PageSize), nodes)), nil
+	}
+	return cproto.NewNodeListResponse(len(nodeList), nodes), nil
+}
+
+func filterMetaNodeList(cluster, zone, host string, api *api.APIManager) ([]string, error) {
+	addrPortList := strings.Split(host, ":")
+	host = addrPortList[0]
+
+	result := make([]string, 0)
+	if zone != "" {
+		mc := api.GetMasterClient(cluster)
+		topo, err := mc.AdminAPI().GetTopology()
+		if err != nil {
+			return nil, err
+		}
+		for _, zoneView := range topo.Zones {
+			if zoneView.Name != zone {
+				continue
+			}
+			for _, nodeSet := range zoneView.NodeSet {
+				for _, nodeView := range nodeSet.MetaNodes {
+					if host != "" && !strings.HasPrefix(nodeView.Addr, host) {
+						continue
+					}
+					result = append(result, nodeView.Addr)
+				}
+			}
+		}
+		sort.SliceStable(result, func(i, j int) bool {
+			return result[i] < result[j]
+		})
+		return result, nil
 	}
 	if cproto.IsRelease(cluster) {
-		cv, err := cs.api.GetClusterViewCacheRelease(cluster, false)
+		cv, err := api.GetClusterViewCacheRelease(cluster, false)
 		if err != nil {
-			log.LogErrorf("metaNodeList: getClusterViewCache failed: cluster(%v) err(%v)", cluster, err)
 			return nil, err
 		}
-		pagePart := cutil.Paginate(int(args.Page), int(args.PageSize), cv.MetaNodes)
-		for _, node := range pagePart {
-			if view := getMetaNodeView(cluster, node.Addr, cs.api); view != nil {
-				nodes = append(nodes, view)
+		for _, node := range cv.MetaNodes {
+			if host != "" && !strings.HasPrefix(node.Addr, host) {
+				continue
 			}
+			result = append(result, node.Addr)
 		}
-		return cproto.NewNodeListResponse(len(cv.MetaNodes), nodes), nil
 	} else {
-		cv, err := cs.api.GetClusterViewCache(cluster, false)
+		cv, err := api.GetClusterViewCache(cluster, false)
 		if err != nil {
-			log.LogErrorf("metaNodeList: getClusterViewCache failed: cluster(%v) err(%v)", cluster, err)
 			return nil, err
 		}
-		pagePart := cutil.Paginate(int(args.Page), int(args.PageSize), cv.MetaNodes)
-		for _, node := range pagePart {
-			if view := getMetaNodeView(cluster, node.Addr, cs.api); view != nil {
-				nodes = append(nodes, view)
+		for _, node := range cv.MetaNodes {
+			if host != "" && !strings.HasPrefix(node.Addr, host) {
+				continue
 			}
+			result = append(result, node.Addr)
 		}
-		return cproto.NewNodeListResponse(len(cv.MetaNodes), nodes), nil
 	}
+	return result, nil
 }
 
 func getMetaNodeView(cluster, addr string, api *api.APIManager) *cproto.NodeViewDetail {
-	addrPortList := strings.Split(addr, ":")
-	if len(addrPortList) < 2 {
-		addr = fmt.Sprintf("%s:%s", addr, api.GetNodeProfPort(cluster, cproto.RoleNameMetaNode))
-	}
+	//addrPortList := strings.Split(addr, ":")
+	//if len(addrPortList) < 2 {
+	//	addr = fmt.Sprintf("%s:%s", addr, api.GetNodeProfPort(cluster, cproto.RoleNameMetaNode))
+	//}
 	if cproto.IsRelease(cluster) {
 		rc := api.GetReleaseClient(cluster)
 		nodeInfo, err := rc.GetMetaNode(addr)
@@ -423,7 +566,7 @@ func getMetaNodeView(cluster, addr string, api *api.APIManager) *cproto.NodeView
 			log.LogErrorf("getMetaNodeView faild: cluster(%v) addr(%v) err(%v)", cluster, addr, err)
 			return nil
 		}
-		return cluster_service.FormatMetaNodeView(nodeInfo, cluster)
+		return cluster_service.FormatMetaNodeView(nodeInfo, cluster, nil)
 	} else {
 		mc := api.GetMasterClient(cluster)
 		nodeInfo, err := mc.NodeAPI().GetMetaNode(addr)
@@ -431,61 +574,102 @@ func getMetaNodeView(cluster, addr string, api *api.APIManager) *cproto.NodeView
 			log.LogErrorf("getMetaNodeView faild: cluster(%v) addr(%v) err(%v)", cluster, addr, err)
 			return nil
 		}
-		return cluster_service.FormatMetaNodeView(nodeInfo, cluster)
+		clusterInfo := api.GetClusterInfo(cluster)
+		clusterRDMAConf, err := cluster_service.GetClusterRDMAConf(cluster, clusterInfo.MasterDomain, "metaNode")
+		return cluster_service.FormatMetaNodeView(nodeInfo, cluster, clusterRDMAConf)
 	}
 }
 
 func (cs *ClusterService) dataNodeList(ctx context.Context, args struct {
 	Cluster  *string
 	Addr     *string
+	Zone     *string
 	Page     int32
 	PageSize int32
 }) (*cproto.NodeListResponse, error) {
-	cluster := cutil.GetClusterParam(args.Cluster)
 	nodes := make([]*cproto.NodeViewDetail, 0)
+	var (
+		cluster = cutil.GetClusterParam(args.Cluster)
+		zone    string
+		addr    string
+	)
+	if args.Zone != nil {
+		zone = *args.Zone
+		if cproto.IsRelease(cluster) {
+			zone = ""
+		}
+	}
 	if args.Addr != nil {
-		view := getDataNodeView(cluster, *args.Addr, cs.api)
-		if view == nil {
-			log.LogWarnf("dataNodeList: can not find node(%v)", *args.Addr)
-		} else {
+		addr = *args.Addr
+	}
+	nodeList, err := filterDataNodeList(cluster, zone, addr, cs.api)
+	if err != nil {
+		return nil, err
+	}
+	nodePart := cutil.Paginate(int(args.Page), int(args.PageSize), nodeList)
+	for _, node := range nodePart {
+		if view := getDataNodeView(cluster, node, cs.api); view != nil {
 			nodes = append(nodes, view)
 		}
-		return cproto.NewNodeListResponse(len(nodes), cutil.Paginate(int(args.Page), int(args.PageSize), nodes)), nil
 	}
-	if cproto.IsRelease(cluster) {
-		cv, err := cs.api.GetClusterViewCacheRelease(cluster, false)
-		if err != nil {
-			log.LogErrorf("dataNodeList: getClusterViewCache failed: cluster(%v) err(%v)", cluster, err)
-			return nil, err
-		}
-		pagePart := cutil.Paginate(int(args.Page), int(args.PageSize), cv.DataNodes)
-		for _, node := range pagePart {
-			if view := getDataNodeView(cluster, node.Addr, cs.api); view != nil {
-				nodes = append(nodes, view)
-			}
-		}
-		return cproto.NewNodeListResponse(len(cv.DataNodes), nodes), nil
-	} else {
-		cv, err := cs.api.GetClusterViewCache(cluster, false)
-		if err != nil {
-			log.LogErrorf("dataNodeList: getClusterViewCache failed: cluster(%v) err(%v)", cluster, err)
-			return nil, err
-		}
-		pagePart := cutil.Paginate(int(args.Page), int(args.PageSize), cv.DataNodes)
-		for _, node := range pagePart {
-			if view := getDataNodeView(cluster, node.Addr, cs.api); view != nil {
-				nodes = append(nodes, view)
-			}
-		}
-		return cproto.NewNodeListResponse(len(cv.DataNodes), nodes), nil
-	}
+	return cproto.NewNodeListResponse(len(nodeList), nodes), nil
 }
 
-func getDataNodeView(cluster, addr string, api *api.APIManager) *cproto.NodeViewDetail {
-	addrPortList := strings.Split(addr, ":")
-	if len(addrPortList) < 2 {
-		addr = fmt.Sprintf("%s:%s", addr, api.GetNodeProfPort(cluster, cproto.RoleNameDataNode))
+func filterDataNodeList(cluster, zone, host string, api *api.APIManager) ([]string, error) {
+	addrPortList := strings.Split(host, ":")
+	host = addrPortList[0]
+
+	result := make([]string, 0)
+	if zone != "" {
+		mc := api.GetMasterClient(cluster)
+		topo, err := mc.AdminAPI().GetTopology()
+		if err != nil {
+			return nil, err
+		}
+		for _, zoneView := range topo.Zones {
+			if zoneView.Name != zone {
+				continue
+			}
+			for _, nodeSet := range zoneView.NodeSet {
+				for _, nodeView := range nodeSet.DataNodes {
+					if host != "" && !strings.HasPrefix(nodeView.Addr, host) {
+						continue
+					}
+					result = append(result, nodeView.Addr)
+				}
+			}
+		}
+		sort.SliceStable(result, func(i, j int) bool {
+			return result[i] < result[j]
+		})
+		return result, nil
 	}
+	if cproto.IsRelease(cluster) {
+		cv, err := api.GetClusterViewCacheRelease(cluster, false)
+		if err != nil {
+			return nil, err
+		}
+		for _, node := range cv.DataNodes {
+			if host != "" && !strings.HasPrefix(node.Addr, host) {
+				continue
+			}
+			result = append(result, node.Addr)
+		}
+	} else {
+		cv, err := api.GetClusterViewCache(cluster, false)
+		if err != nil {
+			return nil, err
+		}
+		for _, node := range cv.DataNodes {
+			if host != "" && !strings.HasPrefix(node.Addr, host) {
+				continue
+			}
+			result = append(result, node.Addr)
+		}
+	}
+	return result, nil
+}
+func getDataNodeView(cluster, addr string, api *api.APIManager) *cproto.NodeViewDetail {
 	if cproto.IsRelease(cluster) {
 		rc := api.GetReleaseClient(cluster)
 		nodeInfo, err := rc.GetDataNode(addr)
@@ -503,7 +687,7 @@ func getDataNodeView(cluster, addr string, api *api.APIManager) *cproto.NodeView
 				}
 			}
 		}
-		return cluster_service.FormatDataNodeView(nodeInfo, cluster)
+		return cluster_service.FormatDataNodeView(nodeInfo, cluster, nil)
 	} else {
 		mc := api.GetMasterClient(cluster)
 		nodeInfo, err := mc.NodeAPI().GetDataNode(addr)
@@ -511,8 +695,33 @@ func getDataNodeView(cluster, addr string, api *api.APIManager) *cproto.NodeView
 			log.LogErrorf("getDataNodeView faild: cluster(%v) addr(%v) err(%v)", cluster, addr, err)
 			return nil
 		}
-		return cluster_service.FormatDataNodeView(nodeInfo, cluster)
+		clusterInfo := api.GetClusterInfo(cluster)
+		clusterRDMAConf, err := cluster_service.GetClusterRDMAConf(cluster, clusterInfo.MasterDomain, "dataNode")
+		return cluster_service.FormatDataNodeView(nodeInfo, cluster, clusterRDMAConf)
 	}
+}
+
+func (cs *ClusterService) getDataNodeView(ctx context.Context, args struct {
+	Cluster string
+	Addr    string
+}) (*cproto.NodeViewDetail, error) {
+	if cproto.IsRelease(args.Cluster) {
+		return nil, cproto.ErrUnSupportOperation
+	}
+	mc := cs.api.GetMasterClient(args.Cluster)
+	dHost := fmt.Sprintf("%s:%s", strings.Split(args.Addr, ":"), mc.DataNodeProfPort)
+	dataClient := http_client.NewDataClient(dHost, false)
+	partitions, err := dataClient.GetPartitionsFromNode()
+	if err != nil {
+		log.LogErrorf("getDataNodeView failed: cluster(%v) addr(%v) err(%v)", args.Cluster, args.Addr, err)
+		return nil, err
+	}
+	var nodeView *cproto.NodeViewDetail
+	if partitions != nil {
+		nodeView.RiskCount = partitions.RiskCount
+		nodeView.RiskFixerRunning = partitions.RiskFixerRunning
+	}
+	return nodeView, nil
 }
 
 func (cs *ClusterService) flashGroupList(ctx context.Context, args struct {
@@ -681,7 +890,7 @@ func (cs *ClusterService) flashNodeList(ctx context.Context, args struct {
 }) (*cproto.FlashNodeListResponse, error) {
 	cluster := args.Cluster
 	if cproto.IsRelease(cluster) {
-		return nil, cproto.ErrUnSupportOperation
+		return nil, nil
 	}
 	result := make([]*cproto.ClusterFlashNodeView, 0)
 	view, err := cs.api.CacheManager.GetFlashNodeViewCache(cluster, false)
@@ -697,7 +906,7 @@ func (cs *ClusterService) flashNodeList(ctx context.Context, args struct {
 		}
 		return cproto.NewFlashNodeListResponse(len(result), cutil.Paginate(int(args.Page), int(args.PageSize), result)), nil
 	}
-	if args.Addr != nil {
+	if args.Addr != nil && *args.Addr != "" {
 		for _, node := range view {
 			if strings.HasPrefix(node.Addr, *args.Addr) {
 				result = append(result, node)
@@ -982,7 +1191,7 @@ func evictVolCache(volume string, addr *string, inode *uint64, port uint16, node
 			err = fnClient.EvictVol(volume)
 		}
 		if err != nil {
-			log.LogWarnf("evictVolCache: vol(%v) targetHost(%v) targetIno(%v) currHost(%v) err(%v)", volume, host, node.Addr, err)
+			log.LogWarnf("evictVolCache: vol(%v) targetHost(%v) targetIno(%v) currHost(%v) err(%v)", volume, host, ino, node.Addr, err)
 		}
 	}
 	return err
@@ -1011,7 +1220,7 @@ func (cs *ClusterService) metaPartitionList(ctx context.Context, args struct {
 		return cproto.NewPartitionListResponse(len(result), result), nil
 	}
 	var partitions []uint64
-	if args.Addr != nil {
+	if args.Addr != nil && *args.Addr != "" {
 		if cproto.IsRelease(cluster) {
 			rc := cs.api.GetReleaseClient(cluster)
 			nodeInfo, err := rc.GetMetaNode(*args.Addr)
@@ -1089,7 +1298,7 @@ func (cs *ClusterService) dataPartitionList(ctx context.Context, args struct {
 	}
 
 	var partitions []uint64
-	if args.Addr != nil {
+	if args.Addr != nil && *args.Addr != "" {
 		if cproto.IsRelease(cluster) {
 			rc := cs.api.GetReleaseClient(cluster)
 			nodeInfo, err := rc.GetDataNode(*args.Addr)
@@ -1664,6 +1873,14 @@ func (cs *ClusterService) GetZoneUsageOverview(clusterName string) ([]*cproto.Zo
 	return data, err
 }
 
+func (cs *ClusterService) getSourceUsageInfo(cluster, source, zone string, interval int32, startTs, endTs int64) ([][]*cproto.SourceUsedInfo, error) {
+	start, end, err := cproto.ParseHistoryCurveRequestTime(int(interval), startTs, endTs)
+	if err != nil {
+		return nil, err
+	}
+	return cluster_service.GetSourceUsageInfo(cluster, source, zone, start, end)
+}
+
 func getZoneNameList(clusterInfo *model.ChubaofsClusterInfoInMysql, requestInfo *cproto.CFSClusterResourceRequest) []string {
 	//zone name: all 表示获取整个集群的容量变化曲线（请求中机房名称为空、zone name名称为空代表获取整个集群的）
 	var zoneNameList = make([]string, 1)
@@ -1751,6 +1968,153 @@ func (cs *ClusterService) resetDataNode(ctx context.Context, args struct {
 	}
 	mc := cs.api.GetMasterClient(cluster)
 	err = mc.AdminAPI().ResetCorruptDataNode(args.Addr)
+	return
+}
+
+func (cs *ClusterService) startRiskFixDataNode(ctx context.Context, args struct {
+	Cluster string
+	Addr    string
+}) (err error) {
+	defer func() {
+		msg := fmt.Sprintf("startRiskFixDataNode: cluster(%s) node(%s)", args.Cluster, args.Addr)
+		if err == nil {
+			log.LogInfof("%s success", msg)
+			record := model.NewNodeOperation(
+				args.Cluster,
+				cproto.ModuleDataNode,
+				args.Addr,
+				"/risk/startFix",
+				ctx.Value(cutil.PinKey).(string),
+			)
+			record.InsertRecord(record)
+		} else {
+			log.LogErrorf("%s, err: %v", msg, err)
+		}
+	}()
+	var dHost string
+	if cproto.IsRelease(args.Cluster) {
+		return cproto.ErrUnSupportOperation
+		//rc := cs.api.GetReleaseClient(args.Cluster)
+		//dHost = fmt.Sprintf("%s:%s", strings.Split(args.Addr, ":")[0], rc.DatanodeProf)
+	} else {
+		mc := cs.api.GetMasterClient(args.Cluster)
+		dHost = fmt.Sprintf("%v:%v", strings.Split(args.Addr, ":")[0], mc.DataNodeProfPort)
+	}
+	dataClient := http_client.NewDataClient(dHost, false)
+	return dataClient.StartRiskFix()
+}
+
+func (cs *ClusterService) stopRiskFixDataNode(ctx context.Context, args struct {
+	Cluster string
+	Addr    string
+}) (err error) {
+	defer func() {
+		msg := fmt.Sprintf("stopRiskFixDataNode: cluster(%s) node(%s)", args.Cluster, args.Addr)
+		if err == nil {
+			log.LogInfof("%s success", msg)
+			record := model.NewNodeOperation(
+				args.Cluster,
+				cproto.ModuleDataNode,
+				args.Addr,
+				"/risk/stopFix",
+				ctx.Value(cutil.PinKey).(string),
+			)
+			record.InsertRecord(record)
+		} else {
+			log.LogErrorf("%s, err: %v", msg, err)
+		}
+	}()
+	var dHost string
+	if cproto.IsRelease(args.Cluster) {
+		return cproto.ErrUnSupportOperation
+		//rc := cs.api.GetReleaseClient(args.Cluster)
+		//dHost = fmt.Sprintf("%s:%s", strings.Split(args.Addr, ":")[0], rc.DatanodeProf)
+	} else {
+		mc := cs.api.GetMasterClient(args.Cluster)
+		dHost = fmt.Sprintf("%v:%v", strings.Split(args.Addr, ":")[0], mc.DataNodeProfPort)
+	}
+	dataClient := http_client.NewDataClient(dHost, false)
+	return dataClient.StopRiskFix()
+}
+
+func (cs *ClusterService) stopDataPartition(ctx context.Context, args struct {
+	Cluster string
+	ID      uint64
+	Addr    string
+}) (err error) {
+	defer func() {
+		msg := fmt.Sprintf("stopDataPartition: cluster(%s) dp(%v) host(%s)", args.Cluster, args.ID, args.Addr)
+		if err == nil {
+			log.LogInfof("%s success", msg)
+			record := model.NewNodeOperation(
+				args.Cluster,
+				cproto.ModuleDataNode,
+				args.Addr,
+				"/stopPartition",
+				ctx.Value(cutil.PinKey).(string),
+				strconv.FormatUint(args.ID, 10),
+			)
+			record.InsertRecord(record)
+		} else {
+			log.LogErrorf("%s, err: %v", msg, err)
+		}
+	}()
+	//mc := cs.api.GetMasterClient(args.Cluster)
+	//dp, err := mc.AdminAPI().GetDataPartition("", args.ID)
+	//if err != nil {
+	//	return
+	//}
+	//var exist bool
+	//for _, h := range dp.Hosts {
+	//	if h == args.Addr {
+	//		exist = true
+	//		break
+	//	}
+	//}
+	//if !exist {
+	//	err = fmt.Errorf("host[%v] not exist in dp hosts[%v]", args.Addr, dp.Hosts)
+	//	return
+	//}
+	var dHost string
+	if cproto.IsRelease(args.Cluster) {
+		rc := cs.api.GetReleaseClient(args.Cluster)
+		dHost = fmt.Sprintf("%s:%s", strings.Split(args.Addr, ":")[0], rc.DatanodeProf)
+	} else {
+		mc := cs.api.GetMasterClient(args.Cluster)
+		dHost = fmt.Sprintf("%v:%v", strings.Split(args.Addr, ":")[0], mc.DataNodeProfPort)
+	}
+	dataClient := http_client.NewDataClient(dHost, false)
+	return dataClient.StopPartition(args.ID)
+}
+
+func (cs *ClusterService) setRecoverDataPartition(ctx context.Context, args struct {
+	Cluster string
+	ID      uint64
+}) (err error) {
+	defer func() {
+		msg := fmt.Sprintf("setRecoverDataPartition: cluster(%s) dp(%v)", args.Cluster, args.ID)
+		if err == nil {
+			log.LogInfof("%s success", msg)
+			record := model.NewNodeOperation(
+				args.Cluster,
+				cproto.ModuleDataNode,
+				strconv.FormatUint(args.ID, 10),
+				proto.AdminDataPartitionSetIsRecover,
+				ctx.Value(cutil.PinKey).(string),
+				strconv.FormatUint(args.ID, 10),
+			)
+			record.InsertRecord(record)
+		} else {
+			log.LogErrorf("%s, err: %v", msg, err)
+		}
+	}()
+	if cproto.IsRelease(args.Cluster) {
+		mc := cs.api.GetMasterClient(args.Cluster)
+		_, err = mc.AdminAPI().ResetRecoverDataPartition(args.ID)
+	} else {
+		rc := cs.api.GetReleaseClient(args.Cluster)
+		err = rc.SetIsRecoverDataPartition(args.ID)
+	}
 	return
 }
 
@@ -1869,6 +2233,7 @@ func (cs *ClusterService) decommissionDisk(ctx context.Context, args struct {
 				args.Addr,
 				proto.DecommissionDisk,
 				ctx.Value(cutil.PinKey).(string),
+				args.DiskPath,
 			)
 			record.InsertRecord(record)
 		} else {
@@ -1927,7 +2292,7 @@ func (cs *ClusterService) decommissionMetaPartition(ctx context.Context, args st
 
 	if cproto.IsRelease(cluster) {
 		rc := cs.api.GetReleaseClient(cluster)
-		err = rc.MetaPartitionOffline(args.Addr, args.VolName, args.ID)
+		err = rc.MetaPartitionOffline(args.Addr, args.VolName, args.ID, destAddr)
 		return cproto.BuildResponse(err), err
 	}
 	mc := cs.api.GetMasterClient(cluster)
@@ -1954,6 +2319,7 @@ func (cs *ClusterService) decommissionDataPartition(ctx context.Context, args st
 				args.Addr,
 				proto.AdminDecommissionDataPartition,
 				ctx.Value(cutil.PinKey).(string),
+				strconv.FormatUint(args.ID, 10),
 			)
 			record.InsertRecord(record)
 			log.LogInfof("%s success", msg)
@@ -1994,6 +2360,7 @@ func (cs *ClusterService) reloadDataPartition(ctx context.Context, args struct {
 				args.Addr,
 				"/reloadPartition",
 				ctx.Value(cutil.PinKey).(string),
+				strconv.FormatUint(args.ID, 10),
 			)
 			record.InsertRecord(record)
 			log.LogInfof("%s successfully", msg)
@@ -2169,4 +2536,107 @@ func (cs *ClusterService) resetCursor(ctx context.Context, args struct {
 		return nil, err
 	}
 	return resp, nil
+}
+
+func (cs *ClusterService) rdmaClusterConf(ctx context.Context, args struct {
+	Cluster string
+}) (*cproto.ClusterRDMAConfView, error) {
+	return cs.rdma.GetClusterRDMAConf(args.Cluster)
+}
+
+func (cs *ClusterService) rdmaDataNodeList(ctx context.Context, args struct {
+	Cluster string
+}) (*cproto.RDMANodeViewResponse, error) {
+	nodeList, err := cs.rdma.GetRDMANodeList(args.Cluster, "dataNode")
+	if err != nil {
+		return nil, err
+	}
+	return &cproto.RDMANodeViewResponse{
+		Total: len(nodeList),
+		Data:  nodeList,
+	}, nil
+}
+
+func (cs *ClusterService) rdmaMetaNodeList(ctx context.Context, args struct {
+	Cluster string
+}) (*cproto.RDMANodeViewResponse, error) {
+	nodeList, err := cs.rdma.GetRDMANodeList(args.Cluster, "metaNode")
+	if err != nil {
+		return nil, err
+	}
+	return &cproto.RDMANodeViewResponse{
+		Total: len(nodeList),
+		Data:  nodeList,
+	}, nil
+}
+
+func (cs *ClusterService) rdmaVolumeList(ctx context.Context, args struct {
+	Cluster string
+}) (*cproto.RDMAVolumeListResponse, error) {
+	return cs.rdma.GetRDMAVolumeList(args.Cluster)
+}
+
+func (cs *ClusterService) rdmaNodeView(ctx context.Context, args struct {
+	Cluster string
+	Addr    string
+}) (*cproto.RDMANodeStatusView, error) {
+	return cs.rdma.GetRDMANodeView(args.Cluster, args.Addr)
+}
+
+func (cs *ClusterService) setClusterRdmaConf(ctx context.Context, args struct {
+	Cluster           string
+	ClusterRDMAEnable bool
+	ClusterRDMASend   bool
+	ReConnDelayTime   int64
+}) error {
+	// for test: use fake return
+	return nil
+	return cs.rdma.SetClusterRDMAConf(args.Cluster, args.ClusterRDMAEnable, args.ClusterRDMASend, args.ReConnDelayTime)
+}
+
+func (cs *ClusterService) setNodeRdmaConf(ctx context.Context, args struct {
+	Cluster         string
+	Addr            string
+	Pod             string
+	NodeRDMAService bool
+	NodeRDMASend    bool
+	NodeRDMARecv    bool
+	NodeType        string // data或meta
+}) error {
+	// for test: use fake return
+	return nil
+	return cs.rdma.SetNodeRDMAConf(args.Cluster, args.Addr, args.Pod, args.NodeRDMAService, args.NodeRDMASend, args.NodeRDMARecv, args.NodeType)
+}
+
+func (cs *ClusterService) setVolumeRdmaConf(ctx context.Context, args struct {
+	Cluster    string
+	VolList    []string
+	EnableRDMA bool
+}) error {
+	// for test: use fake return
+	return nil
+	return cs.rdma.BatchSetVolumeRDMAConf(args.Cluster, args.VolList, args.EnableRDMA)
+}
+
+func (cs *ClusterService) setNodeSendEnable(ctx context.Context, args struct {
+	Cluster    string
+	Addr       string
+	EnableSend bool
+	Reason     string
+}) error {
+	// for test: use fake return
+	return nil
+	return cs.rdma.SetNodeSendEnable(args.Cluster, args.Addr, args.EnableSend, args.Reason)
+}
+
+func (cs *ClusterService) setNodeConnEnable(ctx context.Context, args struct {
+	Cluster    string
+	Addr       string
+	AddrList   []string
+	EnableConn bool
+	Reason     string
+}) error {
+	// for test: use fake return
+	return nil
+	return cs.rdma.BatchSetNodeConnEnable(args.Cluster, args.Addr, args.AddrList, args.EnableConn, args.Reason)
 }

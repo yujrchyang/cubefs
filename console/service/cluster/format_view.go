@@ -43,6 +43,7 @@ func FormatClusterSummaryView(api *api.APIManager, cluster *model.ConsoleCluster
 		result.UsedTB = math.Trunc(float64(cv.DataNodeStatInfo.UsedGB)/float64(1024)*100) / 100
 		result.IncreaseTB = math.Trunc(float64(cv.DataNodeStatInfo.IncreasedGB)/float64(1024)*100) / 100
 	}
+	result.StateLevel = model.GetClusterHealthLevel(cluster.ClusterName)
 	return result
 }
 
@@ -124,7 +125,7 @@ func FormatConsoleClusterView(api *api.APIManager, cluster *model.ConsoleCluster
 	}
 }
 
-func FormatDataNodeView(nodeInfo interface{}, cluster string) *cproto.NodeViewDetail {
+func FormatDataNodeView(nodeInfo interface{}, cluster string, rdmaConf *cproto.RDMAConfInfo) *cproto.NodeViewDetail {
 	if cproto.IsRelease(cluster) {
 		// 磁盘下线 手动输入磁盘路径
 		info := nodeInfo.(*cproto.DataNode)
@@ -138,6 +139,7 @@ func FormatDataNodeView(nodeInfo interface{}, cluster string) *cproto.NodeViewDe
 			Available:      FormatSize(info.Available),
 			UsageRatio:     FormatRatio(info.Ratio),
 			PartitionCount: info.DataPartitionCount,
+			IsRDMA:         false,
 			ReportTime:     formatTime(info.ReportTime),
 		}
 		detail.IsWritable = !info.ToBeOffline && info.Ratio <= 0.95 && info.Available > 0
@@ -170,11 +172,24 @@ func FormatDataNodeView(nodeInfo interface{}, cluster string) *cproto.NodeViewDe
 			disks = append(disks, key)
 		}
 		detail.Disk = disks
+		if rdmaConf != nil {
+			var rdmaNodeMap = make(map[string]*cproto.NodeRDMAConf)
+			for _, rdmaNode := range rdmaConf.RDMANodeMap {
+				rdmaNodeMap[rdmaNode.Addr] = rdmaNode
+			}
+			if nodeRDMAInfo, ok := rdmaNodeMap[info.Addr]; ok {
+				detail.IsRDMA = true
+				detail.Pod = nodeRDMAInfo.Pod
+				detail.NodeRDMAService = nodeRDMAInfo.RDMAService
+				detail.NodeRDMASend = nodeRDMAInfo.RDMASend
+				detail.NodeRDMARecv = nodeRDMAInfo.RDMARecv
+			}
+		}
 		return detail
 	}
 }
 
-func FormatMetaNodeView(nodeInfo interface{}, cluster string) *cproto.NodeViewDetail {
+func FormatMetaNodeView(nodeInfo interface{}, cluster string, rdmaConf *cproto.RDMAConfInfo) *cproto.NodeViewDetail {
 	if cproto.IsRelease(cluster) {
 		info := nodeInfo.(*cproto.MetaNode)
 		detail := &cproto.NodeViewDetail{
@@ -187,6 +202,7 @@ func FormatMetaNodeView(nodeInfo interface{}, cluster string) *cproto.NodeViewDe
 			Available:      FormatSize(info.MaxMemAvailWeight),
 			UsageRatio:     FormatRatio(info.Ratio),
 			PartitionCount: info.MetaPartitionCount,
+			IsRDMA:         false,
 			ReportTime:     formatTime(info.ReportTime),
 		}
 		detail.IsWritable = float32(float64(info.Used)/float64(info.Total)) < info.Threshold
@@ -206,6 +222,19 @@ func FormatMetaNodeView(nodeInfo interface{}, cluster string) *cproto.NodeViewDe
 			ReportTime:     formatTime(info.ReportTime),
 		}
 		detail.IsWritable = float32(float64(info.Used)/float64(info.Total)) < info.Threshold
+		if rdmaConf != nil {
+			var rdmaNodeMap map[string]*cproto.NodeRDMAConf
+			for _, rdmaNode := range rdmaConf.RDMANodeMap {
+				rdmaNodeMap[rdmaNode.Addr] = rdmaNode
+			}
+			if nodeRDMAInfo, ok := rdmaNodeMap[info.Addr]; ok {
+				detail.IsRDMA = true
+				detail.Pod = nodeRDMAInfo.Pod
+				detail.NodeRDMAService = nodeRDMAInfo.RDMAService
+				detail.NodeRDMASend = nodeRDMAInfo.RDMASend
+				detail.NodeRDMARecv = nodeRDMAInfo.RDMARecv
+			}
+		}
 		return detail
 	}
 }
@@ -246,7 +275,7 @@ func FormatMetaPartitionView(partition interface{}, cluster string) *cproto.Part
 			replicas = append(replicas, info)
 		}
 		view.Replicas = replicas
-		view.ReplicaNum = len(replicas)
+		view.ReplicaNum = int(mp.ReplicaNum)
 		return view
 	} else {
 		mp := partition.(*proto.MetaPartitionInfo)
@@ -282,7 +311,7 @@ func FormatMetaPartitionView(partition interface{}, cluster string) *cproto.Part
 			replicas = append(replicas, info)
 		}
 		view.Replicas = replicas
-		view.ReplicaNum = len(replicas)
+		view.ReplicaNum = int(mp.ReplicaNum)
 		return view
 	}
 }
@@ -317,7 +346,7 @@ func FormatDataPartitionView(partition interface{}, cluster string) *cproto.Part
 			replicas = append(replicas, info)
 		}
 		view.Replicas = replicas
-		view.ReplicaNum = len(replicas)
+		view.ReplicaNum = int(dp.ReplicaNum)
 		return view
 	} else {
 		dp := partition.(*proto.DataPartitionInfo)
@@ -363,7 +392,7 @@ func FormatDataPartitionView(partition interface{}, cluster string) *cproto.Part
 			replicas = append(replicas, info)
 		}
 		view.Replicas = replicas
-		view.ReplicaNum = len(replicas)
+		view.ReplicaNum = int(dp.ReplicaNum)
 		return view
 	}
 }

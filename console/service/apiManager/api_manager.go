@@ -16,6 +16,17 @@ import (
 	"sync"
 )
 
+var (
+	sdk *APIManager // 用于其他service下的package调用
+)
+
+func SetSdkApiManager(s *APIManager) {
+	sdk = s
+}
+func GetSdkApiManager() *APIManager {
+	return sdk
+}
+
 type APIManager struct {
 	sync.RWMutex
 	clusters      []*model.ConsoleCluster // for domain name
@@ -62,8 +73,8 @@ func newMasterclient(clusterInfo *model.ConsoleCluster) *master.MasterClient {
 func newReleaseClient(clusterInfo *model.ConsoleCluster) *ReleaseClient {
 	addrs := strings.Split(clusterInfo.MasterAddrs, separator)
 	releaseClient := NewReleaseClient(addrs, clusterInfo.MasterDomain, clusterInfo.ClusterName, releaseClientDefaultTimeout)
-	releaseClient.datanodeProf = clusterInfo.DataProf
-	releaseClient.metanodeProf = clusterInfo.MetaProf
+	releaseClient.DatanodeProf = clusterInfo.DataProf
+	releaseClient.MetanodeProf = clusterInfo.MetaProf
 	return releaseClient
 }
 
@@ -560,5 +571,65 @@ func (api *APIManager) CleanVolTrash(cluster, volname string) error {
 		return err
 	}
 	log.LogInfof("CleanVolTrash success: cluster(%v) vol(%v)", cluster, volname)
+	return err
+}
+
+func (api *APIManager) MigrateConfigList(cluster string) ([]*cproto.MigrateConfig, error) {
+	req := cutil.NewAPIRequest(http.MethodGet, fmt.Sprintf("http://%s%s", api.GetClusterInfo(cluster).FileMigrateHost, "/migrationConfig/list"))
+	req.AddParam("cluster", cluster)
+	data, err := cutil.SendSimpleRequest(req, false)
+	if err != nil {
+		log.LogErrorf("MigrateConfigList failed: cluster(%v) err(%v)", cluster, err)
+		return nil, err
+	}
+	configList := make([]*cproto.MigrateConfig, 0)
+	if err = json.Unmarshal(data, &configList); err != nil {
+		log.LogErrorf("MigrateConfigList failed: cluster(%v) err(%v)", cluster, err)
+		return nil, err
+	}
+	log.LogInfof("MigrateConfigList success: cluster(%v) len(config)=%v", cluster, len(configList))
+	return configList, nil
+}
+
+func (api *APIManager) GetVolumeMigrateConfig(cluster, volume string) (*cproto.MigrateConfig, error) {
+	req := cutil.NewAPIRequest(http.MethodGet, fmt.Sprintf("http://%s%s", api.GetClusterInfo(cluster).FileMigrateHost, "/migrationConfig/list"))
+	req.AddParam("cluster", cluster)
+	req.AddParam("volume", volume)
+	data, err := cutil.SendSimpleRequest(req, false)
+	if err != nil {
+		log.LogErrorf("GetVolumeMigrateConfig failed: cluster(%v) vol(%v) err(%v)", cluster, volume, err)
+		return nil, err
+	}
+	configList := make([]*cproto.MigrateConfig, 0)
+	if err = json.Unmarshal(data, &configList); err != nil {
+		log.LogErrorf("GetVolumeMigrateConfig failed: cluster(%v) vol(%v) err(%v)", cluster, volume, err)
+		return nil, err
+	}
+	if len(configList) != 1 {
+		log.LogErrorf("GetVolumeMigrateConfig: wrong config list length, len(%v)", len(configList))
+		return nil, nil
+	}
+	log.LogInfof("GetVolumeMigrateConfig success: cluster(%v) config(%v)", cluster, configList[0])
+	return configList[0], nil
+
+}
+
+func (api *APIManager) CreateOrUpdateMigrateConfig(cluster, volume string, params map[string]string) error {
+	req := cutil.NewAPIRequest(http.MethodGet, fmt.Sprintf("http://%s%s", api.GetClusterInfo(cluster).FileMigrateHost, "/migrationConfig/addOrUpdate"))
+	req.AddParam("cluster", cluster)
+	req.AddParam("volume", volume)
+	for key, param := range params {
+		switch param {
+		case "true":
+			param = "1"
+		case "false":
+			param = "0"
+		}
+		req.AddParam(key, param)
+	}
+	_, err := cutil.SendSimpleRequest(req, false)
+	if err != nil {
+		log.LogErrorf("UpdateMigrateConfig failed: cluster(%v) vol(%v) params(%v) err(%v)", cluster, params, err)
+	}
 	return err
 }
