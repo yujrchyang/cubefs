@@ -3,10 +3,13 @@ package cli
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
+
 	cproto "github.com/cubefs/cubefs/console/proto"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/http_client"
 	"github.com/cubefs/cubefs/util/log"
-	"strings"
 )
 
 func (cli *CliService) GetDataNodeConfig(cluster string, operation int) (result []*cproto.CliValueMetric, err error) {
@@ -88,8 +91,8 @@ func (cli *CliService) SetDataNodeConfig(ctx context.Context, cluster string, op
 			log.LogErrorf("%s err(%v)", msg, err)
 		} else {
 			log.LogInfof("%v, metrics:%v", msg, metrics)
-			cli.api.UpdateLimitInfoCache(cluster)
 		}
+		cli.api.UpdateLimitInfoCache(cluster)
 	}()
 	var (
 		args   map[string]interface{} // 参数校验用
@@ -182,8 +185,10 @@ func (cli *CliService) GetDataNodeConfigList(cluster string, operation int) (res
 	}()
 
 	result = make([][]*cproto.CliValueMetric, 0)
-
 	switch operation {
+	case cproto.OpDataNodeExtentRepairTask:
+		result = append(result, cproto.FormatOperationNilData(operation, "uint64", "string", "string"))
+
 	default:
 	}
 	return
@@ -198,8 +203,30 @@ func (cli *CliService) SetDataNodeConfigList(ctx context.Context, cluster string
 			log.LogInfof("%s", msg)
 		}
 	}()
+	var params []map[string]string
+	for _, metric := range metrics {
+		var (
+			param   map[string]string
+			isEmpty bool
+		)
+		param, isEmpty, err = cproto.ParseValueMetricsToParams(operation, metric)
+		if err != nil || isEmpty {
+			continue
+		}
+		_, err = cproto.ParseValueMetricsToArgs(operation, metric)
+		if err != nil {
+			return err
+		}
+		params = append(params, param)
+	}
 
 	switch operation {
+	case cproto.OpDataNodeExtentRepairTask:
+		if !skipXbp {
+			return cli.createXbpApply(ctx, cluster, cproto.DataNodeModuleType, operation, metrics, nil, nil, true)
+		}
+		return cli.batchStartExtentRepairTask(cluster, operation, params)
+
 	default:
 		goto update
 	}
@@ -218,7 +245,6 @@ update:
 			continue
 		}
 	}
-	cli.api.UpdateLimitInfoCache(cluster)
 	return
 }
 
@@ -305,4 +331,100 @@ func (cli *CliService) getDataNodeRepairTaskCount(cluster string) (uint64, error
 		return 0, err
 	}
 	return limitInfo.DataNodeRepairLimitOnDisk, nil
+}
+
+func (cli *CliService) batchStartExtentRepairTask(cluster string, operation int, params []map[string]string) error {
+	var errResult error
+	mc := cli.api.GetMasterClient(cluster)
+	for _, param := range params {
+		var (
+			dHost  string
+			pid    uint64
+			extIDs []uint64
+		)
+		for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
+			switch baseMetric.ValueName {
+			case "extentID":
+				extentsStrList := strings.Split(param[baseMetric.ValueName], "-")
+				for _, idStr := range extentsStrList {
+					if eid, err := strconv.ParseUint(idStr, 10, 64); err != nil {
+						return fmt.Errorf("解析extID失败：%v %v", idStr, err)
+					} else {
+						extIDs = append(extIDs, eid)
+					}
+				}
+
+			case "host":
+				dHost = fmt.Sprintf("%s:%v", strings.Split(param[baseMetric.ValueName], ":"), mc.DataNodeProfPort)
+
+			case "pid":
+				id, err := strconv.ParseUint(param[baseMetric.ValueName], 10, 64)
+				if err != nil {
+					return fmt.Errorf("解析分片ID失败：%v %v", param[baseMetric.ValueName], err)
+				} else {
+					pid = id
+				}
+			}
+		}
+		err := cli.RepairExtents(cluster, dHost, pid, extIDs)
+		if err != nil {
+			errResult = fmt.Errorf("%v, %v", errResult, err)
+		}
+	}
+	return errResult
+}
+
+func (cli *CliService) RepairExtents(cluster string, host string, partitionID uint64, extentIDs []uint64) (err error) {
+	var dp *proto.DataPartitionInfo
+	if partitionID < 0 || len(extentIDs) == 0 {
+		return
+	}
+	mc := cli.api.GetMasterClient(cluster)
+	dp, err = mc.AdminAPI().GetDataPartition("", partitionID)
+	if err != nil {
+		return
+	}
+	var exist bool
+	for _, h := range dp.Hosts {
+		if h == host {
+			exist = true
+			break
+		}
+	}
+	if !exist {
+		err = fmt.Errorf("host[%v] not exist in hosts[%v]", host, dp.Hosts)
+		return
+	}
+	dHost := fmt.Sprintf("%v:%v", strings.Split(host, ":")[0], mc.DataNodeProfPort)
+	dataClient := http_client.NewDataClient(dHost, false)
+	partition, err := dataClient.GetPartitionFromNode(partitionID)
+	if err != nil {
+		return
+	}
+	partitionPath := fmt.Sprintf("datapartition_%v_%v", partitionID, dp.Replicas[0].Total)
+	var extMap map[uint64]string
+	if len(extentIDs) == 1 {
+		err = dataClient.RepairExtent(extentIDs[0], partition.Path, partitionID)
+	} else {
+		extentsStrs := make([]string, 0)
+		for _, e := range extentIDs {
+			extentsStrs = append(extentsStrs, strconv.FormatUint(e, 10))
+		}
+		extMap, err = dataClient.RepairExtentBatch(strings.Join(extentsStrs, "-"), partition.Path, partitionID)
+	}
+	if err != nil {
+		if _, e := dataClient.GetPartitionFromNode(partitionID); e == nil {
+			return
+		}
+		for i := 0; i < 3; i++ {
+			if e := dataClient.ReLoadPartition(partitionPath, strings.Split(partition.Path, "/datapartition")[0]); e == nil {
+				break
+			}
+		}
+		return
+	}
+	if len(extMap) > 0 {
+		fmt.Printf("repair result: %v\n", extMap)
+	}
+	return nil
 }

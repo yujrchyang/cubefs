@@ -13,6 +13,8 @@ import (
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -51,6 +53,64 @@ func (cli *CliService) GetVolList(cluster string) []string {
 		return nil
 	}
 	return volList
+}
+
+func (cli *CliService) GetOperationHistory(cluster, module, operation string, page, pageSize int) (total int64, data []*cproto.CliOperationHistory, err error) {
+	if cutil.Global_CFG.EnableXBP {
+		total, err = model.XbpApplyInfo{}.GetXbpApplyRecordsCount(cluster, module, operation)
+		if err != nil {
+			return 0, nil, err
+		}
+		applys, err := model.XbpApplyInfo{}.GetXbpApplyRecord(cluster, module, operation, page, pageSize)
+		if err != nil {
+			return 0, nil, err
+		}
+		for _, apply := range applys {
+			record := &cproto.CliOperationHistory{
+				XbpTicketId: apply.TicketID,
+				XbpUrl:      fmt.Sprintf("http://%s/operate/%v", strings.Replace(cutil.Global_CFG.XbpProcessConfig.Domain, "-api", "", 1), strconv.FormatUint(apply.TicketID, 10)),
+				Cluster:     cluster,
+				Module:      module,
+				Operation:   operation,
+				Params:      apply.Params,
+				XbpStatus:   cproto.GetXbpStatusMessage(apply.Status),
+				Pin:         apply.Pin,
+				CreateTime:  apply.CreateTime.Format(time.DateTime),
+				UpdateTime:  apply.UpdateTime.Format(time.DateTime),
+			}
+			cliRecord := model.CliOperationRecord{}.LoadRecordByTicketID(apply.TicketID)
+			if cliRecord != nil {
+				record.OperationStatus = cliRecord.Status
+				record.Message = cliRecord.ErrMsg
+				record.UpdateTime = cliRecord.CreateTime.Format(time.DateTime)
+			}
+			data = append(data, record)
+		}
+	} else {
+		total, err = model.CliOperationRecord{}.GetOperationRecordCount(cluster, module, operation)
+		if err != nil {
+			return 0, nil, err
+		}
+		records, err := model.CliOperationRecord{}.GetOperationRecord(cluster, module, operation, page, pageSize)
+		if err != nil {
+			return 0, nil, err
+		}
+		for _, cliRecord := range records {
+			record := &cproto.CliOperationHistory{
+				Cluster:         cluster,
+				Module:          module,
+				Operation:       operation,
+				Params:          cliRecord.Params,
+				OperationStatus: cliRecord.Status,
+				Pin:             cliRecord.Pin,
+				Message:         cliRecord.ErrMsg,
+				CreateTime:      cliRecord.CreateTime.Format(time.DateTime),
+				UpdateTime:      cliRecord.UpdateTime.Format(time.DateTime),
+			}
+			data = append(data, record)
+		}
+	}
+	return
 }
 
 // 创建表单可以仅几个字段，但是插数据库 可以把metrics json编码 全部存，包括类型
@@ -92,6 +152,7 @@ func (cli *CliService) createXbpApply(ctx context.Context, cluster string, modul
 		OperationCode:   operation,
 		Operation:       setOperationMsg(moduleType),
 		OperationIsList: isList,
+		ServiceType:     int(cproto.CliService),
 	}
 	if volume != nil {
 		record.Volume = *volume
@@ -100,7 +161,6 @@ func (cli *CliService) createXbpApply(ctx context.Context, cluster string, modul
 		return err
 	} else {
 		record.Params = string(body)
-		log.LogInfof("record.Params: %v", record.Params)
 	}
 	record.InsertXbpApply(record)
 	return nil

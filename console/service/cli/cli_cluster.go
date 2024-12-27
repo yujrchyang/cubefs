@@ -93,9 +93,9 @@ func (cli *CliService) SetClusterConfig(ctx context.Context, cluster string, ope
 			log.LogErrorf("%s, err:%v", msg, err)
 		} else {
 			log.LogInfof("%v, metrics:%v", msg, metrics)
-			cli.api.UpdateClusterViewCache(cluster)
-			cli.api.UpdateLimitInfoCache(cluster)
 		}
+		cli.api.UpdateClusterViewCache(cluster)
+		cli.api.UpdateLimitInfoCache(cluster)
 	}()
 
 	var args map[string]interface{}

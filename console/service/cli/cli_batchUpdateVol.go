@@ -38,8 +38,17 @@ func (cli *CliService) GetBatchConfigList(cluster string, operation int) (result
 	case cproto.OpBatchSetVolReplicaNum:
 		result = append(result, cproto.FormatOperationNilData(operation, "string", "int64"))
 
+	case cproto.OpBatchSetVolMpReplicaNum:
+		result = append(result, cproto.FormatOperationNilData(operation, "string", "int64"))
+
 	case cproto.OpBatchSetVolFollowerReadCfg:
 		result = append(result, cproto.FormatOperationNilData(operation, "string", "int64", "int64"))
+
+	case cproto.OpBatchSetVolReqRemoveDup:
+		result = append(result, cproto.FormatArgsToValueMetrics(operation, "", false, 0, 0))
+
+	case cproto.OpBatchSetJSSVolumeMetaTag:
+		result = append(result, cproto.FormatArgsToValueMetrics(operation, "", false))
 
 	default:
 		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
@@ -202,6 +211,26 @@ func (cli *CliService) SetBatchConfigList(ctx context.Context, cluster string, o
 			return cli.createXbpApply(ctx, cluster, cproto.BatchModuleType, operation, metrics, nil, nil, true)
 		}
 
+	case cproto.OpBatchSetVolMpReplicaNum:
+		argList, e := getArgsFunc(operation, metrics)
+		if e != nil {
+			return e
+		}
+		for _, args := range argList {
+			volList, replicaNum, e1 := getBatchSetVolumeMpReplicaNumArgs(args, operation)
+			if e1 != nil {
+				return e1
+			}
+			if skipXbp {
+				if err = cli.batchSetVolMpReplicaNum(cluster, volList, int(replicaNum)); err != nil {
+					return err
+				}
+			}
+		}
+		if !skipXbp {
+			return cli.createXbpApply(ctx, cluster, cproto.BatchModuleType, operation, metrics, nil, nil, true)
+		}
+
 	case cproto.OpBatchSetVolFollowerReadCfg:
 		argList, e := getArgsFunc(operation, metrics)
 		if e != nil {
@@ -214,6 +243,47 @@ func (cli *CliService) SetBatchConfigList(ctx context.Context, cluster string, o
 			}
 			if skipXbp {
 				if err = cli.batchSetVolFollowerReadCfg(cluster, volList, weight, interval); err != nil {
+					return err
+				}
+			}
+		}
+		if !skipXbp {
+			return cli.createXbpApply(ctx, cluster, cproto.BatchModuleType, operation, metrics, nil, nil, true)
+		}
+
+	case cproto.OpBatchSetVolReqRemoveDup:
+		argList, e := getArgsFunc(operation, metrics)
+		if e != nil {
+			return e
+		}
+		for _, args := range argList {
+			volList, enable, reserveTime, reserveCnt, e1 := getBatchSetVolReqRemoveDupArgs(args, operation)
+			if e1 != nil {
+				return e1
+			}
+			if skipXbp {
+				if err = cli.batchSetVolReqRemoveDup(cluster, volList, enable, reserveTime, reserveCnt); err != nil {
+					return err
+				}
+			}
+		}
+		if !skipXbp {
+			return cli.createXbpApply(ctx, cluster, cproto.BatchModuleType, operation, metrics, nil, nil, true)
+		}
+
+	case cproto.OpBatchSetJSSVolumeMetaTag:
+		argList, e := getArgsFunc(operation, metrics)
+		if e != nil {
+			return e
+		}
+		for _, args := range argList {
+			// 每一组都是不一样的vol 参数
+			volList, metaOut, e1 := getBatchSetJSSVol(args, operation)
+			if e1 != nil {
+				return e1
+			}
+			if skipXbp {
+				if err = cli.batchSetJSSVol(cluster, volList, metaOut); err != nil {
 					return err
 				}
 			}
@@ -495,6 +565,47 @@ func (cli *CliService) batchSetVolReplicaNum(cluster string, volList []string, r
 	return errResult
 }
 
+func getBatchSetVolumeMpReplicaNumArgs(args map[string]interface{}, operation int) (volList []string, replicaNum int64, err error) {
+	for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
+		switch baseMetric.ValueName {
+		case "volume":
+			volListStr := args[baseMetric.ValueName].(string)
+			if volListStr == "" {
+				err = fmt.Errorf("请指定要设置的vol！")
+				return
+			}
+			volList = strings.Split(volListStr, ",")
+
+		case "mpReplicaNum":
+			replicaNum = args[baseMetric.ValueName].(int64)
+			if !(replicaNum == 3 || replicaNum == 5) {
+				err = fmt.Errorf("元数据分片副本数为3或5！")
+				return
+			}
+		}
+	}
+	return
+}
+
+func (cli *CliService) batchSetVolMpReplicaNum(cluster string, volList []string, replicaNum int) error {
+	var errResult error
+	var params = make(map[string]string)
+	params["mpReplicaNum"] = strconv.Itoa(replicaNum)
+
+	for _, vol := range volList {
+		var err error
+		if cproto.IsRelease(cluster) {
+			err = cli.updateVolumeRelease(cluster, vol, params)
+		} else {
+			err = cli.updateVolume(cluster, vol, params)
+		}
+		if err != nil {
+			errResult = fmt.Errorf("%v, %v", errResult, err)
+		}
+	}
+	return errResult
+}
+
 func getBatchSetVolFollowerReadCfgArgs(args map[string]interface{}, operation int) (volList []string, weight, interval int64, err error) {
 	for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
 		switch baseMetric.ValueName {
@@ -525,6 +636,95 @@ func (cli *CliService) batchSetVolFollowerReadCfg(cluster string, volList []stri
 	var params = make(map[string]string)
 	params["follReadHostWeight"] = strconv.FormatInt(lowestDelayHostWeight, 10)
 	params["hostDelayInterval"] = strconv.FormatInt(collectInterval, 10)
+
+	for _, vol := range volList {
+		var err error
+		if cproto.IsRelease(cluster) {
+			err = cli.updateVolumeRelease(cluster, vol, params)
+		} else {
+			err = cli.updateVolume(cluster, vol, params)
+		}
+		if err != nil {
+			errResult = fmt.Errorf("%v, %v", errResult, err)
+		}
+	}
+	return errResult
+}
+
+func getBatchSetVolReqRemoveDupArgs(args map[string]interface{}, operation int) (volList []string, enable bool, reserveTime, reserveCnt int64, err error) {
+	for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
+		switch baseMetric.ValueName {
+		case "volume":
+			volListStr := args[baseMetric.ValueName].(string)
+			if volListStr == "" {
+				err = fmt.Errorf("请指定要设置的vol！")
+				return
+			}
+			volList = strings.Split(volListStr, ",")
+
+		case proto.VolRemoveDupFlagKey:
+			enable = args[baseMetric.ValueName].(bool)
+
+		case proto.ReqRecordReservedTimeKey:
+			reserveTime = args[baseMetric.ValueName].(int64)
+			if reserveTime < 0 {
+				err = fmt.Errorf("请输入正整数")
+				return
+			}
+
+		case proto.ReqRecordMaxCountKey:
+			reserveCnt = args[baseMetric.ValueName].(int64)
+			if reserveCnt < 0 {
+				err = fmt.Errorf("请输入正整数")
+				return
+			}
+		}
+	}
+	return
+}
+
+func (cli *CliService) batchSetVolReqRemoveDup(cluster string, volList []string, removeDup bool, reserveTime, reserveCnt int64) error {
+	var errResult error
+	var params = make(map[string]string)
+	params[proto.VolRemoveDupFlagKey] = strconv.FormatBool(removeDup)
+	params[proto.ReqRecordReservedTimeKey] = strconv.FormatInt(reserveTime, 10)
+	params[proto.ReqRecordMaxCountKey] = strconv.FormatInt(reserveCnt, 10)
+	for _, vol := range volList {
+		var err error
+		if cproto.IsRelease(cluster) {
+			err = cli.updateVolumeRelease(cluster, vol, params)
+		} else {
+			err = cli.updateVolume(cluster, vol, params)
+		}
+		if err != nil {
+			errResult = fmt.Errorf("%v, %v", errResult, err)
+		}
+	}
+	return errResult
+}
+
+func getBatchSetJSSVol(args map[string]interface{}, operation int) (volList []string, metaOut bool, err error) {
+	for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
+		switch baseMetric.ValueName {
+		case "volume":
+			volListStr := args[baseMetric.ValueName].(string)
+			if volListStr == "" {
+				err = fmt.Errorf("请指定要设置的vol！")
+				return
+			}
+			volList = strings.Split(volListStr, ",")
+
+		case proto.MetaOutKey:
+			metaOut = args[baseMetric.ValueName].(bool)
+		}
+	}
+	return
+}
+
+func (cli *CliService) batchSetJSSVol(cluster string, volList []string, metaOut bool) error {
+	var errResult error
+	var params = make(map[string]string)
+	params[proto.MetaOutKey] = strconv.FormatBool(metaOut)
 
 	for _, vol := range volList {
 		var err error

@@ -108,14 +108,23 @@ func (cli *CliService) SetVolumeConfig(ctx context.Context, cluster string, oper
 		}
 		for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
 			switch baseMetric.ValueName {
+			case "dpSelectorName":
+				dpSelectorName := args[baseMetric.ValueName].(string)
+				if dpSelectorName != "" && !(dpSelectorName == "default" || dpSelectorName == "kfaster") {
+					err = fmt.Errorf("请在default/kfaster中选择！")
+					return
+				}
+
 			case "dpSelectorParm":
 				dpParamStr := args[baseMetric.ValueName].(string)
-				dpParam, err := strconv.ParseInt(dpParamStr, 10, 8)
-				if err != nil {
-					return err
-				}
-				if dpParam <= 0 || dpParam >= 100 {
-					return fmt.Errorf("请输入0~100之间的数")
+				if dpParamStr != "" {
+					dpParam, err := strconv.ParseInt(dpParamStr, 10, 8)
+					if err != nil {
+						return err
+					}
+					if dpParam <= 0 || dpParam >= 100 {
+						return fmt.Errorf("请输入0~100之间的数")
+					}
 				}
 			}
 		}
@@ -317,6 +326,7 @@ func (cli *CliService) SetVolumeConfigList(ctx context.Context, cluster string, 
 		} else {
 			log.LogInfof("%s", msg)
 		}
+		cli.api.UpdateLimitInfoCache(cluster)
 	}()
 
 	switch operation {
@@ -398,9 +408,12 @@ func (cli *CliService) getVolume(operation int, cluster, volName string) ([]*cpr
 
 	case cproto.OpSetVolMeta:
 		return cproto.FormatArgsToValueMetrics(operation,
+			//volInfo.MetaOut,
 			volInfo.EnableBitMapAllocator,
 			volInfo.BitMapSnapFrozenHour,
 			volInfo.EnableRemoveDupReq,
+			0, // todo: vv.***, rebase_1230
+			0,
 			int(volInfo.DefaultStoreMode),
 			fmt.Sprintf("%d,%d", volInfo.MpLayout.PercentOfMP, volInfo.MpLayout.PercentOfReplica),
 			volInfo.BatchDelInodeCnt,

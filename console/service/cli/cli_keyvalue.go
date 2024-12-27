@@ -52,6 +52,7 @@ func (cli *CliService) SetKeyValueConfigList(ctx context.Context, cluster string
 	}()
 	if !skipXbp {
 		err = cli.createXbpApply(ctx, cluster, cproto.KeyValueModuleType, operation, metrics, nil, &operationMsg, true)
+		return
 	}
 
 	err = cli.sendKeyValueRequest(cluster, keyValueOperation, params)

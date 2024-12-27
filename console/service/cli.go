@@ -4,17 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/log"
-	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/cubefs/cubefs/console/cutil"
 	"github.com/cubefs/cubefs/console/model"
 	cproto "github.com/cubefs/cubefs/console/proto"
 	"github.com/cubefs/cubefs/console/service/cli"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
@@ -30,6 +28,10 @@ func NewCliService(clusters []*model.ConsoleCluster) *CliService {
 	}
 }
 
+func (cs *CliService) SType() cproto.ServiceType {
+	return cproto.CliService
+}
+
 func (cs *CliService) Schema() *graphql.Schema {
 	schema := schemabuilder.NewSchema()
 
@@ -40,9 +42,7 @@ func (cs *CliService) Schema() *graphql.Schema {
 	return schema.MustBuild()
 }
 
-func (cs *CliService) registerObject(schema *schemabuilder.Schema) {
-
-}
+func (cs *CliService) registerObject(schema *schemabuilder.Schema) {}
 
 func (cs *CliService) registerQuery(schema *schemabuilder.Schema) {
 	query := schema.Query()
@@ -51,6 +51,7 @@ func (cs *CliService) registerQuery(schema *schemabuilder.Schema) {
 	query.FieldFunc("listOpcode", cs.listOpCodeList)
 	query.FieldFunc("getConfig", cs.getConfig)
 	query.FieldFunc("getConfigList", cs.getConfigList)
+	query.FieldFunc("operationHistory", cs.getOperationHistory)
 }
 
 func (cs *CliService) registerMutation(schema *schemabuilder.Schema) {
@@ -209,20 +210,25 @@ func (cs *CliService) setConfig(ctx context.Context, args struct {
 }) (resp *cproto.GeneralResp, err error) {
 	cluster := args.Cluster
 	defer func() {
-		if err == nil && !cutil.Global_CFG.EnableXBP {
-			// xbp在回调执行后插到表中
-			record := model.NewCliOperation(
-				cluster,
-				cproto.GetModule(int(args.ModuleType)),
-				cproto.GetOpShortMsg(int(args.OperationType)),
-				ctx.Value(cutil.PinKey).(string),
-				fmt.Sprintf("%v", args.Metrics),
-			)
-			if args.VolName != nil {
-				record.VolName = *args.VolName
-			}
-			record.InsertRecord(record)
+		if err != nil {
+			return
 		}
+		if cutil.Global_CFG.EnableXBP {
+			return
+		}
+		record := model.NewCliOperation(
+			cluster,
+			cproto.GetModule(int(args.ModuleType)),
+			cproto.GetOpShortMsg(int(args.OperationType)),
+			ctx.Value(cutil.PinKey).(string),
+			fmt.Sprintf("%v", args.Metrics),
+			0,
+			model.CliOperationStatusSuccess,
+		)
+		if args.VolName != nil {
+			record.SetCliRecordVolume(*args.VolName)
+		}
+		record.InsertRecord(record)
 	}()
 	switch args.ModuleType {
 	case cproto.ClusterModuleType:
@@ -259,37 +265,55 @@ func (cs *CliService) getConfigList(ctx context.Context, args struct {
 	Cluster       string
 	ModuleType    int32
 	OperationType int32
-	VolName       *string // moduleType为vol时必填
-}) ([][]*cproto.CliValueMetric, error) {
-	cluster := args.Cluster
+	Filters       *[]*cproto.CliValueFilter //
+	VolName       *string                   // moduleType为vol时必填
+	Page          int32
+	PageSize      int32
+}) (*cproto.CliValueConfigList, error) {
+	var (
+		result = make([][]*cproto.CliValueMetric, 0)
+		resp   = new(cproto.CliValueConfigList)
+		err    error
+	)
+	defer func() {
+		if args.Filters != nil && len(*args.Filters) > 0 {
+			result = filterMetricsList(result, *args.Filters)
+		}
+		resp.Total = len(result)
+		resp.Data = pagingMetricsList(int(args.Page), int(args.PageSize), result)
+	}()
 	switch args.ModuleType {
 	case cproto.RateLimitModuleType:
-		return cs.cli.GetRatelimitConfigList(cluster, int(args.OperationType))
+		result, err = cs.cli.GetRatelimitConfigList(args.Cluster, int(args.OperationType))
 
 	case cproto.DataNodeModuleType:
-		return cs.cli.GetDataNodeConfigList(cluster, int(args.OperationType))
+		result, err = cs.cli.GetDataNodeConfigList(args.Cluster, int(args.OperationType))
 
 	case cproto.MetaNodeModuleType:
-		return cs.cli.GetMetaNodeConfigList(cluster, int(args.OperationType))
+		result, err = cs.cli.GetMetaNodeConfigList(args.Cluster, int(args.OperationType))
 
 	case cproto.NetworkModuleType:
-		return cs.cli.GetNetworkConfigList(cluster, int(args.OperationType))
+		result, err = cs.cli.GetNetworkConfigList(args.Cluster, int(args.OperationType))
 
 	case cproto.VolumeModuleType:
 		if args.VolName == nil {
 			return nil, fmt.Errorf("卷名不能为空！")
 		}
-		return cs.cli.GetVolumeConfigList(cluster, int(args.OperationType), *args.VolName)
+		result, err = cs.cli.GetVolumeConfigList(args.Cluster, int(args.OperationType), *args.VolName)
 
 	case cproto.BatchModuleType:
-		return cs.cli.GetBatchConfigList(cluster, int(args.OperationType))
+		result, err = cs.cli.GetBatchConfigList(args.Cluster, int(args.OperationType))
 
 	case cproto.KeyValueModuleType:
-		return cs.cli.GetKeyValueConfigList(cluster, int(args.OperationType))
+		result, err = cs.cli.GetKeyValueConfigList(args.Cluster, int(args.OperationType))
+
+	case cproto.FileMigrateModuleType:
+		result, err = cs.cli.GetFileMigrateConfigList(args.Cluster, int(args.OperationType))
 
 	default:
 		return nil, fmt.Errorf("undefined module type: %v:%v", args.ModuleType, "")
 	}
+	return resp, err
 }
 
 func (cs *CliService) setConfigList(ctx context.Context, args struct {
@@ -299,53 +323,61 @@ func (cs *CliService) setConfigList(ctx context.Context, args struct {
 	Metrics       [][]*cproto.CliValueMetric // 里层[] length一致 都是一个限速结构
 	VolName       *string
 }) (resp *cproto.GeneralResp, err error) {
-	cluster := args.Cluster
 	operationMsg := cproto.GetOpShortMsg(int(args.OperationType))
 	defer func() {
-		if err == nil {
-			record := model.NewCliOperation(
-				cluster,
-				cproto.GetModule(int(args.ModuleType)),
-				operationMsg, // key-value模块 的opMsg
-				ctx.Value(cutil.PinKey).(string),
-				fmt.Sprintf("%v", args.Metrics), //实际请求的字段
-			)
-			if args.VolName != nil {
-				record.VolName = *args.VolName
-			}
-			record.InsertRecord(record)
+		if err != nil {
+			return
 		}
+		if cutil.Global_CFG.EnableXBP {
+			return
+		}
+		record := model.NewCliOperation(
+			args.Cluster,
+			cproto.GetModule(int(args.ModuleType)),
+			operationMsg,
+			ctx.Value(cutil.PinKey).(string),
+			fmt.Sprintf("%v", args.Metrics),
+			0,
+			model.CliOperationStatusSuccess,
+		)
+		if args.VolName != nil {
+			record.SetCliRecordVolume(*args.VolName)
+		}
+		record.InsertRecord(record)
 	}()
 
 	switch args.ModuleType {
 	case cproto.RateLimitModuleType:
 		var modifyMetrics [][]*cproto.CliValueMetric
-		modifyMetrics, err = cs.cli.SetRatelimitConfigList(ctx, cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
+		modifyMetrics, err = cs.cli.SetRatelimitConfigList(ctx, args.Cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
 		if err == nil {
 			args.Metrics = modifyMetrics
 		}
 
 	case cproto.DataNodeModuleType:
-		err = cs.cli.SetDataNodeConfigList(ctx, cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
+		err = cs.cli.SetDataNodeConfigList(ctx, args.Cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
 
 	case cproto.MetaNodeModuleType:
-		err = cs.cli.SetMetaNodeConfigList(ctx, cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
+		err = cs.cli.SetMetaNodeConfigList(ctx, args.Cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
 
 	case cproto.NetworkModuleType:
-		err = cs.cli.SetNetworkConfigList(ctx, cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
+		err = cs.cli.SetNetworkConfigList(ctx, args.Cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
 
 	case cproto.VolumeModuleType:
 		if args.VolName == nil {
 			err = fmt.Errorf("卷名不能为空！")
 		} else {
-			err = cs.cli.SetVolumeConfigList(ctx, cluster, int(args.OperationType), args.Metrics, *args.VolName, !cutil.Global_CFG.EnableXBP)
+			err = cs.cli.SetVolumeConfigList(ctx, args.Cluster, int(args.OperationType), args.Metrics, *args.VolName, !cutil.Global_CFG.EnableXBP)
 		}
 
 	case cproto.BatchModuleType:
-		err = cs.cli.SetBatchConfigList(ctx, cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
+		err = cs.cli.SetBatchConfigList(ctx, args.Cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
 
 	case cproto.KeyValueModuleType:
-		operationMsg, err = cs.cli.SetKeyValueConfigList(ctx, cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
+		operationMsg, err = cs.cli.SetKeyValueConfigList(ctx, args.Cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
+
+	case cproto.FileMigrateModuleType:
+		err = cs.cli.SetFileMigrateConfigList(ctx, args.Cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
 
 	default:
 		err = fmt.Errorf("undefined module type: %v:%v", args.ModuleType, "")
@@ -430,6 +462,52 @@ func getRatelimitIndexOpMetrics() []*cproto.CliOpMetric {
 	return opMetrics
 }
 
+func filterMetricsList(metricsList [][]*cproto.CliValueMetric, filterList []*cproto.CliValueFilter) [][]*cproto.CliValueMetric {
+	result := make([][]*cproto.CliValueMetric, 0)
+	filters := cproto.FormatFiltersToMap(filterList)
+	if len(metricsList) == 0 {
+		return metricsList
+	}
+	for _, metrics := range metricsList {
+		match := true
+		for _, metric := range metrics {
+			if metric.IsFilter == 0 {
+				continue
+			}
+			// 需要前端做判断，没有填值的不传过来
+			if _, ok := filters[metric.ValueName]; !ok {
+				continue
+			}
+			if filters[metric.ValueName] != metric.Value {
+				match = false
+				break
+			}
+		}
+		if match {
+			result = append(result, metrics)
+		}
+	}
+	return result
+}
+
+func pagingMetricsList(page, pageSize int, metricsList [][]*cproto.CliValueMetric) [][]*cproto.CliValueMetric {
+	if page <= 0 {
+		page = 1
+	}
+	if pageSize <= 0 {
+		pageSize = 10
+	}
+	if pageSize >= len(metricsList) {
+		return metricsList
+	}
+	start := (page - 1) * pageSize
+	end := page * pageSize
+	if end > len(metricsList) {
+		end = len(metricsList)
+	}
+	return metricsList[start:end]
+}
+
 func (cs *CliService) getModuleList(cluster string) []*cproto.CliOpMetric {
 	module := make([]string, 0)
 	module = append(module, strings.ToLower(cproto.RoleNameMaster))
@@ -509,119 +587,33 @@ func getObjectActionList() []*cproto.CliOpMetric {
 	return opMetrics
 }
 
-func (cs *CliService) SolveXbpCallBack(w http.ResponseWriter, r *http.Request) (err error) {
+func (cs *CliService) DoXbpApply(apply *model.XbpApplyInfo) (err error) {
+	operationMsg := cproto.GetOpShortMsg(apply.OperationCode)
+	module := cproto.GetModule(apply.ModuleType)
 	defer func() {
+		var opStatus int
+		msg := fmt.Sprintf("doXbpApply: ticketID(%v) module(%v) operation(%v) pin(%v) params(%v)", apply.TicketID, module, operationMsg, apply.Pin, apply.Params)
 		if err != nil {
-			cutil.SendHttpReply(w, r, cutil.BuildHttpReply(1, err.Error()))
-		} else {
-			cutil.SendHttpReply(w, r, cutil.BuildHttpReply(0, "success"))
-		}
-		return
-	}()
-	if err = r.ParseForm(); err != nil {
-		return
-	}
-	var (
-		ticketID  uint64
-		typen     int
-		status    int
-		receiveTs int64
-	)
-	if value := r.FormValue(cproto.XbpParamTicketID); value == "" {
-		return fmt.Errorf("param[%v] not found", cproto.XbpParamTicketID)
-	} else {
-		ticketID, err = strconv.ParseUint(value, 10, 64)
-		if err != nil {
-			return
-		}
-	}
-	if value := r.FormValue(cproto.XbpParamType); value == "" {
-		return fmt.Errorf("param[%v] not found", cproto.XbpParamType)
-	} else {
-		typen, err = strconv.Atoi(value)
-		if err != nil {
-			return
-		}
-	}
-	if value := r.FormValue(cproto.XbpParamStatus); value == "" {
-		return fmt.Errorf("param[%v] not found", cproto.XbpParamStatus)
-	} else {
-		status, err = strconv.Atoi(value)
-		if err != nil {
-			return
-		}
-	}
-	if value := r.FormValue(cproto.XbpParamTimestamp); value == "" {
-		return fmt.Errorf("param[%v] not found", cproto.XbpParamStatus)
-	} else {
-		receiveTs, err = strconv.ParseInt(value, 10, 64)
-		if err != nil {
-			return
-		}
-	}
-	if typen != 0 {
-		return fmt.Errorf("不支持的审批单类型[%v]", typen)
-	}
-	log.LogInfof("SolveXbpCallBack: receive ticket[%v], time: %v", ticketID, time.Unix(receiveTs/1000, 0))
-	// 从数据库中提取
-	apply := model.XbpApplyInfo{}.LoadXbpApply(ticketID)
-	if apply == nil {
-		return fmt.Errorf("can't find apply record by tickeID[%v]", ticketID)
-	}
-	// 判断状态码
-	switch status {
-	case cproto.XBP_Withdrawn, cproto.XBP_Reject:
-		model.XbpApplyInfo{}.UpdateApplyStatus(ticketID, status)
-		return
-
-	case cproto.XBP_InProcessing:
-		return fmt.Errorf("申请单[%v]未结单", ticketID)
-
-	case cproto.XBP_Approved:
-		// 考虑完结单回调多次的情况
-		if apply.Status == cproto.XBP_InProcessing {
-			// 如果表中状态为新建态（0）  -- 先修改执行状态
-			// todo: 如果执行的过程中出错了 状态的变更
-			model.XbpApplyInfo{}.UpdateApplyStatus(ticketID, cproto.XBP_UnderDeploy)
-			return cs.doApply(apply)
-		} else if apply.Status == cproto.XBP_UnderDeploy || apply.Status == cproto.XBP_Approved {
-			// 如果表中状态为 在执行（3）和执行完成（1）  -- 直接返回
-			return
-		}
-
-	default:
-		return fmt.Errorf("非法xbp状态码：%v", status)
-	}
-	return
-}
-
-func (cs *CliService) doApply(apply *model.XbpApplyInfo) (err error) {
-	var operationMsg string
-	operationMsg = cproto.GetOpShortMsg(apply.OperationCode)
-	defer func() {
-		// 插入cli的表
-		// 更新apply表的状态
-		msg := fmt.Sprintf("doApply: ticketID(%v) module(%v) operation(%v) pin(%v) params(%v)", apply.TicketID, cproto.GetModule(apply.ModuleType), cproto.GetOpShortMsg(apply.OperationCode), apply.Pin, apply.Params)
-		if err != nil {
+			opStatus = model.CliOperationStatusFailed
 			model.XbpApplyInfo{}.UpdateApplyStatus(apply.TicketID, cproto.XBP_DelpoyFailed)
 			log.LogErrorf("%v: failed, err(%v)", msg, err)
 		} else {
+			opStatus = model.CliOperationStatusSuccess
 			model.XbpApplyInfo{}.UpdateApplyStatus(apply.TicketID, cproto.XBP_Approved)
-			// 把ticket_id 和cli操作绑定
-			cliRecord := model.NewCliOperation(
-				apply.Cluster,
-				cproto.GetModule(apply.ModuleType),
-				operationMsg,
-				apply.Pin,
-				fmt.Sprintf(apply.Params),
-			)
-			if apply.Volume != "" {
-				cliRecord.VolName = apply.Volume
-			}
-			cliRecord.TicketID = apply.TicketID
-			cliRecord.InsertRecord(cliRecord)
-			log.LogErrorf("%v: success", msg)
+			log.LogInfof("%v: success", msg)
 		}
+		cliRecord := model.NewCliOperation(
+			apply.Cluster,
+			module,
+			operationMsg,
+			apply.Pin,
+			fmt.Sprintf(apply.Params),
+			apply.TicketID,
+			opStatus,
+		)
+		cliRecord.SetCliRecordVolume(apply.Volume)
+		cliRecord.SetErrMsg(err)
+		cliRecord.InsertRecord(cliRecord)
 	}()
 	var argsMetric [][]*cproto.CliValueMetric
 	if err = json.Unmarshal([]byte(apply.Params), &argsMetric); err != nil {
@@ -642,65 +634,85 @@ func (cs *CliService) doApply(apply *model.XbpApplyInfo) (err error) {
 	case cproto.ClusterModuleType:
 		if apply.OperationIsList {
 			err = fmt.Errorf("non-list operation: %v", operationMsg)
-			return
+		} else {
+			err = cs.cli.SetClusterConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
 		}
-		return cs.cli.SetClusterConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
 
 	case cproto.DataNodeModuleType:
 		if apply.OperationIsList {
-			err = fmt.Errorf("non-list operation: %v", operationMsg)
-			return nil
+			err = cs.cli.SetDataNodeConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
+		} else {
+			err = cs.cli.SetDataNodeConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
 		}
-		return cs.cli.SetDataNodeConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
 
 	case cproto.MetaNodeModuleType:
 		if apply.OperationIsList {
-			return cs.cli.SetMetaNodeConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
+			err = cs.cli.SetMetaNodeConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
 		} else {
-			return cs.cli.SetMetaNodeConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
+			err = cs.cli.SetMetaNodeConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
 		}
 
 	case cproto.NetworkModuleType:
 		if apply.OperationIsList {
-			return cs.cli.SetNetworkConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
+			err = cs.cli.SetNetworkConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
 		} else {
-			return cs.cli.SetNetworkConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
+			err = cs.cli.SetNetworkConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
 		}
 
 	case cproto.RateLimitModuleType:
 		if apply.OperationIsList {
 			_, err = cs.cli.SetRatelimitConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
-			return err
 		} else {
-			return cs.cli.SetRatelimitConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
+			err = cs.cli.SetRatelimitConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
 		}
 
 	case cproto.VolumeModuleType:
 		if apply.OperationIsList {
-			return cs.cli.SetVolumeConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, apply.Volume, true)
+			err = cs.cli.SetVolumeConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, apply.Volume, true)
 		} else {
-			return cs.cli.SetVolumeConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], apply.Volume, true)
+			err = cs.cli.SetVolumeConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], apply.Volume, true)
 		}
 
 	case cproto.BatchModuleType:
 		if !apply.OperationIsList {
 			err = fmt.Errorf("only-list operation: %v", operationMsg)
-			return
 		} else {
-			return cs.cli.SetBatchConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
+			err = cs.cli.SetBatchConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
 		}
 
 	case cproto.KeyValueModuleType:
 		if !apply.OperationIsList {
 			err = fmt.Errorf("only-list operation: %v", operationMsg)
-			return
 		} else {
 			operationMsg, err = cs.cli.SetKeyValueConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
-			return
 		}
-
-	default:
+	case cproto.FileMigrateModuleType:
+		if !apply.OperationIsList {
+			err = fmt.Errorf("only-list operation: %v", operationMsg)
+		} else {
+			err = cs.cli.SetFileMigrateConfigList(nil, apply.Cluster, apply.OperationCode, argsMetric, true)
+		}
 	}
+	return err
+}
 
-	return nil
+func (cs *CliService) getOperationHistory(ctx context.Context, args struct {
+	Cluster       string
+	ModuleType    int32
+	OperationType int32
+	Page          int32
+	PageSize      int32
+}) (*cproto.CliOperationHistoryResponse, error) {
+	// 查表，操作记录， 结果入表
+	module := cproto.GetModule(int(args.ModuleType))
+	operation := cproto.GetOpShortMsg(int(args.OperationType))
+	total, records, err := cs.cli.GetOperationHistory(args.Cluster, module, operation, int(args.Page), int(args.PageSize))
+	if err != nil {
+		log.LogErrorf("GetOperationHistory failed: cluster(%s) module(%s) operation(%s) err(%v)", args.Cluster, module, operation, err)
+		return nil, err
+	}
+	return &cproto.CliOperationHistoryResponse{
+		Total:   int(total),
+		Records: records,
+	}, nil
 }

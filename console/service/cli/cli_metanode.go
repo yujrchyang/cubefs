@@ -164,9 +164,9 @@ func (cli *CliService) SetMetaNodeConfig(ctx context.Context, cluster string, op
 			log.LogErrorf("%s, err(%v)", msg, err)
 		} else {
 			log.LogInfof("%v, metrics:%v", msg, metrics)
-			cli.api.UpdateLimitInfoCache(cluster)
-			cli.api.UpdateClusterViewCache(cluster)
 		}
+		cli.api.UpdateLimitInfoCache(cluster)
+		cli.api.UpdateClusterViewCache(cluster)
 	}()
 
 	if args, err = cproto.ParseValueMetricsToArgs(operation, metrics); err != nil {
@@ -396,8 +396,8 @@ func (cli *CliService) SetMetaNodeConfigList(ctx context.Context, cluster string
 			log.LogErrorf("%s, err(%v)", msg, err)
 		} else {
 			log.LogInfof("%s", msg)
-			cli.api.UpdateLimitInfoCache(cluster)
 		}
+		cli.api.UpdateLimitInfoCache(cluster)
 	}()
 
 	isRelease := cproto.IsRelease(cluster)

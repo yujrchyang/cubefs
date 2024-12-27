@@ -37,8 +37,8 @@ func (cli *CliService) SetNetworkConfig(ctx context.Context, cluster string, ope
 			log.LogErrorf("%s err(%v)", msg, err)
 		} else {
 			log.LogInfof("%s", msg)
-			cli.api.UpdateLimitInfoCache(cluster)
 		}
+		cli.api.UpdateLimitInfoCache(cluster)
 	}()
 
 	args, err := cproto.ParseValueMetricsToArgs(operation, metric)
@@ -126,8 +126,8 @@ func (cli *CliService) SetNetworkConfigList(ctx context.Context, cluster string,
 			log.LogErrorf("%s err(%v)", msg, err)
 		} else {
 			log.LogInfof("%s", msg)
-			cli.api.UpdateLimitInfoCache(cluster)
 		}
+		cli.api.UpdateLimitInfoCache(cluster)
 	}()
 
 	params := make([]map[string]string, 0)

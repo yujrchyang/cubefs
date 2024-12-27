@@ -45,9 +45,9 @@ func (cli *CliService) SetRatelimitConfig(ctx context.Context, cluster string, o
 			log.LogErrorf("%s, err(%v)", msg, err)
 		} else {
 			log.LogInfof("%s, metrics:%v", msg, metrics)
-			cli.api.UpdateClusterViewCache(cluster)
-			cli.api.UpdateLimitInfoCache(cluster)
 		}
+		cli.api.UpdateClusterViewCache(cluster)
+		cli.api.UpdateLimitInfoCache(cluster)
 	}()
 
 	var args map[string]interface{}
@@ -193,8 +193,8 @@ func (cli *CliService) SetRatelimitConfigList(ctx context.Context, cluster strin
 			log.LogErrorf("%s err: %v", msg, err)
 		} else {
 			log.LogInfof("%s", msg)
-			cli.api.UpdateLimitInfoCache(cluster)
 		}
+		cli.api.UpdateLimitInfoCache(cluster)
 	}()
 
 	isRelease := cproto.IsRelease(cluster)
@@ -537,12 +537,12 @@ func formatLimitMetricsKeyValue(metrics []*cproto.CliValueMetric) (key string, v
 // zone和vol 都设定成默认值  _ ?
 func formatRateLimitToMap(zoneVolOpMap map[string]map[int]proto.AllLimitGroup) map[string]int64 {
 	result := make(map[string]int64)
-	var (
-		zone string
-		vol  string
-	)
 	for zoneOrVol, opMap := range zoneVolOpMap {
-		var prefix string
+		var (
+			prefix string
+			zone   string
+			vol    string
+		)
 		if strings.HasPrefix(zoneOrVol, multirate.ZonePrefix) {
 			zone = strings.TrimPrefix(zoneOrVol, multirate.ZonePrefix)
 		} else {
@@ -568,7 +568,7 @@ func formatRateLimitToMap(zoneVolOpMap map[string]map[int]proto.AllLimitGroup) m
 		}
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("formatRateLimitToMap: %v", result)
+		log.LogDebugf("formatRateLimitToMap: %v, len(result)=%v", result, len(result))
 	}
 	return result
 }
@@ -789,9 +789,9 @@ func (cli *CliService) getLimitMetricsByModule(cluster, module string, operation
 			}
 			for index, value := range limitMap {
 				// timeout ns->ms 转化
-				if index == 0 {
-					value = value / 1e6
-				}
+				//if index == 0 {
+				//	value = value / 1e6
+				//}
 				result = append(result, cproto.FormatArgsToValueMetrics(operation, zone, vol, op, index, value))
 			}
 		}
@@ -818,17 +818,17 @@ func (cli *CliService) batchSetRateLimit(cluster string, operation int, params [
 	)
 	for _, param := range params {
 		// 定制化的参数校验
-		if rateLimitIndex, ok := param[proto.RateLimitIndexKey]; ok && rateLimitIndex == "0" {
-			// 用户输入的时间 ms转化为ns
-			rateLimitStr := param["rateLimit"]
-			if rateLimitStr != "" {
-				timeout_ms, er := strconv.ParseInt(rateLimitStr, 10, 64)
-				if er != nil {
-					return er
-				}
-				param["rateLimit"] = strconv.FormatInt(timeout_ms*1e6, 10)
-			}
-		}
+		//if rateLimitIndex, ok := param[proto.RateLimitIndexKey]; ok && rateLimitIndex == "0" {
+		//	// 用户输入的时间 ms转化为ns
+		//	rateLimitStr := param["rateLimit"]
+		//	if rateLimitStr != "" {
+		//		timeout_ms, er := strconv.ParseInt(rateLimitStr, 10, 64)
+		//		if er != nil {
+		//			return er
+		//		}
+		//		param["rateLimit"] = strconv.FormatInt(timeout_ms*1e6, 10)
+		//	}
+		//}
 
 		if volumeName, ok := param["volume"]; ok && cproto.IsMultiSelectValue(operation) {
 			// 多选下拉，解析
