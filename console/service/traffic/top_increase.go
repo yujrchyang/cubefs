@@ -37,69 +37,84 @@ start 值, end 0: 从start 到现在
 start 值, end 值：区间 变化
 start 0, end 值：过去-现在 -(变化)
 */
-func parseTopIncRequestTime(req *cproto.HistoryCurveRequest) (start, end time.Time) {
+func parseTopIncRequestTime(req *cproto.HistoryCurveRequest) (start0, start1, end0, end1 time.Time) {
 	defer func() {
-		start = time.Date(start.Year(), start.Month(), start.Day(), start.Hour(), 0, 0, 0, time.Local)
-		end = time.Date(end.Year(), end.Month(), end.Day(), end.Hour(), 0, 0, 0, time.Local)
+		start1 = start0.Add(1 * time.Hour)
+		end1 = end0.Add(1 * time.Hour)
+		if req.IntervalType > cproto.ResourceNoType && end0.Minute() <= 15 {
+			// 当前时间点在统计时间点(15)之前，取前一小时数据
+			end1.Add(-1 * time.Hour)
+			end0.Add(-1 * time.Hour)
+		}
+		start0 = start0.Truncate(time.Hour)
+		start1 = start1.Truncate(time.Hour)
+		end0 = end0.Truncate(time.Hour)
+		end1 = end1.Truncate(time.Hour)
 	}()
 	var (
 		now = time.Now()
 	)
 	switch req.IntervalType {
 	case cproto.ResourceLatestOneDay:
-		start = now.AddDate(0, 0, -1)
-		end = now
+		start0 = now.AddDate(0, 0, -1)
+		end0 = now
 
 	case cproto.ResourceLatestOneWeek:
-		start = now.AddDate(0, 0, -7)
-		end = now
+		start0 = now.AddDate(0, 0, -7)
+		end0 = now
 
 	case cproto.ResourceLatestOneMonth:
-		start = now.AddDate(0, -1, 0)
-		end = now
+		start0 = now.AddDate(0, -1, 0)
+		end0 = now
 
 	default:
 		if req.Start == 0 {
-			start = now.AddDate(0, 0, -1)
+			start0 = now.AddDate(0, 0, -1)
 		} else {
-			start = time.Unix(req.Start, 0)
+			start0 = time.Unix(req.Start, 0)
 		}
 		if req.End == 0 {
-			end = now
+			end0 = now
 		} else {
-			end = time.Unix(req.End, 0)
+			end0 = time.Unix(req.End, 0)
 		}
 	}
 	return
 }
 
-func GetTopIncreaseVol(req *cproto.HistoryCurveRequest, strictZone bool, orderBy int) []*TopIncrease {
+func GetTopIncreaseVol(req *cproto.HistoryCurveRequest, strictZone bool, source string, orderBy, orderField int) []*TopIncrease {
 	var (
-		zoneFilter    string
-		orderByFilter string
-		topN          = 10
+		zoneFilter   string
+		sourceFilter string
+		topN         = 30
 	)
+	var getOrderByFilter = func() string {
+		t1 := "increase_tb"
+		t2 := "DESC"
+		if orderField > 0 {
+			t1 = "used_tb"
+		}
+		if orderBy > 0 {
+			t2 = "ASC"
+		}
+		return fmt.Sprintf("%s %s ", t1, t2)
+	}
 	if strictZone {
 		zoneFilter = fmt.Sprintf("zone = '%s'", req.ZoneName)
 	} else {
 		zoneFilter = fmt.Sprintf("zone like '%s'", "%"+req.ZoneName+"%")
 	}
-
-	if orderBy == 0 {
-		orderByFilter = fmt.Sprintf("increase_tb DESC ")
-	} else if orderBy == 1 {
-		orderByFilter = fmt.Sprintf("increase_tb ASC ")
+	if source != "" {
+		sourceFilter = fmt.Sprintf("source = '%s'", source)
+	} else {
+		sourceFilter = fmt.Sprintf("1 = 1")
 	}
-
 	if cproto.IsRelease(req.Cluster) {
 		// for db_back集群
 		zoneFilter = fmt.Sprintf("1 = 1")
 	}
 
-	start1, end1 := parseTopIncRequestTime(req)
-	start0 := start1.Add(-1 * time.Hour)
-	end0 := end1.Add(-1 * time.Hour)
-
+	start0, start1, end0, end1 := parseTopIncRequestTime(req)
 	startFilter := fmt.Sprintf("update_time >= '%s' and update_time < '%s'", start0.Format(time.DateTime), start1.Format(time.DateTime))
 	endFilter := fmt.Sprintf("update_time >= '%s' and update_time < '%s'", end0.Format(time.DateTime), end1.Format(time.DateTime))
 	if log.IsDebugEnabled() {
@@ -117,7 +132,8 @@ func GetTopIncreaseVol(req *cproto.HistoryCurveRequest, strictZone bool, orderBy
 		"volume, (used_gb*dp_replica_num) as used_gb "+
 		"from console_volume_history_info "+
 		"where "+
-		"cluster = ? "+
+		"%s "+
+		"and cluster = ? "+
 		"and %s "+
 		"and %s "+
 		"group by "+
@@ -129,7 +145,8 @@ func GetTopIncreaseVol(req *cproto.HistoryCurveRequest, strictZone bool, orderBy
 		"cluster, volume, zone, create_time, (used_gb*dp_replica_num) as used_gb, pin, source, department, update_time "+
 		"from console_volume_history_info "+
 		"where "+
-		"cluster = ? "+
+		"%s "+
+		"and cluster = ? "+
 		"and %s "+
 		"and %s "+
 		"group by "+
@@ -139,7 +156,7 @@ func GetTopIncreaseVol(req *cproto.HistoryCurveRequest, strictZone bool, orderBy
 		"order by "+
 		"%s "+
 		"limit ?",
-		timeFormatter, zoneFilter, startFilter, zoneFilter, endFilter, orderByFilter)
+		timeFormatter, startFilter, zoneFilter, sourceFilter, endFilter, zoneFilter, sourceFilter, getOrderByFilter())
 	if log.IsDebugEnabled() {
 		log.LogDebugf("%s", sqlStr)
 	}
@@ -154,35 +171,38 @@ func GetTopIncreaseVol(req *cproto.HistoryCurveRequest, strictZone bool, orderBy
 	return result
 }
 
-func GetTopIncreaseSource(req *cproto.HistoryCurveRequest, strictZone bool, orderBy int) []*TopIncrease {
+func GetTopIncreaseSource(req *cproto.HistoryCurveRequest, strictZone bool, orderBy, orderField int) []*TopIncrease {
 	var (
-		zoneFilter    string
-		orderByFilter string
-		topN          = 10
+		zoneFilter string
+		topN       = 10
 	)
+	var getOrderByFilter = func() string {
+		t1 := "increase_tb"
+		t2 := "DESC"
+		if orderField > 0 {
+			t1 = "used_tb"
+		}
+		if orderBy > 0 {
+			t2 = "ASC"
+		}
+		return fmt.Sprintf("%s %s ", t1, t2)
+	}
 	if strictZone {
 		zoneFilter = fmt.Sprintf("zone = '%s'", req.ZoneName)
 	} else {
 		zoneFilter = fmt.Sprintf("zone like '%s'", "%"+req.ZoneName+"%")
 	}
-
-	if orderBy == 0 {
-		orderByFilter = fmt.Sprintf("increase_tb DESC ")
-	} else if orderBy == 1 {
-		orderByFilter = fmt.Sprintf("increase_tb ASC ")
-	}
-
 	if cproto.IsRelease(req.Cluster) {
 		// for db_back集群
 		zoneFilter = fmt.Sprintf("1 = 1")
 	}
 
-	start1, end1 := parseTopIncRequestTime(req)
-	start0 := start1.Add(-1 * time.Hour)
-	end0 := end1.Add(-1 * time.Hour)
-
+	start0, start1, end0, end1 := parseTopIncRequestTime(req)
 	startFilter := fmt.Sprintf("update_time >= '%s' and update_time < '%s'", start0.Format(time.DateTime), start1.Format(time.DateTime))
 	endFilter := fmt.Sprintf("update_time >= '%s' and update_time < '%s'", end0.Format(time.DateTime), end1.Format(time.DateTime))
+	if log.IsDebugEnabled() {
+		log.LogDebugf("startFilter: %v, endFilter: %v", startFilter, endFilter)
+	}
 	timeFormatter := "DATE_FORMAT(b.update_time, '%Y-%m-%d %H:%i:%s')"
 	sqlStr := fmt.Sprintf(""+
 		"select "+
@@ -217,7 +237,7 @@ func GetTopIncreaseSource(req *cproto.HistoryCurveRequest, strictZone bool, orde
 		"order by "+
 		"%s "+
 		"limit ?",
-		timeFormatter, zoneFilter, startFilter, zoneFilter, endFilter, orderByFilter)
+		timeFormatter, zoneFilter, startFilter, zoneFilter, endFilter, getOrderByFilter())
 	if log.IsDebugEnabled() {
 		log.LogDebugf("%s", sqlStr)
 	}

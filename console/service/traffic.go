@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/cubefs/cubefs/console/cutil"
 	"github.com/cubefs/cubefs/console/model"
@@ -15,7 +14,6 @@ import (
 	"github.com/cubefs/cubefs/console/service/traffic"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
-	"github.com/robfig/cron"
 	"github.com/samsarahq/thunder/graphql"
 	"github.com/samsarahq/thunder/graphql/schemabuilder"
 )
@@ -36,26 +34,8 @@ func NewTrafficService(clusters []*model.ConsoleCluster, stopC chan bool) *Traff
 	return ts
 }
 
-func InitTrafficCronTask(stopC chan bool) {
-	log.LogInfof("InitTrafficCronTask: time(%v)", time.Now())
-	c := cron.New()
-	// 每天15点40统计vol请求数
-	c.AddFunc("40 15 * * *", traffic.CollectVolumeOps)
-	// 每小时15分,迁移volInfo历史数据
-	c.AddFunc("15 0/1 * * *", traffic.MigrateVolumeHistoryData)
-	// 每10倍数分钟触发一次(容量、使用量、inode数、可写dp数、client_count) 保留3天
-	c.AddFunc("0/10 * * * *", traffic.CollectVolumeInfo)
-	// 每小时1次(整点)，降低并发，或请求节点而非master
-	// c.AddFunc("0 * * * *", traffic.CollectHostUsedInfo)
-
-	c.Start()
-	defer c.Stop()
-
-	select {
-	case <-stopC:
-		log.LogInfof("exit TrafficCronTask: now(%v)", time.Now().Format(time.DateTime))
-		return
-	}
+func (ts *TrafficService) SType() cproto.ServiceType {
+	return cproto.TrafficService
 }
 
 func (ts *TrafficService) Schema() *graphql.Schema {
@@ -64,7 +44,6 @@ func (ts *TrafficService) Schema() *graphql.Schema {
 	ts.registerObject(schema)
 	ts.registerQuery(schema)
 	ts.registerMutation(schema)
-
 	return schema.MustBuild()
 }
 
@@ -73,11 +52,12 @@ func (ts *TrafficService) registerObject(schema *schemabuilder.Schema) {
 
 func (ts *TrafficService) registerQuery(schema *schemabuilder.Schema) {
 	query := schema.Query()
+	query.FieldFunc("topVol", ts.listTopVol)
 	query.FieldFunc("abnormalVol", ts.abnormalVol)
 	query.FieldFunc("noDeleteVol", ts.listNoDeleteVol)
 	query.FieldFunc("zombieVolume", ts.getZombieVolume)
 	query.FieldFunc("noClientVol", ts.getNoClientVol)
-	query.FieldFunc("topVol", ts.listTopVol)
+
 	query.FieldFunc("historyCurve", ts.volumeHistoryData)
 	query.FieldFunc("topIncrease", ts.topIncrease)
 
@@ -99,24 +79,27 @@ func (ts *TrafficService) registerQuery(schema *schemabuilder.Schema) {
 func (ts *TrafficService) registerMutation(schema *schemabuilder.Schema) {
 }
 
+func (ts *TrafficService) DoXbpApply(apply *model.XbpApplyInfo) error {
+	return nil
+}
+
 // 异常vol统计
 func (ts *TrafficService) abnormalVol(ctx context.Context, args struct {
 	Cluster *string
 }) (*cproto.AbnormalVolResponse, error) {
 	cluster := cutil.GetClusterParam(args.Cluster)
 
-	zombie := model.ConsoleVolume{}
-	zombieVols, err := zombie.LoadZombieVols(cluster)
+	zombieVols, err := model.LoadZombieVols(cluster)
 	if err != nil {
 		return nil, err
 	}
-	noDeletedVols, err := zombie.LoadNoDeleteVol(cluster)
+	noDeletedVols, err := model.LoadNoDeleteVol(cluster)
 	if err != nil {
 		return nil, err
 	}
 
 	// 获取vol个数
-	volumeList := traffic.GetVolList(cluster, cproto.IsRelease(cluster))
+	volumeList := traffic.GetVolList(cluster, ts.api)
 	return &cproto.AbnormalVolResponse{
 		Total:            int64(len(volumeList)),
 		ZombieVolCount:   int64(len(zombieVols)),
@@ -132,7 +115,7 @@ func (ts *TrafficService) getZombieVolume(ctx context.Context, args struct {
 	PageSize int32
 }) (*cproto.ZombieVolResponse, error) {
 	cluster := cutil.GetClusterParam(args.Cluster)
-	result, err := model.LoadZombieVolDetails(cluster)
+	result, err := model.LoadZombieVolDetails(cluster, int(args.Page), int(args.PageSize))
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +136,7 @@ func (ts *TrafficService) listNoDeleteVol(ctx context.Context, args struct {
 	PageSize int32
 }) (*cproto.ZombieVolResponse, error) {
 	cluster := cutil.GetClusterParam(args.Cluster)
-	result, err := model.LoadNoDeletedVolDetails(cluster)
+	result, err := model.LoadNoDeletedVolDetails(cluster, int(args.Page), int(args.PageSize))
 	if err != nil {
 		return nil, err
 	}
@@ -195,17 +178,27 @@ func (ts *TrafficService) getNoClientVol(ctx context.Context, args struct {
 func (ts *TrafficService) listTopVol(ctx context.Context, args struct {
 	Cluster *string
 	TopN    *int32
+	Zone    *string
+	Source  *string
 }) (*cproto.TopVolResponse, error) {
 	cluster := cutil.GetClusterParam(args.Cluster)
 	topN := flow.DefaultTopN
 	if args.TopN != nil {
 		topN = int(*args.TopN)
 	}
-	topInode, err := model.LoadInodeTopNVol(cluster, topN)
+	var zone string
+	if args.Zone != nil {
+		zone = *args.Zone
+	}
+	var source string
+	if args.Source != nil {
+		source = *args.Source
+	}
+	topInode, err := model.LoadInodeTopNVol(cluster, topN, zone, source, 0)
 	if err != nil {
 		return nil, err
 	}
-	topUsed, err := model.LoadUsedGBTopNVol(cluster, topN)
+	topUsed, err := model.LoadUsedGBTopNVol(cluster, topN, zone, source, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -240,15 +233,16 @@ func (ts *TrafficService) volumeHistoryData(ctx context.Context, args struct {
 }
 
 func (ts *TrafficService) topIncrease(ctx context.Context, args struct {
-	Cluster string
-	Zone    string
-	Mode    int32 // 0-查vol  1-查source
-	//ResourceType int32 // 0-增量   1-使用量   todo： 增加过滤项
+	Cluster    string
+	Zone       string
+	Mode       int32 // 0-查vol  1-查source
 	StartTime  int64 // 秒级时间戳(10位)
 	EndTime    int64
-	Interval   int32  // 近一周 近一月 近三月 0
-	StrictZone *int32 // 0-跨zone 1-单zone
-	OrderBy    *int32 // 0-增量降序 0-增量升序（下降）
+	Interval   int32   // 近一周 近一月 近三月 0
+	StrictZone *int32  // 0-跨zone 1-单zone
+	OrderBy    *int32  // 0-增量降序 0-增量升序
+	Source     *string // zone-topVol的过滤
+	OrderField *int32  // 0-增量 1-使用量
 }) []*traffic.TopIncrease {
 	request := &cproto.HistoryCurveRequest{
 		Cluster:      args.Cluster,
@@ -266,12 +260,21 @@ func (ts *TrafficService) topIncrease(ctx context.Context, args struct {
 	if args.OrderBy != nil {
 		orderBy = int(*args.OrderBy)
 	}
+	source := ""
+	if args.Source != nil {
+		source = *args.Source
+	}
+	orderField := 0
+	if args.OrderField != nil {
+		orderField = int(*args.OrderField)
+	}
 
 	switch args.Mode {
 	case traffic.TopVol:
-		return traffic.GetTopIncreaseVol(request, strict, orderBy)
+		return traffic.GetTopIncreaseVol(request, strict, source, orderBy, orderField)
+
 	case traffic.TopSource:
-		return traffic.GetTopIncreaseSource(request, strict, orderBy)
+		return traffic.GetTopIncreaseSource(request, strict, orderBy, orderField)
 	}
 	return nil
 }

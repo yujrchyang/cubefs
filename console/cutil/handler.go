@@ -31,6 +31,7 @@ import (
 const (
 	SSOLoginCookie = "sso.jd.com"
 	PinKey         = "_pin_key"
+	XbpTicketID    = "ticketID"
 )
 
 func Token(r *http.Request) (string, error) {

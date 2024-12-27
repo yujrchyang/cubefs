@@ -30,34 +30,56 @@ func (VolumeSummaryView) TableName() string {
 
 // 字段：volName inodeCount  usedGB
 // 最新0点的更新的数据
-func LoadInodeTopNVol(cluster string, topN int) (r []*VolumeSummaryView, err error) {
+func LoadInodeTopNVol(cluster string, topN int, zone, source string, orderBy int) (r []*VolumeSummaryView, err error) {
 	r = make([]*VolumeSummaryView, 0)
 
 	end := time.Now()
-	start := end.AddDate(0, 0, -1)
-	if err = cutil.CONSOLE_DB.Table(volumeHistoryTableName).
+	start := end.Add(-10 * time.Minute)
+	dbHandle := cutil.CONSOLE_DB.Table(ConsoleVolume{}.TableName()).
 		Select("volume as vol_name, inode_count").
-		Where("cluster = ?", cluster).
 		Where("update_time >= ? AND update_time < ?", start, end).
-		Order("inode_count DESC").
-		Limit(topN).Scan(&r).Error; err != nil {
-		log.LogErrorf("LoadInodeTopNVol err: %v", err)
+		Where("cluster = ?", cluster)
+	if len(zone) > 0 {
+		dbHandle.Where("zone = ?", zone)
+	}
+	if len(source) > 0 {
+		dbHandle.Where("source = ?", source)
+	}
+	if orderBy == 0 {
+		dbHandle.Order("inode_count DESC")
+	} else {
+		dbHandle.Order("inode_count ASC")
+	}
+	if err = dbHandle.Limit(topN).
+		Scan(&r).Error; err != nil {
+		log.LogErrorf("LoadInodeTopNVol failed: cluster(%v) err(%v)", cluster, err)
 	}
 	return
 }
 
-func LoadUsedGBTopNVol(cluster string, topN int) (r []*VolumeSummaryView, err error) {
+func LoadUsedGBTopNVol(cluster string, topN int, zone, source string, orderBy int) (r []*VolumeSummaryView, err error) {
 	r = make([]*VolumeSummaryView, 0)
 
 	end := time.Now()
-	start := end.AddDate(0, 0, -1)
-	if err = cutil.CONSOLE_DB.Table(volumeHistoryTableName).
+	start := end.Add(-10 * time.Minute)
+	dbHandle := cutil.CONSOLE_DB.Table(ConsoleVolume{}.TableName()).
 		Select("volume as vol_name, used_gb").
 		Where("cluster = ?", cluster).
-		Where("update_time >= ? and update_time < ?", start, end).
-		Order("used_gb DESC").
-		Limit(topN).Scan(&r).Error; err != nil {
-		log.LogErrorf("LoadUsedGBTopNVol err: %v", err)
+		Where("update_time >= ? and update_time < ?", start, end)
+	if len(zone) > 0 {
+		dbHandle.Where("zone = ?", zone)
+	}
+	if len(source) > 0 {
+		dbHandle.Where("source = ?", source)
+	}
+	if orderBy == 0 {
+		dbHandle.Order("used_gb DESC")
+	} else {
+		dbHandle.Order("used_gb ASC")
+	}
+	if err = dbHandle.Limit(topN).
+		Scan(&r).Error; err != nil {
+		log.LogErrorf("LoadUsedGBTopNVol failed: cluster(%v) err(%v)", cluster, err)
 	}
 	return
 }

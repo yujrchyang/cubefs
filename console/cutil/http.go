@@ -95,9 +95,9 @@ func SendSimpleRequest(r *HttpRequest, isRelease bool) (data []byte, err error) 
 			log.LogErrorf("sendSimpleRequest: Unmarshal err(%v) url(%v)", err, url)
 			return
 		}
-		// 有的接口 code会返回200 有的接口为其他值
+		// code 200或0 标记成功
 		if reply.Code != http.StatusOK && reply.Code != 0 {
-			return nil, fmt.Errorf("sendSimpleRequest: reply.Code != 0, reply:%v", reply)
+			return nil, fmt.Errorf("sendSimpleRequest: reply.Code != 0, reply:%v, url(%s)", reply, url)
 		}
 		data = reply.Data
 	}
@@ -128,7 +128,7 @@ func mergeRequestUrl(url string, params map[string]string) string {
 }
 
 func SendHttpReply(w http.ResponseWriter, r *http.Request, reply *HTTPReply) {
-	log.LogDebugf("URL[%v],remoteAddr[%v],response[%v]", r.URL, r.RemoteAddr, reply)
+	log.LogDebugf("URL[%v]: remoteAddr[%v] response[%v]", r.URL, r.RemoteAddr, reply)
 	data, err := json.Marshal(reply)
 	if err != nil {
 		http.Error(w, "fail to marshal http reply", http.StatusInternalServerError)

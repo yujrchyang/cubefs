@@ -21,6 +21,131 @@ const (
 	ZombiePeriodMonth
 )
 
+type ConsoleVolumeOps struct {
+	ID             uint64    `gorm:"column:id"`
+	Cluster        string    `gorm:"column:cluster"`
+	Zone           string    `gorm:"column:zone"`
+	Source         string    `gorm:"column:source"`
+	Volume         string    `gorm:"column:volume"`
+	TotalGB        uint64    `gorm:"column:total_gb"`
+	UsedGB         uint64    `gorm:"column:used_gb"`
+	Ops            uint64    `gorm:"column:ops"`
+	CreateInodeOps uint64    `gorm:"column:create_inode_ops"`
+	EvictInodeOps  uint64    `gorm:"column:evict_inode_ops"`
+	PeriodMode     int       `gorm:"column:period_mode"`
+	OwnerId        string    `gorm:"column:pin"`
+	Department     string    `gorm:"column:department"`
+	CreateTime     time.Time `gorm:"column:create_time"`
+}
+
+func (ConsoleVolumeOps) TableName() string {
+	return "console_volume_ops"
+}
+
+func BatchInsertVolumeOps(records []*ConsoleVolumeOps) (err error) {
+	length := len(records)
+	for i := 0; i < length; i += maxInsertBatchNum {
+		end := i + maxInsertBatchNum
+		if end > length {
+			end = length
+		}
+		if err = cutil.CONSOLE_DB.Table(ConsoleVolumeOps{}.TableName()).CreateInBatches(records[i:end], len(records[i:end])).Error; err != nil {
+			log.LogWarnf("BatchInsertVolumeOps: insert failed: %v", err)
+		}
+	}
+	return
+}
+
+func LoadZombieVols(cluster string) (records []*ConsoleVolumeOps, err error) {
+	records = make([]*ConsoleVolumeOps, 0)
+	// 近3月没有请求
+	startTime := time.Now().AddDate(0, -zombieVolumeQueryMonth, 0).Format(time.DateTime)
+	err = cutil.CONSOLE_DB.Table(ConsoleVolumeOps{}.TableName()).
+		Where("create_time > ? AND cluster = ?", startTime, cluster).
+		Group("cluster, volume").
+		Having("SUM(ops) < 10").
+		Scan(&records).Error
+	if err != nil {
+		log.LogErrorf("LoadZombieVols failed: cluster(%v) start(%v) err(%v)", cluster, startTime, err)
+	}
+	return
+}
+
+func LoadZombieVolDetails(cluster string, pageNum, pageSize int) ([]*ConsoleVolumeOps, error) {
+	result := make([]*ConsoleVolumeOps, 0)
+	startTime := time.Now().AddDate(0, -zombieVolumeQueryMonth, 0).Format(time.DateTime)
+	err := cutil.CONSOLE_DB.Table(ConsoleVolumeOps{}.TableName()).
+		Where("create_time > ? AND cluster = ?", startTime, cluster).
+		Group("cluster, volume").
+		Having("SUM(ops) < 10").
+		Order("SUM(ops) ASC").
+		Limit(pageSize).Offset((pageNum - 1) * pageSize).
+		Find(&result).Error
+	if err != nil {
+		log.LogErrorf("LoadZombieVolDetails failed: cluster[%s] err: %v", cluster, err)
+	}
+	return result, err
+}
+
+func LoadNoDeleteVol(cluster string) (records []*ConsoleVolumeOps, err error) {
+	// 近20天 无删除 但有写
+	records = make([]*ConsoleVolumeOps, 0)
+	startTime := time.Now().AddDate(0, 0, -noDeleteVolumeQueryDay).Format(time.DateTime)
+	err = cutil.CONSOLE_DB.Table(ConsoleVolumeOps{}.TableName()).
+		Select("cluster, volume").
+		Where("create_time > ? AND cluster = ?", startTime, cluster).
+		Group("cluster, volume").
+		Having("SUM(evict_inode_ops) < 10 AND SUM(create_inode_ops) > 0").
+		Scan(&records).Error
+	if err != nil {
+		log.LogErrorf("LoadNoDeleteVol failed: cluster(%v) err(%v)", cluster, err)
+	}
+	return
+}
+
+func LoadNoDeletedVolDetails(cluster string, pageNum, pageSize int) ([]*ConsoleVolumeOps, error) {
+	result := make([]*ConsoleVolumeOps, 0)
+	startTime := time.Now().AddDate(0, 0, -noDeleteVolumeQueryDay).Format(time.DateTime)
+	err := cutil.CONSOLE_DB.Table(ConsoleVolumeOps{}.TableName()).
+		Where("create_time > ? AND cluster = ?", startTime, cluster).
+		Group("cluster, volume").
+		Having("SUM(evict_inode_ops) < 10 AND SUM(create_inode_ops) > 0").
+		Order("SUM(create_inode_ops) DESC").
+		Limit(pageSize).Offset((pageNum - 1) * pageSize).
+		Find(&result).Error
+	if err != nil {
+		log.LogErrorf("LoadNoDeletedVolDetails failed: cluster[%s] err: %v", cluster, err)
+	}
+	return result, nil
+}
+
+// todo: how long has no client considered it a no-client-vol
+// cluster volume 容量 使用量 客户端个数 pin 部门 创建时间
+func LoadNoClientVolDetails(cluster string, keywords *string) ([]*ConsoleVolumeOps, error) {
+	result := make([]*ConsoleVolumeOps, 0)
+	sqlStr := fmt.Sprintf("" +
+		"select " +
+		"a.cluster as cluster, a.volume as volume, a.client_count as client_count, a.update_time as update_time " +
+		"b.total_gb as total_gb, b.used_gb as used_gb, b.owner_id as owner_id, b.department as department, b.create_time as create_time " +
+		"from console_volume_info " +
+		"left join chubaofs_volume_info_table b on a.cluster = b.cluster_name and a.volume = b.volume_name " +
+		"where a.cluster = ? AND a.client_count = 0 ")
+	if keywords != nil {
+		sqlStr += fmt.Sprintf("AND a.volume like '%s'", "%"+*keywords+"%")
+	}
+	sqlStr += "order by cluster, volume, update_time DESC " +
+		"limit 1"
+	if err := cutil.SRE_DB.Raw(sqlStr, cluster).Find(&result).Error; err != nil {
+		log.LogErrorf("LoadNoClientVolDetails failed: cluster(%v) err(%v)", cluster, err)
+		return nil, err
+	}
+	return result, nil
+}
+
+func CleanExpiredVolumeOps(timeStr string) error {
+	return cutil.CONSOLE_DB.Where("create_time < ?", timeStr).Delete(&ConsoleVolumeOps{}).Error
+}
+
 type ConsoleVolume struct {
 	Cluster        string    `gorm:"column:cluster"`
 	Volume         string    `gorm:"column:volume"`
@@ -63,7 +188,6 @@ func StoreVolumeRecords(records []*ConsoleVolume) (err error) {
 		if end > length {
 			end = length
 		}
-		// todo: 测试环境就几个vol  batch 插入这么慢 不合理，135368.318ms
 		if err = cutil.CONSOLE_DB.Table(ConsoleVolume{}.TableName()).CreateInBatches(records[i:end], len(records[i:end])).Error; err != nil {
 			log.LogWarnf("StoreVolumeRecords: batch insert failed: %v", err)
 		}
@@ -71,11 +195,11 @@ func StoreVolumeRecords(records []*ConsoleVolume) (err error) {
 	return
 }
 
-func UpdateVolumeOps(records []*ConsoleVolume) (err error) {
+func UpdateVolumeOps(records []*ConsoleVolumeOps) (err error) {
 	now := time.Now()
 	updateTime := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.Local)
 	for _, record := range records {
-		err = cutil.CONSOLE_DB.Table(volumeHistoryTableName).Where("cluster = ? AND volume = ? AND update_time = ?", record.Cluster, record.Volume, updateTime).
+		err = cutil.CONSOLE_DB.Table(VolumeHistoryTableName).Where("cluster = ? AND volume = ? AND update_time = ?", record.Cluster, record.Volume, updateTime).
 			Updates(map[string]interface{}{
 				"ops":              record.Ops,
 				"create_inode_ops": record.CreateInodeOps,
@@ -120,7 +244,6 @@ func (table ConsoleVolume) GetVolumeClientCount(cluster, volume string) int64 {
 	return int64(record.ClientCount)
 }
 
-// load cluster all volumeInfo for history table
 func (table ConsoleVolume) LoadVolumeInfoByCluster(cluster string, date time.Time) (records []*ConsoleVolume, err error) {
 	records = make([]*ConsoleVolume, 0)
 	err = cutil.CONSOLE_DB.Table(table.TableName()).Where("cluster = ? AND update_time = ?", cluster, date).
@@ -128,55 +251,9 @@ func (table ConsoleVolume) LoadVolumeInfoByCluster(cluster string, date time.Tim
 	return
 }
 
-// 近3月没有请求
-func (table ConsoleVolume) LoadZombieVols(cluster string) (records []*ConsoleVolume, err error) {
-	records = make([]*ConsoleVolume, 0)
-	startTime := time.Now().AddDate(0, -zombieVolumeQueryMonth, 0).Format(time.DateTime)
-	sqlStr := fmt.Sprintf("" +
-		"select " +
-		"cluster, volume, sum(ops) as ops " +
-		"from " +
-		"console_volume_history_info " +
-		"where " +
-		"cluster = ? " +
-		"and update_time >= ? " +
-		"and period_mode = 0 " +
-		"group by " +
-		"cluster, volume " +
-		"having ops < 10 ",
-	)
-	// raw 后的cluster不起作用
-	err = cutil.CONSOLE_DB.Raw(sqlStr, cluster, startTime).Scan(&records).Error
-	return
-}
-
-func (table ConsoleVolume) LoadNoDeleteVol(cluster string) (records []*ConsoleVolume, err error) {
-	// 近20天 无删除 但有写
-	records = make([]*ConsoleVolume, 0)
-	startTime := time.Now().AddDate(0, 0, -noDeleteVolumeQueryDay).Format(time.DateTime)
-	sqlStr := fmt.Sprintf("" +
-		"select " +
-		"cluster, volume, sum(create_inode_ops) as create_inode_ops, sum(evict_inode_ops) as evict_inode_ops " +
-		"from " +
-		"console_volume_history_info " +
-		"where " +
-		"cluster = ? " +
-		"and period_mode = 0 " +
-		"and evict_inode_ops = 0 " +
-		"and update_time >= ? " +
-		"group by " +
-		"cluster, volume " +
-		"having create_inode_ops > 0",
-	)
-	err = cutil.CONSOLE_DB.Raw(sqlStr, cluster, startTime).Scan(&records).Error
-	if err != nil {
-		log.LogErrorf("LoadNoDeleteVol: cluster: %v, err: %v", cluster, err)
-	}
-	return
-}
-
-func CleanExpiredVolumeOps(timeStr string) error {
-	return cutil.CONSOLE_DB.Where("update_time < ?", timeStr).Delete(&ConsoleVolume{}).Error
+func CleanExpiredVolumeInfo(start, end, cluster string) error {
+	return cutil.CONSOLE_DB.Where("update_time >= ? AND update_time < ? AND cluster = ?", start, end, cluster).
+		Delete(&ConsoleVolume{}).Error
 }
 
 type VolumeInfoTable struct {
@@ -216,78 +293,8 @@ func (table VolumeInfoTable) GetVolumeInfo(cluster string, volumes []string) ([]
 	return res, nil
 }
 
-func LoadZombieVolDetails(cluster string) ([]*ConsoleVolume, error) {
-	result := make([]*ConsoleVolume, 0)
-	startTime := time.Now().AddDate(0, -zombieVolumeQueryMonth, 0).Format(time.DateTime)
-	sqlStr := fmt.Sprintf("" +
-		"select " +
-		"a.cluster as cluster, a.volume as volume, sum(a.ops) as ops, a.total_gb as total_gb, a.used_gb as used_gb, " +
-		"b.owner_id as owner_id, b.department as department, b.create_time as create_time " +
-		"from console_volume_history_info a " +
-		"left join storage_sre.chubaofs_volume_info_table b on a.cluster = b.cluster_name and a.volume = b.volume_name " +
-		"where a.period_mode = 0 " +
-		"and a.cluster = ? " +
-		"and a.update_time >= ? " +
-		"group by a.cluster, a.volume " +
-		"having sum(a.ops) < 10 " +
-		"order by ops",
-	)
-	if err := cutil.CONSOLE_DB.Raw(sqlStr, cluster, startTime).Scan(&result).Error; err != nil {
-		log.LogErrorf("LoadZombieVolDetails failed: cluster[%s] err: %v", cluster, err)
-		return nil, err
-	}
-	return result, nil
-}
-
-func LoadNoDeletedVolDetails(cluster string) ([]*ConsoleVolume, error) {
-	result := make([]*ConsoleVolume, 0)
-	startTime := time.Now().AddDate(0, 0, -noDeleteVolumeQueryDay).Format(time.DateTime)
-	sqlStr := fmt.Sprintf("" +
-		"select " +
-		"a.cluster as cluster, a.volume as volume, sum(a.create_inode_ops) as create_inode_ops, sum(a.evict_inode_ops) as evict_inode_ops, " +
-		"a.total_gb as total_gb, a.used_gb as used_gb, b.owner_id as owner_id, b.department as department, b.create_time as create_time " +
-		"from console_volume_history_info a " +
-		"left join storage_sre.chubaofs_volume_info_table b on a.cluster = b.cluster_name and a.volume = b.volume_name " +
-		"where a.period_mode = 0 " +
-		"and a.cluster = ? " +
-		"and a.evict_inode_ops = 0 " +
-		"and a.update_time >= ? " +
-		"group by a.cluster, a.volume " +
-		"having create_inode_ops > 0 " +
-		"order by create_inode_ops DESC",
-	)
-	if err := cutil.CONSOLE_DB.Raw(sqlStr, cluster, startTime).Scan(&result).Error; err != nil {
-		log.LogErrorf("LoadZombieVolDetails failed: cluster[%s] err: %v", cluster, err)
-		return nil, err
-	}
-	return result, nil
-}
-
-// todo: how long has no client considered it a no-client-vol
-// cluster volume 容量 使用量 客户端个数 pin 部门 创建时间
-func LoadNoClientVolDetails(cluster string, keywords *string) ([]*ConsoleVolume, error) {
-	result := make([]*ConsoleVolume, 0)
-	sqlStr := fmt.Sprintf("" +
-		"select " +
-		"a.cluster as cluster, a.volume as volume, a.client_count as client_count, a.update_time as update_time " +
-		"b.total_gb as total_gb, b.used_gb as used_gb, b.owner_id as owner_id, b.department as department, b.create_time as create_time " +
-		"from console_volume_info " +
-		"left join chubaofs_volume_info_table b on a.cluster = b.cluster_name and a.volume = b.volume_name " +
-		"where a.cluster = ? AND a.client_count = 0 ")
-	if keywords != nil {
-		sqlStr += fmt.Sprintf("AND a.volume like '%s'", "%"+*keywords+"%")
-	}
-	sqlStr += "order by cluster, volume, update_time DESC " +
-		"limit 1"
-	if err := cutil.SRE_DB.Raw(sqlStr, cluster).Find(&result).Error; err != nil {
-		log.LogErrorf("LoadNoClientVolDetails failed: cluster(%v) err(%v)", cluster, err)
-		return nil, err
-	}
-	return result, nil
-}
-
 var (
-	volumeHistoryTableName = "console_volume_history_info"
+	VolumeHistoryTableName = "console_volume_history_info"
 )
 
 func StoreVolumeHistoryInfo(records []*ConsoleVolume) {
@@ -297,7 +304,7 @@ func StoreVolumeHistoryInfo(records []*ConsoleVolume) {
 		if end > length {
 			end = length
 		}
-		if err := cutil.CONSOLE_DB.Table(volumeHistoryTableName).CreateInBatches(records[i:end], len(records[i:end])).Error; err != nil {
+		if err := cutil.CONSOLE_DB.Table(VolumeHistoryTableName).CreateInBatches(records[i:end], len(records[i:end])).Error; err != nil {
 			log.LogWarnf("StoreVolumeHistoryInfo: batch insert failed: %v", err)
 		}
 	}
@@ -306,7 +313,7 @@ func StoreVolumeHistoryInfo(records []*ConsoleVolume) {
 
 func LoadVolumeHistoryData(cluster, volume string, start, end time.Time) (result []*VolumeHistoryCurve, err error) {
 	result = make([]*VolumeHistoryCurve, 0)
-	err = cutil.CONSOLE_DB.Table(volumeHistoryTableName).Select("cluster, volume, used_gb, used_ratio, inode_count, writable_dp_num, DATE_FORMAT(update_time, '%Y-%m-%d %H:%i:%s') as update_time").
+	err = cutil.CONSOLE_DB.Table(VolumeHistoryTableName).Select("cluster, volume, used_gb, used_ratio, inode_count, writable_dp_num, DATE_FORMAT(update_time, '%Y-%m-%d %H:%i:%s') as update_time").
 		Where("cluster = ? AND volume = ? AND update_time >= ? AND update_time <= ?", cluster, volume, start, end).
 		Group("cluster, volume, update_time").
 		Order("update_time ASC").
@@ -316,5 +323,5 @@ func LoadVolumeHistoryData(cluster, volume string, start, end time.Time) (result
 }
 
 func CleanExpiredVolumeHistoryInfo(timeStr string) error {
-	return cutil.CONSOLE_DB.Table(volumeHistoryTableName).Where("update_time < ?", timeStr).Delete(&ConsoleVolume{}).Error
+	return cutil.CONSOLE_DB.Table(VolumeHistoryTableName).Where("update_time < ?", timeStr).Delete(&ConsoleVolume{}).Error
 }

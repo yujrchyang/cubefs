@@ -9,45 +9,44 @@ import (
 
 var (
 	a, _   = InitTestSreDB()
-	table  = ConsoleVolume{}
 	table1 = VolumeSummaryView{}
 	table2 = VolumeHistoryCurve{}
 )
 
 func TestLoadZombieVols(t *testing.T) {
-	result, err := table.LoadZombieVols("mysql")
+	result, err := LoadZombieVols("mysql")
 	assert.NoError(t, err)
 	fmt.Printf("zombieVols: %v\n", result)
 }
 
 func TestZombieVolsDetails(t *testing.T) {
-	result, err := LoadZombieVolDetails("spark")
+	result, err := LoadZombieVolDetails("spark", 1, 10)
 	assert.NoError(t, err)
 	fmt.Printf("zombieVolsDetails: %v\n", result)
 }
 
 func TestLoadNoDeleteVol(t *testing.T) {
-	result, err := table.LoadNoDeleteVol("spark")
+	result, err := LoadNoDeleteVol("spark")
 	assert.NoError(t, err)
 	fmt.Printf("noDeletedVol: %v\n", result)
 }
 
 func TestNoDeletedVolDetails(t *testing.T) {
-	result, err := LoadNoDeletedVolDetails("spark")
+	result, err := LoadNoDeletedVolDetails("spark", 1, 10)
 	assert.NoError(t, err)
 	fmt.Printf("noDeletedVolDetails: %v\n", result)
 }
 
 func TestLoadInodesTopNVol(t *testing.T) {
-	res, err := LoadInodeTopNVol("master-test", 10)
+	res, err := LoadInodeTopNVol("master-test", 10, "", "", 0)
 	assert.NoError(t, err)
 	assert.Equal(t, len(res), 10)
 
-	res, err = LoadUsedGBTopNVol("master-test", 10)
+	res, err = LoadUsedGBTopNVol("master-test", 10, "", "", 0)
 	assert.NoError(t, err)
 	assert.Equal(t, len(res), 10)
 
-	res, err = LoadInodeTopNVol("vcfsk", 10)
+	res, err = LoadInodeTopNVol("vcfsk", 10, "", "", 0)
 	assert.Equal(t, 0, len(res))
 }
 

@@ -6,6 +6,7 @@ import (
 	"github.com/cubefs/cubefs/console/cutil"
 	"github.com/cubefs/cubefs/console/model"
 	cproto "github.com/cubefs/cubefs/console/proto"
+	api "github.com/cubefs/cubefs/console/service/apiManager"
 	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
@@ -26,18 +27,17 @@ func CollectVolumeInfo() {
 	)
 	go recordVolumeInfo(recordCh)
 
-	if sdk == nil {
-		initApiSdk()
-	}
+	sdk := api.GetSdkApiManager()
 	clusters := sdk.GetConsoleCluster()
 	for _, cluster := range clusters {
 		wg.Add(1)
-		go getVolumeInfo(wg, recordCh, cluster.ClusterName)
+		go getVolumeInfo(wg, recordCh, cluster.ClusterName, sdk)
 	}
 	wg.Wait()
 	close(recordCh)
-
-	cleanExpiredVolInfos()
+	for _, cluster := range clusters {
+		cleanExpiredVolInfos(cluster.ClusterName)
+	}
 }
 
 func recordVolumeInfo(ch <-chan []*model.ConsoleVolume) {
@@ -56,7 +56,7 @@ func recordVolumeInfo(ch <-chan []*model.ConsoleVolume) {
 	}
 }
 
-func getVolumeInfo(wg *sync.WaitGroup, recordCh chan<- []*model.ConsoleVolume, cluster string) {
+func getVolumeInfo(wg *sync.WaitGroup, recordCh chan<- []*model.ConsoleVolume, cluster string, sdk *api.APIManager) {
 	defer wg.Done()
 	var (
 		vols              = make([]*model.ConsoleVolume, 0)
@@ -211,9 +211,10 @@ func getVolSourceAndPinInfo(cluster string) (records []*volSourcePinInfo, err er
 	return
 }
 
-func cleanExpiredVolInfos() {
-	timeStr := time.Now().AddDate(0, 0, -volumeInfoKeepDay).Format(time.DateTime)
-	err := model.CleanExpiredVolumeOps(timeStr)
+func cleanExpiredVolInfos(cluster string) {
+	end := time.Now().AddDate(0, 0, -volumeInfoKeepDay)
+	start := end.Add(-1 * time.Hour)
+	err := model.CleanExpiredVolumeInfo(start.Format(time.DateTime), end.Format(time.DateTime), cluster)
 	if err != nil {
 		log.LogWarnf("cleanExpiredVolOps failed: %v", err)
 	}
@@ -223,9 +224,7 @@ func cleanExpiredVolInfos() {
 func MigrateVolumeHistoryData() {
 	now := time.Now()
 	date := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.Local)
-	if sdk == nil {
-		initApiSdk()
-	}
+	sdk := api.GetSdkApiManager()
 	clusters := sdk.GetConsoleCluster()
 	for _, cluster := range clusters {
 		records, err := model.ConsoleVolume{}.LoadVolumeInfoByCluster(cluster.ClusterName, date)

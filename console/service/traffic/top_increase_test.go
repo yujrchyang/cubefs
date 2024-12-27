@@ -15,7 +15,7 @@ func Test_GetTopIncreaseVol(t *testing.T) {
 		Start:        0,
 		End:          0,
 	}
-	result := GetTopIncreaseVol(request, false, 0)
+	result := GetTopIncreaseVol(request, false, "", 0, 0)
 	if len(result) == 0 {
 		t.Fatal("result len = 0")
 	}
@@ -31,7 +31,7 @@ func Test_GetTopIncreaseSource(t *testing.T) {
 		Start:        0,
 		End:          0,
 	}
-	result := GetTopIncreaseSource(request, true, 0)
+	result := GetTopIncreaseSource(request, true, 0, 0)
 	if len(result) == 0 {
 		t.Fatal("result len = 0")
 	}
@@ -58,6 +58,6 @@ func Test_GetStartEndTime(t *testing.T) {
 	req3 := &cproto.HistoryCurveRequest{
 		IntervalType: 3,
 	}
-	start, end := parseTopIncRequestTime(req3)
-	fmt.Printf("start: %v end: %v", start, end)
+	_, start1, _, end1 := parseTopIncRequestTime(req3)
+	fmt.Printf("start: %v end: %v", start1, end1)
 }

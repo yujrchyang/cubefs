@@ -33,16 +33,10 @@ func TestQueryVolumeOps(t *testing.T) {
 }
 
 func Test_RecordVolumeOps(t *testing.T) {
-	initApiSdk()
-
-	recordCh := make(chan []*model.ConsoleVolume, 10)
+	recordCh := make(chan []*model.ConsoleVolumeOps, 10)
 	go recordVolumeOps(recordCh)
 
-	volumeList := GetVolList("spark", false)
-	if len(volumeList) == 0 {
-		t.Fatal("get vol list failed")
-	}
 	wg := new(sync.WaitGroup)
 	wg.Add(1)
-	getVolumeOps("spark", volumeList, wg, recordCh)
+	getVolumeOps("spark", wg, recordCh)
 }

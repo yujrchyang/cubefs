@@ -3,6 +3,7 @@ package traffic
 import (
 	"bufio"
 	"fmt"
+	api "github.com/cubefs/cubefs/console/service/apiManager"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -13,7 +14,6 @@ import (
 	"github.com/cubefs/cubefs/console/cutil"
 	"github.com/cubefs/cubefs/console/model"
 	"github.com/cubefs/cubefs/console/proto"
-	api "github.com/cubefs/cubefs/console/service/apiManager"
 	"github.com/cubefs/cubefs/util/log"
 )
 
@@ -22,29 +22,9 @@ const (
 	maxQueryRetryNum = 3
 )
 
-var (
-	sdk *api.APIManager
-)
-
-func initApiSdk() {
-	// load cluster from table
-	table := model.ConsoleCluster{}
-	clusters, err := table.LoadConsoleClusterList("")
-	if err != nil {
-		log.LogErrorf("traffic init: load console cluster from database failed: err: %v", err)
-		return
-	}
-
-	sdk = api.NewAPIManager(clusters)
-	log.LogInfof("traffic init success")
-}
-
-func GetVolList(cluster string, isRelease bool) []string {
-	if sdk == nil {
-		initApiSdk()
-	}
-	if isRelease {
-		client := sdk.GetReleaseClient(cluster)
+func GetVolList(cluster string, api *api.APIManager) []string {
+	if proto.IsRelease(cluster) {
+		client := api.GetReleaseClient(cluster)
 		volumeList, err := client.GetAllVolList()
 		if err != nil {
 			log.LogErrorf("CollectVolumeOps: getVolList failed, cluster(%v) err(%v)", cluster, err)
@@ -52,7 +32,7 @@ func GetVolList(cluster string, isRelease bool) []string {
 		}
 		return volumeList
 	} else {
-		mc := sdk.GetMasterClient(cluster)
+		mc := api.GetMasterClient(cluster)
 		volInfos, err := mc.AdminAPI().ListVols("")
 		if err != nil {
 			log.LogErrorf("CollectVolumeOps: getVolList failed: cluster(%v) err(%v)", cluster, err)
@@ -68,26 +48,16 @@ func GetVolList(cluster string, isRelease bool) []string {
 
 func CollectVolumeOps() {
 	var (
-		recordCh = make(chan []*model.ConsoleVolume, 10)
+		recordCh = make(chan []*model.ConsoleVolumeOps, 10)
 		wg       = new(sync.WaitGroup)
 	)
 	go recordVolumeOps(recordCh)
 
-	if sdk == nil {
-		initApiSdk()
-	}
+	sdk := api.GetSdkApiManager()
 	clusters := sdk.GetConsoleCluster()
 	for _, cluster := range clusters {
-		var volumeList []string
-
-		volumeList = GetVolList(cluster.ClusterName, cluster.IsRelease)
-		if len(volumeList) == 0 {
-			log.LogErrorf("CollectVolumeOps: len(vols)=0, cluster(%v)", cluster.ClusterName)
-			continue
-		}
-
 		wg.Add(1)
-		go getVolumeOps(cluster.ClusterName, volumeList, wg, recordCh)
+		go getVolumeOps(cluster.ClusterName, wg, recordCh)
 	}
 	wg.Wait()
 	close(recordCh)
@@ -95,25 +65,39 @@ func CollectVolumeOps() {
 	cleanExpiredVolOps()
 }
 
-func recordVolumeOps(ch <-chan []*model.ConsoleVolume) {
+func recordVolumeOps(ch <-chan []*model.ConsoleVolumeOps) {
 	for {
 		records, ok := <-ch
 		if !ok {
 			break
 		}
-		// 更新的字段有 ops create_ops   evict_ops
-		model.UpdateVolumeOps(records)
+		model.BatchInsertVolumeOps(records)
 	}
 	log.LogInfof("僵尸vol记录完成, time:%v", time.Now())
 }
 
-func getVolumeOps(cluster string, volList []string, wg *sync.WaitGroup, recordCh chan<- []*model.ConsoleVolume) {
+func getVolumeOps(cluster string, wg *sync.WaitGroup, recordCh chan<- []*model.ConsoleVolumeOps) {
 	defer wg.Done()
-	vols := make([]*model.ConsoleVolume, 0, len(volList))
-	for _, volName := range volList {
-		vol := &model.ConsoleVolume{
+	// 1. 先查表 获取所有vol的基本信息
+	now := time.Now()
+	date := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), 0, 0, 0, time.Local)
+	consoleVols, err := model.ConsoleVolume{}.LoadVolumeInfoByCluster(cluster, date)
+	if err != nil {
+		log.LogErrorf("getVolumeOps: LoadClusterVolumes failed, cluster(%v) err(%v)", cluster, err)
+		return
+	}
+
+	vols := make([]*model.ConsoleVolumeOps, 0, len(consoleVols))
+	for _, info := range consoleVols {
+		vol := &model.ConsoleVolumeOps{
 			Cluster:    cluster,
-			Volume:     volName,
+			Volume:     info.Volume,
+			Zone:       info.Zone,
+			Source:     info.Source,
+			TotalGB:    info.TotalGB,
+			UsedGB:     info.UsedGB,
+			OwnerId:    info.Pin,
+			Department: info.Department,
 			PeriodMode: int(model.ZombiePeriodDay),
 		}
 		vols = append(vols, vol)
@@ -148,14 +132,13 @@ func getVolumeOps(cluster string, volList []string, wg *sync.WaitGroup, recordCh
 		vol.Ops = volOps[vol.Volume]
 		vol.CreateInodeOps = createOps[vol.Volume]
 		vol.EvictInodeOps = evictOps[vol.Volume]
-		vol.UpdateTime = time.Now()
+		vol.CreateTime = time.Now()
 	}
-
 	recordCh <- vols
 }
 
 func cleanExpiredVolOps() {
-	timeStr := time.Now().AddDate(0, 0, -volumeHistoryKeepDay).Format(time.DateTime)
+	timeStr := time.Now().AddDate(0, 0, -volumeHistoryKeepDay*2).Format(time.DateTime)
 	err := model.CleanExpiredVolumeOps(timeStr)
 	if err != nil {
 		log.LogWarnf("cleanExpiredVolOps failed: %v", err)
