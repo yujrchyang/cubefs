@@ -63,7 +63,7 @@ type Vol struct {
 	zoneName                   string
 	crossZone                  bool
 	CrossRegionHAType          proto.CrossRegionHAType
-	SyncMode                   proto.SyncMode
+	PersistenceMode            proto.PersistenceMode
 	enableToken                bool
 	tokens                     map[string]*proto.Token
 	tokensLock                 sync.RWMutex
@@ -163,7 +163,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	dpLearnerNum, mpLearnerNum, mpRecorderNum uint8, dpWriteableThreshold float64, trashDays, childFileMaxCnt uint32, defStoreMode proto.StoreMode,
 	convertSt proto.VolConvertState, mpLayout proto.MetaPartitionLayout, smartRules []string, compactTag proto.CompactTag,
 	dpFolReadDelayCfg proto.DpFollowerReadDelayConfig, batchDelInodeCnt, delInodeInterval uint32, mpSplitStep, inodeCountThreshold uint64,
-	readAheadMemMB, readAheadWindowMB int64, syncMode proto.SyncMode) (vol *Vol) {
+	readAheadMemMB, readAheadWindowMB int64, persistenceMode proto.PersistenceMode) (vol *Vol) {
 	vol = &Vol{ID: id, Name: name, MetaPartitions: make(map[uint64]*MetaPartition, 0)}
 	vol.dataPartitions = newDataPartitionMap(name)
 	vol.ecDataPartitions = newEcDataPartitionCache(vol)
@@ -212,7 +212,7 @@ func newVol(id uint64, name, owner, zoneName string, dpSize, capacity uint64, dp
 	vol.dpSelectorParm = dpSelectorParm
 	vol.dpWriteableThreshold = dpWriteableThreshold
 	vol.CrossRegionHAType = crossRegionHAType
-	vol.SyncMode = syncMode
+	vol.PersistenceMode = persistenceMode
 	vol.dpLearnerNum = dpLearnerNum
 	vol.mpLearnerNum = mpLearnerNum
 	vol.mpRecorderNum = mpRecorderNum
@@ -293,7 +293,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 		vv.InodeCountThreshold,
 		vv.ReadAheadMemMB,
 		vv.ReadAheadWindowMB,
-		vv.SyncMode)
+		vv.PersistenceMode)
 	// overwrite oss secure
 	vol.OSSAccessKey, vol.OSSSecretKey = vv.OSSAccessKey, vv.OSSSecretKey
 	vol.Status = vv.Status
@@ -1462,7 +1462,7 @@ func (vol *Vol) backupConfig() *Vol {
 		mpLearnerNum:               vol.mpLearnerNum,
 		mpRecorderNum:              vol.mpRecorderNum,
 		CrossRegionHAType:          vol.CrossRegionHAType,
-		SyncMode:                   vol.SyncMode,
+		PersistenceMode:            vol.PersistenceMode,
 		DPConvertMode:              vol.DPConvertMode,
 		MPConvertMode:              vol.MPConvertMode,
 		dpWriteableThreshold:       vol.dpWriteableThreshold,
@@ -1534,7 +1534,7 @@ func (vol *Vol) rollbackConfig(backupVol *Vol) {
 	vol.mpLearnerNum = backupVol.mpLearnerNum
 	vol.mpRecorderNum = backupVol.mpRecorderNum
 	vol.CrossRegionHAType = backupVol.CrossRegionHAType
-	vol.SyncMode = backupVol.SyncMode
+	vol.PersistenceMode = backupVol.PersistenceMode
 	vol.DPConvertMode = backupVol.DPConvertMode
 	vol.MPConvertMode = backupVol.MPConvertMode
 	vol.dpWriteableThreshold = backupVol.dpWriteableThreshold

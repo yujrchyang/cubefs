@@ -372,7 +372,7 @@ func (dp *DataPartition) IsRandomWriteDisabled() (disabled bool) {
 }
 
 func (dp *DataPartition) IsSyncModeEnabled() (enabled bool) {
-	return dp.config.SyncMode == proto.SyncModeEnabled
+	return dp.config.PersistenceMode == proto.PersistenceMode_WriteThrough
 }
 
 func (dp *DataPartition) IsRaftLearner() bool {
@@ -656,26 +656,26 @@ func (dp *DataPartition) statusUpdateScheduler(ctx context.Context) {
 type PartitionSetting struct {
 	CrossRegionHAType proto.CrossRegionHAType
 	DPReplicaNum      int
-	SyncMode          proto.SyncMode
+	PersistenceMode   proto.PersistenceMode
 }
 
 func (dp *DataPartition) ApplySetting(setting *PartitionSetting) (err error) {
 	if dp.config.VolHAType == setting.CrossRegionHAType &&
 		dp.config.ReplicaNum == setting.DPReplicaNum &&
-		dp.config.SyncMode == setting.SyncMode {
+		dp.config.PersistenceMode == setting.PersistenceMode {
 		// Nothing to be changed.
 		return nil
 	}
 
 	dp.config.VolHAType = setting.CrossRegionHAType
 	dp.config.ReplicaNum = setting.DPReplicaNum
-	dp.config.SyncMode = setting.SyncMode
+	dp.config.PersistenceMode = setting.PersistenceMode
 	if err = dp.persistMetaDataOnly(); err != nil {
 		return
 	}
 	if dp.raftPartition != nil {
-		dp.raftPartition.SetWALSync(dp.config.SyncMode == proto.SyncModeEnabled)
-		dp.raftPartition.SetWALSyncRotate(dp.config.SyncMode == proto.SyncModeEnabled)
+		dp.raftPartition.SetWALSync(dp.config.PersistenceMode == proto.PersistenceMode_WriteThrough)
+		dp.raftPartition.SetWALSyncRotate(dp.config.PersistenceMode == proto.PersistenceMode_WriteThrough)
 	}
 	return
 }
@@ -684,7 +684,7 @@ func (dp *DataPartition) CurrentSetting() *PartitionSetting {
 	setting := &PartitionSetting{
 		CrossRegionHAType: dp.config.VolHAType,
 		DPReplicaNum:      dp.config.ReplicaNum,
-		SyncMode:          dp.config.SyncMode,
+		PersistenceMode:   dp.config.PersistenceMode,
 	}
 	return setting
 }
@@ -1595,7 +1595,7 @@ func (dp *DataPartition) persistMetadata(snap *WALApplyStatus) (err error) {
 	metadata.IsCatchUp = dp.isCatchUp
 	metadata.NeedServerFaultCheck = dp.needServerFaultCheck
 	metadata.ConsistencyMode = dp.config.ConsistencyMode
-	metadata.SyncMode = dp.config.SyncMode
+	metadata.PersistenceMode = dp.config.PersistenceMode
 
 	if dp.persistedMetadata != nil {
 		metadata.CreateTime = dp.persistedMetadata.CreateTime
@@ -1725,7 +1725,7 @@ func (dp *DataPartition) startRaft() (err error) {
 	}
 
 	var maxCommitID uint64
-	if dp.isNeedFaultCheck() && dp.config.SyncMode != proto.SyncModeEnabled {
+	if dp.isNeedFaultCheck() && dp.config.PersistenceMode != proto.PersistenceMode_WriteThrough {
 		if maxCommitID, err = dp.getMaxCommitID(context.Background()); err != nil {
 			return
 		}
@@ -1751,8 +1751,8 @@ func (dp *DataPartition) startRaft() (err error) {
 		GetStartIndex:      getStartIndex,
 		WALContinuityCheck: dp.isNeedFaultCheck(),
 		WALContinuityFix:   dp.isNeedFaultCheck(),
-		WALSync:            dp.config.SyncMode == proto.SyncModeEnabled,
-		WALSyncRotate:      dp.config.SyncMode == proto.SyncModeEnabled,
+		WALSync:            dp.config.PersistenceMode == proto.PersistenceMode_WriteThrough,
+		WALSyncRotate:      dp.config.PersistenceMode == proto.PersistenceMode_WriteThrough,
 		Mode:               dp.config.ConsistencyMode,
 		StorageListener: raftstore.NewStorageListenerBuilder().
 			ListenStoredEntry(dp.listenStoredRaftLogEntry).

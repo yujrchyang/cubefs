@@ -330,7 +330,7 @@ type volValue struct {
 	ForceRowModifyTime    int64
 	EnableWriteCache      bool
 	CrossRegionHAType     bsProto.CrossRegionHAType
-	SyncMode              bsProto.SyncMode
+	PersistenceMode       bsProto.PersistenceMode
 	Authenticate          bool
 	EnableToken           bool
 	CrossZone             bool

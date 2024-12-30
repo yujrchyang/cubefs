@@ -31,7 +31,7 @@ import (
 
 func newCreateDataPartitionRequest(
 	volName string, ID uint64, members []proto.Peer, dataPartitionSize, replicaNum int, hosts []string, createType int, learners []proto.Learner,
-	volumeHAType proto.CrossRegionHAType, syncMode proto.SyncMode) (req *proto.CreateDataPartitionRequest) {
+	volumeHAType proto.CrossRegionHAType, persistenceMode proto.PersistenceMode) (req *proto.CreateDataPartitionRequest) {
 	req = &proto.CreateDataPartitionRequest{
 		PartitionId:     ID,
 		PartitionSize:   dataPartitionSize,
@@ -42,7 +42,7 @@ func newCreateDataPartitionRequest(
 		Hosts:           hosts,
 		CreateType:      createType,
 		VolumeHAType:    volumeHAType,
-		SyncMode:        syncMode,
+		PersistenceMode: persistenceMode,
 	}
 	return
 }

@@ -707,7 +707,7 @@ func (s *DataNode) updateNodeBaseInfo() {
 		SyncWALOnUnstableEnableState:   limitInfo.DataSyncWALOnUnstableEnableState,
 		FlushFDParallelismOnDisk:       limitInfo.DataNodeFlushFDParallelismOnDisk,
 		ConsistencyMode:                limitInfo.DataPartitionConsistencyMode,
-		SyncMode:                       limitInfo.SyncMode,
+		PersistenceMode:                limitInfo.PersistenceMode,
 	}
 	s.space.ApplySetting(ss)
 

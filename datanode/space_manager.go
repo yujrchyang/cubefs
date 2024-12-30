@@ -48,7 +48,7 @@ type SpaceSetting struct {
 	FlushFDParallelismOnDisk       uint64
 	SyncWALOnUnstableEnableState   bool
 	ConsistencyMode                proto.ConsistencyMode
-	SyncMode                       proto.SyncMode
+	PersistenceMode                proto.PersistenceMode
 }
 
 // SpaceManager manages the disk space.
@@ -411,18 +411,18 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 	manager.createPartitionMutex.Lock()
 	defer manager.createPartitionMutex.Unlock()
 	dpCfg := &dataPartitionCfg{
-		PartitionID:   request.PartitionId,
-		VolName:       request.VolumeId,
-		Peers:         request.Members,
-		Hosts:         request.Hosts,
-		Learners:      request.Learners,
-		RaftStore:     manager.raftStore,
-		NodeID:        manager.nodeID,
-		ClusterID:     manager.clusterID,
-		PartitionSize: request.PartitionSize,
-		ReplicaNum:    request.ReplicaNum,
-		VolHAType:     request.VolumeHAType,
-		SyncMode:      request.SyncMode,
+		PartitionID:     request.PartitionId,
+		VolName:         request.VolumeId,
+		Peers:           request.Members,
+		Hosts:           request.Hosts,
+		Learners:        request.Learners,
+		RaftStore:       manager.raftStore,
+		NodeID:          manager.nodeID,
+		ClusterID:       manager.clusterID,
+		PartitionSize:   request.PartitionSize,
+		ReplicaNum:      request.ReplicaNum,
+		VolHAType:       request.VolumeHAType,
+		PersistenceMode: request.PersistenceMode,
 	}
 	dp = manager.Partition(dpCfg.PartitionID)
 	if dp != nil {
@@ -744,10 +744,10 @@ func (manager *SpaceManager) updateVolumesConfigs(window time.Duration) {
 			ps.CrossRegionHAType = info.CrossRegionHAType
 			ps.DPReplicaNum = int(info.DpReplicaNum)
 			if ss != nil {
-				if ss.SyncMode != proto.SyncModeNil {
-					ps.SyncMode = ss.SyncMode
+				if ss.PersistenceMode != proto.PersistenceMode_Nil {
+					ps.PersistenceMode = ss.PersistenceMode
 				} else {
-					ps.SyncMode = info.SyncMode
+					ps.PersistenceMode = info.PersistenceMode
 				}
 			}
 

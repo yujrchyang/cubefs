@@ -687,7 +687,7 @@ type LimitInfo struct {
 	DataNodeFlushFDInterval          uint32
 	DataNodeFlushFDParallelismOnDisk uint64
 	DataPartitionConsistencyMode     ConsistencyMode
-	SyncMode						 SyncMode
+	PersistenceMode                  PersistenceMode
 
 	MonitorSummarySec uint64
 	MonitorReportSec  uint64
@@ -749,18 +749,18 @@ type LimitInfo struct {
 
 // CreateDataPartitionRequest defines the request to create a data partition.
 type CreateDataPartitionRequest struct {
-	PartitionType string
-	PartitionId   uint64
-	PartitionSize int
-	ReplicaNum    int
-	VolumeId      string
-	IsRandomWrite bool
-	Members       []Peer
-	Learners      []Learner
-	Hosts         []string
-	CreateType    int
-	VolumeHAType  CrossRegionHAType
-	SyncMode      SyncMode
+	PartitionType   string
+	PartitionId     uint64
+	PartitionSize   int
+	ReplicaNum      int
+	VolumeId        string
+	IsRandomWrite   bool
+	Members         []Peer
+	Learners        []Learner
+	Hosts           []string
+	CreateType      int
+	VolumeHAType    CrossRegionHAType
+	PersistenceMode PersistenceMode
 }
 
 // CreateDataPartitionResponse defines the response to the request of creating a data partition.
@@ -1318,7 +1318,7 @@ type SimpleVolView struct {
 	ForceROW              bool
 	EnableWriteCache      bool
 	CrossRegionHAType     CrossRegionHAType
-	SyncMode              SyncMode
+	PersistenceMode       PersistenceMode
 	Tokens                map[string]*Token `graphql:"-"`
 	Description           string
 	DpSelectorName        string
@@ -1787,24 +1787,24 @@ const (
 	StrictMode
 )
 
-type SyncMode int8
+type PersistenceMode int8
 
-func (s SyncMode) String() string {
+func (s PersistenceMode) String() string {
 	switch s {
-	case SyncModeNil:
+	case PersistenceMode_Nil:
 		return "Nil"
-	case SyncModeDisabled:
-		return "Disabled"
-	case SyncModeEnabled:
-		return "Enabled"
+	case PersistenceMode_WriteBack:
+		return "WriteBack"
+	case PersistenceMode_WriteThrough:
+		return "WriteThrough"
 	default:
 	}
 	return "Unknown"
 }
 
-func (s SyncMode) Valid() bool {
+func (s PersistenceMode) Valid() bool {
 	switch s {
-	case SyncModeNil, SyncModeDisabled, SyncModeEnabled:
+	case PersistenceMode_Nil, PersistenceMode_WriteBack, PersistenceMode_WriteThrough:
 		return true
 	default:
 	}
@@ -1812,11 +1812,11 @@ func (s SyncMode) Valid() bool {
 }
 
 const (
-	SyncModeNil      SyncMode = 0 // 未设置
-	SyncModeDisabled SyncMode = 1 // 不保证每次写入后同步落盘
-	SyncModeEnabled  SyncMode = 2 // 保证每次写入后同步落盘
+	PersistenceMode_Nil          PersistenceMode = 0 // 未设置
+	PersistenceMode_WriteBack    PersistenceMode = 1 // 不保证每次写入后同步落盘
+	PersistenceMode_WriteThrough PersistenceMode = 2 // 保证每次写入后同步落盘
 
-	DefaultSyncMode = SyncModeDisabled
+	DefaultSyncMode = PersistenceMode_WriteBack
 )
 
 // http ContentType

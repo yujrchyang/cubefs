@@ -1405,7 +1405,7 @@ func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error)
 
 		VolHAType:       meta.VolumeHAType,
 		ConsistencyMode: meta.ConsistencyMode,
-		SyncMode:        meta.SyncMode,
+		PersistenceMode: meta.PersistenceMode,
 	}
 	if dp, err = newDataPartition(dpCfg, d, false, d.topoManager, d.interceptors); err != nil {
 		return
