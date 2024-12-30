@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/console/cutil"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
 	"net/http"
 	"strconv"
@@ -65,8 +66,8 @@ type ReleaseClient struct {
 	domain     string
 	cluster    string
 
-	datanodeProf string
-	metanodeProf string
+	DatanodeProf string
+	MetanodeProf string
 }
 
 func NewReleaseClient(addrs []string, domain, cluster string, timeout time.Duration) *ReleaseClient {
@@ -428,12 +429,12 @@ func (c *ReleaseClient) DiskOffline(addr, disk, dest string) error {
 	return nil
 }
 
-func (c *ReleaseClient) MetaPartitionOffline(addr, volName string, mpID uint64) error {
+func (c *ReleaseClient) MetaPartitionOffline(addr, volName string, mpID uint64, destAddr string) error {
 	req := cutil.NewAPIRequest(http.MethodPost, fmt.Sprintf("http://%s%s", c.domain, AdminMetaPartitionOffline))
 	req.AddParam("addr", addr)
 	req.AddParam("name", volName)
 	req.AddParam("id", strconv.FormatUint(mpID, 10))
-	req.AddParam("destAddr", "")
+	req.AddParam("destAddr", destAddr)
 
 	data, err := cutil.SendSimpleRequest(req, true)
 	if err != nil {
@@ -588,14 +589,14 @@ func (c *ReleaseClient) ClientDataPartitions(volume string) ([]*cproto.DataParti
 	req := cutil.NewAPIRequest(http.MethodGet, fmt.Sprintf("http://%s%s", c.domain, ClientDataPartition))
 	req.AddParam("name", volume)
 
-	data, err := cutil.SendSimpleRequest(req, false)
+	data, err := cutil.SendSimpleRequest(req, true)
 	if err != nil {
 		log.LogErrorf("ReleaseClient ClientDataPartitions failed: err(%v)", err)
 		return nil, err
 	}
 	view := &cproto.DataPartitionsResp{}
 	if err = json.Unmarshal(data, view); err != nil {
-		log.LogErrorf("ReleaseClient ClientDataPartitions failed: err(%v)")
+		log.LogErrorf("ReleaseClient ClientDataPartitions failed: err(%v)", err)
 		return nil, err
 	}
 	return view.DataPartitions, nil
@@ -605,15 +606,30 @@ func (c *ReleaseClient) ClientMetaPartition(volume string) ([]*cproto.MetaPartit
 	req := cutil.NewAPIRequest(http.MethodGet, fmt.Sprintf("http://%s%s", c.domain, ClientMetaPartition))
 	req.AddParam("name", volume)
 
-	data, err := cutil.SendSimpleRequest(req, false)
+	data, err := cutil.SendSimpleRequest(req, true)
 	if err != nil {
 		log.LogErrorf("ReleaseClient ClientMetaPartition failed: err(%v)", err)
 		return nil, err
 	}
 	view := make([]*cproto.MetaPartitionView, 0)
 	if err = json.Unmarshal(data, &view); err != nil {
-		log.LogErrorf("ReleaseClient ClientMetaPartition failed: err(%v)")
+		log.LogErrorf("ReleaseClient ClientMetaPartition failed: err(%v)", err)
 		return nil, err
 	}
 	return view, nil
+}
+
+func (c *ReleaseClient) SetIsRecoverDataPartition(partitionID uint64) error {
+	req := cutil.NewAPIRequest(http.MethodGet, fmt.Sprintf("http://%s%s", c.domain, proto.AdminDataPartitionSetIsRecover))
+	req.AddParam("id", strconv.Itoa(int(partitionID)))
+	// todo: 确定指定是false
+	req.AddParam("isRecover", "false")
+
+	data, err := cutil.SendSimpleRequest(req, true)
+	if err != nil {
+		log.LogErrorf("ReleaseClient SetIsRecoverDataPartition failed: pid(%v) err(%v)", partitionID, err)
+		return err
+	}
+	log.LogInfof("ReleaseClient SetBandwidthLimiter success: msg(%s)", string(data))
+	return nil
 }

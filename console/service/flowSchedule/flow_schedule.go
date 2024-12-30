@@ -141,25 +141,37 @@ func (f *FlowSchedule) queryDetail(sqlLine string, drawDimension int32) (results
 		if err != nil {
 			return
 		}
-		if drawDimension == cproto.ActionDrawLineDimension {
-			entry.OperationType = fields[1]
-		} else {
+		if drawDimension == cproto.DiskDrawLineDimension {
 			entry.Disk = fields[1]
+		} else {
+			entry.OperationType = fields[1]
 		}
 		entry.Time = time_.Format("2006/01/02 15:04:05")
-		entry.Count, _ = strconv.ParseUint(fields[2], 10, 64)
-		entry.Size, _ = strconv.ParseUint(fields[3], 10, 64)
-		entry.AvgSize, _ = strconv.ParseUint(fields[4], 10, 64)
+		if drawDimension == cproto.ClientZoneLineDimension {
+			entry.Zone = fields[2]
+			entry.Size, _ = strconv.ParseUint(fields[3], 10, 64)
+			entry.Count, _ = strconv.ParseUint(fields[4], 10, 64)
+		} else {
+			entry.Count, _ = strconv.ParseUint(fields[2], 10, 64)
+			entry.Size, _ = strconv.ParseUint(fields[3], 10, 64)
+			entry.AvgSize, _ = strconv.ParseUint(fields[4], 10, 64)
+		}
+
 		if drawDimension == cproto.ActionDrawLineDimension {
 			if _, ok := queryResult[entry.OperationType]; !ok {
 				queryResult[entry.OperationType] = make([]*cproto.FlowScheduleResult, 0)
 			}
 			queryResult[entry.OperationType] = append(queryResult[entry.OperationType], entry)
-		} else {
+		} else if drawDimension == cproto.DiskDrawLineDimension {
 			if _, ok := queryResult[entry.Disk]; !ok {
 				queryResult[entry.Disk] = make([]*cproto.FlowScheduleResult, 0)
 			}
 			queryResult[entry.Disk] = append(queryResult[entry.Disk], entry)
+		} else if drawDimension == cproto.ClientZoneLineDimension {
+			if _, ok := queryResult[entry.Zone]; !ok {
+				queryResult[entry.Zone] = make([]*cproto.FlowScheduleResult, 0)
+			}
+			queryResult[entry.Zone] = append(queryResult[entry.Zone], entry)
 		}
 	}
 	results = make([][]*cproto.FlowScheduleResult, 0, len(queryResult))

@@ -36,12 +36,11 @@ type CompactWorker struct {
 	api *api.APIManager //调用master接口用
 }
 
-func NewCompactWorker() *CompactWorker {
-	compact := &CompactWorker{}
+func NewCompactWorker(api *api.APIManager) *CompactWorker {
+	compact := &CompactWorker{
+		api: api,
+	}
 	return compact
-}
-func (c *CompactWorker) SetApiManager(manager *api.APIManager) {
-	c.api = manager
 }
 
 func (c *CompactWorker) ListCompactVol(cluster string, status *bool) []*proto.DataMigVolume {

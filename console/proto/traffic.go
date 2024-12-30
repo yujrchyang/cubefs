@@ -1,7 +1,9 @@
 package proto
 
 import (
+	"fmt"
 	"github.com/cubefs/cubefs/console/model"
+	"time"
 )
 
 const (
@@ -16,6 +18,7 @@ const (
 const (
 	ActionDrawLineDimension int32 = iota
 	DiskDrawLineDimension
+	ClientZoneLineDimension
 )
 
 type DataGranularity int
@@ -165,7 +168,7 @@ type HistoryCurveRequest struct {
 
 type ZombieVolResponse struct {
 	Total int64
-	Data  []*model.ConsoleVolume
+	Data  []*model.ConsoleVolumeOps
 }
 
 type QueryVolOpsRequest struct {
@@ -184,4 +187,52 @@ type AbnormalVolResponse struct {
 	Total            int64
 	ZombieVolCount   int64
 	NoDeleteVolCount int64
+}
+
+const (
+	secondsForOneDay     = 24 * 60 * 60
+	secondsForThreeMonth = 3 * 30 * secondsForOneDay
+)
+
+func ParseHistoryCurveRequestTime(interval int, startDate, endDate int64) (start, end time.Time, err error) {
+	end = time.Now()
+	switch interval {
+	case ResourceNoType:
+		if startDate == 0 && endDate == 0 {
+			err = fmt.Errorf("start and end cannot both be 0")
+			return
+		}
+		if endDate-startDate >= int64(secondsForThreeMonth) {
+			err = fmt.Errorf("时间跨度不超过3个月！")
+			return
+		}
+		if startDate == 0 {
+			startDate = endDate - int64(secondsForOneDay)
+		}
+		if endDate == 0 {
+			endDate = end.Unix()
+		}
+		if startDate == endDate {
+			endDate = startDate + int64(secondsForOneDay)
+		}
+		end = time.Unix(endDate, 0)
+		start = time.Unix(startDate, 0)
+
+	case ResourceLatestOneDay:
+		start = end.AddDate(0, 0, -1)
+
+	case ResourceLatestOneWeek:
+		start = end.AddDate(0, 0, -7)
+
+	case ResourceLatestOneMonth:
+		start = end.AddDate(0, -1, 0)
+
+	default:
+		err = fmt.Errorf("undefined interval type: %v", interval)
+		return
+	}
+	// ？为啥秒和纳秒都是0
+	end = time.Date(end.Year(), end.Month(), end.Day(), end.Hour(), end.Minute(), 0, 0, time.Local)
+	start = time.Date(start.Year(), start.Month(), start.Day(), start.Hour(), start.Minute(), 0, 0, time.Local)
+	return
 }

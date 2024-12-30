@@ -7,17 +7,17 @@ import (
 )
 
 var (
-	// todo: remove this, 就不该有这个全局的集群。。。。邪门 意味着后端同时仅能支持一个集群的
-	GlobalCluster = "spark"
 	Global_CFG    ConsoleConfig // 全局变量 配置
+	GlobalCluster string        // todo: remove this, 就不该有这个全局的集群。。。。邪门 意味着后端同时仅能支持一个集群的
 )
 
 type ConsoleConfig struct {
-	Role     string `json:"role"`
-	Listen   string `json:"listen"`
-	LogDir   string `json:"logDir"`
-	LogLevel string `json:"logLevel"`
-	LocalIP  string `json:"localIP"` // 或者域名
+	Role           string `json:"role"`
+	Listen         string `json:"listen"`
+	LogDir         string `json:"logDir"`
+	LogLevel       string `json:"logLevel"`
+	LocalIP        string `json:"localIP"`
+	DefaultCluster string `json:"defaultCluster"`
 
 	MonitorAddr      string `json:"monitorAddr"`
 	MonitorCluster   string `json:"monitorCluster"`
@@ -25,6 +25,7 @@ type ConsoleConfig struct {
 	DataExporterPort string `json:"dataExporterPort"`
 
 	MysqlConfig      config.MysqlConfig `json:"mysqlConfig"`
+	SreDBConfig      config.MysqlConfig `json:"sreDBConfig"`
 	ConsoleDBConfig  config.MysqlConfig `json:"consoleDBConfig"`
 	ClickHouseConfig ClickHouseConfig   `json:"clickHouseConfig"`
 	SSOConfig        SSOConfig          `json:"ssoConfig"`
@@ -36,8 +37,8 @@ type ConsoleConfig struct {
 	IsIntranet     bool `json:"isIntranet"`     // 登录方式，内网需配置下列参数
 	StaticResource bool `json:"staticResource"` // 静态资源方式
 	CronTaskOn     bool `json:"cronTaskOn"`     // 定时任务开关
+	EnableXBP      bool `json:"enableXbp"`      // 是否开启审批流
 
-	EnableXBP        bool      `json:"enableXbp"` // 是否开启审批流
 	XbpProcessConfig XBPConfig `json:"xbpConfig"` // xbp配置参数
 }
 
@@ -71,6 +72,7 @@ type S3Config struct {
 func InitConsoleConfig(cfg *config.Config) error {
 	Global_CFG = ConsoleConfig{
 		MysqlConfig:      config.MysqlConfig{},
+		SreDBConfig:      config.MysqlConfig{},
 		ConsoleDBConfig:  config.MysqlConfig{},
 		ClickHouseConfig: ClickHouseConfig{},
 		SSOConfig:        SSOConfig{},
@@ -80,6 +82,7 @@ func InitConsoleConfig(cfg *config.Config) error {
 	if err := json.Unmarshal(cfg.Raw, &Global_CFG); err != nil {
 		return err
 	}
+	GlobalCluster = Global_CFG.DefaultCluster
 	return nil
 }
 

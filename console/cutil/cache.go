@@ -28,7 +28,17 @@ type userCacheEntity struct {
 func TokenValidate(token string) (*proto.UserInfo, error) {
 	cache, found := userCache.Load(token)
 	if !found {
-		return nil, fmt.Errorf("无效token: %s！", token)
+		// 内网 用户带着cookie请求接口 先注册
+		if !Global_CFG.IsIntranet {
+			return nil, fmt.Errorf("无效token: %s！", token)
+		}
+		log.LogInfof("TokenValidate: cookie: %v", token)
+		if erpInfo, err := GetERPInfoByCookies(token); err != nil {
+			return nil, err
+		} else {
+			CookieRegister(erpInfo.Username, token)
+			cache, _ = userCache.Load(token)
+		}
 	}
 	value := cache.(*userCacheEntity)
 	if value.expiredTime.Before(time.Now()) {

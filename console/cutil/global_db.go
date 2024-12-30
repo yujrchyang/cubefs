@@ -16,11 +16,6 @@ var (
 	ClickHouseDBPassword  string
 )
 
-const (
-	defaultMaxIdleConns = 3
-	defaultMaxOpenConns = 8
-)
-
 func OpenGorm(cfg *config.MysqlConfig) (dbHandle *gorm.DB, err error) {
 	mysqlConfig := mysql.Config{
 		DSN:                       DataSourceName(cfg),
@@ -36,8 +31,9 @@ func OpenGorm(cfg *config.MysqlConfig) (dbHandle *gorm.DB, err error) {
 	}
 	db, _ := dbHandle.DB()
 
-	db.SetMaxIdleConns(defaultMaxIdleConns)
-	db.SetMaxOpenConns(defaultMaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetConnMaxLifetime(0)
 	return
 }
 

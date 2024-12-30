@@ -91,34 +91,54 @@ func (table VolumeOperationRecord) InsertRecord(record *VolumeOperationRecord) e
 	return nil
 }
 
+const (
+	CliOperationStatusFailed = iota
+	CliOperationStatusSuccess
+)
+
 // Only insert successful record
 type CliOperationRecord struct {
-	ClusterName string    `json:"clusterName" gorm:"column:cluster_name"`
-	Module      string    `json:"module" gorm:"column:module"`
-	VolName     string    `json:"volName" gorm:"column:vol_name"`
-	Operation   string    `json:"operation" gorm:"column:operation"`
-	Params      string    `json:"params" gorm:"column:params"`
-	Pin         string    `json:"pin" gorm:"column:pin"`
+	ClusterName string    `gorm:"column:cluster_name"`
+	Module      string    `gorm:"column:module"`
+	VolName     string    `gorm:"column:vol_name"`
+	Operation   string    `gorm:"column:operation"`
+	Params      string    `gorm:"column:params"`
+	Pin         string    `gorm:"column:pin"`
 	TicketID    uint64    `gorm:"column:ticket_id"`
-	CreateTime  time.Time `json:"-" gorm:"column:create_time;default:CURRENT_TIMESTAMP"`
+	Status      int       `gorm:"column:status;default:-1"` //成功-1 失败-0
+	ErrMsg      string    `gorm:"column:message"`
+	CreateTime  time.Time `gorm:"column:create_time;default:CURRENT_TIMESTAMP"`
+	UpdateTime  time.Time `gorm:"column:update_time"`
 }
 
 func (CliOperationRecord) TableName() string {
 	return "cli_operation_record"
 }
 
-func NewCliOperation(cluster, module, operation, pin string, params ...string) *CliOperationRecord {
+func NewCliOperation(cluster, module, operation, pin, params string, ticketID uint64, status int) *CliOperationRecord {
 	record := &CliOperationRecord{
 		ClusterName: cluster,
 		Module:      module,
 		Operation:   operation,
 		Pin:         pin,
+		Params:      params,
+		TicketID:    ticketID,
 		CreateTime:  time.Now(),
-	}
-	if params != nil {
-		record.Params = params[0]
+		UpdateTime:  time.Now(),
 	}
 	return record
+}
+
+func (table CliOperationRecord) SetCliRecordVolume(volume string) {
+	if volume != "" {
+		table.VolName = volume
+	}
+}
+
+func (table CliOperationRecord) SetErrMsg(err error) {
+	if err != nil {
+		table.ErrMsg = err.Error()
+	}
 }
 
 func (table CliOperationRecord) InsertRecord(record *CliOperationRecord) error {
@@ -139,7 +159,45 @@ func (table CliOperationRecord) UpdateRecordStatus(ticketID uint64, status int) 
 	}
 }
 
-// 唯一性的判定
+func (table CliOperationRecord) LoadRecordByTicketID(ticketID uint64) *CliOperationRecord {
+	record := new(CliOperationRecord)
+	res := cutil.CONSOLE_DB.Table(table.TableName()).Where("ticket_id = ?", ticketID).
+		Limit(1).Scan(&record)
+	if res.Error != nil {
+		log.LogErrorf("LoadRecordByTicketID failed: ticketID[%v], err(%v)", ticketID, res.Error)
+		return nil
+	}
+	if res.RowsAffected == 0 {
+		log.LogErrorf("LoadRecordByTicketID: can't find apply record by ticketID[%v]", ticketID)
+		return nil
+	}
+	return record
+}
+
+func (table CliOperationRecord) GetOperationRecordCount(cluster, module, operation string) (count int64, err error) {
+	err = cutil.CONSOLE_DB.Table(table.TableName()).
+		Where("cluster_name = ? AND module = ? AND operation = ?", cluster, module, operation).
+		Count(&count).Error
+	if err != nil {
+		log.LogErrorf("GetRecordCount failed: cluster(%v) module(%v) operation(%v) err(%v)", cluster, module, operation, err)
+	}
+	return
+}
+
+func (table CliOperationRecord) GetOperationRecord(cluster, module, operation string, pageNum, pageSize int) (results []*CliOperationRecord, err error) {
+	err = cutil.CONSOLE_DB.Table(table.TableName()).
+		Where("cluster_name = ? AND module = ? AND operation = ?", cluster, module, operation).
+		Order("create_time DESC").
+		Offset((pageNum - 1) * pageSize).
+		Limit(pageSize).
+		Find(&results).Error
+	if err != nil {
+		log.LogErrorf("GetOperationRecord failed: cluster(%v) module(%v) operation(%v) err(%v)", cluster, module, operation, err)
+	}
+	return
+}
+
+// todo: 索引
 type KeyValueOperation struct {
 	ID             uint64    `gorm:"column:id"`
 	Module         string    `gorm:"column:module"`

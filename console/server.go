@@ -23,6 +23,8 @@ import (
 
 type SchemaService interface {
 	Schema() *graphql.Schema
+	SType() proto.ServiceType
+	DoXbpApply(apply *model.XbpApplyInfo) error
 }
 
 type ConsoleNode struct {
@@ -30,7 +32,7 @@ type ConsoleNode struct {
 	stopC  chan bool
 
 	clusters       []*model.ConsoleCluster
-	registeredPath map[string]bool
+	serviceManager map[proto.ServiceType]SchemaService
 }
 
 func NewServer() *ConsoleNode {
@@ -77,37 +79,45 @@ func (c *ConsoleNode) Start(conf *config.Config) error {
 
 func (c *ConsoleNode) registerSchema() {
 	loginService := service.NewLoginService(c.clusters)
-	c.addHandle(proto.ConsoleLoginAPI, loginService.Schema(), loginService)
+	c.addHandle(proto.ConsoleLoginAPI, loginService.Schema(), loginService.SType(), loginService)
 
 	monitorService := service.NewMonitorService(c.clusters)
-	c.addHandle(proto.ConsoleMonitorAPI, monitorService.Schema(), monitorService)
+	c.addHandle(proto.ConsoleMonitorAPI, monitorService.Schema(), monitorService.SType(), monitorService)
 
 	fileService := service.NewFileService(c.clusters)
-	c.addHandle(proto.ConsoleFile, fileService.Schema(), fileService)
-	c.addHandleFunc(c.registerURI(proto.ConsoleFileDown), fileService.DownFile)
-	c.addHandleFunc(c.registerURI(proto.ConsoleFileUpload), fileService.UpLoadFile)
+	c.addHandle(proto.ConsoleFile, fileService.Schema(), fileService.SType(), fileService)
 
 	volumeService := service.NewVolumeService(c.clusters)
-	c.addHandle(proto.ConsoleVolume, volumeService.Schema(), volumeService)
+	c.addHandle(proto.ConsoleVolume, volumeService.Schema(), volumeService.SType(), volumeService)
 
 	clusterService := service.NewClusterService(c.clusters)
-	c.addHandle(proto.ConsoleCluster, clusterService.Schema(), clusterService)
+	c.addHandle(proto.ConsoleCluster, clusterService.Schema(), clusterService.SType(), clusterService)
 
 	trafficService := service.NewTrafficService(c.clusters, c.stopC)
-	c.addHandle(proto.ConsoleTraffic, trafficService.Schema(), trafficService)
+	c.addHandle(proto.ConsoleTraffic, trafficService.Schema(), trafficService.SType(), trafficService)
 
 	cliService := service.NewCliService(c.clusters)
-	c.addHandle(proto.ConsoleCli, cliService.Schema(), cliService)
-	// todo: solveXbp 需要做成多个模块通用的，不仅是cli, 需要抽象
-	c.addHandleFunc(c.registerURI(proto.XBPCallBackPath), cliService.SolveXbpCallBack)
+	c.addHandle(proto.ConsoleCli, cliService.Schema(), cliService.SType(), cliService)
 
 	scheduleService := service.NewScheduleTaskService(c.clusters)
-	c.addHandle(proto.ConsoleSchedule, scheduleService.Schema(), scheduleService)
+	c.addHandle(proto.ConsoleSchedule, scheduleService.Schema(), scheduleService.SType(), scheduleService)
 }
 
 func (c *ConsoleNode) registerHttpHandler() {
-	c.server.HandleFunc(c.registerURI(proto.ConsoleIQL), cutil.IQLFun)
-	c.server.HandleFunc(c.registerURI(proto.VersionPath), versionHandler)
+	c.server.HandleFunc(proto.ConsoleIQL, cutil.IQLFun)
+	c.server.HandleFunc(proto.VersionPath, versionHandler)
+	c.server.HandleFunc(proto.XBPCallBackPath, c.solveXbpCallback)
+
+	fileSchemaService := c.getServiceBySType(proto.FileService)
+	fileService := fileSchemaService.(*service.FileService)
+	c.addHandleFunc(proto.ConsoleFileDown, fileService.DownFile)
+	c.addHandleFunc(proto.ConsoleFileUpload, fileService.UpLoadFile)
+
+	c.addHandleFuncGroup("/offline", map[string]http.HandlerFunc{
+		"/add/user":          addConsoleUserHandler,
+		"/delete/records":    offlineDeleteRecords,
+		"/clientMonitorData": offlineQueryClientMonitorData,
+	})
 }
 
 func (c *ConsoleNode) registerStaticResource() {
@@ -133,7 +143,7 @@ func (c *ConsoleNode) registerStaticResource() {
 
 func (c *ConsoleNode) InitCronTask() {
 	if cutil.Global_CFG.CronTaskOn {
-		service.InitTrafficCronTask(c.stopC)
+		service.InitCronTask(c.stopC)
 	}
 }
 
@@ -152,11 +162,9 @@ func (c *ConsoleNode) parseConfig(cfg *cutil.ConsoleConfig) (err error) {
 	if err != nil {
 		return fmt.Errorf("open dbHandler@%v failed, err: %v", cfg.ConsoleDBConfig.Database, err)
 	}
-	sreDBConfig := cfg.ConsoleDBConfig
-	sreDBConfig.Database = "storage_sre"
-	cutil.SRE_DB, err = cutil.OpenGorm(&sreDBConfig)
+	cutil.SRE_DB, err = cutil.OpenGorm(&cfg.SreDBConfig)
 	if err != nil {
-		return fmt.Errorf("open dbHandler@%v failed, err: %v", sreDBConfig.Database, err)
+		return fmt.Errorf("open dbHandler@%v failed, err: %v", cfg.SreDBConfig.Database, err)
 	}
 	cutil.MYSQL_DB, err = cutil.OpenGorm(&cfg.MysqlConfig)
 	if err != nil {
@@ -191,18 +199,28 @@ func (c *ConsoleNode) addHandleFunc(uri string, f func(w http.ResponseWriter, r 
 	})
 }
 
-func (c *ConsoleNode) addHandle(model string, schema *graphql.Schema, service interface{}) {
-	c.registerURI(model)
+func (c *ConsoleNode) addHandle(model string, schema *graphql.Schema, serviceType proto.ServiceType, service SchemaService) {
+	c.registerService(serviceType, service)
 	introspection.AddIntrospectionToSchema(schema)
 	c.server.Handle(model, cutil.HTTPHandler(schema)).Methods("POST")
 }
 
-func (c *ConsoleNode) registerURI(path string) string {
-	if c.registeredPath == nil {
-		c.registeredPath = make(map[string]bool)
+func (c *ConsoleNode) addHandleFuncGroup(prefix string, handlers map[string]http.HandlerFunc) {
+	for method, handler := range handlers {
+		c.server.HandleFunc(prefix+method, handler)
 	}
-	c.registeredPath[path] = true
-	return path
+}
+
+func (c *ConsoleNode) registerService(serviceType proto.ServiceType, service SchemaService) {
+	if c.serviceManager == nil {
+		c.serviceManager = make(map[proto.ServiceType]SchemaService)
+	}
+	c.serviceManager[serviceType] = service
+	return
+}
+
+func (c *ConsoleNode) getServiceBySType(sType proto.ServiceType) SchemaService {
+	return c.serviceManager[sType]
 }
 
 func indexer(w http.ResponseWriter, r *http.Request) {

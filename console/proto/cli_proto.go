@@ -27,7 +27,7 @@ type CliModule struct {
 
 var CliModuleList = []*CliModule{
 	ClusterModule, MetaNodeModule, DataNodeModule, EcModule,
-	RateLimitModule, NetworkModule, VolumeModule, BatchModule, KeyValueModule,
+	RateLimitModule, NetworkModule, VolumeModule, BatchModule, KeyValueModule, FileMigrateModule,
 }
 
 const (
@@ -41,6 +41,7 @@ const (
 	NetworkModuleType
 	BatchModuleType
 	KeyValueModuleType
+	FileMigrateModuleType
 )
 
 var ClusterModule = &CliModule{
@@ -83,6 +84,10 @@ var KeyValueModule = &CliModule{
 	ModuleType: KeyValueModuleType,
 	Module:     "key-value自定义",
 }
+var FileMigrateModule = &CliModule{
+	ModuleType: FileMigrateModuleType,
+	Module:     "文件迁移",
+}
 
 func GetModule(t int) string {
 	switch t {
@@ -106,6 +111,8 @@ func GetModule(t int) string {
 		return BatchModule.Module
 	case KeyValueModuleType:
 		return KeyValueModule.Module
+	case FileMigrateModuleType:
+		return FileMigrateModule.Module
 	}
 	return ""
 }
@@ -170,6 +177,7 @@ const (
 	OpDataPartitionConsistencyMode
 	OpDataNodeDiskReservedRatio
 	OpDataNodeRepairTaskCount
+	OpDataNodeExtentRepairTask
 	//  限速
 	OpClientReadVolRateLimit
 	OpClientWriteVolRateLimit
@@ -211,8 +219,13 @@ const (
 	OpBatchSetVolConnConfig
 	OpBatchSetVolInodeReuse
 	OpBatchSetVolReplicaNum
+	OpBatchSetVolMpReplicaNum
 	OpBatchSetVolFollowerReadCfg
+	OpBatchSetVolReqRemoveDup
+	OpBatchSetJSSVolumeMetaTag
 	// key-value 查数据库表
+	// 文件迁移
+	OpMigrationConfigList
 )
 
 const (
@@ -222,7 +235,11 @@ const (
 )
 
 var (
+	MigrationConfigList              = NewCliOperation(OpMigrationConfigList, "迁移配置列表", isList, !releaseSupport, sparkSupport)
+	BatchSetVolReqRemoveDup          = NewCliOperation(OpBatchSetVolReqRemoveDup, "vol属性-元数据请求去重", isList, !releaseSupport, sparkSupport)
+	BatchSetJSSVolumeMetaTag         = NewCliOperation(OpBatchSetJSSVolumeMetaTag, "vol属性-jss卷元数据标记", isList, !releaseSupport, sparkSupport)
 	BatchSetVolFollowerReadCfg       = NewCliOperation(OpBatchSetVolFollowerReadCfg, "vol属性-从读配置", isList, !releaseSupport, sparkSupport)
+	BatchSetVolMpReplicaNum          = NewCliOperation(OpBatchSetVolMpReplicaNum, "vol属性-mp副本数", isList, !releaseSupport, sparkSupport)
 	BatchSetVolReplicaNum            = NewCliOperation(OpBatchSetVolReplicaNum, "vol属性-dp副本数", isList, !releaseSupport, sparkSupport)
 	BatchSetVolForceROW              = NewCliOperation(OpBatchSetVolForceROW, "vol属性-ForceROW", isList, !releaseSupport, sparkSupport)
 	BatchSetVolWriteCache            = NewCliOperation(OpBatchSetVolWriteCache, "vol属性-writeCache", isList, !releaseSupport, sparkSupport)
@@ -268,6 +285,7 @@ var (
 	DataPartitionConsistencyMode     = NewCliOperation(OpDataPartitionConsistencyMode, "设置dp consistency mode", !isList, !releaseSupport, sparkSupport)
 	DataNodeDiskReservedRatio        = NewCliOperation(OpDataNodeDiskReservedRatio, "设置磁盘保留阈值", !isList, !releaseSupport, sparkSupport)
 	DataNodeRepairTaskCount          = NewCliOperation(OpDataNodeRepairTaskCount, "设置repair task count", !isList, releaseSupport, !sparkSupport)
+	DataNodeExtentRepairTask         = NewCliOperation(OpDataNodeExtentRepairTask, "设置extent修复任务", isList, !releaseSupport, sparkSupport)
 	ClientReadVolRateLimit           = NewCliOperation(OpClientReadVolRateLimit, "客户端 vol读请求限速", isList, releaseSupport, sparkSupport)
 	ClientWriteVolRateLimit          = NewCliOperation(OpClientWriteVolRateLimit, "客户端 vol写请求限速", isList, releaseSupport, sparkSupport)
 	ClientVolOpRateLimit             = NewCliOperation(OpClientVolOpRateLimit, "客户端 vol请求op限速(除读写外)", isList, !releaseSupport, sparkSupport)
@@ -351,6 +369,7 @@ var CliOperationMap = map[int][]*CliOperation{
 		DataPartitionConsistencyMode,
 		DataNodeDiskReservedRatio,
 		DataNodeRepairTaskCount,
+		DataNodeExtentRepairTask,
 	},
 	//FlashNodeModuleType: {},
 	EcModuleType: {
@@ -382,363 +401,383 @@ var CliOperationMap = map[int][]*CliOperation{
 		BatchSetVolWriteCache,
 		BatchSetVolDpSelector,
 		BatchSetVolReplicaNum,
+		BatchSetVolMpReplicaNum,
 		BatchSetVolFollowerReadCfg,
+		BatchSetVolReqRemoveDup,
+		BatchSetJSSVolumeMetaTag,
+	},
+	FileMigrateModuleType: {
+		MigrationConfigList,
 	},
 }
 
 var CliOperations = map[int][]CliValueMetric{
 	// valueName是key 使用proto中定义或者master/const中定义的 保持一致
 	OpSetClientPkgAddr: {
-		CliValueMetric{"addr", "Set url for download client package used for client hot-upgrade.", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"addr", "Set url for download client package used for client hot-upgrade.", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetRemoteCacheBoostEnableStatus: {
-		CliValueMetric{proto.RemoteCacheBoostEnableKey, "Set cluster remoteCacheBoostStatus to ON/OFF", "", "", manualSetValueForm(Slider)},
+		CliValueMetric{proto.RemoteCacheBoostEnableKey, "Set cluster remoteCacheBoostStatus to ON/OFF", "", "", manualSetValueForm(Slider), 0},
 	},
 	OpSetEcConfig: {
-		CliValueMetric{"ecScrubEnable", "Enable ec scrub", "", "", manualSetValueForm(Slider)},
-		CliValueMetric{"ecScrubPeriod", "Specify ec scrub period unit: min", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"ecDiskConcurrentExtents", "Specify every disk concurrent scrub extents", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"maxCodecConcurrent", "Specify every codecNode concurrent migrate dp", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"ecScrubEnable", "Enable ec scrub", "", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"ecScrubPeriod", "Specify ec scrub period unit: min", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"ecDiskConcurrentExtents", "Specify every disk concurrent scrub extents", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"maxCodecConcurrent", "Specify every codecNode concurrent migrate dp", "", "", manualSetValueForm(InputBox), 0},
 	},
 	// 没有回显的值 直接设置
 	OpSetNodeState: {
-		CliValueMetric{"addrList", "使用“;”分隔节点ip", "string", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"nodeType", "Should be one of dataNode/metaNode/all", "string", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"zoneName", "", "string", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"state", "offline state, true or false", "string", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"addrList", "使用“;”分隔节点ip", "string", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"nodeType", "Should be one of dataNode/metaNode/all", "string", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"zoneName", "", "string", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"state", "offline state, true or false", "string", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetNodeSetCapacity: {
-		CliValueMetric{proto.NodeSetCapacityKey, "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.NodeSetCapacityKey, "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpAutoMergeNodeSet: {
-		CliValueMetric{"enable", "", "", "", manualSetValueForm(Slider)},
+		CliValueMetric{"enable", "", "", "", manualSetValueForm(Slider), 0},
 	},
 	OpSetClusterFreeze: {
-		CliValueMetric{"enable", "", "", "", manualSetValueForm(Slider)},
+		CliValueMetric{"enable", "", "", "", manualSetValueForm(Slider), 0},
 	},
 	OpMonitorSummarySecond: {
-		CliValueMetric{"monitorSummarySec", "summary seconds for monitor, sec >= 5", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"monitorReportSec", "report seconds for monitor, sec >= 5", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"monitorSummarySec", "summary seconds for monitor, sec >= 5", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"monitorReportSec", "report seconds for monitor, sec >= 5", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpLogMaxMB: {
-		CliValueMetric{proto.LogMaxMB, "log max MB", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.LogMaxMB, "log max MB", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpTopologyManager: {
-		CliValueMetric{proto.TopologyFetchIntervalMinKey, "topologyManager force fetch interval, unit: second", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.TopologyForceFetchIntervalSecKey, "topology fetch interval, unit: min", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.TopologyFetchIntervalMinKey, "topologyManager force fetch interval, unit: second", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.TopologyForceFetchIntervalSecKey, "topology fetch interval, unit: min", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetThreshold: {
-		CliValueMetric{"threshold", "Set memory threshold of metanodes, 0.00~1.00", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"threshold", "Set memory threshold of metanodes, 0.00~1.00", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetRocksDBDiskThreshold: {
-		CliValueMetric{"threshold", "Set RocksDB Disk threshold of metanodes, 0.00~1.00", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"threshold", "Set RocksDB Disk threshold of metanodes, 0.00~1.00", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetMemModeRocksDBDiskThreshold: {
-		CliValueMetric{"threshold", "Set RocksDB Disk threshold of mem mode metanodes, 0.00~1.00", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"threshold", "Set RocksDB Disk threshold of mem mode metanodes, 0.00~1.00", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpMetaNodeDumpWaterLevel: {
-		CliValueMetric{"metaNodeDumpWaterLevel", "metanode dump snapshot water level", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"metaNodeDumpWaterLevel", "metanode dump snapshot water level", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpMetaNodeDumpSnapCountByZone: {
-		CliValueMetric{"zoneName", " acts as default", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.MetaNodeDumpSnapCountKey, "metanode dump snapshot count", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"zoneName", " acts as default", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.MetaNodeDumpSnapCountKey, "metanode dump snapshot count", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpMetaRocksDBConf: {
-		CliValueMetric{proto.RocksDBDiskReservedSpaceKey, "设置rocksDB磁盘预留空间(MB)", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaRockDBWalFileMaxMB, "设置rocksDB配置: wal_size_limit_mb, unit:MB, default:10MB", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaRocksDBWalMemMaxMB, "设置rocksDB配置: max_total_wal_size, unit:MB, default:3MB", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaRocksDBLogMaxMB, "设置rocksDB配置: max_log_file_size, unit:MB, default:1MB", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaRocksLogReservedDay, "设置rocksDB配置: log_file_time_to_roll, unit:Day, default:3day", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaRocksLogReservedCnt, "设置rocksDB配置: keep_log_file_num, default:3", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaRocksDisableFlushWalKey, "设置rocksDB配置: flush wal flag, 0:enable, 1:disable, default:0", "", "", manualSetValueForm(Slider)},
-		CliValueMetric{proto.MetaRocksWalFlushIntervalKey, "设置rocksDB配置: flush wal interval, unit:min, default:30min", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaRocksWalTTLKey, "设置rocksDB配置: wal_ttl_seconds, unit:second, default:60s", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.RocksDBDiskReservedSpaceKey, "设置rocksDB磁盘预留空间(MB)", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaRockDBWalFileMaxMB, "设置rocksDB配置: wal_size_limit_mb, unit:MB, default:10MB", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaRocksDBWalMemMaxMB, "设置rocksDB配置: max_total_wal_size, unit:MB, default:3MB", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaRocksDBLogMaxMB, "设置rocksDB配置: max_log_file_size, unit:MB, default:1MB", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaRocksLogReservedDay, "设置rocksDB配置: log_file_time_to_roll, unit:Day, default:3day", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaRocksLogReservedCnt, "设置rocksDB配置: keep_log_file_num, default:3", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaRocksDisableFlushWalKey, "设置rocksDB配置: flush wal flag, 0:enable, 1:disable, default:0", "", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{proto.MetaRocksWalFlushIntervalKey, "设置rocksDB配置: flush wal interval, unit:min, default:30min", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaRocksWalTTLKey, "设置rocksDB配置: wal_ttl_seconds, unit:second, default:60s", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetMetaBitMapAllocator: {
-		CliValueMetric{proto.AllocatorMaxUsedFactorKey, "float64, bit map allocator max used factor for available", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.AllocatorMinFreeFactorKey, "float64, bit map allocator min free factor for available", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.AllocatorMaxUsedFactorKey, "float64, bit map allocator max used factor for available", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.AllocatorMinFreeFactorKey, "float64, bit map allocator min free factor for available", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetTrashCleanConfig: {
-		CliValueMetric{proto.MetaTrashCleanIntervalKey, "clean del inode interval, unit:min", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.TrashCleanDurationKey, "trash clean max duration for each time, unit:min", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.TrashItemCleanMaxCountKey, "trash clean max count for each time", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.MetaTrashCleanIntervalKey, "clean del inode interval, unit:min", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.TrashCleanDurationKey, "trash clean max duration for each time, unit:min", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.TrashItemCleanMaxCountKey, "trash clean max count for each time", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetMetaRaftConfig: {
-		CliValueMetric{proto.MetaRaftLogSizeKey, "meta node raft log size, unit:MB", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaRaftLogCapKey, "meta node raft log cap, unit:MB", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaSyncWalEnableStateKey, "metaSyncWALFlag", "", "", manualSetValueForm(Slider)},
+		CliValueMetric{proto.MetaRaftLogSizeKey, "meta node raft log size, unit:MB", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaRaftLogCapKey, "meta node raft log cap, unit:MB", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaSyncWalEnableStateKey, "metaSyncWALFlag", "", "", manualSetValueForm(Slider), 0},
 	},
 	OpMetaClientRequestConf: {
-		CliValueMetric{proto.ClientReqRemoveDupFlagKey, "client req remove dup flag", "", "", manualSetValueForm(Slider)},
-		CliValueMetric{proto.ClientReqRecordReservedMinKey, "client req records reserved min", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.ClientReqRecordReservedCntKey, "client req records reserved count", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.ClientReqRemoveDupFlagKey, "client req remove dup flag", "", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{proto.ClientReqRecordReservedMinKey, "client req records reserved min", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.ClientReqRecordReservedCntKey, "client req records reserved count", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpMetaNodeDeleteBatchCount: {
-		CliValueMetric{"batchCount", "MetaNodeDeleteBatchCount", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"batchCount", "MetaNodeDeleteBatchCount", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpMetaNodeDeleteWorkerSleepMs: {
-		CliValueMetric{"deleteWorkerSleepMs", "delete worker sleep time, unit: ms", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"deleteWorkerSleepMs", "delete worker sleep time, unit: ms", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpMetaNodeReadDirLimitNum: {
-		CliValueMetric{"metaNodeReadDirLimit", "readdir limit count", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"metaNodeReadDirLimit", "readdir limit count", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpDeleteEKRecordFileMaxMB: {
-		CliValueMetric{proto.MetaDelEKRecordFileMaxMB, "meta node delete ek record file max MB", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.MetaDelEKRecordFileMaxMB, "meta node delete ek record file max MB", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpDataNodeFlushFDInterval: {
-		CliValueMetric{"dataNodeFlushFDInterval", "time interval for flushing WAL and open FDs on DataNode, unit is second", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"dataNodeFlushFDInterval", "time interval for flushing WAL and open FDs on DataNode, unit is second", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpDataNodeFlushFDParallelismOnDisk: {
-		CliValueMetric{"dataNodeFlushFDParallelismOnDisk", "parallelism for flushing WAL and open FDs on DataNode per disk", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"dataNodeFlushFDParallelismOnDisk", "parallelism for flushing WAL and open FDs on DataNode per disk", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpDataSyncWALOnUnstableEnableState: {
-		CliValueMetric{proto.DataSyncWalEnableStateKey, "dataSyncWALFlag", "", "", manualSetValueForm(Slider)},
+		CliValueMetric{proto.DataSyncWalEnableStateKey, "dataSyncWALFlag", "", "", manualSetValueForm(Slider), 0},
 	},
 	OpDataNodeNormalExtentDeleteExpire: {
-		CliValueMetric{"normalExtentDeleteExpire", "datanode normal extent delete record expire time(second, >=600)", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"normalExtentDeleteExpire", "datanode normal extent delete record expire time(second, >=600)", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpDataNodeFixTinyDeleteRecordLimit: {
-		CliValueMetric{"fixTinyDeleteRecordKey", "data node fix tiny delete record limit", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"fixTinyDeleteRecordKey", "data node fix tiny delete record limit", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpDataPartitionConsistencyMode: {
 		// 增加module参数, 否则接口会认为只有这一个参数
-		CliValueMetric{"dataPartitionConsistencyMode", "cluster consistency mode for data partitions, 0-Standard 1-Strict", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"dataPartitionConsistencyMode", "cluster consistency mode for data partitions, 0-Standard 1-Strict", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpDataNodeDiskReservedRatio: {
 		// 增加module参数, 否则接口会认为只有这一个参数
-		CliValueMetric{proto.DataNodeDiskReservedRatioKey, "data node disk reserved ratio, greater than or equal 0", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.DataNodeDiskReservedRatioKey, "data node disk reserved ratio, greater than or equal 0", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpDataNodeRepairTaskCount: {
-		CliValueMetric{"dataNodeRepairTaskCount", "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"dataNodeRepairTaskCount", "", "", "", manualSetValueForm(InputBox), 0},
+	},
+	OpDataNodeExtentRepairTask: {
+		CliValueMetric{"partitionID", "dpId", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"extentID", "", "extID，多个用-分隔", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"host", "datanode节点地址，无需端口", "", "", manualSetValueForm(InputBox), 0},
 	},
 	// modul(请求接口的时候别忘了) zone vol opcode rateLimitIndex rateLimit
 	OpDatanodeRateLimit: {
-		CliValueMetric{"zoneName", " acts as default", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{"volume", " acts as default", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.RateLimitIndexKey, "rate limit index, 0: timeout(ns); 1-3: count, in bytes, out bytes; 4-6: per disk; 7-9: per partition", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.RateLimitKey, "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"zoneName", " acts as default", "", "", manualSetValueForm(DropDown), 1},
+		CliValueMetric{"volume", " acts as default", "", "", manualSetValueForm(InputBox), 1},
+		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.RateLimitIndexKey, "rate limit index, 0: timeout(ns); 1-3: count, in bytes, out bytes; 4-6: per disk; 7-9: per partition", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.RateLimitKey, "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpMetanodeRateLimit: {
-		CliValueMetric{"zoneName", " acts as default", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{"volume", " acts as default", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.RateLimitIndexKey, "rate limit index, 0: timeout(ns); 1-3: count, in bytes, out bytes; 4-6: per disk; 7-9: per partition", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.RateLimitKey, "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"zoneName", " acts as default", "", "", manualSetValueForm(DropDown), 1},
+		CliValueMetric{"volume", " acts as default", "", "", manualSetValueForm(InputBox), 1},
+		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.RateLimitIndexKey, "rate limit index, 0: timeout(ns); 1-3: count, in bytes, out bytes; 4-6: per disk; 7-9: per partition", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.RateLimitKey, "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpFlashnodeRateLimit: {
-		CliValueMetric{"zoneName", " acts as default", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{"volume", " acts as default", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.RateLimitIndexKey, "rate limit index, 0: timeout(ns); 1-3: count, in bytes, out bytes; 4-6: per disk; 7-9: per partition", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.RateLimitKey, "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"zoneName", " acts as default", "", "", manualSetValueForm(DropDown), 1},
+		CliValueMetric{"volume", " acts as default", "", "", manualSetValueForm(InputBox), 1},
+		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.RateLimitIndexKey, "rate limit index, 0: timeout(ns); 1-3: count, in bytes, out bytes; 4-6: per disk; 7-9: per partition", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.RateLimitKey, "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpApiReqBwRateLimit: {
-		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{"apiReqBwRate", "rateLimit value", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{"apiReqBwRate", "rateLimit value", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetBandwidthLimiter: {
-		CliValueMetric{"bw", "bandwidth ratelimit value, unit: byte", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"bw", "bandwidth ratelimit value, unit: byte", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpDataNodeDeleteRateLimit: {
-		CliValueMetric{proto.DataNodeMarkDeleteRateKey, "data node mark delete request rate limit", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.DataNodeMarkDeleteRateKey, "data node mark delete request rate limit", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpClientReadVolRateLimit: {
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect)},
-		CliValueMetric{"clientReadVolRate", "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 1},
+		CliValueMetric{"clientReadVolRate", "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpClientWriteVolRateLimit: {
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect)},
-		CliValueMetric{"clientWriteVolRate", "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 1},
+		CliValueMetric{"clientWriteVolRate", "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpClientVolOpRateLimit: {
 		// 没在限速中 在vol配置中
-		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{"clientVolOpRate", "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"opcode", "", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{"clientVolOpRate", "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpObjectNodeActionRateLimit: {
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"action", "object node action", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{"objectVolActionRate", "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"action", "object node action", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{"objectVolActionRate", "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpFlashNodeZoneRate: {
-		CliValueMetric{"zoneName", "if zone is empty, set rate limit for all zones", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.FlashNodeRateKey, "flash node cache read request rate limit", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"zoneName", "if zone is empty, set rate limit for all zones", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.FlashNodeRateKey, "flash node cache read request rate limit", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpFlashNodeVolRate: {
-		CliValueMetric{"zoneName", "if zone is empty, set rate limit for all zones", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.FlashNodeVolRateKey, "flash node cache read request rate limit for a volume", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"zoneName", "if zone is empty, set rate limit for all zones", "", "", manualSetValueForm(DropDown), 1},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(InputBox), 1},
+		CliValueMetric{proto.FlashNodeVolRateKey, "flash node cache read request rate limit for a volume", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpRemoteReadConnTimeoutMs: {
-		CliValueMetric{proto.RemoteReadConnTimeoutKey, "缓存客户端读超时时间(ms)", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.RemoteReadConnTimeoutKey, "缓存客户端读超时时间(ms)", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpReadConnTimeoutMs: {
-		CliValueMetric{"zoneName", "if zone is empty, set readTimeout for all zones", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.ReadConnTimeoutMsKey, "客户端读超时时间(ms)", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"zoneName", "if zone is empty, set readTimeout for all zones", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.ReadConnTimeoutMsKey, "客户端读超时时间(ms)", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpWriteConnTimeoutMs: {
-		CliValueMetric{"zoneName", "if zone is empty, set writeTimeout for all zones", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.WriteConnTimeoutMsKey, "客户端写超时时间(ms)", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"zoneName", "if zone is empty, set writeTimeout for all zones", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.WriteConnTimeoutMsKey, "客户端写超时时间(ms)", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpNetworkFlowRatio: {
-		CliValueMetric{"module", "role of cluster, like master", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{proto.NetworkFlowRatioKey, "network flow ratio percent: [0, 100]", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"module", "role of cluster, like master", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{proto.NetworkFlowRatioKey, "network flow ratio percent: [0, 100]", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetVolume: {
-		CliValueMetric{"volWriteMutex", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"forceROW", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"writeCache", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"autoRepair", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"zoneName", "", "string", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"capacity", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"replicaNum", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"mpReplicaNum", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"crossRegion", "Set cross region high available type(0 for default, 1 for quorum)", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"ekExpireSec", "int64\nSpecify the expiration second of the extent cache (-1 means never expires)", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"compactTag", "string\nSpecify volume compact", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"umpCollectWay", "Set ump collect way(0-unknown 1-file 2-jmtp client)", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"dpSelectorName", "default/kfaster", "string", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"dpSelectorParm", "请输入(0, 100)之间的数", "string", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"volWriteMutex", "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"forceROW", "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"writeCache", "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"autoRepair", "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"zoneName", "", "string", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"capacity", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"replicaNum", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"mpReplicaNum", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"crossRegion", "Set cross region high available type(0 for default, 1 for quorum)", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"ekExpireSec", "int64\nSpecify the expiration second of the extent cache (-1 means never expires)", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"compactTag", "string\nSpecify volume compact", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"umpCollectWay", "Set ump collect way(0-unknown 1-file 2-jmtp client)", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"dpSelectorName", "default/kfaster", "string", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"dpSelectorParm", "请输入(0, 100)之间的数", "string", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetVolumeConnConfig: {
-		CliValueMetric{"readConnTimeout", "int64\nSet client read connection timeout, unit: ms", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"writeConnTimeout", "int64\nSet client write connection timeout, unit: ms", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"readConnTimeout", "int64\nSet client read connection timeout, unit: ms", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"writeConnTimeout", "int64\nSet client write connection timeout, unit: ms", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetVolAuthentication: {
-		CliValueMetric{"authenticate", "Enable authenticate", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"enableToken", "ReadOnly/ReadWrite token validation for fuse client", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"bucketPolicy", "Set bucket access policy for S3(0 for private 1 for public-read)", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"authenticate", "Enable authenticate", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"enableToken", "ReadOnly/ReadWrite token validation for fuse client", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"bucketPolicy", "Set bucket access policy for S3(0 for private 1 for public-read)", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetVolMeta: {
-		CliValueMetric{proto.EnableBitMapAllocatorKey, "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{proto.BitMapSnapFrozenHour, "int64,延迟分配时间，单位: hour", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.VolRemoveDupFlagKey, "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"storeMode", "Specify volume default store mode [1:Mem, 2:Rocks]", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"metaLayout", "Specify volume meta layout num1,num2 [num1:rocksdb mp percent, num2:rocksdb replicas percent]", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"batchDelInodeCnt", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"delInodeInterval", "Specify del inode interval, unit:ms", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaNodeTruncateEKCountKey, "int64\ntruncate EK count every time when del inode", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.EnableBitMapAllocatorKey, "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{proto.BitMapSnapFrozenHour, "int64,延迟分配时间，单位: hour", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.VolRemoveDupFlagKey, "客户端请求幂等操作开关", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{proto.ReqRecordReservedTimeKey, "客户端请求保留时间", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.ReqRecordMaxCountKey, "客户端请求保留最大条数", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"storeMode", "Specify volume default store mode [1:Mem, 2:Rocks]", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"metaLayout", "Specify volume meta layout num1,num2 [num1:rocksdb mp percent, num2:rocksdb replicas percent]", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"batchDelInodeCnt", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"delInodeInterval", "Specify del inode interval, unit:ms", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaNodeTruncateEKCountKey, "int64\ntruncate EK count every time when del inode", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetVolRemoteCache: {
-		CliValueMetric{"remoteCacheBoostEnable", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"remoteCacheAutoPrepare", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"remoteCacheBoostPath", "设置加速路径，多个路径','分隔", "string", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"remoteCacheTTL", "", "string", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"remoteCacheBoostEnable", "卷缓存加速开关", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"remoteCacheAutoPrepare", "缓存预热开关", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"remoteCacheBoostPath", "设置加速路径，多个路径','分隔", "string", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"remoteCacheTTL", "单位：秒", "string", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetVolSmart: {
-		CliValueMetric{"smart", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"smartRules", "Specify volume smart rules separate by ','", "string", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"smart", "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"smartRules", "Specify volume smart rules separate by ','", "string", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetVolFollowerRead: {
-		CliValueMetric{"followerRead", "从节点读", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"hostDelayInterval", "Specify host delay update interval [unit: s]", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"follReadHostWeight", "assign weight for the lowest delay host when enable FollowerRead,(0,100)", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"nearRead", "", "bool", "", manualSetValueForm(Slider)},
+		CliValueMetric{"followerRead", "从节点读", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"hostDelayInterval", "Specify host delay update interval [unit: s]", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"follReadHostWeight", "assign weight for the lowest delay host when enable FollowerRead,(0,100)", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"nearRead", "", "bool", "", manualSetValueForm(Slider), 0},
 	},
 	OpSetVolTrash: {
-		CliValueMetric{"trashRemainingDays", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.TrashCleanDurationKey, "Trash clean duration, unit:min", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.MetaTrashCleanIntervalKey, "specify trash clean interval, unit:min", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{proto.TrashItemCleanMaxCountKey, "Trash clean max count", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"trashRemainingDays", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.TrashCleanDurationKey, "Trash clean duration, unit:min", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.MetaTrashCleanIntervalKey, "specify trash clean interval, unit:min", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.TrashItemCleanMaxCountKey, "Trash clean max count", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpVolSetChildFileMaxCount: {
-		CliValueMetric{proto.ChildFileMaxCountKey, "值类型：uint32", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{proto.ChildFileMaxCountKey, "值类型：uint32", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetVolMinRWPartition: {
-		CliValueMetric{"minWritableDp", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"minWritableMp", "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"minWritableDp", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"minWritableMp", "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpVolAddDp: {
-		//CliValueMetric{"dpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox)},
-		//CliValueMetric{"rwDpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"count", "需要增加的dp数量", "", "", manualSetValueForm(InputBox)},
+		//CliValueMetric{"dpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox), 0},
+		//CliValueMetric{"rwDpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"count", "需要增加的dp数量", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpVolAddDpRelease: {
-		//CliValueMetric{"dpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox)},
-		//CliValueMetric{"rwDpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"count", "需要增加的dp数量", "", "", manualSetValueForm(InputBox)},
-		//CliValueMetric{"type", "partition类型：tiny/extent", "", "", manualSetValueForm(InputBox)},
+		//CliValueMetric{"dpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox), 0},
+		//CliValueMetric{"rwDpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"count", "需要增加的dp数量", "", "", manualSetValueForm(InputBox), 0},
+		//CliValueMetric{"type", "partition类型：tiny/extent", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpVolAddMp: {
-		//CliValueMetric{"mpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox)},
-		//CliValueMetric{"rwMpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"start", "inodeStart", "", "", manualSetValueForm(InputBox)},
+		//CliValueMetric{"mpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox), 0},
+		//CliValueMetric{"rwMpCount", "显示值，修改不生效", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"start", "inodeStart", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpSetVolumeRelease: {
-		CliValueMetric{"capacity", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"minWritableDp", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"minWritableMp", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"batchDelInodeCnt", "", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"readConnTimeout", "单位：ms，请设置>=1000的值", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"writeConnTimeout", "单位：ms", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"enableToken", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"crossPod", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{"autoRepair", "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{proto.EnableBitMapAllocatorKey, "", "bool", "", manualSetValueForm(Slider)},
-		CliValueMetric{proto.BitMapSnapFrozenHour, "int64,延迟分配时间，单位: hour", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"capacity", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"minWritableDp", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"minWritableMp", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"batchDelInodeCnt", "", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"readConnTimeout", "单位：ms，请设置>=1000的值", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"writeConnTimeout", "单位：ms", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"enableToken", "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"crossPod", "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"autoRepair", "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{proto.EnableBitMapAllocatorKey, "", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{proto.BitMapSnapFrozenHour, "int64,延迟分配时间，单位: hour", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpVolS3ActionRateLimit: {
-		CliValueMetric{"action", "object node action", "", "", manualSetValueForm(DropDown)},
-		CliValueMetric{"objectVolActionRate", "", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"action", "object node action", "", "", manualSetValueForm(DropDown), 0},
+		CliValueMetric{"objectVolActionRate", "", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpVolClearTrash: {
-		CliValueMetric{"doCleanTrash", "是否清理回收站", "", "", manualSetValueForm(Slider)},
+		CliValueMetric{"doCleanTrash", "是否清理回收站", "", "", manualSetValueForm(Slider), 0},
 	},
 	OpBatchSetVolForceROW: {
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect)},
-		CliValueMetric{"forceROW", "", "", "", manualSetValueForm(Slider)},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{"forceROW", "", "", "", manualSetValueForm(Slider), 0},
 	},
 	OpBatchSetVolWriteCache: {
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect)},
-		CliValueMetric{"writeCache", "", "", "", manualSetValueForm(Slider)},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{"writeCache", "", "", "", manualSetValueForm(Slider), 0},
 	},
 	OpBatchSetVolInodeReuse: {
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect)},
-		CliValueMetric{proto.EnableBitMapAllocatorKey, "", "bool", "", manualSetValueForm(Slider)},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{proto.EnableBitMapAllocatorKey, "", "bool", "", manualSetValueForm(Slider), 0},
 		// todo: 延迟分配时间
 	},
 	OpBatchSetVolConnConfig: {
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect)},
-		CliValueMetric{"readConnTimeout", "int64\nSet client read connection timeout, unit: ms", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"writeConnTimeout", "int64\nSet client write connection timeout, unit: ms", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{"readConnTimeout", "int64\nSet client read connection timeout, unit: ms", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"writeConnTimeout", "int64\nSet client write connection timeout, unit: ms", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpBatchSetVolDpSelector: {
-		CliValueMetric{"volume", "", "string", "", manualSetValueForm(MultiSelect)},
-		CliValueMetric{"dpSelectorName", "default/kfaster", "string", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"dpSelectorParm", "请输入(0, 100)之间的数", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"volume", "", "string", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{"dpSelectorName", "default/kfaster", "string", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"dpSelectorParm", "请输入(0, 100)之间的数", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpBatchSetVolReplicaNum: {
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect)},
-		CliValueMetric{"replicaNum", "请输入副本数", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{"replicaNum", "请输入副本数", "", "", manualSetValueForm(InputBox), 0},
+	},
+	OpBatchSetVolMpReplicaNum: {
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{"mpReplicaNum", "请输入副本数", "", "", manualSetValueForm(InputBox), 0},
 	},
 	OpBatchSetVolFollowerReadCfg: {
-		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect)},
-		CliValueMetric{"hostDelayInterval", "统计host时延的周期[unit: s](>0表示该功能启用，0关闭该功能)", "", "", manualSetValueForm(InputBox)},
-		CliValueMetric{"follReadHostWeight", "延迟最低的host分流权重(0,100)", "", "", manualSetValueForm(InputBox)},
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{"hostDelayInterval", "统计host时延的周期[unit: s](>0表示该功能启用，0关闭该功能)", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"follReadHostWeight", "延迟最低的host分流权重(0,100)", "", "", manualSetValueForm(InputBox), 0},
 	},
-	//OpSetRateLimitKeyValue: {
-	//	CliValueMetric{"key", "master接口支持的key", "string", "", manualSetValueForm(InputBox)},
-	//	CliValueMetric{"value", "", "string", "", manualSetValueForm(InputBox)},
-	//},
-	//OpUpdateVolumeKeyValue: {
-	//	CliValueMetric{"key", "master接口支持的key", "string", "", manualSetValueForm(InputBox)},
-	//	CliValueMetric{"value", "", "string", "", manualSetValueForm(InputBox)},
-	//},
-	//OpCreateVolumeKeyValue: {
-	//	CliValueMetric{"key", "master接口支持的key", "string", "", manualSetValueForm(InputBox)},
-	//	CliValueMetric{"value", "", "string", "", manualSetValueForm(InputBox)},
-	//},
-	//OpSetDiskUsageKeyValue: {
-	//	CliValueMetric{"key", "master接口支持的key", "string", "", manualSetValueForm(InputBox)},
-	//	CliValueMetric{"value", "", "string", "", manualSetValueForm(InputBox)},
-	//},
+	OpBatchSetVolReqRemoveDup: {
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{proto.VolRemoveDupFlagKey, "客户端请求幂等操作开关", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{proto.ReqRecordReservedTimeKey, "客户端请求保留时间", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{proto.ReqRecordMaxCountKey, "客户端请求保留最大条数", "", "", manualSetValueForm(InputBox), 0},
+	},
+	OpBatchSetJSSVolumeMetaTag: {
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
+		CliValueMetric{proto.MetaOutKey, "对象存储vol元数据标志", "bool", "", manualSetValueForm(Slider), 0},
+	},
+	OpMigrationConfigList: {
+		CliValueMetric{"volume", "卷名(可多选)", "string", "", manualSetValueForm(MultiSelect), 1},
+		CliValueMetric{"smart", "是否开启冷热分离", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"compact", "是否开启碎片化整理", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"migrationBack", "冷热分离是否回迁", "bool", "", manualSetValueForm(Slider), 0},
+		CliValueMetric{"smartRules", "迁移规则:inodeAccessTime:timestamp:1726827474:hdd\n" + "inodeAccessTime:sec:60:hdd\n" + "inodeAccessTime:days:10:hdd", "string", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"hddDirs", "指定目录下文件迁移,/ 表示根目录下所有文件都迁移\n/a/(.*\\.log$) 表示a目录下以.log结尾的文件迁移\n1.括号中的是正则匹配表达式，匹配文件名\n2.可以配置多个以英文逗号隔开",
+			"string", "", manualSetValueForm(InputBox), 0},
+	},
 }
 
 func GetKeyValueBasicMetric() []*CliValueMetric {
 	baseMetric := make([]*CliValueMetric, 0)
-	keyMetric := &CliValueMetric{"key", "master接口支持的key，请依照提示类型输入value", "string", "", manualSetValueForm(DropDown)}
-	valueMetric := &CliValueMetric{"value", "", "string", "", manualSetValueForm(InputBox)}
+	keyMetric := &CliValueMetric{"key", "master接口支持的key，请依照提示类型输入value", "string", "", manualSetValueForm(DropDown), 0}
+	valueMetric := &CliValueMetric{"value", "", "string", "", manualSetValueForm(InputBox), 0}
 	baseMetric = append(baseMetric, keyMetric, valueMetric)
 	return baseMetric
 }
@@ -855,6 +894,8 @@ func GetOpShortMsg(operationCode int) string {
 		return SetVolMeta.Short
 	case OpDataNodeRepairTaskCount:
 		return DataNodeRepairTaskCount.Short
+	case OpDataNodeExtentRepairTask:
+		return DataNodeExtentRepairTask.Short
 	case OpSetVolMinRWPartition:
 		return SetVolMinRWPartition.Short
 	case OpSetVolumeConnConfig:
@@ -885,8 +926,16 @@ func GetOpShortMsg(operationCode int) string {
 		return BatchSetVolDpSelector.Short
 	case OpBatchSetVolReplicaNum:
 		return BatchSetVolReplicaNum.Short
+	case OpBatchSetVolMpReplicaNum:
+		return BatchSetVolMpReplicaNum.Short
 	case OpBatchSetVolFollowerReadCfg:
 		return BatchSetVolFollowerReadCfg.Short
+	case OpBatchSetVolReqRemoveDup:
+		return BatchSetVolReqRemoveDup.Short
+	case OpBatchSetJSSVolumeMetaTag:
+		return BatchSetJSSVolumeMetaTag.Short
+	case OpMigrationConfigList:
+		return MigrationConfigList.Short
 	default:
 	}
 	return fmt.Sprintf("undefined operation:%v", operationCode)
@@ -896,12 +945,18 @@ func GetCliOperationBaseMetrics(operation int) []CliValueMetric {
 	return CliOperations[operation]
 }
 
+type CliValueConfigList struct {
+	Data  [][]*CliValueMetric
+	Total int
+}
+
 type CliValueMetric struct {
 	ValueName string `json:"name"`
 	ValueDesc string `json:"-"`
 	ValueType string `json:"type"`
 	Value     string `json:"value"`
 	ValueForm string `json:"-"`
+	IsFilter  int32  `json:"-" gql:"output"` // 该配置项能否作为过滤条件
 }
 
 func (metric *CliValueMetric) String() string {
@@ -1134,6 +1189,23 @@ func NewCliOpMetric(code, msg string) *CliOpMetric {
 	}
 }
 
+type CliValueFilter struct {
+	Key   string
+	Value string
+}
+
+func FormatFiltersToMap(filters []*CliValueFilter) map[string]string {
+	result := make(map[string]string)
+	for _, filter := range filters {
+		filter.Value = strings.TrimSpace(filter.Value)
+		if filter.Value == "" {
+			continue
+		}
+		result[filter.Key] = filter.Value
+	}
+	return result
+}
+
 var MetaRatelimitOpList = []uint8{
 	proto.OpMetaCreateInode,
 	proto.OpMetaInodeGet,
@@ -1342,4 +1414,24 @@ func GetApiOpMsg(op uint8) string {
 	default:
 		return ""
 	}
+}
+
+type CliOperationHistory struct {
+	XbpTicketId     uint64
+	XbpUrl          string
+	Cluster         string
+	Module          string
+	Operation       string
+	Params          string // 鼠标悬浮显示
+	XbpStatus       string // 审批状态
+	OperationStatus int    // 执行结果
+	Pin             string
+	Message         string //执行失败的提示信息
+	CreateTime      string
+	UpdateTime      string
+}
+
+type CliOperationHistoryResponse struct {
+	Total   int
+	Records []*CliOperationHistory
 }

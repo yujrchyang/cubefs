@@ -27,22 +27,24 @@ const (
 )
 
 const (
-	clusterParam      = "cluster"
-	zoneParam         = "zoneName"
-	statusParam       = "status"
-	taskTypeParam     = "taskType"
-	pageParam         = "page"
-	pageSizeParam     = "pageSize"
-	taskIdParam       = "taskId"
-	highRatioParam    = "highRatio"
-	lowRatioParam     = "lowRatio"
-	goalRatioParam    = "goalRatio"
-	diskLimitParam    = "migrateLimit"
-	dstMpLimitParam   = "dstMetaNodeMaxPartitionCount"
-	concurrencyParam  = "maxBatchCount"
-	srcNodesListParam = "srcNodes"
-	dstNodesListParam = "dstNodes"
-	moduleTypeParam   = "type"
+	clusterParam        = "cluster"
+	zoneParam           = "zoneName"
+	statusParam         = "status"
+	taskTypeParam       = "taskType"
+	pageParam           = "page"
+	pageSizeParam       = "pageSize"
+	taskIdParam         = "taskId"
+	highRatioParam      = "highRatio"
+	lowRatioParam       = "lowRatio"
+	goalRatioParam      = "goalRatio"
+	diskLimitParam      = "migrateLimit"
+	dstMpLimitParam     = "dstMetaNodeMaxPartitionCount"
+	concurrencyParam    = "maxBatchCount"
+	srcNodesListParam   = "srcNodes"
+	dstNodesListParam   = "dstNodes"
+	moduleTypeParam     = "type"
+	nodeMigVolListParam = "volNames"
+	outMigRatioParam    = "outMigRatio"
 
 	volNameParam   = "volume"
 	pidParam       = "pid"
@@ -65,7 +67,9 @@ type RebalanceWorker struct {
 func NewRebalanceWorker(clusters []*model.ConsoleCluster) *RebalanceWorker {
 	serverMap := make(map[string]string)
 	for _, cluster := range clusters {
-		serverMap[cluster.ClusterName] = cluster.RebalanceHost
+		if cluster.RebalanceHost != "" {
+			serverMap[cluster.ClusterName] = cluster.RebalanceHost
+		}
 	}
 	return &RebalanceWorker{
 		serverMap: serverMap,
@@ -142,23 +146,24 @@ func (r *RebalanceWorker) GetTaskInfo(id uint64) (*cproto.RebalanceInfoView, err
 	}
 
 	result := &cproto.RebalanceInfoView{
-		TaskID:                   info.ID,
-		Cluster:                  info.Cluster,
-		Zone:                     info.ZoneName,
-		VolName:                  info.VolName,
-		Module:                   formatRType(info.RType),
-		TaskType:                 info.TaskType,
-		Status:                   info.Status,
-		Concurrency:              info.MaxBatchCount,
-		HighRatio:                info.HighRatio,
-		LowRatio:                 info.LowRatio,
-		GoalRatio:                info.GoalRatio,
-		MigrateLimitPerDisk:      info.MigrateLimitPerDisk,
-		DstMetaPartitionMaxCount: info.DstMetaNodePartitionMaxCount,
-		CreatedAt:                info.CreatedAt.Format(time.DateTime),
-		UpdatedAt:                info.UpdatedAt.Format(time.DateTime),
-		SrcNodesUsageRatio:       info.SrcNodesUsageRatio,
-		DstNodesUsageRatio:       info.DstNodesUsageRatio,
+		TaskID:             info.ID,
+		Cluster:            info.Cluster,
+		Zone:               info.ZoneName,
+		VolName:            info.VolName,
+		Module:             formatRType(info.RType),
+		TaskType:           info.TaskType,
+		Status:             info.Status,
+		Concurrency:        info.MaxBatchCount,
+		HighRatio:          info.HighRatio,
+		LowRatio:           info.LowRatio,
+		GoalRatio:          info.GoalRatio,
+		OutMigRatio:        info.OutMigRatio,
+		LimitDPonDisk:      info.MigrateLimitPerDisk,
+		LimitMPonDstNode:   info.DstMetaNodePartitionMaxCount,
+		CreatedAt:          info.CreatedAt.Format(time.DateTime),
+		UpdatedAt:          info.UpdatedAt.Format(time.DateTime),
+		SrcNodesUsageRatio: info.SrcNodesUsageRatio,
+		DstNodesUsageRatio: info.DstNodesUsageRatio,
 	}
 	return result, nil
 }
@@ -219,7 +224,8 @@ func (r *RebalanceWorker) CreateZoneAutoRebalanceTask(cluster, module, zone stri
 	return nil
 }
 
-func (r *RebalanceWorker) CreateNodesMigrateTask(cluster, module string, srcNodeList []string, dstNodesList []string, concurrency int, maxDpCountPerDisk, maxMpCountOnDst *int32) error {
+func (r *RebalanceWorker) CreateNodesMigrateTask(cluster, module string, srcNodeList []string, dstNodesList []string, concurrency int,
+	maxDpCountPerDisk, maxMpCountOnDst *int32, volList *[]string, outRatio float64) error {
 	req := cutil.NewAPIRequest(http.MethodGet, fmt.Sprintf("http://%s%s", r.getServerAddr(cluster), startTask))
 	req.AddParam(taskTypeParam, strconv.Itoa(NodesMigrate))
 	req.AddParam(clusterParam, cluster)
@@ -233,6 +239,11 @@ func (r *RebalanceWorker) CreateNodesMigrateTask(cluster, module string, srcNode
 	if maxMpCountOnDst != nil {
 		req.AddParam(dstMpLimitParam, strconv.Itoa(int(*maxMpCountOnDst)))
 	}
+	if volList != nil && len(*volList) > 0 {
+		req.AddParam(nodeMigVolListParam, strings.Join(*volList, ","))
+	}
+	req.AddParam(outMigRatioParam, strconv.FormatFloat(outRatio, 'f', 5, 64))
+
 	data, err := cutil.SendSimpleRequest(req, true)
 	if err != nil {
 		return err
@@ -378,21 +389,22 @@ func (r *RebalanceWorker) GetZoneNodeUsageRatio(cluster, zone, module string) ([
 
 func formatRebalanceView(info *cproto.ReBalanceInfoTable) *cproto.RebalanceInfoView {
 	view := &cproto.RebalanceInfoView{
-		TaskID:                   info.ID,
-		Cluster:                  info.Cluster,
-		Zone:                     info.ZoneName,
-		VolName:                  info.VolName,
-		Module:                   formatRType(info.RType),
-		TaskType:                 info.TaskType,
-		Status:                   info.Status,
-		Concurrency:              info.MaxBatchCount,
-		HighRatio:                info.HighRatio,
-		LowRatio:                 info.LowRatio,
-		GoalRatio:                info.GoalRatio,
-		MigrateLimitPerDisk:      info.MigrateLimitPerDisk,
-		DstMetaPartitionMaxCount: info.DstMetaNodePartitionMaxCount,
-		CreatedAt:                info.CreatedAt.Format(time.DateTime),
-		UpdatedAt:                info.UpdatedAt.Format(time.DateTime),
+		TaskID:           info.ID,
+		Cluster:          info.Cluster,
+		Zone:             info.ZoneName,
+		VolName:          info.VolName,
+		Module:           formatRType(info.RType),
+		TaskType:         info.TaskType,
+		Status:           info.Status,
+		Concurrency:      info.MaxBatchCount,
+		HighRatio:        info.HighRatio,
+		LowRatio:         info.LowRatio,
+		GoalRatio:        info.GoalRatio,
+		LimitDPonDisk:    info.MigrateLimitPerDisk,
+		LimitMPonDstNode: info.DstMetaNodePartitionMaxCount,
+		OutMigRatio:      info.OutMigRatio,
+		CreatedAt:        info.CreatedAt.Format(time.DateTime),
+		UpdatedAt:        info.UpdatedAt.Format(time.DateTime),
 	}
 	return view
 }

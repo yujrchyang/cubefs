@@ -2,6 +2,8 @@ package flowSchedule
 
 import (
 	"fmt"
+	"strings"
+
 	"github.com/cubefs/cubefs/console/cutil"
 	cproto "github.com/cubefs/cubefs/console/proto"
 )
@@ -36,7 +38,8 @@ func (f *FlowSchedule) ClusterDetailsFromClickHouse(req *cproto.TrafficRequest) 
 			"CEIL(sum(size) / sum(count)) as avg_size ")
 		table = getOriginalTable(false)
 	}
-	sqlLine = fmt.Sprintf("SELECT "+
+	sqlLine = fmt.Sprintf(""+
+		"SELECT "+
 		"%s, "+
 		"action, "+
 		"%s "+
@@ -60,14 +63,18 @@ func (f *FlowSchedule) ClusterDetailsFromClickHouse(req *cproto.TrafficRequest) 
 			"WHERE "+
 			"event_date >= '%s' AND event_date <= '%s' "+
 			"AND cluster_name = '%s' "+
-			"AND module = '%s' "+
+			"AND module = '%s' ",
+			table, parseTimestampToDataTime(req.StartTime), parseTimestampToDataTime(req.EndTime), req.ClusterName, req.Module)
+		if req.Module == strings.ToLower(cproto.ModuleMetaNode) {
+			topActionSqlLine += "AND action LIKE 'op%' "
+		}
+		topActionSqlLine += fmt.Sprintf(""+
 			"GROUP BY "+
 			"action "+
 			"ORDER BY "+
 			"SUM(%s) DESC "+
 			"LIMIT "+
 			"%v",
-			table, parseTimestampToDataTime(req.StartTime), parseTimestampToDataTime(req.EndTime), req.ClusterName, req.Module,
 			req.OrderBy, req.TopN)
 		sqlLine += fmt.Sprintf(""+
 			"AND action global in (%s) ", topActionSqlLine)

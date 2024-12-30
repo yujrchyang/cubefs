@@ -45,6 +45,9 @@ func NewMonitorService(clusters []*model.ConsoleCluster) *MonitorService {
 		}(clusters),
 	}
 }
+func (ms *MonitorService) SType() proto.ServiceType {
+	return proto.MonitorService
+}
 
 func (ms *MonitorService) Schema() *graphql.Schema {
 	schema := schemabuilder.NewSchema()
@@ -66,6 +69,10 @@ func (ms *MonitorService) Schema() *graphql.Schema {
 	query.FieldFunc("abnormalDisk", ms.getHighBusyDisk)
 	query.FieldFunc("awaitDiskMs", ms.getHighAwaitDisk)
 	return schema.MustBuild()
+}
+
+func (ms *MonitorService) DoXbpApply(apply *model.XbpApplyInfo) error {
+	return nil
 }
 
 func (ms *MonitorService) empty(ctx context.Context, args struct {

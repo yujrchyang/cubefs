@@ -126,6 +126,37 @@ func (table AbnormalRecord) LoadHistoryAlarmRecords(cluster, role string) (r []*
 	return
 }
 
+// 获取集群的健康度信息
+func GetClusterHealthLevel(clusterName string) (clusterHealthLevel int) {
+	var searchCondition = map[string]interface{}{
+		"cluster_name": clusterName,
+		"status":       AbnormalStatus,
+	}
+
+	alarmInfo, err := GetAlarmRecordsFromDatabase(searchCondition)
+	if err != nil {
+		return
+	}
+	for _, alarm := range alarmInfo {
+		if alarm.AlarmLevel > clusterHealthLevel {
+			clusterHealthLevel = alarm.AlarmLevel
+		}
+	}
+	return
+}
+
+func GetAlarmRecordsFromDatabase(searchCondition map[string]interface{}) (alarmInfo []*AbnormalRecord, err error) {
+	alarmInfo = make([]*AbnormalRecord, 0)
+	err = cutil.SRE_DB.Table(AbnormalRecord{}.TableName()).Where(searchCondition).Find(&alarmInfo).Error
+	if err != nil {
+		errMsg := fmt.Sprintf("search alarm info from database failed, err:%v", err)
+		log.LogError(errMsg)
+		err = fmt.Errorf(errMsg)
+		return
+	}
+	return
+}
+
 type ChubaofsClusterCapacityInMysql struct {
 	ID          uint      `gorm:"primary_key;AUTO_INCREMENT"`
 	ClusterName string    `gorm:"column:cluster_name"`
@@ -203,17 +234,18 @@ func (table ChubaoFSZoneToRoomMapInMysql) GetZoneNameList(clusterName string, da
 }
 
 type ConsoleCluster struct {
-	ClusterName   string    `json:"clusterName" gorm:"column:cluster_name"`
-	ClusterNameZH string    `json:"clusterNameZH" gorm:"column:cluster_name_ZH"`
-	MasterDomain  string    `json:"masterDomain" gorm:"column:master_domain"`
-	MasterAddrs   string    `json:"masterAddrs" gorm:"column:master_addrs"`
-	ObjectDomain  string    `json:"objectDomain" gorm:"column:s3_domain"`
-	MetaProf      string    `json:"metaProf" gorm:"column:meta_prof"`
-	DataProf      string    `json:"dataProf" gorm:"column:data_prof"`
-	FlashProf     string    `json:"flashProf" gorm:"column:flash_prof"`
-	IsRelease     bool      `json:"isRelease" gorm:"column:isRelease"`
-	RebalanceHost string    `json:"rebalanceHost" gorm:"column:rebalance_addr"`
-	UpdateTime    time.Time `json:"-" gorm:"column:update_time"`
+	ClusterName     string    `json:"clusterName" gorm:"column:cluster_name"`
+	ClusterNameZH   string    `json:"clusterNameZH" gorm:"column:cluster_name_ZH"`
+	MasterDomain    string    `json:"masterDomain" gorm:"column:master_domain"`
+	MasterAddrs     string    `json:"masterAddrs" gorm:"column:master_addrs"`
+	ObjectDomain    string    `json:"objectDomain" gorm:"column:s3_domain"`
+	MetaProf        string    `json:"metaProf" gorm:"column:meta_prof"`
+	DataProf        string    `json:"dataProf" gorm:"column:data_prof"`
+	FlashProf       string    `json:"flashProf" gorm:"column:flash_prof"`
+	IsRelease       bool      `json:"isRelease" gorm:"column:isRelease"`
+	RebalanceHost   string    `json:"rebalanceHost" gorm:"column:rebalance_addr"`
+	FileMigrateHost string    `json:"fileMigrateHost" gorm:"column:migrate_addr"`
+	UpdateTime      time.Time `json:"-" gorm:"column:update_time"`
 }
 
 func (ConsoleCluster) TableName() string {
@@ -242,4 +274,21 @@ func (table ConsoleCluster) InsertConsoleCluster(cluster *ConsoleCluster) error 
 		return err
 	}
 	return nil
+}
+
+type ZoneSourceMapper struct {
+	Id      uint64 `gorm:"column:id"`
+	Zone    string `gorm:"column:zone"`
+	Sources string `gorm:"column:sources"`
+}
+
+func (ZoneSourceMapper) TableName() string {
+	return "zone_source_mapper"
+}
+
+func (z ZoneSourceMapper) GetSourcesInZone(zone []string) (re []*ZoneSourceMapper) {
+	re = make([]*ZoneSourceMapper, 0)
+	cutil.CONSOLE_DB.Table(z.TableName()).Where("zone IN ?", zone).
+		Find(&re)
+	return
 }

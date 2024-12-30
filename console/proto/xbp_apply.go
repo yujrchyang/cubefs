@@ -30,6 +30,24 @@ const (
 	XBP_Reject = -1
 )
 
+func GetXbpStatusMessage(status int) string {
+	switch status {
+	case XBP_InProcessing:
+		return "申请处理中"
+	case XBP_Approved:
+		return "已审批通过"
+	case XBP_Withdrawn:
+		return "申请已撤销"
+	case XBP_UnderDeploy:
+		return "操作执行中"
+	case XBP_DelpoyFailed:
+		return "操作执行失败"
+	case XBP_Reject:
+		return "申请被驳回"
+	}
+	return ""
+}
+
 // todo：需要response 0,否则会再次请求回调
 type XbpCreateResponse struct {
 	TicketID uint64 `json:"ticketId"`

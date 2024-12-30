@@ -33,9 +33,6 @@ func (cli *CliService) GetEcConfig(cluster string, operation int) (result []*cpr
 }
 
 func (cli *CliService) SetEcConfig(ctx context.Context, cluster string, operation int, metrics []*cproto.CliValueMetric, skipXbp bool) (err error) {
-	var (
-		args map[string]interface{}
-	)
 	defer func() {
 		msg := fmt.Sprintf("SetEcConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOpShortMsg(operation))
 		if err != nil {
@@ -43,6 +40,7 @@ func (cli *CliService) SetEcConfig(ctx context.Context, cluster string, operatio
 		} else {
 			log.LogInfof("%v, metrics:%v", msg, metrics)
 		}
+		cli.api.GetClusterViewCache(cluster, true)
 	}()
 
 	if cproto.IsRelease(cluster) {
@@ -50,6 +48,7 @@ func (cli *CliService) SetEcConfig(ctx context.Context, cluster string, operatio
 		return
 	}
 
+	var args map[string]interface{}
 	args, err = cproto.ParseValueMetricsToArgs(operation, metrics)
 	if err != nil {
 		return
@@ -63,12 +62,8 @@ func (cli *CliService) SetEcConfig(ctx context.Context, cluster string, operatio
 		}
 		err = mc.AdminAPI().UpdateEcInfo(args[metrics[0].ValueName].(bool), int(args[metrics[1].ValueName].(uint64)),
 			int(args[metrics[2].ValueName].(uint64)), int(args[metrics[3].ValueName].(int64)))
-		goto updateClusterViewCache
 
 	default:
 	}
-
-updateClusterViewCache:
-	cli.api.GetClusterViewCache(cluster, true)
 	return
 }

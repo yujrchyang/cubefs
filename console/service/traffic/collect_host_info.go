@@ -2,6 +2,7 @@ package traffic
 
 import (
 	"github.com/cubefs/cubefs/console/model"
+	api "github.com/cubefs/cubefs/console/service/apiManager"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/log"
 	"sync"
@@ -16,9 +17,7 @@ func CollectHostUsedInfo() {
 	)
 	go recordHostInfo(recordCh)
 
-	if sdk == nil {
-		initApiSdk()
-	}
+	sdk := api.GetSdkApiManager()
 	clusters := sdk.GetConsoleCluster()
 	for _, cluster := range clusters {
 		wg.Add(1)
@@ -33,7 +32,6 @@ func CollectHostUsedInfo() {
 
 func getHostInfo(wg *sync.WaitGroup, recordCh chan<- []*model.ClusterHostInfo, cluster *model.ConsoleCluster) {
 	defer wg.Done()
-
 	if cluster.IsRelease {
 
 	} else {
@@ -42,6 +40,7 @@ func getHostInfo(wg *sync.WaitGroup, recordCh chan<- []*model.ClusterHostInfo, c
 }
 
 func handleNodeUsageRatio(cluster string, recordCh chan<- []*model.ClusterHostInfo) {
+	sdk := api.GetSdkApiManager()
 	mc := sdk.GetMasterClient(cluster)
 	topology, err := mc.AdminAPI().GetTopology()
 	if err != nil {
