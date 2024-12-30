@@ -554,6 +554,7 @@ func (r *raftFsm) reset(term, lasti uint64, isLeader bool, keepReplicaIndex bool
 	r.readOnly.reset(ErrNotLeader)
 	r.setMinimumCommitIndex(0)
 	r.appliedIndexes = make(map[uint64]uint64)
+	r.needCompleteEntryTo = 0
 
 	if isLeader {
 		r.randElectionTick = r.config.ElectionTick - 1

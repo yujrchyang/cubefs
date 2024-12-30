@@ -144,10 +144,6 @@ func (r *raftFsm) campaign(force bool) {
 		return
 	}
 
-	if r.needCompleteEntryTo > 0 {
-		return
-	}
-
 	for id := range r.replicas {
 		if id == r.config.NodeID || r.replicas[id].isLearner {
 			continue

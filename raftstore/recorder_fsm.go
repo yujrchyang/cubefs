@@ -105,10 +105,6 @@ func (cfg *RecorderConfig) CheckValidate() (err error) {
 		err = fmt.Errorf("invalid peers: %v", cfg.Peers)
 		return
 	}
-	if len(cfg.Recorders) <= 0 {
-		err = fmt.Errorf("invalid recorders: %v", cfg.Recorders)
-		return
-	}
 	for _, p := range cfg.Peers {
 		if p.ID == cfg.NodeID && !p.IsRecorder() {
 			err = fmt.Errorf("mismatch peer(%v) peers: %v", p, cfg.Peers)

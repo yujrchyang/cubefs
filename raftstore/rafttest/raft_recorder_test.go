@@ -281,7 +281,7 @@ func TestRecorder_truncate(t *testing.T) {
 		}
 	}
 	truncateIndex := truncateServer.raft.CommittedIndex(1) - 1
-	truncateServer.raft.Truncate(1, truncateIndex)
+	truncateServer.raft.Truncate(1, actualTruncIndex)
 	time.Sleep(1*time.Second)
 	fi, _ := truncateServer.store[1].FirstIndex()
 	// 由于nodeID=3落后，因此只能truncate到actualTruncIndex

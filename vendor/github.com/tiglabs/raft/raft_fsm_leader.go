@@ -42,7 +42,6 @@ func (r *raftFsm) becomeLeader() {
 	r.leader = r.config.NodeID
 	r.state = stateLeader
 	r.acks = nil
-	r.needCompleteEntryTo = 0
 
 	ents, err := r.raftLog.entries(r.raftLog.committed+1, noLimit)
 	if err != nil {
@@ -268,7 +267,6 @@ func (r *raftFsm) becomeElectionAck() {
 	r.reset(r.term, 0, false, true)
 	r.tick = r.tickElectionAck
 	r.state = stateElectionACK
-	r.needCompleteEntryTo = 0
 	for id := range r.replicas {
 		if id == r.config.NodeID {
 			continue

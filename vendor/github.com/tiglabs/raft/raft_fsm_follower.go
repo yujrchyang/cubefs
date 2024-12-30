@@ -37,7 +37,6 @@ func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
 	r.tick = r.tickElection
 	r.leader = lead
 	r.state = stateFollower
-	r.needCompleteEntryTo = 0
 	if logger.IsEnableDebug() {
 		logger.Debug("raft[%v] became follower at term[%d] leader[%d].", r.id, r.term, r.leader)
 	}

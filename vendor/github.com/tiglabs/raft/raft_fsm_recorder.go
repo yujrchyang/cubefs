@@ -18,7 +18,6 @@ func (r *raftFsm) becomeRecorder(ctx context.Context, term, lead uint64) {
 	r.tick = r.tickRecord
 	r.leader = lead
 	r.state = stateRecorder
-	r.needCompleteEntryTo = 0
 	if logger.IsEnableDebug() {
 		logger.Debug("ID[%v] raft[%v] became recorder at term[%d] leader[%d].", r.config.NodeID, r.id, r.term, r.leader)
 	}
