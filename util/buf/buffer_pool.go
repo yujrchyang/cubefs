@@ -11,9 +11,8 @@ var (
 	bufferPoolSizes = []int{
 		unit.PacketHeaderSizeForDbbak,
 		unit.PacketHeaderSize,
-		unit.MySQLInnoDBBlockSize + unit.RandomWriteRaftCommandHeaderSize,
+		unit.MySQLInnoDBBlockSize,
 		unit.BlockSize,
-		unit.BlockSize + unit.RandomWriteRaftCommandHeaderSize,
 		unit.DefaultTinySizeLimit,
 	}
 )
@@ -53,10 +52,8 @@ func (bufferP *BufferPool) Get(size int) (data []byte, err error) {
 		return bufferP.pools[2].Get().([]byte)[:size], nil
 	case unit.BlockSize:
 		return bufferP.pools[3].Get().([]byte)[:size], nil
-	case unit.BlockSize + unit.RandomWriteRaftCommandHeaderSize:
-		return bufferP.pools[4].Get().([]byte)[:size], nil
 	case unit.DefaultTinySizeLimit:
-		return bufferP.pools[5].Get().([]byte)[:size], nil
+		return bufferP.pools[4].Get().([]byte)[:size], nil
 	default:
 		return nil, fmt.Errorf("can only support 45 or 65536 bytes")
 	}
@@ -77,10 +74,8 @@ func (bufferP *BufferPool) Put(data []byte) {
 		bufferP.pools[2].Put(data[:size])
 	case unit.BlockSize:
 		bufferP.pools[3].Put(data[:size])
-	case unit.BlockSize + unit.RandomWriteRaftCommandHeaderSize:
-		bufferP.pools[4].Put(data[:size])
 	case unit.DefaultTinySizeLimit:
-		bufferP.pools[5].Put(data[:size])
+		bufferP.pools[4].Put(data[:size])
 	default:
 		return
 
