@@ -146,6 +146,7 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/getRecorderById", m.getRecorderByIDHandler)
 	http.HandleFunc("/truncateRecorderWAL", m.truncateRecorderWALHandler)
 	http.HandleFunc("/checkDirInodeNlink", m.checkDirInodeNLink)
+	http.HandleFunc("/getAllPartitions", m.getAllPartitionsHandler)
 	return
 }
 
@@ -1034,6 +1035,15 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 	} else {
 		ratio = float64(usedMem) / float64(configTotalMem)
 	}
+	inodeTotalCount, dentryTotalCount, delInodeTotalCount, delDentryTotalCount := uint64(0), uint64(0), uint64(0), uint64(0)
+	m.metadataManager.Range(func(i uint64, p MetaPartition) bool {
+		mp := p.(*metaPartition)
+		inodeTotalCount += mp.inodeTree.Count()
+		dentryTotalCount += mp.dentryTree.Count()
+		delInodeTotalCount += mp.inodeDeletedTree.Count()
+		delDentryTotalCount += mp.dentryDeletedTree.Count()
+		return true
+	})
 	//get disk info
 	disks := m.getDisks()
 	diskList := make([]interface{}, 0, len(disks))
@@ -1088,6 +1098,10 @@ func (m *MetaNode) getStatInfo(w http.ResponseWriter, r *http.Request) {
 		"dumpSnapRunningCount":              m.GetDumpSnapRunningCount(),
 		"dumpSnapMpIDS":                     m.GetDumpSnapMPID(),
 		"delExtentRateLimitLocalValue":      atomic.LoadUint64(&delExtentRateLimitLocal),
+		"dentryTotalCount":                  dentryTotalCount,
+		"inodeTotalCount":                   inodeTotalCount,
+		"delDentryTotalCount":               delDentryTotalCount,
+		"delInodeTotalCount":                delInodeTotalCount,
 	}
 	resp.Data = msg
 	resp.Code = http.StatusOK
@@ -3538,5 +3552,38 @@ func (m *MetaNode) checkDirInodeNLink(w http.ResponseWriter, r *http.Request) {
 	resp.Code = http.StatusOK
 	resp.Msg = "OK"
 	resp.Data = nlinkWithUnexpectInodes
+	return
+}
+
+func (m *MetaNode) getAllPartitionsHandler(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getAllPartitionsInfoHandler] response %s", err)
+		}
+	}()
+	allPartitions := make([]interface{}, 0, m.metadataManager.MetaPartitionCount())
+	m.metadataManager.Range(func(i uint64, p MetaPartition) bool {
+		mp := p.(*metaPartition)
+		partitionInfo := &struct {
+			PartitionID        uint64 `json:"pid"`
+			VolumeName         string `json:"vol"`
+			DentryCount        uint64 `json:"dentryCount"`
+			InodeCount         uint64 `json:"inodeCount"`
+			DeletedDentryCount uint64 `json:"delDentryCount"`
+			DeletedInodeCount  uint64 `json:"delInodeCount"`
+		}{
+			PartitionID:        mp.config.PartitionId,
+			VolumeName:         mp.config.VolName,
+			DentryCount:        mp.dentryTree.Count(),
+			InodeCount:         mp.inodeTree.Count(),
+			DeletedDentryCount: mp.dentryDeletedTree.Count(),
+			DeletedInodeCount:  mp.inodeDeletedTree.Count(),
+		}
+		allPartitions = append(allPartitions, partitionInfo)
+		return true
+	})
+	resp.Data = allPartitions
 	return
 }
