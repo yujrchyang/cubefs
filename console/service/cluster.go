@@ -75,10 +75,11 @@ func (cs *ClusterService) registerQuery(schema *schemabuilder.Schema) {
 	query.FieldFunc("clusterInfoList", cs.clusterInfoList)            // 数据库查询操作
 	query.FieldFunc("healthInfo", cs.clusterHealthInfo)               // 数据库查询 & format, mutation(可先不做)
 	query.FieldFunc("healthHistoryInfo", cs.clusterHealthHistoryInfo) // 数据库查询 + topo接口
-	query.FieldFunc("zoneList", cs.getZoneList)                       // todo: 这个zoneList有问题，有些不用的了zone还在列表
-	query.FieldFunc("clusterCapacity", cs.clusterZoneCurve)           // 数据库查询-zone容量曲线
-	query.FieldFunc("zoneUsageOverView", cs.zoneUsageOverView)        // 各zone使用率柱状图
-	query.FieldFunc("sourceUsageOverview", cs.sourceUsageOverview)    // source使用率曲线
+	query.FieldFunc("zoneList", cs.getZoneList)                       // 排除master中未使用的zone
+	query.FieldFunc("zoneListV2", cs.getZoneListV2)
+	query.FieldFunc("clusterCapacity", cs.clusterZoneCurve)        // 数据库查询-zone容量曲线
+	query.FieldFunc("zoneUsageOverView", cs.zoneUsageOverView)     // 各zone使用率柱状图
+	query.FieldFunc("sourceUsageOverview", cs.sourceUsageOverview) // source使用率曲线
 	query.FieldFunc("sourceList", cs.getSourceListFromJED)
 
 	query.FieldFunc("clusterView", cs.clusterView)
@@ -327,7 +328,6 @@ func (cs *ClusterService) getZoneList(ctx context.Context, args struct {
 	return cs.api.GetClusterZoneNameList(*args.Cluster)
 }
 
-// todo: 前端修改
 func (cs *ClusterService) getZoneListV2(ctx context.Context, args struct {
 	Cluster string
 }) []*cproto.ZoneInfo {
@@ -390,8 +390,8 @@ func (cs *ClusterService) sourceUsageOverview(ctx context.Context, args struct {
 	IntervalType int32 // 0-自定义时间 1-近1天 2-近1周 3-近1月
 	Start        int64 // 秒级
 	End          int64
-	Source       *string //todo: 下拉列表接口
-	Zone         *string //source zone 都是过滤项
+	Source       *string
+	Zone         *string
 }) (*cproto.SourceUsageResponse, error) {
 	var (
 		zone   string
@@ -416,7 +416,11 @@ func (cs *ClusterService) sourceUsageOverview(ctx context.Context, args struct {
 func (cs *ClusterService) getSourceListFromJED(ctx context.Context, args struct {
 	Cluster string
 }) ([]string, error) {
-	return cluster_service.GetSourceList()
+	sources, err := cluster_service.GetSourceList()
+	if err == nil {
+		sources = append(sources, "-")
+	}
+	return sources, nil
 }
 
 func (cs *ClusterService) clusterView(ctx context.Context, args struct {
@@ -921,13 +925,13 @@ func (cs *ClusterService) flashNodeList(ctx context.Context, args struct {
 }
 
 func (cs *ClusterService) updateFlashNode(ctx context.Context, args struct {
-	Cluster string
-	Addr    string
-	State   bool // isEnable: true/false
+	Cluster  string
+	Addr     string
+	IsEnable bool
 }) (err error) {
 	cluster := args.Cluster
 	defer func() {
-		msg := fmt.Sprintf("updateFlashNode:%v-%v", args.Addr, args.State)
+		msg := fmt.Sprintf("updateFlashNode:%v-%v", args.Addr, args.IsEnable)
 		if err == nil {
 			log.LogInfof("%s success", msg)
 			record := model.NewNodeOperation(
@@ -936,7 +940,7 @@ func (cs *ClusterService) updateFlashNode(ctx context.Context, args struct {
 				args.Addr,
 				proto.AdminSetFlashNode,
 				ctx.Value(cutil.PinKey).(string),
-				strconv.FormatBool(args.State),
+				strconv.FormatBool(args.IsEnable),
 			)
 			record.InsertRecord(record)
 		} else {
@@ -947,7 +951,7 @@ func (cs *ClusterService) updateFlashNode(ctx context.Context, args struct {
 		return fmt.Errorf("集群: %s 不支持缓存", cluster)
 	}
 	mc := cs.api.GetMasterClient(cluster)
-	err = mc.NodeAPI().SetFlashNodeState(args.Addr, strconv.FormatBool(args.State))
+	err = mc.NodeAPI().SetFlashNodeState(args.Addr, strconv.FormatBool(args.IsEnable))
 	return
 }
 
