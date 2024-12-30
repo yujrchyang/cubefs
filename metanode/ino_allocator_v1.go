@@ -403,6 +403,9 @@ func (allocator *inoAllocatorV1) MarshalBinary() []byte {
 }
 
 func (allocator *inoAllocatorV1) UnmarshalBinary(data []byte) (err error) {
+	allocator.mu.Lock()
+	defer allocator.mu.Unlock()
+
 	offset := 0
 	allocator.Version = binary.BigEndian.Uint64(data[offset:offset+Uint64Size])
 	offset += Uint64Size
