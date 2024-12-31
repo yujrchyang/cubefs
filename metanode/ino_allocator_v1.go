@@ -305,6 +305,17 @@ func (allocator *inoAllocatorV1) SetStatus(newStatus int8) (err error) {
 	return
 }
 
+func (allocator *inoAllocatorV1) EnableBitmapAllocator() {
+	allocator.mu.Lock()
+	defer allocator.mu.Unlock()
+
+	if allocator.Status != allocatorStatusInit {
+		return
+	}
+
+	allocator.Status = allocatorStatusAvailable
+}
+
 func (allocator *inoAllocatorV1) SetStatusToFrozen() (alreadyFrozen bool, err error) {
 	allocator.mu.Lock()
 	defer allocator.mu.Unlock()

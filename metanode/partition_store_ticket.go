@@ -329,7 +329,7 @@ func (mp *metaPartition) updateMetaPartitionInodeAllocatorState(enable bool) {
 		//cursor < end && status == init, keep status in init
 		status := mp.inodeIDAllocator.GetStatus()
 		if mp.config.Cursor >= mp.config.End && status == allocatorStatusInit {
-			_ = mp.inodeIDAllocator.SetStatus(allocatorStatusAvailable)
+			mp.inodeIDAllocator.EnableBitmapAllocator()
 		}
 		//if status := mp.inodeIDAllocator.GetStatus(); status == allocatorStatusFrozen {
 		//	log.LogDebugf("bitmap allocator already frozen, partitionID: %v", mp.config.PartitionId)
