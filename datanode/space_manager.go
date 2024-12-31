@@ -16,8 +16,14 @@ package datanode
 
 import (
 	"fmt"
+	"io/fs"
 	"math"
+	"os"
+	"path"
+	"regexp"
 	"runtime/debug"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -445,9 +451,9 @@ func (manager *SpaceManager) ExpiredPartition(partitionID uint64) {
 	dp.Expired()
 }
 
-func (manager *SpaceManager) LoadPartition(d *Disk, partitionID uint64, partitionPath string) (err error) {
+func (manager *SpaceManager) LoadPartition(d *Disk, partitionID uint64, partitionPath string, force bool) (err error) {
 	var partition *DataPartition
-	if err = d.RestoreOnePartition(partitionPath); err != nil {
+	if err = d.RestoreOnePartition(partitionPath, force); err != nil {
 		return
 	}
 
@@ -591,4 +597,149 @@ func (manager *SpaceManager) SetDiskReservedRatio(ratio float64) {
 
 func (manager *SpaceManager) GetDiskReservedRatio() float64 {
 	return manager.diskReservedRatio.Load()
+}
+
+func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]bool) (failedDisks []string, failedDps, successDps []uint64) {
+	var err error
+	// Format: expired_datapartition_{ID}_{Capacity}_{Timestamp}
+	// Regexp: ^expired_datapartition_(\d)+_(\d)+_(\d)+$
+	regexpExpiredPartitionDirName := regexp.MustCompile("^expired_datapartition_(\\d)+_(\\d)+_(\\d)+$")
+	reloadMap := make(map[uint64]struct {
+		disk        *Disk
+		delTime     uint64
+		walPath     string
+		newWalPath  string
+		newFileName string
+		fileName    string
+	}, 0)
+	for _, d := range manager.disks {
+		var entries []fs.DirEntry
+		entries, err = os.ReadDir(d.Path)
+		if err != nil {
+			failedDisks = append(failedDisks, d.Path)
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			filename := entry.Name()
+			if !regexpExpiredPartitionDirName.MatchString(filename) {
+				continue
+			}
+			var dpid uint64
+			var delTime uint64
+			parts := strings.Split(filename, "_")
+			dpid, err = strconv.ParseUint(parts[2], 10, 64)
+			if err != nil {
+				failedDps = append(failedDps, dpid)
+				continue
+			}
+			delTime, err = strconv.ParseUint(parts[4], 10, 64)
+			if err != nil {
+				failedDps = append(failedDps, dpid)
+				continue
+			}
+			if !all {
+				if _, ok := ids[dpid]; !ok {
+					continue
+				}
+			}
+			var walPath, newWalPath string
+			// get expired wal dir
+			walPath, newWalPath, err = parseExpiredWalPath(path.Join(d.Path, filename), dpid)
+			if err != nil {
+				failedDps = append(failedDps, dpid)
+				log.LogErrorf("action[RestoreExpiredPartitions] partition[%v] err:%v", dpid, err)
+				continue
+			}
+			newFileName := strings.Join(parts[1:4], "_")
+			if dpInfo, ok := reloadMap[dpid]; ok {
+				if delTime > dpInfo.delTime {
+					reloadMap[dpid] = struct {
+						disk        *Disk
+						delTime     uint64
+						walPath     string
+						newWalPath  string
+						newFileName string
+						fileName    string
+					}{disk: d, delTime: delTime, walPath: walPath, newWalPath: newWalPath, fileName: filename, newFileName: newFileName}
+				}
+			} else {
+				reloadMap[dpid] = struct {
+					disk        *Disk
+					delTime     uint64
+					walPath     string
+					newWalPath  string
+					newFileName string
+					fileName    string
+				}{disk: d, delTime: delTime, walPath: walPath, newWalPath: newWalPath, fileName: filename, newFileName: newFileName}
+			}
+		}
+	}
+	log.LogWarnf("action[RestoreExpiredPartitions] total need restore partitions:%v", len(reloadMap))
+	for dpid, dpInfo := range reloadMap {
+		// rename wal dir
+		if dpInfo.walPath != dpInfo.newWalPath {
+			err = os.Rename(path.Join(dpInfo.disk.Path, dpInfo.fileName, dpInfo.walPath), path.Join(dpInfo.disk.Path, dpInfo.fileName, dpInfo.newWalPath))
+			if err != nil {
+				failedDps = append(failedDps, dpid)
+				continue
+			}
+		}
+		// rename partition dir
+		err = os.Rename(path.Join(dpInfo.disk.Path, dpInfo.fileName), path.Join(dpInfo.disk.Path, dpInfo.newFileName))
+		if err != nil {
+			failedDps = append(failedDps, dpid)
+			continue
+		}
+		err = manager.LoadPartition(dpInfo.disk, dpid, dpInfo.newFileName, true)
+		if err != nil {
+			failedDps = append(failedDps, dpid)
+			continue
+		}
+		successDps = append(successDps, dpid)
+	}
+	return
+}
+func parseExpiredWalPath(path string, dpid uint64) (walPath, newWalPath string, err error) {
+	walExpireDirName := regexp.MustCompile("^expired_wal_(\\d)+_(\\d)+$")
+	walDirName := fmt.Sprintf("wal_%d", dpid)
+	var dpEntries []fs.DirEntry
+	dpEntries, err = os.ReadDir(path)
+	if err != nil {
+		return
+	}
+	existWal := false
+	for _, dpEntry := range dpEntries {
+		if !dpEntry.IsDir() {
+			continue
+		}
+		if walDirName == dpEntry.Name() {
+			walPath = walDirName
+			existWal = true
+			break
+		}
+	}
+	if existWal {
+		walPath = walDirName
+		newWalPath = walDirName
+		return
+	}
+	for _, dpEntry := range dpEntries {
+		if !dpEntry.IsDir() {
+			continue
+		}
+		if walExpireDirName.MatchString(dpEntry.Name()) {
+			walPath = dpEntry.Name()
+			break
+		}
+	}
+	if walPath == "" {
+		err = fmt.Errorf("empty wal path")
+		return
+	}
+	walParts := strings.Split(walPath, "_")
+	newWalPath = strings.Join(walParts[1:3], "_")
+	return
 }

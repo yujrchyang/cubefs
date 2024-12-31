@@ -874,7 +874,7 @@ func (d *Disk) loadPartitions(parallelism int, expired CheckExpired) (err error)
 }
 
 // RestoreOnePartition restores the data partition.
-func (d *Disk) RestoreOnePartition(partitionPath string) (err error) {
+func (d *Disk) RestoreOnePartition(partitionPath string, force bool) (err error) {
 	var (
 		partitionID uint64
 		partition   *DataPartition
@@ -909,7 +909,7 @@ func (d *Disk) RestoreOnePartition(partitionPath string) (err error) {
 		log.LogWarnf("action[RestoreOnePartition]: length of PersistenceDataPartitions is 0, ExpiredPartition check without effect")
 	}
 
-	if isExpiredPartition(partitionID, dInfo.PersistenceDataPartitions) {
+	if !force && isExpiredPartition(partitionID, dInfo.PersistenceDataPartitions) {
 		err = fmt.Errorf("find expired partition[%s], rename it and you can delete it manually", partitionPath)
 		log.LogErrorf("action[RestoreOnePartition] err: %v", err)
 		newName := path.Join(d.Path, ExpiredPartitionPrefix+partitionPath)

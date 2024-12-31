@@ -15,7 +15,6 @@ import (
 	"github.com/cubefs/cubefs/util/ttlstore"
 	"github.com/cubefs/cubefs/util/unit"
 	raftProto "github.com/tiglabs/raft/proto"
-	"io/fs"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -570,49 +569,7 @@ func (s *DataNode) restorePartitions(w http.ResponseWriter, r *http.Request) {
 			ids[id] = true
 		}
 	}
-	// Format: expired_datapartition_{ID}_{Capacity}_{Timestamp}
-	// Regexp: ^expired_datapartition_(\d)+_(\d)+_(\d)+$
-	regexpExpiredPartitionDirName := regexp.MustCompile("^expired_datapartition_(\\d)+_(\\d)+_(\\d)+$")
-	for _, d := range s.space.disks {
-		var entries []fs.DirEntry
-		entries, err = os.ReadDir(d.Path)
-		if err != nil {
-			failedDisks = append(failedDisks, d.Path)
-			continue
-		}
-		for _, entry := range entries {
-			if !entry.IsDir() {
-				continue
-			}
-			filename := entry.Name()
-			if !regexpExpiredPartitionDirName.MatchString(filename) {
-				continue
-			}
-			parts := strings.Split(filename, "_")
-			dpid, err := strconv.ParseUint(parts[2], 10, 64)
-			if err != nil {
-				failedDps = append(failedDps, dpid)
-				continue
-			}
-			if !all {
-				if _, ok := ids[dpid]; !ok {
-					continue
-				}
-			}
-			newname := strings.Join(parts[1:4], "_")
-			err = os.Rename(d.Path+"/"+filename, d.Path+"/"+newname)
-			if err != nil {
-				failedDps = append(failedDps, dpid)
-				continue
-			}
-			err = s.space.LoadPartition(d, dpid, newname)
-			if err != nil {
-				failedDps = append(failedDps, dpid)
-				continue
-			}
-			successDps = append(successDps, dpid)
-		}
-	}
+	failedDisks, failedDps, successDps = s.space.RestoreExpiredPartitions(all, ids)
 	s.buildSuccessResp(w, fmt.Sprintf("restore partitions, success partitions: %v, failed partitions: %v, failed disks: %v", successDps, failedDps, failedDisks))
 }
 
@@ -907,7 +864,7 @@ func (s *DataNode) reloadPartitionByName(partitionPath, disk string) (err error)
 		return
 	}
 
-	if err = s.space.LoadPartition(d, partitionID, partitionPath); err != nil {
+	if err = s.space.LoadPartition(d, partitionID, partitionPath, false); err != nil {
 		return
 	}
 	return
