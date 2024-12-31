@@ -55,6 +55,7 @@ type clusterValue struct {
 	DataNodeFlushFDParallelismOnDisk    uint64
 	DataNodeNormalExtentDeleteExpire    uint64
 	DataPartitionConsistencyMode        int32
+	PersistenceMode                     int32
 	ClientReadVolRateLimitMap           map[string]uint64
 	ClientWriteVolRateLimitMap          map[string]uint64
 	ClientVolOpRateLimitMap             map[string]map[uint8]int64
@@ -139,6 +140,7 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		DataNodeFlushFDInterval:             c.cfg.DataNodeFlushFDInterval,
 		DataNodeFlushFDParallelismOnDisk:    c.cfg.DataNodeFlushFDParallelismOnDisk,
 		DataPartitionConsistencyMode:        c.cfg.DataPartitionConsistencyMode,
+		PersistenceMode:                     c.cfg.PersistenceMode,
 		DataNodeNormalExtentDeleteExpire:    c.cfg.DataNodeNormalExtentDeleteExpire,
 		MetaNodeReadDirLimitNum:             c.cfg.MetaNodeReadDirLimitNum,
 		ClientReadVolRateLimitMap:           c.cfg.ClientReadVolRateLimitMap,
@@ -985,6 +987,13 @@ func (c *Cluster) updateDataPartitionConsistencyMode(val int32) {
 		val = bsProto.StandardMode.Int32()
 	}
 	atomic.StoreInt32(&c.cfg.DataPartitionConsistencyMode, val)
+}
+
+func (c *Cluster) updatePersisenceMode(val int32) {
+	if !bsProto.PersistenceModeFromInt32(val).Valid() {
+		val = bsProto.PersistenceMode_Nil.Int32()
+	}
+	atomic.StoreInt32(&c.cfg.PersistenceMode, val)
 }
 
 func (c *Cluster) updateNormalExtentDeleteExpire(val uint64) {

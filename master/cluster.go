@@ -4132,6 +4132,22 @@ func (c *Cluster) setDataPartitionConsistencyMode(newMode proto.ConsistencyMode)
 	return
 }
 
+func (c *Cluster) setPersistenceMode(newMode proto.PersistenceMode) (err error) {
+	if !newMode.Valid() {
+		return
+	}
+	var previousValue = atomic.LoadInt32(&c.cfg.PersistenceMode)
+	if previousValue == newMode.Int32() {
+		return
+	}
+	atomic.StoreInt32(&c.cfg.PersistenceMode, newMode.Int32())
+	if err = c.syncPutCluster(); err != nil {
+		atomic.StoreInt32(&c.cfg.PersistenceMode, previousValue)
+		err = proto.ErrPersistenceByRaft
+	}
+	return
+}
+
 func (c *Cluster) setDataNodeRepairTaskCountZoneLimit(val uint64, zone string) (err error) {
 	c.cfg.reqRateLimitMapMutex.Lock()
 	defer c.cfg.reqRateLimitMapMutex.Unlock()

@@ -216,6 +216,7 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 	Capacity, DataPartitionSize, MpCount, DpReplicaNum, storeMode, mpPercent, repPercent uint64
 	FollowerRead, Authenticate, CrossZone, EnableToken                                   bool
 	batchDelInodeCnt, delInodeInterVal                                                   uint32
+	persistenceMode proto.PersistenceMode
 }) (*Vol, error) {
 	uid, per, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -241,12 +242,16 @@ func (s *VolumeService) createVolume(ctx context.Context, args struct {
 		return nil, fmt.Errorf("[%s] not has permission to create volume for [%s]", uid, args.Owner)
 	}
 
+	if !args.persistenceMode.Valid() {
+		args.persistenceMode = proto.PersistenceMode_Nil
+	}
+
 	vol, err := s.cluster.createVol(args.Name, args.Owner, args.ZoneName, args.Description, int(args.MpCount),
 		int(args.DpReplicaNum), defaultReplicaNum, defaultRecorderNum, int(args.DataPartitionSize), int(args.Capacity), 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		args.FollowerRead, args.Authenticate, args.EnableToken, false, false, false, false, false, 0, 0,
 		defaultChildFileMaxCount, proto.StoreMode(args.storeMode), proto.MetaPartitionLayout{uint32(args.mpPercent), uint32(args.repPercent)}, nil, proto.CompactDefault,
 		proto.DpFollowerReadDelayConfig{false, 0}, args.batchDelInodeCnt, args.delInodeInterVal, false, 0, 0,
-		0, 0, false, false)
+		0, 0, false, false, args.persistenceMode)
 	if err != nil {
 		return nil, err
 	}
@@ -314,6 +319,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 	FollowerRead, Authenticate, AutoRepair                 *bool
 	TrashInterVal                                          *uint64
 	batchDelInodeCnt, delInodeInterval                     *uint32
+	persistenceMode proto.PersistenceMode
 }) (*Vol, error) {
 	uid, perm, err := permissions(ctx, ADMIN|USER)
 	if err != nil {
@@ -413,6 +419,10 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		args.delInodeInterval = &vol.DelInodeInterval
 	}
 
+	if !args.persistenceMode.Valid() {
+		args.persistenceMode = proto.PersistenceMode_Nil
+	}
+
 	if err = s.cluster.updateVol(args.Name, args.AuthKey, *args.ZoneName, *args.Description, *args.Capacity,
 		uint8(*args.ReplicaNum), vol.mpReplicaNum, vol.mpRecorderNum, *args.FollowerRead, vol.NearRead, *args.Authenticate, *args.EnableToken, *args.AutoRepair, *args.ForceROW,
 		vol.volWriteMutexEnable, false, *args.EnableWriteCache, vol.dpSelectorName, vol.dpSelectorParm, vol.OSSBucketPolicy, vol.CrossRegionHAType,
@@ -420,7 +430,7 @@ func (s *VolumeService) updateVolume(ctx context.Context, args struct {
 		vol.ExtentCacheExpireSec, vol.smartRules, vol.compactTag, vol.FollowerReadDelayCfg, vol.FollReadHostWeight, vol.ConnConfig, *args.TrashInterVal,
 		*args.batchDelInodeCnt, *args.delInodeInterval, vol.UmpCollectWay, vol.UmpKeyPrefix, vol.TrashCleanMaxCountEachTime, vol.CleanTrashDurationEachTime, false,
 		vol.RemoteCacheBoostPath, vol.RemoteCacheBoostEnable, vol.RemoteCacheAutoPrepare, vol.RemoteCacheTTL, false, vol.notCacheNode, vol.flock, 0, 0,
-		0, 0, false, 0, 0, false, false, 5, 5000, ""); err != nil {
+		0, 0, false, 0, 0, false, false, 5, 5000, "", args.persistenceMode); err != nil {
 		return nil, err
 	}
 

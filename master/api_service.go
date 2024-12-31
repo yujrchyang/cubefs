@@ -2546,6 +2546,17 @@ func (m *Server) setNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Parse and update persistence mode if it specified.
+	if mode, specified, err := parseAndExtractPersistenceMode(r); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	} else if specified {
+		if err := m.cluster.setPersistenceMode(mode); err != nil {
+			sendErrReply(w, r, newErrHTTPReply(err))
+			return
+		}
+	}
+
 	var (
 		module string
 		zone   string
@@ -2800,16 +2811,31 @@ func setLimitRateWithPara(params map[string]interface{}, key string, min uint64,
 func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewModuleTP(proto.AdminGetNodeInfoUmpKey)
 	defer func() { metrics.Set(nil) }()
-	resp := make(map[string]string)
-	resp[nodeDeleteBatchCountKey] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteBatchCount)
-	resp[proto.DataNodeMarkDeleteRateKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeDeleteLimitRate)
-	resp[nodeDeleteWorkerSleepMs] = fmt.Sprintf("%v", m.cluster.cfg.MetaNodeDeleteWorkerSleepMs)
-	resp[dataNodeFlushFDIntervalKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeFlushFDInterval)
-	resp[dataNodeFlushFDParallelismOnDiskKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeFlushFDParallelismOnDisk)
-	resp[dataPartitionConsistencyModeKey] = fmt.Sprintf("%v", m.cluster.cfg.DataPartitionConsistencyMode)
 
-	resp[normalExtentDeleteExpireKey] = fmt.Sprintf("%v", m.cluster.cfg.DataNodeNormalExtentDeleteExpire)
-	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("%v", resp)))
+	type Info struct{
+		MetaNodeDeleteBatchCount         uint64
+		MetaNodeDeleteWorkerSleepMs      uint64
+		DataNodeDeleteLimitRate          uint64
+		DataNodeFlushFDIntervalSeconds   uint32
+		DataNodeFlushFDParallelismOnDisk uint64
+		DataNodeNormalExtentDeleteExpire uint64
+		DataPartitionConsistencyMode     proto.ConsistencyMode
+		PersistenceMode					 proto.PersistenceMode
+	}
+
+	var info = &Info{
+		MetaNodeDeleteBatchCount:         m.cluster.cfg.MetaNodeDeleteBatchCount,
+		MetaNodeDeleteWorkerSleepMs:      m.cluster.cfg.MetaNodeDeleteWorkerSleepMs,
+		DataNodeDeleteLimitRate:          m.cluster.cfg.DataNodeDeleteLimitRate,
+		DataNodeFlushFDIntervalSeconds:   m.cluster.cfg.DataNodeFlushFDInterval,
+		DataNodeFlushFDParallelismOnDisk: m.cluster.cfg.DataNodeFlushFDParallelismOnDisk,
+		DataNodeNormalExtentDeleteExpire: m.cluster.cfg.DataNodeNormalExtentDeleteExpire,
+		DataPartitionConsistencyMode:     proto.ConsistencyMode(m.cluster.cfg.DataPartitionConsistencyMode),
+		PersistenceMode: 				  proto.PersistenceMode(m.cluster.cfg.PersistenceMode),
+
+	}
+
+	sendOkReply(w, r, newSuccessHTTPReply(info))
 }
 
 func (m *Server) diagnoseMetaPartition(w http.ResponseWriter, r *http.Request) {
@@ -5419,7 +5445,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	intKeys := []string{dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, proto.ClientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
 		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.DpTimeoutCntThreshold,
 		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ConnTimeoutMsKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey,
-		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey, apiReqBwRateLimitKey}
+		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey, apiReqBwRateLimitKey, persistenceModeKey}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return
@@ -5460,6 +5486,23 @@ func parseAndExtractDataPartitionConsistencyMode(r *http.Request) (mode proto.Co
 		return
 	}
 	mode = proto.ConsistencyModeFromInt32(int32(parsed))
+	return
+}
+
+func parseAndExtractPersistenceMode(r *http.Request) (mode proto.PersistenceMode, specified bool, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	var value string
+	if value = r.FormValue(persistenceModeKey); value == "" {
+		return
+	}
+	specified = true
+	var parsed int64
+	if parsed, err = strconv.ParseInt(value, 10, 64); err != nil {
+		return
+	}
+	mode = proto.PersistenceModeFromInt32(int32(parsed))
 	return
 }
 

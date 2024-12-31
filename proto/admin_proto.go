@@ -1787,7 +1787,7 @@ const (
 	StrictMode
 )
 
-type PersistenceMode int8
+type PersistenceMode int32
 
 func (s PersistenceMode) String() string {
 	switch s {
@@ -1802,6 +1802,10 @@ func (s PersistenceMode) String() string {
 	return "Unknown"
 }
 
+func (s PersistenceMode) Int32() int32 {
+	return int32(s)
+}
+
 func (s PersistenceMode) Valid() bool {
 	switch s {
 	case PersistenceMode_Nil, PersistenceMode_WriteBack, PersistenceMode_WriteThrough:
@@ -1809,6 +1813,10 @@ func (s PersistenceMode) Valid() bool {
 	default:
 	}
 	return false
+}
+
+func PersistenceModeFromInt32(v int32) PersistenceMode {
+	return PersistenceMode(v)
 }
 
 const (
