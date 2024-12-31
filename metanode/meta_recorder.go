@@ -275,7 +275,7 @@ func (mr *metaRecorder) ApplyMemberChange(confChange *raftproto.ConfChange, inde
 	}
 	if updated {
 		if err = mr.persist(); err != nil {
-			log.LogErrorf("action[ApplyMemberChange] err[%v].", err)
+			log.LogErrorf("action[ApplyMemberChange] pid[%v] err[%v].", mr.partitionID, err)
 			return
 		}
 	}

@@ -307,11 +307,13 @@ func linearWithDelLeader(t *testing.T, testName string, isLease bool, mode RaftM
 
 	// delete raft leader server and add
 	leadServer, servers = delAndAddLeader(peers, servers, w, t)
+	waitForApply(servers, 1, w)
 	startIndex := verifyRestoreValue(servers, leadServer, w)
 	output("start put data")
 	if _, err := leadServer.putData(1, startIndex, PutDataStep/5, w); err != nil {
 		t.Fatal(err)
 	}
+	waitForApply(servers, 1, w)
 	compareServersWithLeader(servers, w, t)
 	printStatus(servers, w)
 }

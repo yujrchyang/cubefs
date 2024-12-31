@@ -345,6 +345,18 @@ func (r *raftFsm) Step(m *proto.Message) {
 		if logger.IsEnableDebug() {
 			logger.Debug("raft[%v] [term: %d] ignored a %s message with lower term from [%v term: %d].", r.id, r.term, m.Type, m.From, m.Term)
 		}
+		if m.Type == proto.ReqMsgVote && r.state == stateRecorder {
+			// 由于Recorder角色不会主动发起请求，可用此方式将term传播至低term的Candidate
+			nmsg := proto.GetMessage()
+			nmsg.Type = proto.RespMsgVote
+			nmsg.To = m.From
+			nmsg.Reject = true
+			nmsg.SetCtx(m.Ctx())
+			r.send(nmsg)
+			if logger.IsEnableDebug() {
+				logger.Debug("raft[%v] recorder [term: %d] rejected vote from [%v term: %d].", r.id, r.term, m.From, m.Term)
+			}
+		}
 		return
 	}
 	r.step(r, m)
