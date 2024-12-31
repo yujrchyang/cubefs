@@ -603,7 +603,10 @@ func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]b
 	var err error
 	// Format: expired_datapartition_{ID}_{Capacity}_{Timestamp}
 	// Regexp: ^expired_datapartition_(\d)+_(\d)+_(\d)+$
-	regexpExpiredPartitionDirName := regexp.MustCompile("^expired_datapartition_(\\d)+_(\\d)+_(\\d)+$")
+	regexpExpiredPartitionDirNameWithT := regexp.MustCompile("^expired_datapartition_(\\d)+_(\\d)+_(\\d)+$")
+	// Format: expired_datapartition_{ID}_{Capacity}
+	// Regexp: ^expired_datapartition_(\d)+_(\d)+$
+	regexpExpiredPartitionDirName := regexp.MustCompile("^expired_datapartition_(\\d)+_(\\d)+$")
 	reloadMap := make(map[uint64]struct {
 		disk        *Disk
 		delTime     uint64
@@ -611,6 +614,7 @@ func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]b
 		newWalPath  string
 		newFileName string
 		fileName    string
+		modTime     uint64
 	}, 0)
 	for _, d := range manager.disks {
 		var entries []fs.DirEntry
@@ -624,7 +628,7 @@ func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]b
 				continue
 			}
 			filename := entry.Name()
-			if !regexpExpiredPartitionDirName.MatchString(filename) {
+			if !(regexpExpiredPartitionDirNameWithT.MatchString(filename) || regexpExpiredPartitionDirName.MatchString(filename)) {
 				continue
 			}
 			var dpid uint64
@@ -635,16 +639,27 @@ func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]b
 				failedDps = append(failedDps, dpid)
 				continue
 			}
-			delTime, err = strconv.ParseUint(parts[4], 10, 64)
-			if err != nil {
-				failedDps = append(failedDps, dpid)
-				continue
-			}
 			if !all {
 				if _, ok := ids[dpid]; !ok {
 					continue
 				}
 			}
+			if len(parts) == 4 {
+				delTime = uint64(0)
+			} else {
+				delTime, err = strconv.ParseUint(parts[4], 10, 64)
+				if err != nil {
+					failedDps = append(failedDps, dpid)
+					continue
+				}
+			}
+			var stat os.FileInfo
+			stat, err = os.Stat(path.Join(d.Path, filename))
+			if err != nil {
+				failedDps = append(failedDps, dpid)
+				continue
+			}
+			modTime := uint64(stat.ModTime().UnixNano())
 			var walPath, newWalPath string
 			// get expired wal dir
 			walPath, newWalPath, err = parseExpiredWalPath(path.Join(d.Path, filename), dpid)
@@ -655,7 +670,7 @@ func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]b
 			}
 			newFileName := strings.Join(parts[1:4], "_")
 			if dpInfo, ok := reloadMap[dpid]; ok {
-				if delTime > dpInfo.delTime {
+				if delTime > dpInfo.delTime || (delTime == dpInfo.delTime && modTime > dpInfo.modTime) {
 					reloadMap[dpid] = struct {
 						disk        *Disk
 						delTime     uint64
@@ -663,7 +678,8 @@ func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]b
 						newWalPath  string
 						newFileName string
 						fileName    string
-					}{disk: d, delTime: delTime, walPath: walPath, newWalPath: newWalPath, fileName: filename, newFileName: newFileName}
+						modTime     uint64
+					}{disk: d, delTime: delTime, walPath: walPath, newWalPath: newWalPath, fileName: filename, newFileName: newFileName, modTime: modTime}
 				}
 			} else {
 				reloadMap[dpid] = struct {
@@ -673,7 +689,8 @@ func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]b
 					newWalPath  string
 					newFileName string
 					fileName    string
-				}{disk: d, delTime: delTime, walPath: walPath, newWalPath: newWalPath, fileName: filename, newFileName: newFileName}
+					modTime     uint64
+				}{disk: d, delTime: delTime, walPath: walPath, newWalPath: newWalPath, fileName: filename, newFileName: newFileName, modTime: modTime}
 			}
 		}
 	}

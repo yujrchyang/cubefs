@@ -133,11 +133,19 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 	var testPath = testutil.InitTempTestPath(t)
 	defer testPath.Cleanup()
 	var err error
-	diskName := "testDisk"
-	dps := []uint64{1, 2, 3}
-	var diskPath = path.Join(testPath.Path(), diskName)
-	if err = os.MkdirAll(diskPath, os.ModePerm); err != nil {
-		t.Fatalf("Make disk path %v failed: %v", diskPath, err)
+	diskNames := []string{
+		"testDisk",
+		"testDisk2",
+	}
+	diskDirs := []string{
+		path.Join(testPath.Path(), "testDisk"),
+		path.Join(testPath.Path(), "testDisk2"),
+	}
+	dps := []uint64{1, 2, 3, 4, 5}
+	for _, d := range diskNames {
+		if err = os.MkdirAll(path.Join(testPath.Path(), d), os.ModePerm); err != nil {
+			t.Fatalf("Make disk path %v failed: %v", d, err)
+		}
 	}
 	nodeID := uint64(1)
 	var space = NewSpaceManager(&fakeNode.DataNode)
@@ -158,15 +166,16 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 		return
 	}
 	space.SetRaftStore(raftStore)
-	if err = space.LoadDisk(path.Join(testPath.Path(), diskName), nil); err != nil {
-		t.Fatalf("Load disk %v failed: %v", diskPath, err)
+	for _, d := range diskNames {
+		if err = space.LoadDisk(path.Join(testPath.Path(), d), nil); err != nil {
+			t.Fatalf("Load disk %v failed: %v", d, err)
+		}
 	}
-	// create dp
-	for _, id := range dps {
-		_, err = space.CreatePartition(&proto.CreateDataPartitionRequest{
+	var newCreateDpReq = func(id uint64, volName string) (req *proto.CreateDataPartitionRequest) {
+		return &proto.CreateDataPartitionRequest{
 			PartitionId:   id,
 			PartitionSize: 1024 * 1024,
-			VolumeId:      "test_volume",
+			VolumeId:      volName,
 			ReplicaNum:    1,
 			Members: []proto.Peer{
 				{
@@ -179,12 +188,16 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 				fmt.Sprintf("127.0.0.1:%v", fakeNode.DataNode.port),
 			},
 			CreateType: proto.NormalCreateDataPartition,
-		})
+		}
+	}
+	// create dp
+	for _, id := range dps {
+		_, err = space.CreatePartition(newCreateDpReq(id, "test_vol"))
 		if err != nil {
 			t.Fatalf("Create partition failed: %v", err)
 		}
 	}
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second)
 	for _, id := range dps {
 		dp := space.Partition(id)
 		status := dp.raftPartition.Status()
@@ -211,11 +224,67 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 		assert.Equal(t, 0, len(failedDps))
 		assert.Equal(t, 1, len(successDps))
 	})
+	var expireWithoutTimestamp = func(dpid uint64) {
+		dp := space.Partition(dpid)
+		if dp == nil {
+			return
+		}
+		space.partitionMutex.Lock()
+		delete(space.partitions, dpid)
+		space.partitionMutex.Unlock()
+		dp.Stop()
+		dp.Disk().DetachDataPartition(dp)
+		var currentPath = path.Clean(dp.path)
+		var newPath = path.Join(path.Dir(currentPath), ExpiredPartitionPrefix+path.Base(currentPath))
+		if err = os.Rename(currentPath, newPath); err != nil {
+			log.LogErrorf("ExpiredPartition: mark expired partition fail: volume(%v) partitionID(%v) path(%v) newPath(%v) err(%v)",
+				dp.volumeID,
+				dp.partitionID,
+				dp.path,
+				newPath,
+				err)
+			return
+		}
+	}
+	var verifyExpired = func(expect int, t *testing.T, paths []string) {
+		count := 0
+		for _, p := range paths {
+			var entries []os.DirEntry
+			entries, err = os.ReadDir(p)
+			if err != nil {
+				t.Fatalf("read dir failed: %v", err)
+			}
+			for _, entry := range entries {
+				if !entry.IsDir() {
+					continue
+				}
+				if strings.Contains(entry.Name(), "expire") {
+					count++
+				}
+			}
+		}
+		if !assert.Equal(t, expect, count) {
+			return
+		}
+	}
+	t.Run("reload_dp_without_timestamp", func(t *testing.T) {
+		// expire dp
+		expireWithoutTimestamp(dps[2])
+		//restore dp
+		failedDisks, failedDps, successDps := space.RestoreExpiredPartitions(true, make(map[uint64]bool, 0))
+		assert.Equal(t, 0, len(failedDisks))
+		assert.Equal(t, 0, len(failedDps))
+		assert.Equal(t, 1, len(successDps))
+		// verify vol name
+		assert.Equal(t, "test_vol", space.Partition(dps[2]).volumeID)
+		verifyExpired(0, t, diskDirs)
+	})
+
 	t.Run("reload_dp_with_wal", func(t *testing.T) {
 		// expire dp
-		dp := space.Partition(dps[2])
+		dp := space.Partition(dps[3])
 		dp.raftPartition.Expired()
-		space.ExpiredPartition(dps[2])
+		space.ExpiredPartition(dps[3])
 		//restore dp
 		failedDisks, failedDps, successDps := space.RestoreExpiredPartitions(true, make(map[uint64]bool, 0))
 		assert.Equal(t, 0, len(failedDisks))
@@ -228,18 +297,37 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 				continue
 			}
 			if strings.Contains(entry.Name(), "expire") {
-				t.Errorf("partition:%v invalid wal dir: %v", dps[2], entry.Name())
+				t.Errorf("partition:%v invalid wal dir: %v", dps[3], entry.Name())
 			}
 		}
 	})
-	var entries []os.DirEntry
-	entries, err = os.ReadDir(diskPath)
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
+	verifyExpired(0, t, diskDirs)
+	t.Run("reload_multi_dp", func(t *testing.T) {
+		// expire old dp
+		space.ExpiredPartition(dps[4])
+		// expire dp without timestamp
+		newVol := "test_vol_1"
+		_, err = space.CreatePartition(newCreateDpReq(dps[4], newVol))
+		if err != nil {
+			t.Fatalf("Create partition failed: %v", err)
 		}
-		if strings.Contains(entry.Name(), "expire") {
-			t.Errorf("invalid partition path: %v", entry.Name())
+		time.Sleep(time.Second)
+		expireWithoutTimestamp(dps[4])
+		// expire dp with latest timestamp
+		newVol2 := "test_vol_2"
+		_, err = space.CreatePartition(newCreateDpReq(dps[4], newVol2))
+		if err != nil {
+			t.Fatalf("Create partition failed: %v", err)
 		}
-	}
+		time.Sleep(time.Second)
+		space.ExpiredPartition(dps[4])
+		verifyExpired(3, t, diskDirs)
+		// restore dp
+		failedDisks, failedDps, successDps := space.RestoreExpiredPartitions(true, make(map[uint64]bool, 0))
+		assert.Equal(t, 0, len(failedDisks))
+		assert.Equal(t, 0, len(failedDps))
+		assert.Equal(t, 1, len(successDps))
+		// verify vol name
+		assert.Equal(t, newVol2, space.Partition(dps[4]).volumeID)
+	})
 }
