@@ -321,10 +321,10 @@ func (r *raftFsm) Step(m *proto.Message) {
 		if m.Type == proto.ReqMsgVote {
 			lead = NoLeader
 			inLease := r.config.LeaseCheck && (r.state == stateFollower || r.state == stateRecorder) && r.leader != NoLeader
-			if r.leader != m.From && inLease && !m.ForceVote {
+			if r.leader != m.From && inLease && (r.state == stateRecorder || !m.ForceVote) {
 				if logger.IsEnableWarn() {
-					logger.Warn("raft[%v] [logterm: %d, index: %d, vote: %v] ignored vote from %v [logterm: %d, index: %d] at term %d: lease is not expired.",
-						r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.From, m.LogTerm, m.Index, r.term)
+					logger.Warn("raft[%v] [logterm: %d, index: %d, vote: %v] ignored force(%v) vote from %v [logterm: %d, index: %d] at term %d: lease is not expired.",
+						r.id, r.raftLog.lastTerm(), r.raftLog.lastIndex(), r.vote, m.ForceVote, m.From, m.LogTerm, m.Index, r.term)
 				}
 
 				nmsg := proto.GetMessage()
@@ -354,7 +354,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 			nmsg.SetCtx(m.Ctx())
 			r.send(nmsg)
 			if logger.IsEnableDebug() {
-				logger.Debug("raft[%v] recorder [term: %d] rejected vote from [%v term: %d].", r.id, r.term, m.From, m.Term)
+				logger.Debug("raft[%v] recorder [term: %d] rejected a %s message from [%v term: %d].", r.id, r.term, m.Type, m.From, m.Term)
 			}
 		}
 		return
