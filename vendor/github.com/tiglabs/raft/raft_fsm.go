@@ -317,7 +317,12 @@ func (r *raftFsm) Step(m *proto.Message) {
 		if logger.IsEnableDebug() {
 			logger.Debug("raft[%v] [term: %d] received a [%s] message with higher term from [%v term: %d].", r.id, r.term, m.Type, m.From, m.Term)
 		}
-		lead := m.From
+		lead := NoLeader
+		pr, ok := r.replicas[m.From]
+		fromRecorder := (ok && pr.peer.IsRecorder())
+		if !fromRecorder {
+			lead = m.From
+		}
 		if m.Type == proto.ReqMsgVote {
 			lead = NoLeader
 			inLease := r.config.LeaseCheck && (r.state == stateFollower || r.state == stateRecorder) && r.leader != NoLeader
