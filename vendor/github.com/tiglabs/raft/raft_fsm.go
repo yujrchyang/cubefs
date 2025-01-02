@@ -301,7 +301,7 @@ func (r *raftFsm) Step(m *proto.Message) {
 			}
 
 			if logger.IsEnableDebug() {
-				logger.Debug("raft[%v] is starting a new election at term[%d].", r.id, r.term)
+				logger.Debug("ID[%v] raft[%v] is starting a new election at term[%d].", r.config.NodeID, r.id, r.term)
 			}
 			r.campaign(m.ForceVote)
 		} else if logger.IsEnableDebug() && r.state == stateLeader {

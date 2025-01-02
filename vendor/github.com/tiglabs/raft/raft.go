@@ -941,7 +941,7 @@ func (s *raft) maybeChange(respErr bool) {
 					logger.Warn("raft[%v] changed leader from %v to %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.leader, s.raftFsm.term)
 				}
 			} else {
-				logger.Warn("raft[%v] lost leader %v at term %d.", s.raftFsm.id, preLeader, s.raftFsm.term)
+				logger.Warn("ID[%v] raft[%v] lost leader %v at term %d.", s.config.NodeID, s.raftFsm.id, preLeader, s.raftFsm.term)
 			}
 		}
 

@@ -38,7 +38,7 @@ func (r *raftFsm) becomeFollower(ctx context.Context, term, lead uint64) {
 	r.leader = lead
 	r.state = stateFollower
 	if logger.IsEnableDebug() {
-		logger.Debug("raft[%v] became follower at term[%d] leader[%d].", r.id, r.term, r.leader)
+		logger.Debug("ID[%v] raft[%v] became follower at term[%d] leader[%d].", r.config.NodeID, r.id, r.term, r.leader)
 	}
 }
 
