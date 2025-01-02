@@ -135,7 +135,7 @@ func (migTask *MigrateTask) GetMpInfo() (err error) {
 		}
 		migTask.stage = GetMNProfPort
 	}()
-	mpInfo, err := migTask.mc.ClientAPI().GetMetaPartition(migTask.mpId, migTask.task.VolName)
+	mpInfo, err := migTask.mc.ClientAPI().GetMetaPartition(migTask.mpId, migTask.vol.Name)
 	if err != nil {
 		log.LogErrorf("get meta partition(%v) info failed, err:%v", migTask.mpId, err)
 		return
