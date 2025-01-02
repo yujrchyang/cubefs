@@ -58,6 +58,13 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	mp.waitPersistCommitCnt++
 
 	defer func() {
+		if mp.ctx != nil && mp.cancelFunc != nil && index >= atomic.LoadUint64(&mp.lastValidIndexOnLeaderChange) {
+			mp.cancelFunc()
+			mp.ctx = nil
+			mp.cancelFunc = nil
+			log.LogCriticalf("meta partition apply pending action complete, partitionID: %v, curApplyIndex: %v, lastIndexOnLeaderChange: %v",
+				mp.config.PartitionId, index, mp.lastValidIndexOnLeaderChange)
+		}
 		if err != nil {
 			log.LogErrorf("Mp[%d] action[Apply] failed,index:%v,msg:%v,resp:%v,err:%v", mp.config.PartitionId, index, msg, resp, err)
 			if err == accessDBError {
@@ -1165,6 +1172,15 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 	mp.storeChan <- &storeMsg{
 		command: startStoreTick,
 	}
+
+	lastValidIndex := atomic.LoadUint64(&mp.lastValidRaftLogIndex)
+	atomic.StoreUint64(&mp.lastValidIndexOnLeaderChange, lastValidIndex)
+	curApplyId := mp.raftPartition.AppliedIndex()
+	if curApplyId < mp.lastValidIndexOnLeaderChange {
+		mp.ctx, mp.cancelFunc = context.WithCancel(context.Background())
+	}
+	log.LogCriticalf("metaPartition changeLeader, partitionID: %v, curApplyIndex: %v, curLastApplyIndex: %v, needPending: %v",
+		mp.config.PartitionId, curApplyId, mp.lastValidIndexOnLeaderChange, mp.ctx != nil)
 	atomic.CompareAndSwapUint64(&mp.config.Cursor, 0, 1)
 	if mp.config.Start == 0 {
 		ino := NewInode(proto.RootIno, proto.Mode(os.ModePerm|os.ModeDir))

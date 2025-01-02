@@ -334,49 +334,53 @@ type MetaPartition interface {
 //	| New | → Restore → | Ready |
 //	+-----+             +-------+
 type metaPartition struct {
-	config                      *MetaPartitionConfig
-	confUpdateMutex             sync.Mutex
-	size                        uint64 // For partition all file size
-	applyID                     uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
-	dentryTree                  DentryTree
-	inodeTree                   InodeTree     // btree for inodes
-	extendTree                  ExtendTree    // btree for inode extend (XAttr) management
-	multipartTree               MultipartTree // collection for multipart management
-	raftPartition               raftstore.Partition
-	stopC                       chan bool
-	storeChan                   chan *storeMsg
-	state                       uint32
-	delInodeFp                  *os.File
-	freeList                    *freeList // free inode list, only change when raft apply
-	freeLaterInodes             map[uint64]byte // 删除失败需要稍后重试的inode
-	extDelCh                    chan []proto.MetaDelExtentKey
-	extReset                    chan struct{}
-	vol                         *Vol
-	manager                     *metadataManager
-	monitorData                 []*statistics.MonitorData
-	marshalVersion              uint32
-	dentryDeletedTree           DeletedDentryTree
-	inodeDeletedTree            DeletedInodeTree
-	trashExpiresFirstUpdateTime time.Time
-	extDelCursor                chan uint64
-	db                          *RocksDbInfo
-	addBatchKey                 []byte
-	delBatchKey                 []byte
-	lastSubmit                  int64
-	waitPersistCommitCnt        uint64
-	deleteEKRecordCount         uint64
-	delEKFd                     *os.File
-	inodeDelEkRecordCount       uint64
-	inodeDelEkFd                *os.File
-	CreationType                int
-	stopLock                    sync.Mutex
-	stopChState                 uint32
-	inodeIDAllocator            *inoAllocatorV1
-	status                      int8
-	raftFSMLock                 sync.Mutex
-	reqRecords                  *RequestRecords
-	topoManager                 *topology.TopologyManager
-	lastDumpTime				int64
+	config                       *MetaPartitionConfig
+	confUpdateMutex              sync.Mutex
+	size                         uint64 // For partition all file size
+	applyID                      uint64 // Inode/Dentry max applyID, this index will be update after restoring from the dumped data.
+	dentryTree                   DentryTree
+	inodeTree                    InodeTree     // btree for inodes
+	extendTree                   ExtendTree    // btree for inode extend (XAttr) management
+	multipartTree                MultipartTree // collection for multipart management
+	raftPartition                raftstore.Partition
+	stopC                        chan bool
+	storeChan                    chan *storeMsg
+	state                        uint32
+	delInodeFp                   *os.File
+	freeList                     *freeList       // free inode list, only change when raft apply
+	freeLaterInodes              map[uint64]byte // 删除失败需要稍后重试的inode
+	extDelCh                     chan []proto.MetaDelExtentKey
+	extReset                     chan struct{}
+	vol                          *Vol
+	manager                      *metadataManager
+	monitorData                  []*statistics.MonitorData
+	marshalVersion               uint32
+	dentryDeletedTree            DeletedDentryTree
+	inodeDeletedTree             DeletedInodeTree
+	trashExpiresFirstUpdateTime  time.Time
+	extDelCursor                 chan uint64
+	db                           *RocksDbInfo
+	addBatchKey                  []byte
+	delBatchKey                  []byte
+	lastSubmit                   int64
+	waitPersistCommitCnt         uint64
+	deleteEKRecordCount          uint64
+	delEKFd                      *os.File
+	inodeDelEkRecordCount        uint64
+	inodeDelEkFd                 *os.File
+	CreationType                 int
+	stopLock                     sync.Mutex
+	stopChState                  uint32
+	inodeIDAllocator             *inoAllocatorV1
+	status                       int8
+	raftFSMLock                  sync.Mutex
+	reqRecords                   *RequestRecords
+	topoManager                  *topology.TopologyManager
+	lastDumpTime                 int64
+	lastValidRaftLogIndex        uint64
+	lastValidIndexOnLeaderChange uint64
+	ctx                          context.Context
+	cancelFunc                   context.CancelFunc
 }
 
 // Start starts a meta partition.
@@ -512,6 +516,9 @@ func (mp *metaPartition) startRaft() (err error) {
 
 		WALSync: true,
 		WALSyncRotate: true,
+		StorageListener: raftstore.NewStorageListenerBuilder().
+			ListenStoredEntry(mp.listenStoredRaftLogEntry).
+			Build(),
 	}
 	mp.raftPartition = mp.config.RaftStore.CreatePartition(pc)
 	/*meta node set raft log, default 4 files, 8MB per file*/
@@ -598,23 +605,23 @@ func (mp *metaPartition) getRocksDbRootDir() string {
 
 func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *metaPartition {
 	mp := &metaPartition{
-		config:          conf,
-		stopC:           make(chan bool),
-		storeChan:       make(chan *storeMsg, 100),
-		freeList:        newFreeList(),
-		freeLaterInodes: make(map[uint64]byte, 0),
-		extDelCh:        make(chan []proto.MetaDelExtentKey, 10000),
-		extReset:        make(chan struct{}),
-		vol:             NewVol(),
-		manager:         manager,
-		monitorData:     statistics.InitMonitorData(statistics.ModelMetaNode),
-		marshalVersion:  MetaPartitionMarshVersion2,
-		extDelCursor:    make(chan uint64, 1),
-		db:              NewRocksDb(),
-		CreationType:    conf.CreationType,
-		stopChState:     mpStopChOpenState,
-		reqRecords:     NewRequestRecords(),
-		topoManager:    manager.metaNode.topoManager,
+		config:                       conf,
+		stopC:                        make(chan bool),
+		storeChan:                    make(chan *storeMsg, 100),
+		freeList:                     newFreeList(),
+		freeLaterInodes:              make(map[uint64]byte, 0),
+		extDelCh:                     make(chan []proto.MetaDelExtentKey, 10000),
+		extReset:                     make(chan struct{}),
+		vol:                          NewVol(),
+		manager:                      manager,
+		monitorData:                  statistics.InitMonitorData(statistics.ModelMetaNode),
+		marshalVersion:               MetaPartitionMarshVersion2,
+		extDelCursor:                 make(chan uint64, 1),
+		db:                           NewRocksDb(),
+		CreationType:                 conf.CreationType,
+		stopChState:                  mpStopChOpenState,
+		reqRecords:                   NewRequestRecords(),
+		topoManager:                  manager.metaNode.topoManager,
 	}
 	return mp
 }
@@ -2120,4 +2127,30 @@ func (mp *metaPartition) getMaxApplyIDHosts(appliedIDMap map[string]uint64) (isS
 		}
 	}
 	return
+}
+
+func (mp *metaPartition) checkAndWaitForPendingActionApplied() (err error){
+	if mp.ctx == nil && mp.cancelFunc == nil {
+		return
+	}
+
+	metric := exporter.NewModuleTP("checkAndWaitPendingActionApplied")
+	defer metric.Set(nil)
+	var ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*200)
+	select {
+	case <- mp.ctx.Done():
+		log.LogCriticalf("meta partition apply pending action complete, partitionID: %v, curRaftApplyIndex: %v," +
+			" lastIndexOnLeaderChange: %v", mp.config.PartitionId, mp.applyID, mp.lastValidIndexOnLeaderChange)
+	case <- ctx.Done():
+		err =  fmt.Errorf("wait apply pending action timeout")
+		log.LogCriticalf("meta partition wait apply pending action time out, partitionID: %v, curRaftApplyIndex: %v," +
+			" lastIndexOnLeaderChange: %v", mp.config.PartitionId, mp.applyID, mp.lastValidIndexOnLeaderChange)
+	}
+	return
+}
+
+func (mp *metaPartition) listenStoredRaftLogEntry(entry *raftproto.Entry) {
+	if entry.Type == raftproto.EntryNormal && len(entry.Data) > 0 && entry.Index > mp.lastValidRaftLogIndex {
+		atomic.StoreUint64(&mp.lastValidRaftLogIndex, entry.Index)
+	}
 }

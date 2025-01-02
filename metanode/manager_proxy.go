@@ -41,11 +41,24 @@ func (m *metadataManager) serveProxy(conn net.Conn, mp MetaPartition,
 		p.proxyFinishTimestamp = time.Now().Unix()
 	}()
 
+	//follower read
 	if p.IsReadMetaPkt() && p.IsFollowerReadMetaPkt() {
 		return m.serveProxyFollowerReadPacket(conn, mp, p)
-	} else {
-		return m.serveProxyLeaderPacket(conn, mp, p, req)
 	}
+
+	//leader read/write
+	ok = m.serveProxyLeaderPacket(conn, mp, p, req)
+	if ok && p.IsReadMetaPkt() {
+		partition := mp.(*metaPartition)
+		err := partition.checkAndWaitForPendingActionApplied()
+		if err != nil {
+			log.LogErrorf("wait for pending action applied complete time out, mp: %v, req: %d - %v",
+				partition.config.PartitionId, p.GetReqID(), p.GetOpMsg())
+			p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
+			ok = false
+		}
+	}
+	return
 }
 
 func (m *metadataManager) serveProxyLeaderPacket(conn net.Conn, mp MetaPartition, p *Packet, req interface{}) (ok bool){
