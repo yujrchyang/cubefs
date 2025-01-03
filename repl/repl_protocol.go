@@ -245,9 +245,7 @@ func (rp *ReplProtocol) sendRequestToAllFollowers(request *Packet) (err error) {
 		}
 	}
 
-	// connection pool with blacklist is for cross-region-ha volumes only
-	useConnWithBlackList := request.quorum > 0 && request.quorum < len(request.followersAddrs)+1
-
+	useConnWithBlackList := request.IsUseConnWithBlackList()
 	for index := 0; index < len(request.followersAddrs); index++ {
 		request.addDataPoolRefCnt()
 		request.addPacketPoolRefCnt()

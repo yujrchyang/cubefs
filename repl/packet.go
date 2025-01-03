@@ -845,3 +845,8 @@ func (p *Packet) IsRandomWriteV3() bool {
 func (p *Packet) IsSyncWrite() bool {
 	return p.Opcode == proto.OpSyncWrite || p.Opcode == proto.OpSyncRandomWrite
 }
+
+// IsUseConnWithBlackList connection pool with blacklist is for cross-region-ha volumes only
+func (p *Packet) IsUseConnWithBlackList() bool {
+	return p.quorum > 0 && p.quorum < len(p.followersAddrs)+1
+}

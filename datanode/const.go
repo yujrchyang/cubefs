@@ -150,3 +150,12 @@ const (
 	registerMaxRetryCount     = 3
 	registerRetryWaitInterval = time.Second * 5
 )
+
+const (
+	DisableBlackListSwitch = "DisableBlackList"
+)
+
+const (
+	ForceRestorePartition  = true
+	NormalRestorePartition = false
+)

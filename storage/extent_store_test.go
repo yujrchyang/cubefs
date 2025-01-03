@@ -29,6 +29,11 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
+const (
+	testInode     = 1024
+	cacheCapacity = 10
+)
+
 var letterRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 func RandStringRunes(n int) string {
@@ -379,24 +384,13 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 	storage.Close()
 }
 
-func TestTrashExtent(t *testing.T) {
-	var testPath = testutil.InitTempTestPath(t)
-	defer testPath.Cleanup()
-	_, err := log.InitLog(path.Join(os.TempDir(), t.Name(), "logs"), "datanode_test", log.DebugLevel, nil)
-	if err != nil {
-		t.Errorf("Init log failed: %v", err)
-		return
-	}
-	defer log.LogFlush()
+func initExtentStorage(t *testing.T, extentSize int64, storePath string, extentNum int) (storage *ExtentStore, extents []uint64, err error) {
 	const (
 		partitionID      uint64 = 1
-		storageSize             = 1 * 1024 * 1024
-		cacheCapacity           = 10
+		storageSize             = 128 * 1024 * 1024
 		dataSizePreWrite        = 16
 	)
-
-	var testPartitionPath = path.Join(testPath.Path(), fmt.Sprintf("datapartition_%d", partitionID))
-	var storage *ExtentStore
+	var testPartitionPath = path.Join(storePath, fmt.Sprintf("datapartition_%d", partitionID))
 	if storage, err = NewExtentStore(testPartitionPath, partitionID, storageSize, cacheCapacity,
 		func(event CacheEvent, e *Extent) {}, true, IOInterceptors{}); err != nil {
 		t.Fatalf("Create extent store failed: %v", err)
@@ -414,14 +408,12 @@ func TestTrashExtent(t *testing.T) {
 	var dataSize = int64(dataSizePreWrite)
 	var data = make([]byte, dataSize)
 	var dataCRC = crc32.ChecksumIEEE(data)
-	tStart := time.Now()
-	extents := make([]uint64, 0)
-	inode := 10
-	for i := 0; i < 2; i++ {
+	extents = make([]uint64, 0)
+	for i := 0; i < extentNum; i++ {
 		extentID, _ := storage.NextExtentID()
-		_ = storage.Create(extentID, uint64(inode), true)
+		_ = storage.Create(extentID, uint64(testInode), true)
 		var offset int64 = 0
-		for offset+dataSize <= 64*1024*1024 {
+		for offset+dataSize <= extentSize {
 			if err = storage.Write(context.Background(), extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
 				err = nil
 				break
@@ -430,15 +422,37 @@ func TestTrashExtent(t *testing.T) {
 		}
 		extents = append(extents, extentID)
 	}
+	// calculate extent size
+	assert.Equal(t, uint64(extentSize)*uint64(len(extents)), storage.infoStore.NormalUsed())
+	return storage, extents, nil
+}
+
+func TestTrashExtent(t *testing.T) {
+	var testPath = testutil.InitTempTestPath(t)
+	defer testPath.Cleanup()
+	_, err := log.InitLog(path.Join(os.TempDir(), t.Name(), "logs"), "datanode_test", log.DebugLevel, nil)
+	if err != nil {
+		t.Errorf("Init log failed: %v", err)
+		return
+	}
+	defer log.LogFlush()
+	tStart := time.Now()
+	extentSize := int64(4 * 1024 * 1024)
+	storage, extents, err := initExtentStorage(t, extentSize, testPath.Path(), 100)
+	if err != nil {
+		t.Errorf("Init extent store failed: %v", err)
+		return
+	}
+	defer storage.Close()
 
 	// using wrong inode number
 	for _, extentID := range extents {
-		assert.Error(t, storage.TrashExtent(extentID, 11, 64*1024*1024))
+		assert.Error(t, storage.TrashExtent(extentID, uint64(testInode+10), uint32(extentSize)))
 	}
 
 	// mv extent to trash dir
 	for _, extentID := range extents {
-		assert.NoError(t, storage.TrashExtent(extentID, uint64(inode), 64*1024*1024))
+		assert.NoError(t, storage.TrashExtent(extentID, uint64(testInode), uint32(extentSize)))
 	}
 	trashExtents := 0
 	storage.trashExtents.Range(func(k, v interface{}) bool {
@@ -446,10 +460,12 @@ func TestTrashExtent(t *testing.T) {
 		return true
 	})
 	assert.Equal(t, len(extents), trashExtents)
+	// calculate extent size
+	assert.Equal(t, uint64(0), storage.infoStore.NormalUsed())
 
 	t.Log("starting mark delete trash with long keep time")
 	// delete trash less than keep time
-	storage.MarkDeleteTrashExtents(uint64(time.Since(tStart).Seconds()) + uint64(60*60))
+	storage.BatchDeleteTrashExtents(uint64(time.Since(tStart).Seconds()) + uint64(60*60))
 	recentDelete := 0
 	storage.recentDeletedExtents.Range(func(k, v interface{}) bool {
 		recentDelete++
@@ -457,13 +473,14 @@ func TestTrashExtent(t *testing.T) {
 	})
 	t.Log("verify recent delete")
 	assert.Equal(t, 0, recentDelete)
+	assert.Equal(t, uint64(0), storage.infoStore.NormalUsed())
 
 	// sleep 2 sec waiting trash expire
 	time.Sleep(time.Second * 2)
 
 	t.Log("starting mark delete trash with short keep time")
 	// delete trash
-	storage.MarkDeleteTrashExtents(1)
+	storage.BatchDeleteTrashExtents(1)
 	recentDelete = 0
 	storage.recentDeletedExtents.Range(func(k, v interface{}) bool {
 		recentDelete++
@@ -471,6 +488,7 @@ func TestTrashExtent(t *testing.T) {
 	})
 	t.Log("verify recent delete")
 	assert.Equal(t, len(extents), recentDelete)
+	assert.Equal(t, uint64(0), storage.infoStore.NormalUsed())
 
 	t.Log("starting flush delete")
 	deleted, remain, err := storage.FlushDelete(NewFuncInterceptor(nil, nil), 128)
@@ -481,6 +499,7 @@ func TestTrashExtent(t *testing.T) {
 	files, err = os.ReadDir(path.Join(storage.dataPath, ExtentTrashDirName))
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(files))
+	assert.Equal(t, uint64(0), storage.infoStore.NormalUsed())
 }
 
 func TestRecoverTrashExtents(t *testing.T) {
@@ -492,51 +511,16 @@ func TestRecoverTrashExtents(t *testing.T) {
 		return
 	}
 	defer log.LogFlush()
-	const (
-		partitionID      uint64 = 1
-		storageSize             = 1 * 1024 * 1024
-		cacheCapacity           = 10
-		dataSizePreWrite        = 16
-	)
-
-	var testPartitionPath = path.Join(testPath.Path(), fmt.Sprintf("datapartition_%d", partitionID))
-	var storage *ExtentStore
-	if storage, err = NewExtentStore(testPartitionPath, partitionID, storageSize, cacheCapacity,
-		func(event CacheEvent, e *Extent) {}, true, IOInterceptors{}); err != nil {
-		t.Fatalf("Create extent store failed: %v", err)
+	extentSize := int64(4 * 1024 * 1024)
+	storage, extents, err := initExtentStorage(t, extentSize, testPath.Path(), 100)
+	if err != nil {
+		t.Errorf("Init extent store failed: %v", err)
 		return
-	}
-
-	storage.Load()
-	for {
-		if storage.IsFinishLoad() {
-			break
-		}
-		time.Sleep(time.Second)
-	}
-
-	var dataSize = int64(dataSizePreWrite)
-	var data = make([]byte, dataSize)
-	var dataCRC = crc32.ChecksumIEEE(data)
-	extents := make([]uint64, 0)
-	inode := 10
-	for i := 0; i < 2; i++ {
-		extentID, _ := storage.NextExtentID()
-		_ = storage.Create(extentID, uint64(inode), true)
-		var offset int64 = 0
-		for offset+dataSize <= 64*1024*1024 {
-			if err = storage.Write(context.Background(), extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
-				err = nil
-				break
-			}
-			offset += dataSize
-		}
-		extents = append(extents, extentID)
 	}
 
 	// mv extent to trash dir
 	for _, extentID := range extents {
-		assert.NoError(t, storage.TrashExtent(extentID, uint64(inode), 64*1024*1024))
+		assert.NoError(t, storage.TrashExtent(extentID, uint64(testInode), uint32(extentSize)))
 	}
 	trashExtents := 0
 	storage.trashExtents.Range(func(k, v interface{}) bool {
@@ -544,6 +528,7 @@ func TestRecoverTrashExtents(t *testing.T) {
 		return true
 	})
 	assert.Equal(t, len(extents), trashExtents)
+	assert.Equal(t, uint64(0), storage.infoStore.NormalUsed())
 
 	t.Log("starting recover trash extents")
 	recovered := 0
@@ -553,6 +538,7 @@ func TestRecoverTrashExtents(t *testing.T) {
 		}
 	}
 	assert.Equal(t, len(extents), recovered)
+	assert.Equal(t, uint64(extentSize)*uint64(len(extents)), storage.infoStore.NormalUsed())
 
 	trashExtents = 0
 	storage.trashExtents.Range(func(k, v interface{}) bool {
@@ -571,5 +557,59 @@ func TestRecoverTrashExtents(t *testing.T) {
 	files, err = os.ReadDir(path.Join(storage.dataPath, ExtentTrashDirName))
 	assert.NoError(t, err)
 	assert.Equal(t, 0, len(files))
+}
 
+func TestLoadTrashExtents(t *testing.T) {
+	var testPath = testutil.InitTempTestPath(t)
+	defer testPath.Cleanup()
+	_, err := log.InitLog(path.Join(os.TempDir(), t.Name(), "logs"), "datanode_test", log.DebugLevel, nil)
+	if err != nil {
+		t.Errorf("Init log failed: %v", err)
+		return
+	}
+	defer log.LogFlush()
+	extentSize := int64(1 * 1024 * 1024)
+	storage, extents, err := initExtentStorage(t, extentSize, testPath.Path(), 128)
+	if err != nil {
+		t.Errorf("Init extent store failed: %v", err)
+		return
+	}
+	testPartitionPath := storage.dataPath
+	// mv extent to trash dir
+	for _, extentID := range extents {
+		assert.NoError(t, storage.TrashExtent(extentID, uint64(testInode), uint32(extentSize)))
+	}
+	trashExtents := 0
+	storage.trashExtents.Range(func(k, v interface{}) bool {
+		trashExtents++
+		return true
+	})
+	assert.Equal(t, len(extents), trashExtents)
+	assert.Equal(t, uint64(0), storage.infoStore.NormalUsed())
+	storage.Close()
+
+	var newStorage *ExtentStore
+	if newStorage, err = NewExtentStore(testPartitionPath, storage.partitionID, storage.storeSize, cacheCapacity,
+		func(event CacheEvent, e *Extent) {}, false, IOInterceptors{}); err != nil {
+		t.Fatalf("Create extent store failed: %v", err)
+		return
+	}
+	newStorage.Load()
+	for {
+		if storage.IsFinishLoad() {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	assert.Equal(t, uint64(0), newStorage.infoStore.NormalUsed())
+
+	t.Log("starting recover trash extents")
+	recovered := 0
+	for _, extentID := range extents {
+		if storage.RecoverTrashExtent(extentID) {
+			recovered++
+		}
+	}
+	assert.Equal(t, len(extents), recovered)
+	assert.Equal(t, uint64(extentSize)*uint64(len(extents)), storage.infoStore.NormalUsed())
 }

@@ -50,10 +50,11 @@ func NewDefaultConfig() *Config {
 }
 
 type Stats struct {
-	IdleTimeout  time.Duration
-	DialTimeout  time.Duration
-	BlacklistTTL time.Duration
-	Blacklist    map[string]int64
+	IdleTimeout      time.Duration
+	DialTimeout      time.Duration
+	BlacklistTTL     time.Duration
+	DisableBlackList bool
+	Blacklist        map[string]int64
 }
 
 // ConnManager 管理连接池
@@ -111,6 +112,7 @@ func (cm *ConnManager) Stats() *Stats {
 	stats.IdleTimeout = cm.idleTimeout
 	stats.DialTimeout = cm.dialTimeout
 	stats.BlacklistTTL = cm.blacklistTTL
+	stats.DisableBlackList = cm.disableBlackList
 	stats.Blacklist = make(map[string]int64)
 	cm.blacklist.Range(func(key, value interface{}) bool {
 		stats.Blacklist[key.(string)] = value.(int64)

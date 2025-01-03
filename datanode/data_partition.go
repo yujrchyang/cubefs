@@ -91,6 +91,8 @@ type DataPartition struct {
 	isRaftLeader    bool
 	path            string
 	used            int
+	trashSize       uint64
+	trashCount      int
 	extentStore     *storage.ExtentStore
 	raftPartition   raftstore.Partition
 	config          *dataPartitionCfg
@@ -707,6 +709,7 @@ func (dp *DataPartition) computeUsage() {
 		return
 	}
 	dp.used = int(dp.ExtentStore().GetStoreUsedSize())
+	dp.trashCount, dp.trashSize = dp.ExtentStore().ComputeTrashExtentSize()
 	dp.intervalToUpdatePartitionSize = time.Now().Unix()
 }
 
@@ -1202,8 +1205,8 @@ func (dp *DataPartition) getCacheView() (dataPartition *topology.DataPartition, 
 	return dp.topologyManager.GetPartition(dp.volumeID, dp.partitionID)
 }
 
-func (dp *DataPartition) markDeleteTrashExtents(keepTime uint64) uint64 {
-	return dp.extentStore.MarkDeleteTrashExtents(keepTime)
+func (dp *DataPartition) batchDeleteTrashExtents(keepTime uint64) uint64 {
+	return dp.extentStore.BatchDeleteTrashExtents(keepTime)
 }
 
 // partition op by raft
@@ -1368,7 +1371,7 @@ func (dp *DataPartition) ApplyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 // RandomWriteSubmit submits the proposal to raft.
 func (dp *DataPartition) RandomWriteSubmit(pkg *repl.Packet) (err error) {
 
-	if !dp.ExtentStore().IsExists(pkg.ExtentID) || dp.ExtentStore().IsDeleted(pkg.ExtentID) {
+	if !dp.ExtentStore().IsExists(pkg.ExtentID) || dp.ExtentStore().IsDeleted(pkg.ExtentID) || dp.ExtentStore().IsTrashed(pkg.ExtentID) {
 		err = proto.ExtentNotFoundError
 		return
 	}
@@ -3451,7 +3454,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTask *D
 			log.LogWarnf("AutoRepairStatus is False,so cannot Create extent(%v)", extentInfo.String())
 			continue
 		}
-		if !store.IsFinishLoad() || store.IsDeleted(extentInfo[storage.FileID]) {
+		if !store.IsFinishLoad() || store.IsDeleted(extentInfo[storage.FileID]) || store.IsTrashed(extentInfo[storage.FileID]) {
 			continue
 		}
 		_ = store.Create(extentInfo[storage.FileID], extentInfo[storage.Inode], true)
@@ -3461,7 +3464,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTask *D
 		var batch = storage.BatchMarker(num)
 		for _, extentInfo := range repairTask.ExtentsToBeDeleted {
 			var extentID = extentInfo[storage.FileID]
-			if !store.IsFinishLoad() || proto.IsTinyExtent(extentID) || store.IsDeleted(extentID) {
+			if !store.IsFinishLoad() || proto.IsTinyExtent(extentID) || store.IsDeleted(extentID) || store.IsTrashed(extentInfo[storage.FileID]) {
 				continue
 			}
 			batch.Add(0, extentID, 0, 0)
@@ -3471,7 +3474,7 @@ func (dp *DataPartition) DoRepairOnLeaderDisk(ctx context.Context, repairTask *D
 
 	var allReplicas = dp.getReplicaClone()
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-		if store.IsDeleted(extentInfo[storage.FileID]) {
+		if store.IsDeleted(extentInfo[storage.FileID]) || store.IsTrashed(extentInfo[storage.FileID]) {
 			continue
 		}
 		majorSource := repairTask.ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
@@ -3514,7 +3517,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 			continue
 		}
 
-		if store.IsDeleted(extentInfo[storage.FileID]) {
+		if store.IsDeleted(extentInfo[storage.FileID]) || store.IsTrashed(extentInfo[storage.FileID]) {
 			continue
 		}
 		if store.IsExists(extentInfo[storage.FileID]) {
@@ -3542,7 +3545,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 		var batch = storage.BatchMarker(num)
 		for _, extentInfo := range repairTask.ExtentsToBeDeleted {
 			var extentID = extentInfo[storage.FileID]
-			if !store.IsFinishLoad() || proto.IsTinyExtent(extentID) || store.IsDeleted(extentID) {
+			if !store.IsFinishLoad() || proto.IsTinyExtent(extentID) || store.IsDeleted(extentID) || store.IsTrashed(extentInfo[storage.FileID]) {
 				continue
 			}
 			batch.Add(0, extentID, 0, 0)
@@ -3592,7 +3595,7 @@ func (dp *DataPartition) DoExtentStoreRepairOnFollowerDisk(repairTask *DataParti
 	}
 	var validExtentsToBeRepaired int
 	for _, extentInfo := range repairTask.ExtentsToBeRepaired {
-		if store.IsDeleted(extentInfo[storage.FileID]) || !store.IsExists(extentInfo[storage.FileID]) {
+		if store.IsDeleted(extentInfo[storage.FileID]) || store.IsTrashed(extentInfo[storage.FileID]) || !store.IsExists(extentInfo[storage.FileID]) {
 			continue
 		}
 		majorSource := repairTask.ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
@@ -3905,7 +3908,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 
 	// Checking store and extent state at first.
 	var store = dp.ExtentStore()
-	if !store.IsExists(extentID) || store.IsDeleted(extentID) {
+	if !store.IsExists(extentID) || store.IsDeleted(extentID) || store.IsTrashed(extentID) {
 		return
 	}
 	if !forceRepair {

@@ -129,7 +129,6 @@ type DataNode struct {
 	topoManager              *topology.TopologyManager
 	transferDeleteLock       sync.Mutex
 	nodeSettings             *NodeSettings
-	nodeSettingLock          sync.RWMutex
 }
 
 func NewServer() *DataNode {
@@ -166,7 +165,8 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	if err = s.parseNodeSettings(); err != nil {
+	s.nodeSettings = NewNodeSettings(getBasePath(), s.onSwitchChange)
+	if err = s.nodeSettings.parse(); err != nil {
 		return err
 	}
 
@@ -284,91 +284,6 @@ func (s *DataNode) parseConfig(cfg *config.Config) (err error) {
 	log.LogInfof("DataNode: parse config: port %v", s.port)
 	log.LogInfof("DataNode: parse config: zoneName %v ", s.zoneName)
 	return
-}
-
-type SwitchCollection struct {
-	DisableBlackList bool `json:"disableBlackList"`
-	// SyncExtent bool `json:"syncExtent"`
-}
-
-type NodeSettings struct {
-	SwitchCollection    *SwitchCollection `json:"switchCollection"`
-	TimeoutCollection   interface{}       `json:"timeoutCollection,omitempty"`
-	ThresholdCollection interface{}       `json:"thresholdCollection,omitempty"`
-	UpdateTime          string            `json:"updateTime"`
-}
-
-// parseNodeSettings
-// 1 switches: disableBlacklist,...
-// 2 timeouts:
-// 3 thresholds:
-// ...
-func (s *DataNode) parseNodeSettings() (err error) {
-	s.nodeSettingLock.RLock()
-	defer s.nodeSettingLock.RUnlock()
-	s.nodeSettings = &NodeSettings{
-		SwitchCollection: &SwitchCollection{},
-	}
-	settingFileName := path.Join(getBasePath(), DataSettingsFile)
-	_, err = os.Stat(settingFileName)
-	if err != nil {
-		if os.IsNotExist(err) {
-			log.LogWarnf("action[parseNodeSettings] %v not exist, using default node setting", settingFileName)
-			err = nil
-		}
-		return
-	}
-	var c *config.Config
-	c, err = config.LoadConfigFile(settingFileName)
-	if err != nil {
-		return
-	}
-
-	// load switches
-	switches := &SwitchCollection{}
-	bufSwitch := c.GetJsonObjectBytes("switchCollection")
-	if err = json.Unmarshal(bufSwitch, switches); err != nil {
-		return err
-	}
-	s.nodeSettings.SwitchCollection = switches
-
-	// init switches
-	if s.nodeSettings.SwitchCollection.DisableBlackList {
-		gConnPool.DisableBlackList(true)
-		log.LogInfof("action[parseNodeSettings] connection manager black list disabled")
-	}
-	return nil
-}
-
-func (s *DataNode) persistNodeSettings() (err error) {
-	var newData []byte
-	s.nodeSettings.UpdateTime = time.Now().Format(TimeLayout)
-	if newData, err = json.Marshal(s.nodeSettings); err != nil {
-		return
-	}
-	tmpSettingFileName := path.Join(getBasePath(), TempDataSettingsFile)
-	settingFileName := path.Join(getBasePath(), DataSettingsFile)
-
-	var tmp *os.File
-	if tmp, err = os.OpenFile(tmpSettingFileName, os.O_CREATE|os.O_RDWR|os.O_TRUNC|os.O_APPEND, 0666); err != nil {
-		return
-	}
-	defer func() {
-		_ = tmp.Close()
-		if err != nil {
-			_ = os.Remove(tmpSettingFileName)
-		}
-	}()
-	if _, err = tmp.Write(newData); err != nil {
-		return
-	}
-	if err = tmp.Sync(); err != nil {
-		return
-	}
-	if err = os.Rename(tmpSettingFileName, settingFileName); err != nil {
-		return
-	}
-	return err
 }
 
 func (s *DataNode) parseMasterAddrs(cfg *config.Config) (masterDomain string, masterAddrs []string) {
@@ -929,4 +844,12 @@ func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
 		err = utilErrors.Trace(err, "load DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogError(utilErrors.Stack(err))
 	}
+}
+
+func (s *DataNode) onSwitchChange(switchName string, stat bool) (err error) {
+	switch switchName {
+	case DisableBlackListSwitch:
+		gConnPool.DisableBlackList(stat)
+	}
+	return nil
 }

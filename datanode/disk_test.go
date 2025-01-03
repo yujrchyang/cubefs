@@ -243,7 +243,7 @@ func TestRestoreOnePartition(t *testing.T) {
 	initDataPartitionUnderFile(dpId, applyId, dpDir)
 
 	defer removeUnderFile(dpDir)
-	err := disk.RestoreOnePartition(dpDir, false)
+	err := disk.RestoreOnePartition(dpDir, NormalRestorePartition)
 	if err != nil {
 		t.Fatalf("RestoreOnePartition err:%v", err)
 	}
@@ -254,11 +254,11 @@ func TestRestoreOnePartition(t *testing.T) {
 			t.Fatalf("disk restoreOnePartition mismatch, applyId except:%v, actual:%v", applyId, applied)
 		}
 	}
-	err = disk.RestoreOnePartition("", false)
+	err = disk.RestoreOnePartition("", NormalRestorePartition)
 	if err == nil || !strings.Contains(err.Error(), "partition path is empty") {
 		t.Fatalf("err:%v", err)
 	}
-	err = disk.RestoreOnePartition("lopsd", false)
+	err = disk.RestoreOnePartition("lopsd", NormalRestorePartition)
 	if err == nil || !strings.Contains(err.Error(), "read dir") {
 		t.Fatalf("err:%v", err)
 	}
@@ -268,7 +268,7 @@ func TestRestoreOnePartition(t *testing.T) {
 		removeUnderFile(dpDir)
 		MasterClient.AdminAPI().MockDeleteDataReplica(localNodeAddress, dpId)
 	}()
-	err = disk.RestoreOnePartition(dpDir, false)
+	err = disk.RestoreOnePartition(dpDir, NormalRestorePartition)
 	if err == nil || !strings.Contains(err.Error(), "invalid partition path") {
 		t.Fatalf("err:%v", err)
 	}
@@ -281,7 +281,7 @@ func TestRestoreOnePartition(t *testing.T) {
 		removeUnderFile(ExpiredPartitionPrefix + dpDir)
 		MasterClient.AdminAPI().MockDeleteDataReplica(localNodeAddress, dpId)
 	}()
-	_ = disk.RestoreOnePartition(dpDir, false)
+	_ = disk.RestoreOnePartition(dpDir, NormalRestorePartition)
 }
 
 func TestGetPersistPartitionsFromMaster(t *testing.T) {

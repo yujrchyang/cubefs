@@ -76,10 +76,10 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/risk/stopFix", s.stopRiskFix)
 	http.HandleFunc("/getDataPartitionViewCache", s.getDataPartitionViewCache)
 	http.HandleFunc("/tinyExtents", s.getTinyExtents)
-	http.HandleFunc("/releaseTrashExtents", s.releaseTrashExtents)
-	http.HandleFunc("/getTrashExtents", s.getTrashExtents)
+	http.HandleFunc("/getRecentTrashExtents", s.getRecentTrashExtents)
 	http.HandleFunc("/getRecentDeleteExtents", s.getRecentDeleteExtents)
-	http.HandleFunc("/batchRecoverExtents", s.batchRecoverExtents)
+	http.HandleFunc("/batchRecoverTrashExtents", s.batchRecoverExtents)
+	http.HandleFunc("/batchDeleteTrashExtents", s.batchDeleteTrashExtents)
 	http.HandleFunc("/setSwitchCollection", s.setSwitchCollection)
 	http.HandleFunc("/listSwitchCollection", s.listSwitchCollection)
 }
@@ -138,11 +138,54 @@ func (s *DataNode) getDiskAPI(w http.ResponseWriter, r *http.Request) {
 	s.buildSuccessResp(w, diskReport)
 }
 
+func (s *DataNode) batchDeleteTrashExtents(w http.ResponseWriter, r *http.Request) {
+	var (
+		keepTime uint64
+		err      error
+	)
+	const (
+		paramAuthKey       = "key"
+		paramKeepTimeSec   = "keepTimeSec"
+		defaultKeepTImeSec = 60 * 60 * 24 * 7
+	)
+	if err = r.ParseForm(); err != nil {
+		err = fmt.Errorf("parse form fail: %v", err)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	key := r.FormValue(paramAuthKey)
+	if !matchKey(key) {
+		err = fmt.Errorf("auth key not match: %v", key)
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	keepTimeSec := r.FormValue(paramKeepTimeSec)
+	if keepTimeSec == "" {
+		keepTime = defaultKeepTImeSec
+	} else {
+		var keepTimeSecVal uint64
+		if keepTimeSecVal, err = strconv.ParseUint(keepTimeSec, 10, 64); err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, fmt.Sprintf("parse param %v failed: %v", paramKeepTimeSec, err))
+			return
+		}
+		keepTime = keepTimeSecVal
+	}
+	releaseCount := uint64(0)
+	for _, d := range s.space.disks {
+		for _, partition := range d.partitionMap {
+			releaseCount += partition.batchDeleteTrashExtents(keepTime)
+		}
+	}
+	s.buildSuccessResp(w, fmt.Sprintf("release trash extents, release extent count: %v: ", releaseCount))
+}
+
 func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 	partitions := make([]interface{}, 0)
 	var (
 		riskCount        int
 		riskFixerRunning bool
+		totalTrashCount  uint64
+		totalTrashSize   uint64
 	)
 	s.space.WalkPartitions(func(dp *DataPartition) bool {
 		partition := &struct {
@@ -155,6 +198,8 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 			NeedServerFaultCheck  bool                    `json:"needServerFaultCheck"`
 			ServerFaultCheckLevel FaultOccurredCheckLevel `json:"serverFaultCheckLevel"`
 			RiskFixerStatus       *riskdata.FixerStatus   `json:"riskFixerStatus"`
+			TrashCount            int                     `json:"trashCount"`
+			TrashSize             uint64                  `json:"trashSize"`
 		}{
 			ID:                    dp.ID(),
 			Size:                  dp.Size(),
@@ -174,8 +219,12 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 				}
 				return nil
 			}(),
+			TrashCount: dp.trashCount,
+			TrashSize:  dp.trashSize,
 		}
 		partitions = append(partitions, partition)
+		totalTrashCount += uint64(dp.trashCount)
+		totalTrashSize += dp.trashSize
 		return true
 	})
 	result := &struct {
@@ -183,11 +232,15 @@ func (s *DataNode) getPartitionsAPI(w http.ResponseWriter, r *http.Request) {
 		PartitionCount   int           `json:"partitionCount"`
 		RiskCount        int           `json:"riskCount"`
 		RiskFixerRunning bool          `json:"riskFixerRunning"`
+		TotalTrashCount  uint64        `json:"totalTrashCount"`
+		TotalTrashSize   uint64        `json:"totalTrashSize"`
 	}{
 		Partitions:       partitions,
 		PartitionCount:   len(partitions),
 		RiskCount:        riskCount,
 		RiskFixerRunning: riskFixerRunning,
+		TotalTrashCount:  totalTrashCount,
+		TotalTrashSize:   totalTrashSize,
 	}
 	s.buildSuccessResp(w, result)
 }
@@ -878,7 +931,7 @@ func (s *DataNode) reloadPartitionByName(partitionPath, disk string) (err error)
 		return
 	}
 
-	if err = s.space.LoadPartition(d, partitionID, partitionPath, false); err != nil {
+	if err = s.space.LoadPartition(d, partitionID, partitionPath, NormalRestorePartition); err != nil {
 		return
 	}
 	return
@@ -1621,10 +1674,9 @@ func (s *DataNode) buildJSONResp(w http.ResponseWriter, code int, data interface
 	w.Write(jsonBody)
 }
 
-func (s *DataNode) getTrashExtents(w http.ResponseWriter, r *http.Request) {
+func (s *DataNode) getRecentTrashExtents(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID uint64
-		files       map[uint64]uint64
 		recentSec   int
 		err         error
 	)
@@ -1658,14 +1710,21 @@ func (s *DataNode) getTrashExtents(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	files = partition.ExtentStore().GetTrashExtents(recentSec)
-	s.buildSuccessResp(w, files)
+	type TrashResult struct {
+		PartitionID uint64            `json:"partitionID"`
+		TotalSize   uint64            `json:"totalSize"`
+		Extents     map[uint64]uint64 `json:"extents"`
+	}
+	rst := &TrashResult{
+		PartitionID: partitionID,
+	}
+	rst.Extents, rst.TotalSize = partition.ExtentStore().GetRecentTrashExtents(recentSec)
+	s.buildSuccessResp(w, rst)
 }
 
 func (s *DataNode) getRecentDeleteExtents(w http.ResponseWriter, r *http.Request) {
 	var (
 		partitionID uint64
-		files       map[uint64]int64
 		recentSec   int
 		err         error
 	)
@@ -1699,8 +1758,15 @@ func (s *DataNode) getRecentDeleteExtents(w http.ResponseWriter, r *http.Request
 		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
 		return
 	}
-	files = partition.ExtentStore().GetRecentDeleteExtents(recentSec)
-	s.buildSuccessResp(w, files)
+	type RecentDeleteResult struct {
+		PartitionID uint64           `json:"partitionID"`
+		Extents     map[uint64]int64 `json:"extents"`
+	}
+	recentDelete := &RecentDeleteResult{
+		PartitionID: partitionID,
+	}
+	recentDelete.Extents = partition.ExtentStore().GetRecentDeleteExtents(recentSec)
+	s.buildSuccessResp(w, recentDelete)
 }
 
 func (s *DataNode) batchRecoverExtents(w http.ResponseWriter, r *http.Request) {
@@ -1798,33 +1864,22 @@ func (s *DataNode) setSwitchCollection(w http.ResponseWriter, r *http.Request) {
 
 	if paras.DisableBlackList != "" {
 		var isDisable bool
-		var oldStat bool
 		isDisable, err = strconv.ParseBool(paras.DisableBlackList)
 		if err != nil {
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		oldStat = gConnPool.IsDisableBlackList()
-		if oldStat != isDisable {
-			log.LogWarnf("action[setSwitchCollection] set isDisable blacklist from (%v) to (%v)", oldStat, isDisable)
-			gConnPool.DisableBlackList(isDisable)
-			s.nodeSettingLock.Lock()
-			defer s.nodeSettingLock.Unlock()
-			s.nodeSettings.SwitchCollection.DisableBlackList = isDisable
-			err = s.persistNodeSettings()
-			if err != nil {
-				s.nodeSettings.SwitchCollection.DisableBlackList = oldStat
-				log.LogErrorf("action[setSwitchCollection] set isDisable blacklist err:%v, rollback to old stat:%v", err, oldStat)
-				s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
-				return
-			}
+		err = s.nodeSettings.updateAndPersistSwitch(DisableBlackListSwitch, isDisable)
+		if err != nil {
+			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 	}
 	s.buildSuccessResp(w, fmt.Sprintf("set switch collection success"))
 }
 
 func (s *DataNode) listSwitchCollection(w http.ResponseWriter, r *http.Request) {
-	s.buildSuccessResp(w, s.nodeSettings.SwitchCollection)
+	s.buildSuccessResp(w, s.nodeSettings.SwitchMap)
 }
 
 func (s *DataNode) releaseTrashExtents(w http.ResponseWriter, r *http.Request) {
@@ -1862,7 +1917,7 @@ func (s *DataNode) releaseTrashExtents(w http.ResponseWriter, r *http.Request) {
 	releaseCount := uint64(0)
 	for _, d := range s.space.disks {
 		for _, partition := range d.partitionMap {
-			releaseCount += partition.markDeleteTrashExtents(keepTime)
+			releaseCount += partition.batchDeleteTrashExtents(keepTime)
 		}
 	}
 	s.buildSuccessResp(w, fmt.Sprintf("release trash extents, release extent count: %v: ", releaseCount))

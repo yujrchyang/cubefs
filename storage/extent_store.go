@@ -62,11 +62,16 @@ const (
 	deletionQueueDirname                 = "Deletion"
 	deletionQueueFilesize    int64       = 1024 * 1024 * 4
 	deletionQueueRetainFiles RetainFiles = 10
-	ExtentTrashDirName                   = "Trash"
+	ExtentTrashDirName                   = "trash"
 	ExtentTrashPrefix                    = "trash_"
 	ExtentTrashInodeFlag                 = math.MaxUint64
 	LoadInProgress           int32       = 0
 	LoadFinish               int32       = 1
+)
+
+const (
+	IndexTrashTime = 0
+	IndexTrashSize = 1
 )
 
 var (
@@ -223,17 +228,19 @@ func NewExtentStore(dataDir string, partitionID uint64, storeSize int,
 	}
 	s.cache = NewExtentCache(cacheCapacity, time.Minute*5, ln)
 
-	if err = s.loadRecentDeletedExtents(); err != nil {
-		return
-	}
-	if err = s.loadTrashExtents(); err != nil {
-		return
-	}
-
 	if err = s.initBaseFileID(); err != nil {
 		err = fmt.Errorf("init base field ID: %v", err)
 		return
 	}
+
+	if err = s.loadRecentDeletedExtents(); err != nil {
+		return
+	}
+
+	if err = s.loadTrashExtents(); err != nil {
+		return
+	}
+
 	s.hasAllocSpaceExtentIDOnVerfiyFile = s.allocatedExtentHeader()
 	s.storeSize = storeSize
 	s.closeC = make(chan bool, 1)
@@ -292,7 +299,7 @@ func (s *ExtentStore) SnapShot() (files []*proto.File, err error) {
 
 // Create creates an extent.
 func (s *ExtentStore) Create(extentID, inode uint64, putCache bool) (err error) {
-	if s.IsExists(extentID) || s.IsDeleted(extentID) {
+	if s.IsExists(extentID) || s.IsDeleted(extentID) || s.IsTrashed(extentID) {
 		err = ExtentExistsError
 		return err
 	}
@@ -367,7 +374,7 @@ func (s *ExtentStore) initBaseFileID() (err error) {
 				watermark = watermark + (PageSize - watermark%PageSize)
 			}
 			s.infoStore.Update(extentID, uint64(watermark), uint64(info.ModTime().Unix()), 0)
-		case !s.IsDeleted(extentID):
+		case !(s.IsDeleted(extentID) || s.IsTrashed(extentID)):
 			var inode uint64
 			if inode, err = s.inodeIndex.Get(extentID); err != nil {
 				return
@@ -413,6 +420,7 @@ func (s *ExtentStore) loadTrashExtents() (err error) {
 		}
 		return
 	}
+	var maxExtent uint64
 	for _, d := range dir {
 		if d.IsDir() {
 			continue
@@ -425,7 +433,22 @@ func (s *ExtentStore) loadTrashExtents() (err error) {
 		extent, _ := strconv.ParseUint(arr[1], 10, 64)
 		size, _ := strconv.ParseUint(arr[2], 10, 64)
 		trashTime, _ := strconv.ParseUint(arr[3], 10, 64)
-		s.trashExtents.Store(extent, []uint64{trashTime, size})
+
+		if proto.IsTinyExtent(extent) {
+			log.LogErrorf("loadTrashExtents, partition(%v) found tiny(%v)", s.partitionID, extent)
+			continue
+		}
+		if s.IsExists(extent) {
+			s.cache.Del(extent)
+			s.infoStore.Delete(extent)
+		}
+		s.trashExtents.Store(extent, []uint64{IndexTrashTime: trashTime, IndexTrashSize: size})
+		if maxExtent < extent {
+			maxExtent = extent
+		}
+	}
+	if err = s.AdvanceBaseExtentID(maxExtent); err != nil {
+		return err
 	}
 	return nil
 }
@@ -473,7 +496,7 @@ func (s *ExtentStore) Write(ctx context.Context, extentID uint64, offset, size i
 	)
 
 	ei, ok := s.getExtentInfoByExtentID(extentID)
-	if !ok || s.IsDeleted(extentID) {
+	if !ok || s.IsDeleted(extentID) || s.IsTrashed(extentID) {
 		err = proto.ExtentNotFoundError
 		return
 	}
@@ -576,7 +599,7 @@ func (s *ExtentStore) __markDeleteOne(inode, extentID uint64, offset, size int64
 
 	var nowUnixSec = time.Now().Unix()
 	if !proto.IsTinyExtent(extentID) {
-		if s.IsRealDeleted(extentID) {
+		if s.IsDeleted(extentID) {
 			// Skip cause target have been marked as deleted.
 			return
 		}
@@ -604,7 +627,7 @@ func (s *ExtentStore) __markDeleteMore(marker Marker) (err error) {
 	var nowUnixSec = time.Now().Unix()
 	marker.Walk(func(_ int, ino, extent uint64, offset, size int64) bool {
 		if !proto.IsTinyExtent(extent) {
-			if s.IsRealDeleted(extent) {
+			if s.IsDeleted(extent) {
 				// Skip cause target normal extent have been marked as deleted.
 				return true
 			}
@@ -669,10 +692,11 @@ func (s *ExtentStore) TrashExtent(extent, inode uint64, size uint32) (err error)
 
 	trashTime := time.Now().Unix()
 
-	// remove extent in memory
+	// remove extent in memory(要确保这两个操作是幂等的)
 	s.cache.Del(extent)
 	s.infoStore.Delete(extent)
-	s.trashExtents.Store(extent, []uint64{uint64(trashTime), uint64(size)})
+
+	s.trashExtents.Store(extent, []uint64{IndexTrashTime: uint64(trashTime), IndexTrashSize: uint64(size)})
 
 	// rename extent to trash dir
 	extentPath := path.Join(s.dataPath, strconv.FormatUint(extent, 10))
@@ -684,16 +708,16 @@ func (s *ExtentStore) TrashExtent(extent, inode uint64, size uint32) (err error)
 	return
 }
 
-// MarkDeleteTrashExtents
+// BatchDeleteTrashExtents
 // if trash extent is mark delete, it can not be recovered
-func (s *ExtentStore) MarkDeleteTrashExtents(keepSec uint64) uint64 {
+func (s *ExtentStore) BatchDeleteTrashExtents(keepSec uint64) uint64 {
 	var count uint64
 	var batch = BatchMarker(1000)
 	s.trashExtents.Range(func(k, v interface{}) bool {
 		extent := k.(uint64)
 		arr := v.([]uint64)
-		trashTime := arr[0]
-		extentSize := arr[1]
+		trashTime := arr[IndexTrashTime]
+		extentSize := arr[IndexTrashSize]
 		tNow := time.Now().Unix()
 		if tNow-int64(trashTime) <= int64(keepSec) {
 			return true
@@ -734,8 +758,8 @@ func (s *ExtentStore) RecoverTrashExtent(extent uint64) (recovered bool) {
 		return false
 	}
 	arr := v.([]uint64)
-	trashTime := arr[0]
-	extentSize := arr[1]
+	trashTime := arr[IndexTrashTime]
+	extentSize := arr[IndexTrashSize]
 	err = s.recoverTrashExtent(extent, trashTime, extentSize)
 	if err != nil {
 		log.LogErrorf("Store(%v) recover extent(%v) failed, err:%v", s.partitionID, extent, err)
@@ -848,8 +872,8 @@ func (s *ExtentStore) removeTrashExtent(extent uint64) (err error) {
 		log.LogErrorf("Store(%v) extent not found in trashExtents: %v", s.partitionID, extent)
 		return nil
 	}
-	trashTime := val.([]uint64)[0]
-	size := val.([]uint64)[1]
+	trashTime := val.([]uint64)[IndexTrashTime]
+	size := val.([]uint64)[IndexTrashSize]
 	extentFName := ExtentTrashPrefix + strconv.FormatUint(extent, 10) + "_" + strconv.FormatUint(size, 10) + "_" + strconv.FormatUint(trashTime, 10)
 	filepath := path.Join(s.dataPath, ExtentTrashDirName, extentFName)
 	if err = os.Remove(filepath); err != nil && os.IsNotExist(err) {
@@ -880,7 +904,7 @@ func (s *ExtentStore) recoverTrashExtent(extent uint64, trashTime, size uint64) 
 		return err
 	}
 
-	if s.IsRealDeleted(extent) {
+	if s.IsDeleted(extent) {
 		err = fmt.Errorf("extent deleted, can not recover")
 		return err
 	}
@@ -1423,16 +1447,15 @@ func (s *ExtentStore) IsExists(extentID uint64) (exist bool) {
 	return ok
 }
 
-// IsDeleted tells if the normal extent is deleted recently, true-it must has been deleted or has been trashed, false-it may not be deleted
+// IsDeleted tells if the normal extent is deleted recently
 func (s *ExtentStore) IsDeleted(extentID uint64) (deleted bool) {
 	_, ok := s.recentDeletedExtents.Load(extentID)
-	_, ok2 := s.trashExtents.Load(extentID)
-	return ok || ok2
+	return ok
 }
 
-// IsRealDeleted tells if the normal extent is deleted recently, true-it must has been real deleted, not in trash, false-it may not be deleted
-func (s *ExtentStore) IsRealDeleted(extentID uint64) (deleted bool) {
-	_, ok := s.recentDeletedExtents.Load(extentID)
+// IsTrashed tells if the normal extent is in trash
+func (s *ExtentStore) IsTrashed(extentID uint64) (trashed bool) {
+	_, ok := s.trashExtents.Load(extentID)
 	return ok
 }
 
@@ -1846,14 +1869,24 @@ func (s *ExtentStore) GetRecentDeleteExtents(recentSec int) (recentDeleteExtents
 	return
 }
 
-func (s *ExtentStore) GetTrashExtents(recentSec int) (trashExtents map[uint64]uint64) {
+func (s *ExtentStore) GetRecentTrashExtents(recentSec int) (trashExtents map[uint64]uint64, totalSize uint64) {
 	trashExtents = make(map[uint64]uint64)
 	now := time.Now().Unix()
 	s.trashExtents.Range(func(key, value interface{}) bool {
-		if recentSec > 0 && uint64(now-int64(recentSec)) > value.([]uint64)[0] {
+		if recentSec > 0 && uint64(now-int64(recentSec)) > value.([]uint64)[IndexTrashTime] {
 			return true
 		}
-		trashExtents[key.(uint64)] = value.([]uint64)[0]
+		trashExtents[key.(uint64)] = value.([]uint64)[IndexTrashTime]
+		totalSize += value.([]uint64)[IndexTrashSize]
+		return true
+	})
+	return
+}
+
+func (s *ExtentStore) ComputeTrashExtentSize() (num int, total uint64) {
+	s.trashExtents.Range(func(key, value interface{}) bool {
+		num++
+		total += value.([]uint64)[IndexTrashSize]
 		return true
 	})
 	return
