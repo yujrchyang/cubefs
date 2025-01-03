@@ -364,7 +364,7 @@ func (client *ExtentClient) Write(ctx context.Context, inode uint64, offset uint
 	}
 	defer func() {
 		if err != nil {
-			log.LogErrorf("Write: ctx(%v) ino(%v) offset(%v) size(%v) err(%v)", ctx.Value(proto.ContextReq), inode, offset, len(data), err)
+			log.LogErrorf("Write: ctx(%v) ino(%v) offset(%v) size(%v) err(%v)", proto.GetContextReq(ctx), inode, offset, len(data), err)
 		}
 	}()
 
@@ -621,7 +621,7 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 	}
 	defer func() {
 		if err != nil && err != io.EOF {
-			log.LogErrorf("Read: ctx(%v) ino(%v) offset(%v) size(%v) err(%v)", ctx.Value(proto.ContextReq), inode, offset, size, err)
+			log.LogErrorf("Read: ctx(%v) ino(%v) offset(%v) size(%v) err(%v)", proto.GetContextReq(ctx), inode, offset, size, err)
 		}
 	}()
 	if client.readRate > 0 {

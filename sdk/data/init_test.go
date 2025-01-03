@@ -28,29 +28,28 @@ var (
 	mw            *meta.MetaWrapper
 	ec            *ExtentClient
 	mc            *masterSDK.MasterClient
-
-	ctx         = context.Background()
-	letterRunes = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	ctx           = context.Background()
+	letterRunes   = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 )
 
 func TestMain(m *testing.M) {
-	tearDown := setUp()
+	setUp()
 	m.Run()
 	tearDown()
 }
 
-func setUp() func() {
-	_, err := log.InitLog("/cfs/log", "unittest", log.InfoLevel, nil)
+func setUp() {
+	_, err := log.InitLog("/cfs/log", "unittest", log.WarnLevel, nil)
 	if err != nil {
 		fmt.Println("init log in /cfs/log failed")
 	}
 	mw, ec, _ = creatExtentClient()
 	mc = masterSDK.NewMasterClient(ltptestMaster, false)
-	return func() {
-		ec.Close(nil)
-		log.LogFlush()
-		os.RemoveAll("/cfs/mnt")
-	}
+}
+
+func tearDown() {
+	ec.Close(ctx)
+	log.LogFlush()
 }
 
 func TestInit(t *testing.T) {
@@ -98,7 +97,7 @@ func creatExtentClient() (mw *meta.MetaWrapper, ec *ExtentClient, err error) {
 
 func create(name string) (*proto.InodeInfo, error) {
 	mw.Delete_ll(ctx, proto.RootIno, name, false)
-	return mw.Create_ll(nil, proto.RootIno, name, 0644, 0, 0, nil)
+	return mw.Create_ll(ctx, proto.RootIno, name, 0644, 0, 0, nil)
 }
 
 func calcAuthKey(key string) (authKey string) {

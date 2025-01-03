@@ -15,6 +15,7 @@
 package proto
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -1793,3 +1794,10 @@ type ContextKey int
 const (
 	ContextReq ContextKey = iota
 )
+
+func GetContextReq(ctx context.Context) interface{} {
+	if ctx == nil {
+		return nil
+	}
+	return ctx.Value(ContextReq)
+}

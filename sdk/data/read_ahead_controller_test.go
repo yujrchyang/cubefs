@@ -16,9 +16,6 @@ import (
 )
 
 func TestReadAhead_Controller(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-
 	mw, ec, err := creatExtentClient()
 	assert.NoErrorf(t, err, "init extent client err")
 	defer func() {
@@ -80,9 +77,6 @@ func TestReadAhead_Controller(t *testing.T) {
 }
 
 func TestReadAhead_ReadAndWrite(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-
 	// create inode
 	mw, ec, err := creatExtentClient()
 	assert.NoErrorf(t, err, "init extent client err")
@@ -174,12 +168,6 @@ func TestReadAhead_ReadAndWrite(t *testing.T) {
 }
 
 func TestReadAhead_ReadFromBlocks(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-	defer func() {
-		log.LogFlush()
-	}()
-
 	tests := []struct {
 		name                 string
 		extentSize           uint64
@@ -463,9 +451,6 @@ func TestReadAhead_ReadFromBlocks(t *testing.T) {
 }
 
 func TestReadAhead_EvictAfterTruncate(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-
 	// create inode
 	mw, ec, err := creatExtentClient()
 	assert.NoErrorf(t, err, "init extent client err")
@@ -588,12 +573,6 @@ func TestReadAhead_EvictAfterTruncate(t *testing.T) {
 }
 
 func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-	defer func() {
-		log.LogFlush()
-	}()
-
 	tests := []struct {
 		name         string
 		writeOff     uint64
@@ -766,12 +745,6 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 }
 
 func TestReadAhead_prepareReadAhead(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-	defer func() {
-		log.LogFlush()
-	}()
-
 	tests := []struct {
 		name               string
 		windowSize         uint64
@@ -906,12 +879,6 @@ func TestReadAhead_prepareReadAhead(t *testing.T) {
 }
 
 func TestReadAhead_splitReadAheadBlock(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-	defer func() {
-		log.LogFlush()
-	}()
-
 	tests := []struct {
 		name              string
 		prepareBlock      *ReadAheadBlock
@@ -992,9 +959,6 @@ func TestReadAhead_splitReadAheadBlock(t *testing.T) {
 }
 
 func TestReadAhead_doReadAhead(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-
 	// create inode
 	mw, ec, err := creatExtentClient()
 	assert.NoErrorf(t, err, "init extent client err")
@@ -1109,12 +1073,6 @@ type readAheadConfigRule struct {
 }
 
 func TestReadAhead_Config(t *testing.T) {
-	logDir := "/tmp/logs/cfs"
-	log.InitLog(logDir, "test", log.DebugLevel, nil)
-	defer func() {
-		log.LogFlush()
-	}()
-
 	Remote_Config := "remote"
 	Local_Config := "local"
 	tests := []struct {

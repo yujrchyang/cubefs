@@ -3,7 +3,6 @@ package meta
 import (
 	"context"
 	"fmt"
-	"os"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
@@ -20,28 +19,27 @@ var (
 	ltptestMaster = []string{"192.168.0.11:17010", "192.168.0.12:17010", "192.168.0.13:17010"}
 	mw            *MetaWrapper
 	mc            *masterSDK.MasterClient
-
-	ctx         = context.Background()
-	letterRunes = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	ctx           = context.Background()
+	letterRunes   = []byte("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 )
 
 func TestMain(m *testing.M) {
-	tearDown := setUp()
+	setUp()
 	m.Run()
 	tearDown()
 }
 
-func setUp() func() {
-	_, err := log.InitLog("/cfs/log", "unittest", log.InfoLevel, nil)
+func setUp() {
+	_, err := log.InitLog("/cfs/log", "unittest", log.WarnLevel, nil)
 	if err != nil {
 		fmt.Println("init log in /cfs/log failed")
 	}
 	mw, _ = createMetaWrapper()
 	mc = masterSDK.NewMasterClient(ltptestMaster, false)
-	return func() {
-		log.LogFlush()
-		os.RemoveAll("/cfs/mnt")
-	}
+}
+
+func tearDown() {
+	log.LogFlush()
 }
 
 func TestInit(t *testing.T) {
@@ -63,5 +61,5 @@ func createMetaWrapper() (mw *MetaWrapper, err error) {
 
 func create(name string) (*proto.InodeInfo, error) {
 	mw.Delete_ll(ctx, proto.RootIno, name, false)
-	return mw.Create_ll(nil, proto.RootIno, name, 0644, 0, 0, nil)
+	return mw.Create_ll(ctx, proto.RootIno, name, 0644, 0, 0, nil)
 }

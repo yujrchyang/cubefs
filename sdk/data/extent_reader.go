@@ -112,14 +112,14 @@ func (er *ExtentReader) read(dp *DataPartition, reqPacket *common.Packet, req *E
 		}
 		retryCount++
 		retryCost := time.Since(start)
-		if retryCost > time.Duration(atomic.LoadInt64(&dp.ClientWrapper.readRetryTimeSec)) * time.Second {
+		if retryCost > time.Duration(atomic.LoadInt64(&dp.ClientWrapper.readRetryTimeSec))*time.Second {
 			return
 		}
 		umpMsg := fmt.Sprintf("read err(%v), retry (%v) times in (%v)", err, retryCount, retryCost)
 		log.LogWarnf(umpMsg)
 		if retryCost > alarmInterval {
 			common.HandleUmpAlarm(dp.ClientWrapper.clusterName, dp.ClientWrapper.volName, "read", umpMsg)
-			alarmInterval += retryCost + 10 * time.Second
+			alarmInterval += retryCost + 10*time.Second
 		}
 	}
 }

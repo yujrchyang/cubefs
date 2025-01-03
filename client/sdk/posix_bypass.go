@@ -1138,7 +1138,7 @@ func cfs_flush(id C.int64_t, fd C.int) (re C.int) {
 		if r == nil && re >= 0 && !log.IsDebugEnabled() && cost < warnCost {
 			return
 		}
-		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), fd, path, ino, re, err)
+		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) re(%v) err(%v)", id, proto.GetContextReq(ctx), fd, path, ino, re, err)
 		if r != nil || re < 0 {
 			var stack string
 			if r != nil {
@@ -3155,7 +3155,7 @@ func _cfs_read(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C.
 		if r == nil && re >= 0 && !log.IsDebugEnabled() && cost < warnCost {
 			return
 		}
-		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), fd, path, ino, size, offset, re, err)
+		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, proto.GetContextReq(ctx), fd, path, ino, size, offset, re, err)
 		if r != nil || re < 0 {
 			var stack string
 			if r != nil {
@@ -3309,7 +3309,7 @@ func _cfs_write(id C.int64_t, fd C.int, buf unsafe.Pointer, size C.size_t, off C
 		if r == nil && re == C.ssize_t(size) && !log.IsDebugEnabled() && cost < warnCost {
 			return
 		}
-		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
+		msg := fmt.Sprintf("id(%v) ctx(%v) fd(%v) path(%v) ino(%v) size(%v) offset(%v) flag(%v) fileSize(%v) re(%v) err(%v)", id, proto.GetContextReq(ctx), fd, path, ino, size, offset, strings.Trim(flagBuf.String(), "|"), fileSize, re, err)
 		if r != nil || re < 0 {
 			var stack string
 			if r != nil {
@@ -3441,7 +3441,7 @@ func cfs_pwrite_inode(id C.int64_t, ino C.ino_t, buf unsafe.Pointer, size C.size
 		if r == nil && re == C.ssize_t(size) && !log.IsDebugEnabled() {
 			return
 		}
-		msg := fmt.Sprintf("id(%v) ctx(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, ctx.Value(proto.ContextReq), ino, size, offset, re, err)
+		msg := fmt.Sprintf("id(%v) ctx(%v) ino(%v) size(%v) offset(%v) re(%v) err(%v)", id, proto.GetContextReq(ctx), ino, size, offset, re, err)
 		if r != nil || re < 0 {
 			var stack string
 			if r != nil {

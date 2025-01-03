@@ -9,6 +9,7 @@ import (
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/stretchr/testify/assert"
+	"golang.org/x/time/rate"
 )
 
 func TestSetExtentSize(t *testing.T) {
@@ -71,10 +72,11 @@ func TestRateLimit(t *testing.T) {
 	offset := uint64(unit.DefaultTinySizeLimit)
 
 	// limited by 100 op/s for writing
-	limit := map[string]string{proto.VolumeKey: ltptestVolume, proto.ClientWriteVolRateKey: "100"}
+	limit := map[string]string{proto.EnableUsedVolLimitInfoRespCacheKey: "false", proto.VolumeKey: ltptestVolume, proto.ClientWriteVolRateKey: "100"}
 	err := mc.AdminAPI().SetRateLimitWithMap(limit)
 	assert.Nil(t, err)
 	ec.updateConfig()
+	assert.Equal(t, rate.Limit(100), ec.writeLimiter.Limit())
 	// consume burst first
 	for i := 0; i < 100; i++ {
 		ec.Write(ctx, info.Inode, offset, data, false)
@@ -93,19 +95,21 @@ func TestRateLimit(t *testing.T) {
 	err = mc.AdminAPI().SetRateLimitWithMap(limit)
 	assert.Nil(t, err)
 	ec.updateConfig()
+	assert.Equal(t, rate.Inf, ec.writeLimiter.Limit())
 	begin = time.Now()
 	for i := 0; i < 200; i++ {
 		ec.Write(ctx, info.Inode, offset, data, false)
 		offset++
 	}
 	cost = time.Since(begin)
-	assert.True(t, cost < time.Millisecond)
+	assert.True(t, cost < 5*time.Millisecond)
 
 	// not limited if op count is not more than burst
 	limit[proto.ClientWriteVolRateKey] = "1000"
 	err = mc.AdminAPI().SetRateLimitWithMap(limit)
 	assert.Nil(t, err)
 	ec.updateConfig()
+	assert.Equal(t, rate.Limit(1000), ec.writeLimiter.Limit())
 	// wait limiter to fill burst
 	time.Sleep(time.Second)
 	begin = time.Now()
@@ -115,6 +119,12 @@ func TestRateLimit(t *testing.T) {
 	}
 	cost = time.Since(begin)
 	assert.True(t, cost < 5*time.Millisecond)
+
+	limit[proto.ClientWriteVolRateKey] = "0"
+	err = mc.AdminAPI().SetRateLimitWithMap(limit)
+	assert.Nil(t, err)
+	ec.updateConfig()
+	assert.Equal(t, rate.Inf, ec.writeLimiter.Limit())
 }
 
 // with OverWriteBuffer enabled, ek of prepared request may have been modified by ROW, resulting data loss

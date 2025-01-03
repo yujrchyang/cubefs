@@ -92,8 +92,9 @@ func handleClientDataPartitions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.Itoa(len(httpReply)))
 	w.Write(httpReply)
 }
-func handleAdminGetCluster(w http.ResponseWriter, r *http.Request) {
-	cv := &proto.ClusterView{}
+
+func handleClientConfCluster(w http.ResponseWriter, r *http.Request) {
+	cv := &proto.ClientClusterConf{}
 	data, _ := json.Marshal(cv)
 
 	reply := &HTTPReply{
@@ -125,7 +126,7 @@ func TestStreamer_UsePreExtentHandler(t *testing.T) {
 	http.HandleFunc(proto.AdminGetIP, handleAdminGetIP)
 	http.HandleFunc(proto.AdminGetVol, handleAdminGetVol)
 	http.HandleFunc(proto.ClientDataPartitions, handleClientDataPartitions)
-	http.HandleFunc(proto.AdminGetCluster, handleAdminGetCluster)
+	http.HandleFunc(proto.ClientConfCluster, handleClientConfCluster)
 
 	go func() {
 		if err = http.ListenAndServe(":9999", nil); err != nil {

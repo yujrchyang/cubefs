@@ -716,7 +716,7 @@ func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit boo
 		actualDp := w.replaceOrInsertPartition(dp)
 		if w.extentClientType == Normal {
 			if actualDp.Status == proto.ReadWrite {
-				seperatePartitionByHostPingElapsed(dp, w.getPingElapsedTh())
+				seperatePartitionByHostPingElapsed(actualDp, w.getPingElapsedTh())
 			}
 		} else if w.extentClientType == Smart {
 			if actualDp.MediumType == proto.MediumHDDName &&
@@ -827,6 +827,7 @@ func isLeaderExist(addr string, hosts []string) bool {
 func (w *Wrapper) getDataPartitionFromMaster(partitionID uint64) (err error) {
 	if partitionID == 0 {
 		err = fmt.Errorf("invalid partitionID(0)")
+		return
 	}
 	var dpInfo *proto.DataPartitionInfo
 	start := time.Now()

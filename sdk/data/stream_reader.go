@@ -180,7 +180,7 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 		requests = revisedRequests
 	}
 	if log.IsDebugEnabled() {
-		log.LogDebugf("Stream read: ctx(%v) ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size, requests, fileSize)
+		log.LogDebugf("Stream read: ctx(%v) ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) filesize(%v)", proto.GetContextReq(ctx), s.inode, offset, size, requests, fileSize)
 	}
 	if offset >= fileSize {
 		return 0, false, io.EOF
@@ -205,12 +205,12 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 				return read, hasHole, ioErr
 			}
 		}
-		log.LogWarnf("Stream readFromRemoteCache failed: ctx(%v) ino(%v) offset(%v) size(%v) err(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size, err)
+		log.LogWarnf("Stream readFromRemoteCache failed: ctx(%v) ino(%v) offset(%v) size(%v) err(%v)", proto.GetContextReq(ctx), s.inode, offset, size, err)
 	}
 
 	var read int
 	if read, err = s.readFromDataNode(ctx, requests, offset, uint64(size)); err != nil {
-		log.LogWarnf("Stream readFromDataNode failed: ctx(%v) ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) err(%v)", ctx.Value(proto.ContextReq), s.inode, offset, size, requests, err)
+		log.LogWarnf("Stream readFromDataNode failed: ctx(%v) ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) err(%v)", proto.GetContextReq(ctx), s.inode, offset, size, requests, err)
 	} else {
 		total += read
 		err = ioErr
@@ -354,11 +354,11 @@ func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hos
 	wg.Wait()
 	if len(errSlice) >= (len(hosts)+1)/2 {
 		isErr = true
-		log.LogWarnf("chooseMaxAppliedDp err: ctx(%v) dp(%v), hosts(%v), appliedID(%v), errMap(%v)", ctx.Value(proto.ContextReq), pid, hosts, appliedIDslice, errSlice)
+		log.LogWarnf("chooseMaxAppliedDp err: ctx(%v) dp(%v), hosts(%v), appliedID(%v), errMap(%v)", proto.GetContextReq(ctx), pid, hosts, appliedIDslice, errSlice)
 		return
 	}
 	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice)
-	log.LogDebugf("chooseMaxAppliedDp: get max apply id(%v) from hosts(%v), ctx(%v) pid(%v)", maxAppliedID, targetHosts, ctx.Value(proto.ContextReq), pid)
+	log.LogDebugf("chooseMaxAppliedDp: get max apply id(%v) from hosts(%v), ctx(%v) pid(%v)", maxAppliedID, targetHosts, proto.GetContextReq(ctx), pid)
 	return
 }
 
@@ -369,7 +369,7 @@ func (dp *DataPartition) getDpAppliedID(ctx context.Context, pid uint64, addr st
 	)
 	defer func() {
 		if err != nil {
-			log.LogWarnf("getDpAppliedID: %v, ctx(%v) pid(%v) addr(%v) err(%v)", errmsg, ctx.Value(proto.ContextReq), pid, addr, err)
+			log.LogWarnf("getDpAppliedID: %v, ctx(%v) pid(%v) addr(%v) err(%v)", errmsg, proto.GetContextReq(ctx), pid, addr, err)
 		}
 	}()
 	if conn, err = StreamConnPool.GetConnect(addr); err != nil {

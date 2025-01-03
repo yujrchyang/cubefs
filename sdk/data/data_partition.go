@@ -239,12 +239,12 @@ func (dp *DataPartition) LeaderRead(reqPacket *common.Packet, req *ExtentRequest
 			if !tryOther && (reply != nil && reply.ResultCode != proto.OpTryOtherAddr) {
 				break
 			}
-			log.LogWarnf("LeaderRead: addr(%v) failed, ctx(%v) reqPacket(%v) err(%v)", addr, reqPacket.Ctx().Value(proto.ContextReq), reqPacket, err)
+			log.LogWarnf("LeaderRead: addr(%v) failed, ctx(%v) reqPacket(%v) err(%v)", addr, proto.GetContextReq(reqPacket.Ctx()), reqPacket, err)
 		}
 	}
 
 	err = fmt.Errorf("%v", errMap)
-	log.LogWarnf("LeaderRead failed: ctx(%v) reqPacket(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), reqPacket, err)
+	log.LogWarnf("LeaderRead failed: ctx(%v) reqPacket(%v) err(%v)", proto.GetContextReq(reqPacket.Ctx()), reqPacket, err)
 	return
 }
 
@@ -269,13 +269,13 @@ func (dp *DataPartition) FollowerRead(reqPacket *common.Packet, req *ExtentReque
 				return
 			}
 			errMap[addr] = err
-			log.LogWarnf("FollowerRead: addr(%v) failed, ctx(%v) reqPacket(%v) err(%v)", addr, reqPacket.Ctx().Value(proto.ContextReq), reqPacket, err)
+			log.LogWarnf("FollowerRead: addr(%v) failed, ctx(%v) reqPacket(%v) err(%v)", addr, proto.GetContextReq(reqPacket.Ctx()), reqPacket, err)
 		}
 		if time.Since(startTime) > StreamSendTimeout {
-			log.LogWarnf("FollowerRead: retry timeout, ctx(%v) req(%v) time(%v)", reqPacket.Ctx().Value(proto.ContextReq), reqPacket, time.Since(startTime))
+			log.LogWarnf("FollowerRead: retry timeout, ctx(%v) req(%v) time(%v)", proto.GetContextReq(reqPacket.Ctx()), reqPacket, time.Since(startTime))
 			break
 		}
-		log.LogWarnf("FollowerRead: hosts failed, ctx(%v) reqPacket(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), reqPacket, errMap)
+		log.LogWarnf("FollowerRead: hosts failed, ctx(%v) reqPacket(%v) err(%v)", proto.GetContextReq(reqPacket.Ctx()), reqPacket, errMap)
 		time.Sleep(StreamSendSleepInterval)
 	}
 	err = fmt.Errorf("%v", errMap)
@@ -304,7 +304,7 @@ func (dp *DataPartition) ReadConsistentFromHosts(sc *StreamConn, reqPacket *comm
 					return
 				}
 				errMap[addr] = err
-				log.LogWarnf("readConsistentFromHosts: ctx(%v) err(%v), addr(%v), try next host", reqPacket.Ctx().Value(proto.ContextReq), err, addr)
+				log.LogWarnf("readConsistentFromHosts: ctx(%v) err(%v), addr(%v), try next host", proto.GetContextReq(reqPacket.Ctx()), err, addr)
 			}
 		}
 		log.LogWarnf("readConsistentFromHost failed, try next round: ctx(%v) sc(%v) reqPacket(%v) isErr(%v) targetHosts(%v) errMap(%v)", reqPacket.Ctx(), sc, reqPacket, isErr, targetHosts, errMap)
@@ -338,14 +338,14 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *c
 	}()
 	if conn, err = sc.sendToDataPartition(reqPacket); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
-		log.LogWarnf("sendReadCmdToDataPartition: send failed, ctx(%v) addr(%v) reqPacket(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), sc.currAddr, reqPacket, err)
+		log.LogWarnf("sendReadCmdToDataPartition: send failed, ctx(%v) addr(%v) reqPacket(%v) err(%v)", proto.GetContextReq(reqPacket.Ctx()), sc.currAddr, reqPacket, err)
 		tryOther = true
 		return
 	}
 	if readBytes, reply, tryOther, err = sc.getReadReply(conn, reqPacket, req); err != nil {
 		dp.hostErrMap.Store(sc.currAddr, time.Now().UnixNano())
 		dp.checkAddrNotExist(sc.currAddr, reply)
-		log.LogWarnf("sendReadCmdToDataPartition: getReply failed, ctx(%v) addr(%v) reqPacket(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), sc.currAddr, reqPacket, err)
+		log.LogWarnf("sendReadCmdToDataPartition: getReply failed, ctx(%v) addr(%v) reqPacket(%v) err(%v)", proto.GetContextReq(reqPacket.Ctx()), sc.currAddr, reqPacket, err)
 		return
 	}
 	dp.RecordFollowerRead(reqPacket.SendT, sc.currAddr)
@@ -384,13 +384,13 @@ func (dp *DataPartition) OverWrite(sc *StreamConn, req *common.Packet, reply *co
 				err = errors.New(reply.GetResultMsg())
 			}
 			errMap[addr] = err
-			log.LogWarnf("OverWrite: addr(%v) failed, ctx(%v) reqPacket(%v) err(%v)", req.Ctx().Value(proto.ContextReq), addr, req, err)
+			log.LogWarnf("OverWrite: addr(%v) failed, ctx(%v) reqPacket(%v) err(%v)", proto.GetContextReq(req.Ctx()), addr, req, err)
 		}
 		if time.Since(startTime) > StreamSendOverWriteTimeout {
-			log.LogWarnf("OverWrite: retry timeout, ctx(%v) req(%v) time(%v)", req.Ctx().Value(proto.ContextReq), req, time.Since(startTime))
+			log.LogWarnf("OverWrite: retry timeout, ctx(%v) req(%v) time(%v)", proto.GetContextReq(req.Ctx()), req, time.Since(startTime))
 			break
 		}
-		log.LogWarnf("OverWrite: hosts failed, ctx(%v) reqPacket(%v) err(%v)", req.Ctx().Value(proto.ContextReq), req, errMap)
+		log.LogWarnf("OverWrite: hosts failed, ctx(%v) reqPacket(%v) err(%v)", proto.GetContextReq(req.Ctx()), req, errMap)
 		//time.Sleep(StreamSendSleepInterval)
 	}
 	err = fmt.Errorf("%v", errMap)
@@ -407,7 +407,7 @@ func (dp *DataPartition) OverWriteToDataPartitionLeader(sc *StreamConn, req *com
 		StreamConnPool.PutConnectWithErr(conn, err)
 		metric.Set(err)
 		if err != nil {
-			log.LogWarnf("OverWriteToDataPartitionLeader: %v, ctx(%v) addr(%v) reqPacket(%v) err(%v)", errmsg, req.Ctx().Value(proto.ContextReq), sc.currAddr, req, err)
+			log.LogWarnf("OverWriteToDataPartitionLeader: %v, ctx(%v) addr(%v) reqPacket(%v) err(%v)", errmsg, proto.GetContextReq(req.Ctx()), sc.currAddr, req, err)
 		}
 	}()
 	if conn, err = sc.sendToDataPartition(req); err != nil {
