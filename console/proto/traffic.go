@@ -36,6 +36,13 @@ const (
 	IntervalTypeLatestOneDay
 )
 
+const (
+	HostUsageCurveNoType int = iota
+	HostUsageCurveOneHour
+	HostUsageCurveSixHour
+	HostUsageCurveOneDay
+)
+
 // 角色名称
 const (
 	ModuleDataNode   = "DataNode"
@@ -46,6 +53,8 @@ const (
 
 var OPMap = map[string][]string{
 	ModuleDataNode: {
+		"clientRead",
+		"clientWrite",
 		"read",
 		"repairRead",
 		"appendWrite",
@@ -189,7 +198,52 @@ type AbnormalVolResponse struct {
 	NoDeleteVolCount int64
 }
 
+type HostUsageDetail struct {
+	DataPartitions []*PartitionOnData
+	MetaPartitions []*PartitionOnMeta
+	VolInodeTotal  uint64
+	VolDentryTotal uint64
+	Total          int64
+}
+
+type AllDataPartitions struct {
+	PartitionCount int                `json:"partitionCount"`
+	Partitions     []*PartitionOnData `json:"partitions"`
+}
+
+type PartitionOnData struct {
+	Pid      uint64   `json:"id"`
+	Volume   string   `json:"Volname"`
+	Size     uint64   `json:"size"`
+	Used     uint64   `json:"used"`
+	Status   int      `json:"status"`
+	Path     string   `json:"path"`
+	Replicas []string `json:"replicas"`
+	Total    string
+	UsedSize string
+}
+
+type PartitionOnMeta struct {
+	Pid                uint64 `json:"pid"`
+	Volume             string `json:"vol"`
+	DentryCount        uint64 `json:"dentryCount"`
+	InodeCount         uint64 `json:"inodeCount"`
+	DeletedDentryCount uint64 `json:"delDentryCount"`
+	DeletedInodeCount  uint64 `json:"delInodeCount"`
+}
+
+type MetaNodeStatInfo struct {
+	Zone               string  `json:"zone"`
+	TotalMem           uint64  `json:"totalMem"` //单位是什么
+	UsedMem            uint64  `json:"usedMem"`
+	Ratio              float64 `json:"ratio"`
+	MetaPartitionCount int     `json:"metaPartitionCount"`
+	DentryTotalCount   uint64  `json:"dentryTotalCount"`
+	InodeTotalCount    uint64  `json:"inodeTotalCount"`
+}
+
 const (
+	secondsForOneHour    = 60 * 60
 	secondsForOneDay     = 24 * 60 * 60
 	secondsForThreeMonth = 3 * 30 * secondsForOneDay
 )
@@ -231,7 +285,48 @@ func ParseHistoryCurveRequestTime(interval int, startDate, endDate int64) (start
 		err = fmt.Errorf("undefined interval type: %v", interval)
 		return
 	}
-	// ？为啥秒和纳秒都是0
+	end = time.Date(end.Year(), end.Month(), end.Day(), end.Hour(), end.Minute(), 0, 0, time.Local)
+	start = time.Date(start.Year(), start.Month(), start.Day(), start.Hour(), start.Minute(), 0, 0, time.Local)
+	return
+}
+
+func ParseHostCurveRequestTime(interval int, startDate, endDate int64) (start, end time.Time, err error) {
+	end = time.Now()
+	switch interval {
+	case HostUsageCurveNoType:
+		if startDate == 0 && endDate == 0 {
+			err = fmt.Errorf("start and end cannot both be 0")
+			return
+		}
+		if endDate-startDate >= int64(secondsForOneDay*3) {
+			err = fmt.Errorf("时间跨度不超过3天！")
+			return
+		}
+		if startDate == 0 {
+			startDate = endDate - int64(secondsForOneHour)
+		}
+		if endDate == 0 {
+			endDate = end.Unix()
+		}
+		if startDate == endDate {
+			endDate = startDate + int64(secondsForOneHour)
+		}
+		end = time.Unix(endDate, 0)
+		start = time.Unix(startDate, 0)
+
+	case HostUsageCurveOneHour:
+		start = end.Add(-1 * time.Hour)
+
+	case HostUsageCurveSixHour:
+		start = end.Add(-6 * time.Hour)
+
+	case HostUsageCurveOneDay:
+		start = end.AddDate(0, 0, -1)
+
+	default:
+		err = fmt.Errorf("undefined interval type: %v", interval)
+		return
+	}
 	end = time.Date(end.Year(), end.Month(), end.Day(), end.Hour(), end.Minute(), 0, 0, time.Local)
 	start = time.Date(start.Year(), start.Month(), start.Day(), start.Hour(), start.Minute(), 0, 0, time.Local)
 	return

@@ -126,7 +126,7 @@ func (cli *CliService) createXbpApply(ctx context.Context, cluster string, modul
 		if moduleType == cproto.KeyValueModuleType {
 			return *keyValuePath
 		}
-		return cproto.GetOpShortMsg(operation)
+		return cproto.GetOperationShortMsg(operation)
 	}
 
 	apply := cproto.NewXBPApply(cutil.Global_CFG.XbpProcessConfig.ProcessID, pin)

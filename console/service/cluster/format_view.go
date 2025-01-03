@@ -90,7 +90,7 @@ func FormatConsoleClusterView(api *api.APIManager, cluster *model.ConsoleCluster
 		for _, badPartition := range cv.BadPartitionIDs {
 			view := cproto.BadPartitionView{
 				Path:        badPartition.Path,
-				PartitionID: []uint64{badPartition.PartitionID},
+				PartitionID: badPartition.PartitionID,
 			}
 			badPartitions = append(badPartitions, view)
 		}

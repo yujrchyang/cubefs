@@ -2,9 +2,13 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/console/cutil"
+	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	cproto "github.com/cubefs/cubefs/console/proto"
 	"github.com/cubefs/cubefs/proto"
@@ -15,7 +19,7 @@ import (
 func (cli *CliService) GetDataNodeConfig(cluster string, operation int) (result []*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetDataNodeConfig: cluster[%v] operation(%v:%v) err(%v)", cluster, operation, cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetDataNodeConfig: cluster[%v] operation(%v:%v) err(%v)", cluster, operation, cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 
@@ -79,6 +83,20 @@ func (cli *CliService) GetDataNodeConfig(cluster string, operation int) (result 
 		}
 		result = cproto.FormatArgsToValueMetrics(operation, repairTaskCount)
 
+	case cproto.OpDataNodeDisableBlacklist:
+		disable, err := cli.getDataNodeDisableBlacklist(cluster)
+		if err != nil {
+			return nil, err
+		}
+		result = cproto.FormatArgsToValueMetrics(operation, disable)
+
+	case cproto.OpDataNodeTrashKeepTime:
+		keepSec, err := cli.getDataNodeTrashKeepTime(cluster)
+		if err != nil {
+			return nil, err
+		}
+		result = cproto.FormatArgsToValueMetrics(operation, keepSec)
+
 	default:
 	}
 	return
@@ -86,7 +104,7 @@ func (cli *CliService) GetDataNodeConfig(cluster string, operation int) (result 
 
 func (cli *CliService) SetDataNodeConfig(ctx context.Context, cluster string, operation int, metrics []*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetDataNodeConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOpShortMsg(operation))
+		msg := fmt.Sprintf("SetDataNodeConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOperationShortMsg(operation))
 		if err != nil {
 			log.LogErrorf("%s err(%v)", msg, err)
 		} else {
@@ -169,6 +187,25 @@ func (cli *CliService) SetDataNodeConfig(ctx context.Context, cluster string, op
 			goto createXbpApply
 		}
 		goto setRateLimit
+
+	case cproto.OpDataNodeDisableBlacklist:
+		if !skipXbp {
+			goto createXbpApply
+		}
+		goto setRateLimit
+
+	case cproto.OpDataNodeTrashKeepTime:
+		keepSec := args[metrics[0].ValueName].(int64)
+		if keepSec < -1 {
+			return fmt.Errorf("请输入 >= -1 的整数")
+		}
+		if !skipXbp {
+			goto createXbpApply
+		}
+		goto setRateLimit
+
+	default:
+		return fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 createXbpApply:
 	return cli.createXbpApply(ctx, cluster, cproto.DataNodeModuleType, operation, [][]*cproto.CliValueMetric{metrics}, nil, nil, false)
@@ -180,7 +217,7 @@ setRateLimit:
 func (cli *CliService) GetDataNodeConfigList(cluster string, operation int) (result [][]*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetDataNodeConfigList: cluster[%v] operation(%v:%v) err(%v)", cluster, operation, cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetDataNodeConfigList: cluster[%v] operation(%v:%v) err(%v)", cluster, operation, cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 
@@ -189,6 +226,9 @@ func (cli *CliService) GetDataNodeConfigList(cluster string, operation int) (res
 	case cproto.OpDataNodeExtentRepairTask:
 		result = append(result, cproto.FormatOperationNilData(operation, "uint64", "string", "string"))
 
+	case cproto.OpBatchSetDataNodeSettings:
+		result = append(result, cproto.FormatOperationNilData(operation, "string", "string", "string", "int64"))
+
 	default:
 	}
 	return
@@ -196,7 +236,7 @@ func (cli *CliService) GetDataNodeConfigList(cluster string, operation int) (res
 
 func (cli *CliService) SetDataNodeConfigList(ctx context.Context, cluster string, operation int, metrics [][]*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetDataNodeConfigList: cluster[%v] operation(%v) metrics(%v)", cluster, cproto.GetOpShortMsg(operation), metrics)
+		msg := fmt.Sprintf("SetDataNodeConfigList: cluster[%v] operation(%v) metrics(%v)", cluster, cproto.GetOperationShortMsg(operation), metrics)
 		if err != nil {
 			log.LogErrorf("%s err(%v)", msg, err)
 		} else {
@@ -227,6 +267,12 @@ func (cli *CliService) SetDataNodeConfigList(ctx context.Context, cluster string
 		}
 		return cli.batchStartExtentRepairTask(cluster, operation, params)
 
+	case cproto.OpBatchSetDataNodeSettings:
+		if !skipXbp {
+			return cli.createXbpApply(ctx, cluster, cproto.DataNodeModuleType, operation, metrics, nil, nil, true)
+		}
+		return cli.batchSetNodeSettings(cluster, operation, params)
+
 	default:
 		goto update
 	}
@@ -241,7 +287,7 @@ update:
 		}
 		err = cli.api.SetRatelimitInfo(cluster, args)
 		if err != nil {
-			log.LogWarnf("SetDataNodeConfigList: operation(%v) args(%v) err(%v)", cproto.GetOpShortMsg(operation), args, err)
+			log.LogWarnf("SetDataNodeConfigList: operation(%v) args(%v) err(%v)", cproto.GetOperationShortMsg(operation), args, err)
 			continue
 		}
 	}
@@ -331,6 +377,22 @@ func (cli *CliService) getDataNodeRepairTaskCount(cluster string) (uint64, error
 		return 0, err
 	}
 	return limitInfo.DataNodeRepairLimitOnDisk, nil
+}
+
+func (cli *CliService) getDataNodeDisableBlacklist(cluster string) (bool, error) {
+	limitInfo, err := cli.api.GetLimitInfoCache(cluster, false)
+	if err != nil {
+		return false, err
+	}
+	return limitInfo.DataNodeDisableBlacklist, nil
+}
+
+func (cli *CliService) getDataNodeTrashKeepTime(cluster string) (int64, error) {
+	limitInfo, err := cli.api.GetLimitInfoCache(cluster, false)
+	if err != nil {
+		return 0, err
+	}
+	return limitInfo.DataNodeTrashKeepTimeSec, nil
 }
 
 func (cli *CliService) batchStartExtentRepairTask(cluster string, operation int, params []map[string]string) error {
@@ -425,6 +487,95 @@ func (cli *CliService) RepairExtents(cluster string, host string, partitionID ui
 	}
 	if len(extMap) > 0 {
 		fmt.Printf("repair result: %v\n", extMap)
+	}
+	return nil
+}
+
+func (cli *CliService) batchSetNodeSettings(cluster string, operation int, params []map[string]string) error {
+	var errResult error
+	for _, paramMap := range params {
+		var (
+			hostList []string
+		)
+		for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
+			switch baseMetric.ValueName {
+			case "hosts":
+				if paramMap[baseMetric.ValueName] == "" {
+					return fmt.Errorf("hosts参数不能为空")
+				}
+				hostList = strings.Split(paramMap[baseMetric.ValueName], ",")
+			case "trashKeepTimeSec":
+				if paramMap[baseMetric.ValueName] != "" {
+					keepSec, err := strconv.ParseInt(paramMap[baseMetric.ValueName], 10, 64)
+					if err != nil {
+						return err
+					}
+					if keepSec < -1 {
+						return fmt.Errorf("trashKeepTimeSec参数需>= -1")
+					}
+				}
+			case "disableBlackList", "disableAutoDeleteTrash":
+				if paramMap[baseMetric.ValueName] != "" && paramMap[baseMetric.ValueName] != "true" && paramMap[baseMetric.ValueName] != "false" {
+					return fmt.Errorf("disableBlackList/disableAutoDeleteTrash参数值只能为true/false")
+				}
+			}
+		}
+		err := cli.parallelSetNodeSettings(cluster, hostList, paramMap)
+		if err != nil {
+			errResult = fmt.Errorf("%v, %v", errResult, err)
+		}
+	}
+	return errResult
+}
+
+func (cli *CliService) parallelSetNodeSettings(cluster string, hosts []string, parma map[string]string) error {
+	wg := new(sync.WaitGroup)
+	ch := make(chan struct{}, 50)
+	lock := new(sync.Mutex)
+	errMap := make(map[string]error)
+
+	for _, host := range hosts {
+		wg.Add(1)
+		ch <- struct{}{}
+		go func(addr string) (err error) {
+			defer func() {
+				wg.Done()
+				<-ch
+				if err != nil {
+					lock.Lock()
+					errMap[addr] = err
+					lock.Unlock()
+				}
+			}()
+			dataHost := fmt.Sprintf("%s:%s", addr, cli.api.GetDataNodeProf(cluster))
+			req := cutil.NewAPIRequest(http.MethodPost, fmt.Sprintf("%s%s", dataHost, "/setSettings"))
+			req.AddParam("disableAutoDeleteTrash", parma["disableAutoDeleteTrash"])
+			para := struct {
+				DisableBlackList string `json:"disableBlackList,omitempty"`
+				TrashKeepTimeSec string `json:"trashKeepTimeSec,omitempty"`
+			}{
+				DisableBlackList: parma["disableBlackList"],
+				TrashKeepTimeSec: parma["trashKeepTimeSec"],
+			}
+			body, err := json.Marshal(para)
+			if err != nil {
+				return
+			}
+			req.AddBody(body)
+			data, err := cutil.SendSimpleRequest(req, false)
+			if err != nil {
+				return fmt.Errorf("%v, %s", err, string(data))
+			}
+			return nil
+		}(host)
+	}
+	wg.Wait()
+	if len(errMap) > 0 {
+		var errStr string
+		for k, v := range errMap {
+			errStr += fmt.Sprintf("%v: %v\n", k, v)
+		}
+		return fmt.Errorf(errStr)
 	}
 	return nil
 }

@@ -77,8 +77,8 @@ func (cs *ClusterService) registerQuery(schema *schemabuilder.Schema) {
 	query.FieldFunc("healthHistoryInfo", cs.clusterHealthHistoryInfo) // 数据库查询 + topo接口
 	query.FieldFunc("zoneList", cs.getZoneList)                       // 排除master中未使用的zone
 	query.FieldFunc("zoneListV2", cs.getZoneListV2)
-	query.FieldFunc("clusterCapacity", cs.clusterZoneCurve)        // 数据库查询-zone容量曲线
-	query.FieldFunc("zoneUsageOverView", cs.zoneUsageOverView)     // 各zone使用率柱状图
+	query.FieldFunc("clusterCapacity", cs.clusterZoneCurve) // 数据库查询-zone容量曲线
+	//query.FieldFunc("zoneUsageOverView", cs.zoneUsageOverView)     // 各zone使用率柱状图
 	query.FieldFunc("sourceUsageOverview", cs.sourceUsageOverview) // source使用率曲线
 	query.FieldFunc("sourceList", cs.getSourceListFromJED)
 
@@ -353,20 +353,24 @@ func (cs *ClusterService) getZoneListV2(ctx context.Context, args struct {
 }
 
 func (cs *ClusterService) clusterZoneCurve(ctx context.Context, args struct {
-	Cluster      *string
+	Cluster      string
+	Module       *string //todo: 前端
 	ZoneName     string
 	IntervalType int32 // 0-自定义时间 1-近1天 2-近1周 3-近1月
 	Start        int64 // 秒级
 	End          int64
 }) ([]*cproto.ClusterResourceData, error) {
 	var (
-		cluster = cutil.GetClusterParam(args.Cluster)
-		result  []*cproto.ClusterResourceData
-		err     error
+		result []*cproto.ClusterResourceData
+		module string
+		err    error
 	)
-
+	if args.Module != nil {
+		module = *args.Module
+	}
 	r := &cproto.CFSClusterResourceRequest{
-		ClusterName:  cluster,
+		ClusterName:  args.Cluster,
+		Module:       module,
 		ZoneName:     args.ZoneName,
 		IntervalType: int(args.IntervalType),
 		StartTime:    args.Start,
@@ -713,7 +717,7 @@ func (cs *ClusterService) getDataNodeView(ctx context.Context, args struct {
 		return nil, cproto.ErrUnSupportOperation
 	}
 	mc := cs.api.GetMasterClient(args.Cluster)
-	dHost := fmt.Sprintf("%s:%s", strings.Split(args.Addr, ":"), mc.DataNodeProfPort)
+	dHost := fmt.Sprintf("%s:%v", strings.Split(args.Addr, ":"), mc.DataNodeProfPort)
 	dataClient := http_client.NewDataClient(dHost, false)
 	partitions, err := dataClient.GetPartitionsFromNode()
 	if err != nil {
@@ -887,41 +891,40 @@ func (cs *ClusterService) removeFlashGroup(ctx context.Context, args struct {
 
 func (cs *ClusterService) flashNodeList(ctx context.Context, args struct {
 	Cluster  string
-	FgID     *uint64
-	Addr     *string
 	Page     int32
 	PageSize int32
+	FgID     *uint64
+	Addr     *string
+	Zone     *string
 }) (*cproto.FlashNodeListResponse, error) {
 	cluster := args.Cluster
 	if cproto.IsRelease(cluster) {
 		return nil, nil
 	}
-	result := make([]*cproto.ClusterFlashNodeView, 0)
 	view, err := cs.api.CacheManager.GetFlashNodeViewCache(cluster, false)
 	if err != nil {
 		log.LogErrorf("flashNodeList failed: err(%v)", err)
 		return nil, err
 	}
-	if args.FgID != nil {
-		for _, node := range view {
-			if node.FlashGroupID == *args.FgID {
-				result = append(result, node)
-			}
+
+	result := make([]*cproto.ClusterFlashNodeView, 0)
+	for _, node := range view {
+		if args.FgID != nil && node.FlashGroupID != *args.FgID {
+			continue
 		}
-		return cproto.NewFlashNodeListResponse(len(result), cutil.Paginate(int(args.Page), int(args.PageSize), result)), nil
-	}
-	if args.Addr != nil && *args.Addr != "" {
-		for _, node := range view {
-			if strings.HasPrefix(node.Addr, *args.Addr) {
-				result = append(result, node)
-			}
+		if args.Addr != nil && *args.Addr != "" && !strings.HasPrefix(node.Addr, *args.Addr) {
+			continue
 		}
-		return cproto.NewFlashNodeListResponse(len(result), cutil.Paginate(int(args.Page), int(args.PageSize), result)), nil
+		if args.Zone != nil && *args.Zone != "" && node.ZoneName != *args.Zone {
+			continue
+		}
+		result = append(result, node)
 	}
-	sort.SliceStable(view, func(i, j int) bool {
-		return view[i].ID < view[j].ID
+
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
 	})
-	return cproto.NewFlashNodeListResponse(len(view), cutil.Paginate(int(args.Page), int(args.PageSize), view)), nil
+	return cproto.NewFlashNodeListResponse(len(result), cutil.Paginate(int(args.Page), int(args.PageSize), result)), nil
 }
 
 func (cs *ClusterService) updateFlashNode(ctx context.Context, args struct {
@@ -1748,7 +1751,81 @@ func checkIsInCluster(addr string, role string, cfsTopo *cproto.CFSSRETopology) 
 	return
 }
 
+func getZoneCapacityCurveV2(request *cproto.CFSClusterResourceRequest) (resource []*cproto.ClusterResourceData, err error) {
+	defer func() {
+		if err != nil {
+			log.LogErrorf("getZoneCapacityCurve failed: request(%v) err(%v)", request, err)
+		}
+	}()
+	var (
+		isHour   bool
+		pointNum int
+	)
+	switch request.IntervalType {
+	case cproto.ResourceNoType:
+		if request.StartTime == 0 || request.EndTime == 0 {
+			return nil, fmt.Errorf("自定义查询范围需要指定起、止时间！")
+		}
+		getPointNum := func(start, end int64) {
+			startTime := time.Unix(start, 0).Local()
+			endTime := time.Unix(end, 0).Local()
+			timeSpan := endTime.Sub(startTime)
+			if timeSpan > time.Hour*24 {
+				isHour = true
+			}
+			if isHour {
+				pointNum = int(math.Ceil(endTime.Sub(startTime).Hours()))
+			} else {
+				pointNum = int(math.Ceil(endTime.Sub(startTime).Minutes() / 10))
+			}
+		}
+		getPointNum(request.StartTime, request.EndTime)
+	case cproto.ResourceLatestOneDay:
+		pointNum = 6 * 24
+	case cproto.ResourceLatestOneWeek:
+		isHour = true
+		pointNum = 7 * 24
+	case cproto.ResourceLatestOneMonth:
+		isHour = true
+		pointNum = 30 * 24
+	default:
+		err = fmt.Errorf("unknown interval type:%v", request.IntervalType)
+		return
+	}
+
+	resource, err = GetCapacityDataV2(request, pointNum, isHour)
+	return
+}
+
+func GetCapacityDataV2(request *cproto.CFSClusterResourceRequest, pointNum int, isHour bool) (data []*cproto.ClusterResourceData, err error) {
+	condition := map[string]interface{}{
+		"cluster": request.ClusterName,
+		"zone":    request.ZoneName,
+		"module":  request.Module,
+	}
+	if isHour {
+		condition["is_hour"] = isHour
+	}
+	data = make([]*cproto.ClusterResourceData, 0)
+	// 时间倒数来取点 数据少的时候 也会取对应的点数
+	tx := cutil.CONSOLE_DB.Table(model.ClusterZoneInfo{}.TableName())
+	if request.IntervalType == cproto.ResourceNoType {
+		tx.Where("update_time >= ? AND update_time < ?", request.StartTime, request.EndTime)
+	}
+	err = tx.Where(condition).Limit(pointNum).
+		Select("round(unix_timestamp(update_time)+0) as date, sum(total_gb) as total_gb, sum(used_gb) as used_gb, round((sum(used_gb)/sum(total_gb))*100, 2) as used_ratio").
+		Group("date").Scan(&data).Error
+	if err != nil {
+		log.LogErrorf("GetCapacityDataV2 failed: %v", err)
+	}
+	// 返回的顺序需要按时间升序
+	return
+}
+
 func getZoneCapacityCurve(request *cproto.CFSClusterResourceRequest) (resource []*cproto.ClusterResourceData, err error) {
+	if request.Module != "" {
+		return getZoneCapacityCurveV2(request)
+	}
 	defer func() {
 		if err != nil {
 			log.LogErrorf("getZoneCapacityCurve failed: cluster(%v) zone(%v) err(%v)", request.ClusterName, request.ZoneName, err)
@@ -1840,7 +1917,6 @@ func GetCapacityDataWithTime(clusterInfo *model.ChubaofsClusterInfoInMysql, requ
 			pointNum = int(math.Ceil(endTime.Sub(startTime).Minutes() / 10))
 		}
 	}
-	getPointNum(requestInfo.StartTime, requestInfo.EndTime)
 	getPointNum(requestInfo.StartTime, requestInfo.EndTime)
 	condition := map[string]interface{}{
 		"cluster_name": requestInfo.ClusterName,

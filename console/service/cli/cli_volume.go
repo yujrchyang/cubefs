@@ -15,7 +15,8 @@ import (
 func (cli *CliService) GetVolumeConfig(cluster string, operation int, volName string) ([]*cproto.CliValueMetric, error) {
 	switch operation {
 	case cproto.OpSetVolume, cproto.OpSetVolFollowerRead, cproto.OpSetVolTrash, cproto.OpSetVolSmart, cproto.OpSetVolRemoteCache,
-		cproto.OpSetVolMeta, cproto.OpSetVolAuthentication, cproto.OpSetVolumeConnConfig, cproto.OpSetVolMinRWPartition, cproto.OpVolSetChildFileMaxCount:
+		cproto.OpSetVolMeta, cproto.OpSetVolAuthentication, cproto.OpSetVolumeConnConfig, cproto.OpSetVolMinRWPartition, cproto.OpVolSetChildFileMaxCount,
+		cproto.OpSetVolumePersistMode:
 		return cli.getVolume(operation, cluster, volName)
 
 	case cproto.OpVolAddMp:
@@ -80,7 +81,7 @@ func (cli *CliService) GetVolumeConfig(cluster string, operation int, volName st
 
 func (cli *CliService) SetVolumeConfig(ctx context.Context, cluster string, operation int, metrics []*cproto.CliValueMetric, volName string, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetVolumeConfig: cluster[%v] vol(%v) op(%v) metrics(%v)", cluster, volName, cproto.GetOpShortMsg(operation), metrics)
+		msg := fmt.Sprintf("SetVolumeConfig: cluster[%v] vol(%v) op(%v) metrics(%v)", cluster, volName, cproto.GetOperationShortMsg(operation), metrics)
 		if err != nil {
 			log.LogErrorf("%s, err: %v", msg, err)
 		} else {
@@ -102,9 +103,9 @@ func (cli *CliService) SetVolumeConfig(ctx context.Context, cluster string, oper
 
 	switch operation {
 	case cproto.OpSetVolume, cproto.OpSetVolFollowerRead, cproto.OpSetVolTrash, cproto.OpSetVolSmart, cproto.OpSetVolRemoteCache,
-		cproto.OpSetVolMeta, cproto.OpSetVolAuthentication:
+		cproto.OpSetVolMeta, cproto.OpSetVolAuthentication, cproto.OpSetVolumePersistMode:
 		if cproto.IsRelease(cluster) {
-			return fmt.Errorf("请选择: %s", cproto.GetOpShortMsg(cproto.OpSetVolumeRelease))
+			return fmt.Errorf("请选择: %s", cproto.GetOperationShortMsg(cproto.OpSetVolumeRelease))
 		}
 		for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
 			switch baseMetric.ValueName {
@@ -135,7 +136,7 @@ func (cli *CliService) SetVolumeConfig(ctx context.Context, cluster string, oper
 
 	case cproto.OpSetVolumeConnConfig:
 		if cproto.IsRelease(cluster) {
-			return fmt.Errorf("请选择: %s", cproto.GetOpShortMsg(cproto.OpSetVolumeRelease))
+			return fmt.Errorf("请选择: %s", cproto.GetOperationShortMsg(cproto.OpSetVolumeRelease))
 		}
 		for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
 			switch baseMetric.ValueName {
@@ -264,7 +265,7 @@ func (cli *CliService) SetVolumeConfig(ctx context.Context, cluster string, oper
 		return cli.cleanVolTrash(cluster, volName, doClean)
 
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 		return
 	}
 
@@ -275,7 +276,7 @@ createXbpApply:
 func (cli *CliService) GetVolumeConfigList(cluster string, operation int, volName string) (result [][]*cproto.CliValueMetric, err error) {
 
 	defer func() {
-		msg := fmt.Sprintf("GetVolumeConfigList: cluster(%v) vol(%v) operation(%v)", cluster, volName, cproto.GetOpShortMsg(operation))
+		msg := fmt.Sprintf("GetVolumeConfigList: cluster(%v) vol(%v) operation(%v)", cluster, volName, cproto.GetOperationShortMsg(operation))
 		if err != nil {
 			log.LogErrorf("%s, err(%v)", msg, err)
 		} else {
@@ -320,7 +321,7 @@ func (cli *CliService) GetVolumeConfigList(cluster string, operation int, volNam
 }
 func (cli *CliService) SetVolumeConfigList(ctx context.Context, cluster string, operation int, metrics [][]*cproto.CliValueMetric, volName string, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetVolumeConfigList: cluster(%v) vol(%v) op(%v) metrics(%v)", cluster, volName, cproto.GetOpShortMsg(operation), metrics)
+		msg := fmt.Sprintf("SetVolumeConfigList: cluster(%v) vol(%v) op(%v) metrics(%v)", cluster, volName, cproto.GetOperationShortMsg(operation), metrics)
 		if err != nil {
 			log.LogErrorf("%s, err(%v)", msg, err)
 		} else {
@@ -373,7 +374,7 @@ update:
 
 func (cli *CliService) getVolume(operation int, cluster, volName string) ([]*cproto.CliValueMetric, error) {
 	if cproto.IsRelease(cluster) {
-		return nil, fmt.Errorf("请选择: %s", cproto.GetOpShortMsg(cproto.OpSetVolumeRelease))
+		return nil, fmt.Errorf("请选择: %s", cproto.GetOperationShortMsg(cproto.OpSetVolumeRelease))
 	}
 	mc := cli.api.GetMasterClient(cluster)
 	volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(volName)
@@ -468,6 +469,10 @@ func (cli *CliService) getVolume(operation int, cluster, volName string) ([]*cpr
 		return cproto.FormatArgsToValueMetrics(operation,
 			volInfo.ChildFileMaxCount), nil
 
+	case cproto.OpSetVolumePersistMode:
+		return cproto.FormatArgsToValueMetrics(operation,
+			int32(volInfo.PersistenceMode)), nil
+
 	default:
 	}
 	return nil, nil
@@ -475,7 +480,7 @@ func (cli *CliService) getVolume(operation int, cluster, volName string) ([]*cpr
 
 func (cli *CliService) updateVolume(cluster, vol string, args map[string]string) error {
 	if cproto.IsRelease(cluster) {
-		return fmt.Errorf("请选择: %s", cproto.GetOpShortMsg(cproto.OpSetVolumeRelease))
+		return fmt.Errorf("请选择: %s", cproto.GetOperationShortMsg(cproto.OpSetVolumeRelease))
 	}
 	mc := cli.api.GetMasterClient(cluster)
 	volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(vol)
@@ -489,7 +494,7 @@ func (cli *CliService) updateVolume(cluster, vol string, args map[string]string)
 
 func (cli *CliService) getVolumeRelease(operation int, cluster, volName string) ([]*cproto.CliValueMetric, error) {
 	if !cproto.IsRelease(cluster) {
-		return nil, fmt.Errorf("%s专用！", cproto.GetOpShortMsg(cproto.OpSetVolumeRelease))
+		return nil, fmt.Errorf("%s专用！", cproto.GetOperationShortMsg(cproto.OpSetVolumeRelease))
 	}
 	rc := cli.api.GetReleaseClient(cluster)
 	volInfo, err := rc.AdminGetVol(volName)
@@ -554,7 +559,7 @@ func (cli *CliService) volAddMp(cluster, volume string, inodeStart uint64) error
 
 func (cli *CliService) updateVolumeRelease(cluster, volName string, args map[string]string) error {
 	if !cproto.IsRelease(cluster) {
-		return fmt.Errorf("%s专用！", cproto.GetOpShortMsg(cproto.OpSetVolumeRelease))
+		return fmt.Errorf("%s专用！", cproto.GetOperationShortMsg(cproto.OpSetVolumeRelease))
 	}
 	rc := cli.api.GetReleaseClient(cluster)
 	volInfo, err := rc.AdminGetVol(volName)
@@ -589,7 +594,7 @@ func (cli *CliService) getVolS3ActionRatelimit(cluster, volume string) (map[stri
 		return nil, ErrUnSupportOperation
 	}
 	mc := cli.api.GetMasterClient(cluster)
-	limitInfo, err := mc.AdminAPI().GetLimitInfo(volume)
+	limitInfo, err := mc.AdminAPI().GetLimitInfoNoCache(volume)
 	if err != nil {
 		log.LogErrorf("getVolS3Ratelimit: vol(%v)err(%v)", volume, err)
 		return nil, err
@@ -609,7 +614,7 @@ func (cli *CliService) getVolRateLimit(cluster, volume string) (map[uint8]int64,
 		limitMap = limitInfo.ClientVolOpRateLimit
 	} else {
 		mc := cli.api.GetMasterClient(cluster)
-		limitInfo, err := mc.AdminAPI().GetLimitInfo(volume)
+		limitInfo, err := mc.AdminAPI().GetLimitInfoNoCache(volume)
 		if err != nil {
 			log.LogErrorf("getVolRateLimit: cluster(%v) vol(%v) err(%v)", cluster, volume, err)
 			return nil, err

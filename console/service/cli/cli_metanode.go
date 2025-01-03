@@ -11,7 +11,7 @@ import (
 func (cli *CliService) GetMetaNodeConfig(cluster string, operation int) (result []*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetMetaNodeConfig: cluster(%v) operation(%v:%v) err(%v)", cluster, operation, cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetMetaNodeConfig: cluster(%v) operation(%v:%v) err(%v)", cluster, operation, cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 
@@ -159,7 +159,7 @@ func (cli *CliService) SetMetaNodeConfig(ctx context.Context, cluster string, op
 		isRelease = cproto.IsRelease(cluster)
 	)
 	defer func() {
-		msg := fmt.Sprintf("SetMetaNodeConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOpShortMsg(operation))
+		msg := fmt.Sprintf("SetMetaNodeConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOperationShortMsg(operation))
 		if err != nil {
 			log.LogErrorf("%s, err(%v)", msg, err)
 		} else {
@@ -365,7 +365,7 @@ createXbpApply:
 func (cli *CliService) GetMetaNodeConfigList(cluster string, operation int) (result [][]*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetMetaNodeConfigList: cluster[%v] operation(%v:%v) err(%v)", cluster, operation, cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetMetaNodeConfigList: cluster[%v] operation(%v:%v) err(%v)", cluster, operation, cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 
@@ -391,7 +391,7 @@ func (cli *CliService) GetMetaNodeConfigList(cluster string, operation int) (res
 // 修改返回值
 func (cli *CliService) SetMetaNodeConfigList(ctx context.Context, cluster string, operation int, metrics [][]*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetMetaNodeConfigList: cluster[%v] operation(%v:%v) metrics: %v", cluster, operation, cproto.GetOpShortMsg(operation), metrics)
+		msg := fmt.Sprintf("SetMetaNodeConfigList: cluster[%v] operation(%v:%v) metrics: %v", cluster, operation, cproto.GetOperationShortMsg(operation), metrics)
 		if err != nil {
 			log.LogErrorf("%s, err(%v)", msg, err)
 		} else {
@@ -442,7 +442,7 @@ setRateLimit:
 	for _, param := range params {
 		err = cli.api.SetRatelimitInfo(cluster, param)
 		if err != nil {
-			log.LogWarnf("SetMetaNodeConfigList: operation(%v:%v) args(%v) err(%v)", operation, cproto.GetOpShortMsg(operation), args, err)
+			log.LogWarnf("SetMetaNodeConfigList: operation(%v:%v) args(%v) err(%v)", operation, cproto.GetOperationShortMsg(operation), args, err)
 			continue
 		}
 	}

@@ -211,7 +211,7 @@ func (l *LimitInfoCache) UpdateCache(cluster string) error {
 		newCache.info = info
 	} else {
 		client := Global_CacheManager.api.GetMasterClient(cluster)
-		info, err := client.AdminAPI().GetLimitInfo("")
+		info, err := client.AdminAPI().GetLimitInfoNoCache("")
 		if err != nil {
 			log.LogWarnf("UpdateCacheL: get limitInfo failed, cluster[%v] err: %v", cluster, err)
 			return err

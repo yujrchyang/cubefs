@@ -10,7 +10,7 @@ import (
 func (cli *CliService) GetEcConfig(cluster string, operation int) (result []*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetEcConfig: cluster[%v] operation(%v:%v) err(%v)", cluster, operation, cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetEcConfig: cluster[%v] operation(%v:%v) err(%v)", cluster, operation, cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 
@@ -27,14 +27,14 @@ func (cli *CliService) GetEcConfig(cluster string, operation int) (result []*cpr
 		result = cproto.FormatArgsToValueMetrics(operation, cv.EcScrubEnable, cv.EcScrubPeriod, cv.EcMaxScrubExtents, cv.MaxCodecConcurrent)
 
 	default:
-		return nil, fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		return nil, fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 	return
 }
 
 func (cli *CliService) SetEcConfig(ctx context.Context, cluster string, operation int, metrics []*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetEcConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOpShortMsg(operation))
+		msg := fmt.Sprintf("SetEcConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOperationShortMsg(operation))
 		if err != nil {
 			log.LogErrorf("%s, err:%v", msg, err)
 		} else {

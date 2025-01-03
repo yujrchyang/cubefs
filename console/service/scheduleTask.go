@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -79,7 +80,6 @@ func (s *ScheduleTaskService) registerFileMigrateAction(schema *schemabuilder.Sc
 	mutation := schema.Mutation()
 	mutation.FieldFunc("createMigrateConfig", s.createMigrateConfig)
 	mutation.FieldFunc("updateMigrateConfig", s.updateMigrateConfig)
-	mutation.FieldFunc("batchUpdateSmart", s.batchUpdateSmart)
 }
 
 func (s *ScheduleTaskService) registerVolMigrateAction(schema *schemabuilder.Schema) {
@@ -507,12 +507,18 @@ func (s *ScheduleTaskService) migrateConfigList(ctx context.Context, args struct
 	Cluster  string
 	Page     int32
 	PageSize int32
+	Volume   *string // 前缀匹配过滤
 }) (*cproto.MigrateConfigList, error) {
 	cluster := s.api.GetClusterInfo(args.Cluster)
 	if cluster == nil || cluster.FileMigrateHost == "" {
 		return nil, fmt.Errorf("该集群暂不支持文件冷热数据迁移功能")
 	}
-	views, err := s.fileMigrateWorker.GetMigrateConfigs(cluster.ClusterName)
+	var prefix string
+	if args.Volume != nil {
+		prefix = *args.Volume
+	}
+
+	views, err := s.fileMigrateWorker.GetMigrateConfigs(cluster.ClusterName, prefix)
 	if err != nil {
 		return nil, err
 	}
@@ -541,69 +547,71 @@ func (s *ScheduleTaskService) volStorageDetails(ctx context.Context, args struct
 
 func (s *ScheduleTaskService) createMigrateConfig(ctx context.Context, args struct {
 	Cluster     string
-	Volume      string
+	VolList     []string
 	HddDirs     string
 	Smart       int32
 	MigrateBack int32
 	Compact     int32
-	RulesType   int32 // 规则(类型)，下拉列表
-	TimeValue   int64 // 数字或者时间戳
-	TimeUnit    int32 // 天、秒、时间戳
-}) error {
-	var (
-		rulesType cproto.RulesType
-		timeUnit  cproto.RulesUnit
-	)
-	rulesType = cproto.RulesType(args.RulesType)
-	timeUnit = cproto.RulesUnit(args.TimeUnit)
-	// 校验目录的正则
-	err := s.fileMigrateWorker.CreateMigrateConfig(args.Cluster, args.Volume, int(args.Smart), int(args.MigrateBack),
-		int(args.Compact), args.HddDirs, rulesType, timeUnit, args.TimeValue)
-	return err
-}
-
-// rulesType RulesType, ts uint64, interval int64, rulesUnit RulesUnit
-// 不需要前端做回显！ 否则后期维护困难
-func (s *ScheduleTaskService) updateMigrateConfig(ctx context.Context, args struct {
-	Cluster     string
-	Volume      string
-	Smart       int32
-	MigrateBack int32
-	Compact     int32
-	HddDirs     string
-	Rules       string // todo:是否可以省略
-	// 若规则没修改，没有以下参数
-	RulesType *int32 // 规则(类型)，下拉列表
-	TimeValue *int64 // 数字或者时间戳
-	TimeUnit  *int32 // 天、秒、时间戳
+	RulesType   int32  // 规则(类型)，下拉列表
+	TimeUnit    *int32 // 天、秒、时间戳
+	TimeValue   *int64 // 数字或者时间戳
 }) error {
 	var (
 		rulesType cproto.RulesType
 		timeUnit  cproto.RulesUnit
 		timeValue int64
+		errResult error
 	)
-	// todo: 检查正则
-	if args.RulesType != nil {
-		rulesType = cproto.RulesType(*args.RulesType)
-	}
+	rulesType = cproto.RulesType(args.RulesType)
 	if args.TimeUnit != nil {
 		timeUnit = cproto.RulesUnit(*args.TimeUnit)
 	}
 	if args.TimeValue != nil {
 		timeValue = *args.TimeValue
 	}
-	err := s.fileMigrateWorker.UpdateMigrateConfig(args.Cluster, args.Volume, int(args.Smart), int(args.MigrateBack), int(args.Compact),
-		args.HddDirs, args.Rules, rulesType, timeUnit, timeValue)
-	return err
+	// 校验目录的正则
+	for _, vol := range args.VolList {
+		err := s.fileMigrateWorker.CreateMigrateConfig(args.Cluster, vol, int(args.Smart), int(args.MigrateBack),
+			int(args.Compact), args.HddDirs, rulesType, timeUnit, timeValue)
+		if err != nil {
+			log.LogErrorf("createMigrateConfig failed: vol(%v) err(%v)", vol, err)
+			errResult = errors.Join(errResult, errors.New(fmt.Sprintf("%s 创建失败", vol)))
+		}
+	}
+	return errResult
 }
 
-func (s *ScheduleTaskService) batchUpdateSmart(ctx context.Context, args struct {
-	Cluster string
-	Volumes []string // 列表
-	Smart   int32
+// rulesType RulesType, ts uint64, interval int64, rulesUnit RulesUnit
+// 单条编辑，卷后续支持多选
+func (s *ScheduleTaskService) updateMigrateConfig(ctx context.Context, args struct {
+	Cluster     string
+	VolList     []string
+	Smart       int32
+	MigrateBack int32
+	Compact     int32
+	HddDirs     string
+	RulesType   int32 // 规则(类型)，下拉列表
+	TimeValue   int64 // 数字或者时间戳
+	TimeUnit    int32 // 天、秒、时间戳
 }) error {
-	err := s.fileMigrateWorker.BatchUpdateSmart(args.Cluster, args.Volumes, int(args.Smart))
-	return err
+	rulesType := cproto.RulesType(args.RulesType)
+	timeUnit := cproto.RulesUnit(args.TimeUnit)
+
+	if len(args.VolList) < 1 {
+		return fmt.Errorf("请选择卷")
+	}
+
+	var errResult error
+	for _, vol := range args.VolList {
+		err := s.fileMigrateWorker.UpdateMigrateConfig(args.Cluster, vol, int(args.Smart), int(args.MigrateBack), int(args.Compact),
+			args.HddDirs, rulesType, timeUnit, args.TimeValue)
+		if err != nil {
+			log.LogErrorf("updateMigrateConfig failed: vol(%v) err(%v)", vol, err)
+			errResult = errors.Join(errResult, errors.New(fmt.Sprintf("%s 编辑失败", vol)))
+		}
+	}
+
+	return errResult
 }
 
 func (s *ScheduleTaskService) volMigrateList(ctx context.Context, args struct {

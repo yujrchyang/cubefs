@@ -219,6 +219,7 @@ type CFSSRETopology struct {
 // 集群资源类信息获取的请求结构体
 type CFSClusterResourceRequest struct {
 	ClusterName    string `json:"clusterName"`
+	Module         string
 	DataCenterName string `json:"dataCenterName"`
 	ZoneName       string `json:"zoneName"`
 	IntervalType   int    `json:"internalType"` //0:选择的时间段; 1:近10分钟; 2:近1小时; 3:近24小时; 4:近7日
@@ -226,15 +227,18 @@ type CFSClusterResourceRequest struct {
 	EndTime        int64  `json:"endTime"`
 }
 type ClusterResourceData struct {
-	Date      uint64  `json:"date"`
-	TotalGB   uint64  `json:"totalGB"`
-	UsedGB    uint64  `json:"usedGB"`
-	UsedRatio float32 `json:"usedRatio"`
+	Date         uint64  `json:"date"`
+	TotalGB      uint64  `json:"totalGB"`
+	UsedGB       uint64  `json:"usedGB"`
+	UsedRatio    float32 `json:"usedRatio"`
+	PartitionCnt int64   `json:"partitionCnt"`
+	InodeCount   int64   `json:"inodeCount"`
+	DentryCount  int64   `json:"dentryCount"`
 }
 
 type ZoneUsageOverview struct {
 	Date       uint64
-	ZoneName   string
+	Zone       string
 	TotalGB    uint64
 	UsedGB     uint64
 	UsageRatio float32
@@ -452,9 +456,10 @@ type SourceUsageResponse struct {
 }
 
 type SourceUsedInfo struct {
-	Date   uint64 `gorm:"column:update_time"`
-	Source string `gorm:"column:source"`
-	UsedGB uint64 `gorm:"column:total_used"`
+	UpdateTime time.Time `gorm:"column:update_time"`
+	Source     string    `gorm:"column:source"`
+	UsedGB     uint64    `gorm:"column:total_used"`
+	Date       int64
 }
 
 const (

@@ -15,7 +15,7 @@ import (
 func (cli *CliService) GetRateLimitConfig(cluster string, operation int) (result []*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetRateLimitConfig failed: cluster[%v] operation:%v err:%v", cluster, cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetRateLimitConfig failed: cluster[%v] operation:%v err:%v", cluster, cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 	switch operation {
@@ -33,14 +33,14 @@ func (cli *CliService) GetRateLimitConfig(cluster string, operation int) (result
 		result = cproto.FormatArgsToValueMetrics(operation, bandwidthLimit)
 
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 	return
 }
 
 func (cli *CliService) SetRatelimitConfig(ctx context.Context, cluster string, operation int, metrics []*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetRatelimitConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOpShortMsg(operation))
+		msg := fmt.Sprintf("SetRatelimitConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOperationShortMsg(operation))
 		if err != nil {
 			log.LogErrorf("%s, err(%v)", msg, err)
 		} else {
@@ -79,7 +79,7 @@ func (cli *CliService) SetRatelimitConfig(ctx context.Context, cluster string, o
 		return cli.setBandwidthLimiter(cluster, bwBytes)
 
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 		return
 	}
 
@@ -90,7 +90,7 @@ createXbpApply:
 func (cli *CliService) GetRatelimitConfigList(cluster string, operation int) (result [][]*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetRateLimitConfigList failed: cluster[%v] operation:%v err:%v", cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetRateLimitConfigList failed: cluster[%v] operation:%v err:%v", cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 
@@ -181,14 +181,14 @@ func (cli *CliService) GetRatelimitConfigList(cluster string, operation int) (re
 		result, err = cli.getLimitMetricsByModule(cluster, cproto.RoleNameFlashNode, operation)
 
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 	return
 }
 
 func (cli *CliService) SetRatelimitConfigList(ctx context.Context, cluster string, operation int, metrics [][]*cproto.CliValueMetric, skipXbp bool) (result [][]*cproto.CliValueMetric, err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetRatelimitConfigList: cluster[%v] operation(%v) metrics(%v)", cluster, cproto.GetOpShortMsg(operation), metrics)
+		msg := fmt.Sprintf("SetRatelimitConfigList: cluster[%v] operation(%v) metrics(%v)", cluster, cproto.GetOperationShortMsg(operation), metrics)
 		if err != nil {
 			log.LogErrorf("%s err: %v", msg, err)
 		} else {
@@ -333,7 +333,7 @@ func (cli *CliService) SetRatelimitConfigList(ctx context.Context, cluster strin
 		return
 
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 
 createXbpApply:
@@ -373,7 +373,7 @@ func (cli *CliService) getChangedMetrics(metrics [][]*cproto.CliValueMetric, clu
 				continue
 			}
 			result = append(result, oneMetric)
-			log.LogInfof("add metric: cluster(%v) op(%v) metric(%v)", cluster, cproto.GetOpShortMsg(operation), oneMetric)
+			log.LogInfof("add metric: cluster(%v) op(%v) metric(%v)", cluster, cproto.GetOperationShortMsg(operation), oneMetric)
 		}
 
 	case cproto.OpFlashNodeZoneRate, cproto.OpFlashNodeVolRate:
@@ -411,7 +411,7 @@ func (cli *CliService) getChangedMetrics(metrics [][]*cproto.CliValueMetric, clu
 				continue
 			}
 			result = append(result, oneMetric)
-			log.LogInfof("add metric: cluster(%v) op(%v) metric(%v)", cluster, cproto.GetOpShortMsg(operation), oneMetric)
+			log.LogInfof("add metric: cluster(%v) op(%v) metric(%v)", cluster, cproto.GetOperationShortMsg(operation), oneMetric)
 		}
 	}
 	// 删
@@ -423,14 +423,14 @@ func (cli *CliService) getChangedMetrics(metrics [][]*cproto.CliValueMetric, clu
 	//		if len(params) != 4 {
 	//			err = fmt.Errorf("parse rateLimitKey failed: params field is not 4")
 	//			log.LogErrorf("getChangedMetrics: cluster(%v) module(%v) op(%v) metrics(%v) err(%v)", cluster, module,
-	//				cproto.GetOpShortMsg(operation), metrics, err)
+	//				cproto.GetOperationShortMsg(operation), metrics, err)
 	//			return nil, err
 	//		}
 	//		op, _ := strconv.Atoi(params[2])
 	//		index, _ := strconv.Atoi(params[3])
 	//		delMetric := cproto.FormatArgsToValueMetrics(operation, params[0], params[1], op, index, 0)
 	//		result = append(result, delMetric)
-	//		log.LogInfof("del metric: cluster(%v) module(%v) op(%v) metric(%v)", cluster, module, cproto.GetOpShortMsg(operation), delMetric)
+	//		log.LogInfof("del metric: cluster(%v) module(%v) op(%v) metric(%v)", cluster, module, cproto.GetOperationShortMsg(operation), delMetric)
 	//	}
 	//}
 	if log.IsDebugEnabled() {
@@ -807,7 +807,7 @@ func (cli *CliService) batchSetRateLimit(cluster string, operation int, params [
 		}
 		err := cli.api.SetRatelimitInfo(cluster, args)
 		if err != nil {
-			log.LogWarnf("batchSetRateLimit: cluster(%v) operation(%v) args(%v) err(%v)", cluster, cproto.GetOpShortMsg(operation), args, err)
+			log.LogWarnf("batchSetRateLimit: cluster(%v) operation(%v) args(%v) err(%v)", cluster, cproto.GetOperationShortMsg(operation), args, err)
 		}
 		return err
 	}

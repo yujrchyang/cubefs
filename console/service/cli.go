@@ -120,13 +120,23 @@ func (cs *CliService) listOpCodeList(ctx context.Context, args struct {
 	if args.ModuleType != cproto.VolumeModuleType && args.OperationType == nil {
 		return nil, fmt.Errorf("操作码不能为空")
 	}
-	cluster := args.Cluster
-	result := make([]*cproto.CliOpMetric, 0)
+	var (
+		operation    int
+		searchPrefix string
+		cluster      = args.Cluster
+		result       = make([]*cproto.CliOpMetric, 0)
+	)
+	if args.OperationType != nil {
+		operation = int(*args.OperationType)
+	}
+	if args.Keywords != nil {
+		searchPrefix = *args.Keywords
+	}
 
 	switch args.ModuleType {
 	case cproto.KeyValueModuleType:
 		table := &model.KeyValuePathParams{}
-		params, err := table.GetPathParams(uint64(*args.OperationType), cproto.IsRelease(cluster))
+		params, err := table.GetPathParams(uint64(operation), cproto.IsRelease(cluster))
 		if err != nil {
 			return nil, err
 		}
@@ -135,30 +145,8 @@ func (cs *CliService) listOpCodeList(ctx context.Context, args struct {
 			opMetric := cproto.NewCliOpMetric(param.ValueName, param.ValueName+":"+param.ValueType)
 			result = append(result, opMetric)
 		}
-
 	default:
-		switch args.ValueName {
-		case "module":
-			result = cs.getModuleList(cluster)
-
-		case "zoneName":
-			result = cs.getZoneOpMetrics(cluster, int(*args.OperationType))
-
-		case "volume", "name":
-			// volume关键字，不指定前缀，仅返回1000条数据
-			// dropDown: 支持前缀，不支持多选
-			// MultiSelect： 支持前缀，不支持多选
-			result = cs.getVolList(cluster, args.Keywords)
-
-		case "opcode":
-			result = getRatelimitOpcode(cluster, int(*args.OperationType))
-
-		case proto.RateLimitIndexKey:
-			result = getRatelimitIndexOpMetrics()
-
-		case "action":
-			result = getObjectActionList()
-		}
+		result = cs.getDropdownOpMetrics(cluster, operation, args.ValueName, searchPrefix)
 	}
 	return result, nil
 }
@@ -180,11 +168,13 @@ func (cs *CliService) getConfig(ctx context.Context, args struct {
 	case cproto.DataNodeModuleType:
 		return cs.cli.GetDataNodeConfig(cluster, int(args.OperationType))
 
+	case cproto.FlashNodeModuleType:
+		return cs.cli.GetFlashNodeConfig(cluster, int(args.OperationType))
+
 	case cproto.EcModuleType:
 		return cs.cli.GetEcConfig(cluster, int(args.OperationType))
 
 	case cproto.RateLimitModuleType:
-		// todo： 增加release集群的operation
 		return cs.cli.GetRateLimitConfig(cluster, int(args.OperationType))
 
 	case cproto.NetworkModuleType:
@@ -219,7 +209,7 @@ func (cs *CliService) setConfig(ctx context.Context, args struct {
 		record := model.NewCliOperation(
 			cluster,
 			cproto.GetModule(int(args.ModuleType)),
-			cproto.GetOpShortMsg(int(args.OperationType)),
+			cproto.GetOperationShortMsg(int(args.OperationType)),
 			ctx.Value(cutil.PinKey).(string),
 			fmt.Sprintf("%v", args.Metrics),
 			0,
@@ -239,6 +229,9 @@ func (cs *CliService) setConfig(ctx context.Context, args struct {
 
 	case cproto.DataNodeModuleType:
 		err = cs.cli.SetDataNodeConfig(ctx, cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
+
+	case cproto.FlashNodeModuleType:
+		err = cs.cli.SetFlashNodeConfig(ctx, cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
 
 	case cproto.EcModuleType:
 		err = cs.cli.SetEcConfig(ctx, cluster, int(args.OperationType), args.Metrics, !cutil.Global_CFG.EnableXBP)
@@ -323,7 +316,7 @@ func (cs *CliService) setConfigList(ctx context.Context, args struct {
 	Metrics       [][]*cproto.CliValueMetric // 里层[] length一致 都是一个限速结构
 	VolName       *string
 }) (resp *cproto.GeneralResp, err error) {
-	operationMsg := cproto.GetOpShortMsg(int(args.OperationType))
+	operationMsg := cproto.GetOperationShortMsg(int(args.OperationType))
 	defer func() {
 		if err != nil {
 			return
@@ -508,7 +501,7 @@ func pagingMetricsList(page, pageSize int, metricsList [][]*cproto.CliValueMetri
 	return metricsList[start:end]
 }
 
-func (cs *CliService) getModuleList(cluster string) []*cproto.CliOpMetric {
+func getModuleList(cluster string) []*cproto.CliOpMetric {
 	module := make([]string, 0)
 	module = append(module, strings.ToLower(cproto.RoleNameMaster))
 	module = append(module, strings.ToLower(cproto.ModuleDataNode))
@@ -551,7 +544,7 @@ func (cs *CliService) getZoneOpMetrics(cluster string, operation int) []*cproto.
 	return opMetrics
 }
 
-func (cs *CliService) getVolList(cluster string, keywords *string) []*cproto.CliOpMetric {
+func (cs *CliService) getVolList(cluster string, searchPrefix string) []*cproto.CliOpMetric {
 	vols := cs.cli.GetVolList(cluster)
 	if vols == nil {
 		return nil
@@ -559,8 +552,8 @@ func (cs *CliService) getVolList(cluster string, keywords *string) []*cproto.Cli
 
 	opMetrics := make([]*cproto.CliOpMetric, 0, len(vols))
 	for _, vol := range vols {
-		if keywords != nil {
-			key := strings.TrimSpace(*keywords)
+		if searchPrefix != "" {
+			key := strings.TrimSpace(searchPrefix)
 			if !strings.HasPrefix(vol, key) {
 				// 不包含前缀 不添加
 				continue
@@ -587,8 +580,41 @@ func getObjectActionList() []*cproto.CliOpMetric {
 	return opMetrics
 }
 
+func (cs *CliService) getDropdownOpMetrics(cluster string, operation int, valueName string, searchPrefix string) []*cproto.CliOpMetric {
+	switch valueName {
+	case "module":
+		return getModuleList(cluster)
+
+	case "zoneName":
+		return cs.getZoneOpMetrics(cluster, operation)
+
+	case "volume", "name":
+		// volume关键字，不指定前缀，仅返回1000条数据
+		// dropDown: 支持前缀，不支持多选
+		// MultiSelect： 支持前缀，不支持多选
+		return cs.getVolList(cluster, searchPrefix)
+
+	case "opcode":
+		return getRatelimitOpcode(cluster, operation)
+
+	case proto.RateLimitIndexKey:
+		return getRatelimitIndexOpMetrics()
+
+	case "action":
+		return getObjectActionList()
+
+	case proto.PersistenceModeKey:
+		opMetrics := make([]*cproto.CliOpMetric, 0)
+		opMetrics = append(opMetrics, cproto.NewCliOpMetric(strconv.Itoa(int(proto.PersistenceMode_Nil)), proto.PersistenceMode_Nil.String()))
+		opMetrics = append(opMetrics, cproto.NewCliOpMetric(strconv.Itoa(int(proto.PersistenceMode_WriteBack)), proto.PersistenceMode_WriteBack.String()))
+		opMetrics = append(opMetrics, cproto.NewCliOpMetric(strconv.Itoa(int(proto.PersistenceMode_WriteThrough)), proto.PersistenceMode_WriteThrough.String()))
+		return opMetrics
+	}
+	return nil
+}
+
 func (cs *CliService) DoXbpApply(apply *model.XbpApplyInfo) (err error) {
-	operationMsg := cproto.GetOpShortMsg(apply.OperationCode)
+	operationMsg := cproto.GetOperationShortMsg(apply.OperationCode)
 	module := cproto.GetModule(apply.ModuleType)
 	defer func() {
 		var opStatus int
@@ -636,6 +662,13 @@ func (cs *CliService) DoXbpApply(apply *model.XbpApplyInfo) (err error) {
 			err = fmt.Errorf("non-list operation: %v", operationMsg)
 		} else {
 			err = cs.cli.SetClusterConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
+		}
+
+	case cproto.FlashNodeModuleType:
+		if apply.OperationIsList {
+			err = fmt.Errorf("non-list operation: %v", operationMsg)
+		} else {
+			err = cs.cli.SetFlashNodeConfig(nil, apply.Cluster, apply.OperationCode, argsMetric[0], true)
 		}
 
 	case cproto.DataNodeModuleType:
@@ -705,7 +738,7 @@ func (cs *CliService) getOperationHistory(ctx context.Context, args struct {
 }) (*cproto.CliOperationHistoryResponse, error) {
 	// 查表，操作记录， 结果入表
 	module := cproto.GetModule(int(args.ModuleType))
-	operation := cproto.GetOpShortMsg(int(args.OperationType))
+	operation := cproto.GetOperationShortMsg(int(args.OperationType))
 	total, records, err := cs.cli.GetOperationHistory(args.Cluster, module, operation, int(args.Page), int(args.PageSize))
 	if err != nil {
 		log.LogErrorf("GetOperationHistory failed: cluster(%s) module(%s) operation(%s) err(%v)", args.Cluster, module, operation, err)

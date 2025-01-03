@@ -3,8 +3,11 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/cubefs/cubefs/console/cutil"
 	"github.com/cubefs/cubefs/console/model"
@@ -57,9 +60,11 @@ func (ts *TrafficService) registerQuery(schema *schemabuilder.Schema) {
 	query.FieldFunc("noDeleteVol", ts.listNoDeleteVol)
 	query.FieldFunc("zombieVolume", ts.getZombieVolume)
 	query.FieldFunc("noClientVol", ts.getNoClientVol)
-
 	query.FieldFunc("historyCurve", ts.volumeHistoryData)
 	query.FieldFunc("topIncrease", ts.topIncrease)
+	query.FieldFunc("topHost", ts.queryTopHost)
+	query.FieldFunc("hostUsedCurve", ts.hostUsedCurve)
+	query.FieldFunc("hostUsageDetail", ts.hostUsageDetail)
 
 	query.FieldFunc("listModuleType", ts.listModuleTypeHandle)
 	query.FieldFunc("listOp", ts.listOpHandle)
@@ -277,6 +282,161 @@ func (ts *TrafficService) topIncrease(ctx context.Context, args struct {
 		return traffic.GetTopIncreaseSource(request, strict, orderBy, orderField)
 	}
 	return nil
+}
+
+func (ts *TrafficService) queryTopHost(ctx context.Context, args struct {
+	Cluster   string
+	Zone      string
+	Module    int32
+	Page      int32
+	PageSize  int32
+	QueryTime *int64 //秒级时间戳
+	OrderBy   *string
+}) (*model.TopHostResponse, error) {
+	var (
+		start, end time.Time
+		orderBy    string
+	)
+	if args.QueryTime != nil && *args.QueryTime > 0 {
+		end = time.Unix(*args.QueryTime, 0)
+	} else {
+		end = time.Now()
+	}
+	start = end.Add(-10 * time.Minute)
+
+	if args.OrderBy != nil {
+		orderBy = *args.OrderBy
+	}
+	switch orderBy {
+	case "usedRatio":
+		orderBy = "used_ratio"
+	case "partitionCnt":
+		orderBy = "partition_count"
+	case "inodeCount":
+		if int(args.Module) != model.ModuleTypeMetaNode {
+			return nil, fmt.Errorf("非meta模块不支持按inode、dentry排序")
+		}
+		orderBy = "inode_count"
+	case "dentryCount":
+		if int(args.Module) != model.ModuleTypeMetaNode {
+			return nil, fmt.Errorf("非meta模块不支持按inode、dentry排序")
+		}
+		orderBy = "dentry_count"
+	default:
+		orderBy = "used_ratio"
+	}
+	total, err := model.ClusterHostInfo{}.LoadTopHostCount(args.Cluster, args.Zone, int(args.Module), start, end)
+	topHosts, err := model.ClusterHostInfo{}.LoadTopHostInfo(args.Cluster, args.Zone, int(args.Module), start, end, orderBy, args.Page, args.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	for _, topHost := range topHosts {
+		topHost.UpdateAt = topHost.UpdateTime.Format(time.DateTime)
+		topHost.UsedRatio = math.Round(topHost.UsedRatio*10000) / 100
+	}
+	return &model.TopHostResponse{
+		Data:  topHosts,
+		Total: int(total),
+	}, nil
+}
+
+func (ts *TrafficService) hostUsedCurve(ctx context.Context, args struct {
+	Cluster      string
+	Module       int32
+	Host         string
+	IntervalType int32 // 0-自定义时间 1-近1h 2-近6h 3-近1天
+	Start        int64 // 秒级
+	End          int64
+}) ([]*cproto.ClusterResourceData, error) {
+	start, end, err := cproto.ParseHostCurveRequestTime(int(args.IntervalType), args.Start, args.End)
+	if err != nil {
+		return nil, err
+	}
+	return traffic.GetHostUsageCurve(args.Cluster, int(args.Module), args.Host, start, end)
+}
+
+func (ts *TrafficService) hostUsageDetail(ctx context.Context, args struct {
+	Cluster  string
+	Module   int32
+	Host     string
+	Page     int32
+	PageSize int32
+	OrderBy  *string //列表上字段用来排序
+	Volume   *string
+}) (*cproto.HostUsageDetail, error) {
+	var (
+		dataPartitions []*cproto.PartitionOnData
+		metaPartitions []*cproto.PartitionOnMeta
+		orderBy        string
+		searchVol      string
+		result         = new(cproto.HostUsageDetail)
+		err            error
+	)
+	if args.Volume != nil && *args.Volume != "" {
+		searchVol = *args.Volume
+	}
+	if args.OrderBy != nil {
+		orderBy = *args.OrderBy
+	}
+	switch int(args.Module) {
+	case model.ModuleTypeMetaNode:
+		metaPartitions, err = ts.api.GetMetaAllPartitions(args.Cluster, args.Host)
+		if err != nil {
+			return nil, err
+		}
+		if searchVol != "" {
+			filterMps := make([]*cproto.PartitionOnMeta, 0)
+			inodeTotal, dentryTotal := uint64(0), uint64(0)
+			for _, mp := range metaPartitions {
+				if mp.Volume == *args.Volume {
+					inodeTotal += mp.InodeCount
+					dentryTotal += mp.DentryCount
+					filterMps = append(filterMps, mp)
+				}
+			}
+			metaPartitions = filterMps
+			result.VolInodeTotal = inodeTotal
+			result.VolDentryTotal = dentryTotal
+		}
+		if orderBy == "dentryCount" {
+			sort.SliceStable(metaPartitions, func(i, j int) bool {
+				return metaPartitions[i].DentryCount > metaPartitions[j].DentryCount
+			})
+		} else if orderBy == "inodeCount" {
+			sort.SliceStable(metaPartitions, func(i, j int) bool {
+				return metaPartitions[i].InodeCount > metaPartitions[j].InodeCount
+			})
+		}
+		result.Total = int64(len(metaPartitions))
+		result.MetaPartitions = cutil.Paginate(int(args.Page), int(args.PageSize), metaPartitions)
+
+	case model.ModuleTypeDataNode:
+		dataPartitions, err = ts.api.GetDataAllPartitions(args.Cluster, args.Host)
+		if err != nil {
+			return nil, err
+		}
+		if searchVol != "" {
+			filterDps := make([]*cproto.PartitionOnData, 0)
+			for _, dp := range dataPartitions {
+				if dp.Volume == *args.Volume {
+					filterDps = append(filterDps, dp)
+				}
+			}
+			dataPartitions = filterDps
+		}
+		if orderBy == "usedSize" {
+			sort.SliceStable(dataPartitions, func(i, j int) bool {
+				return dataPartitions[i].Used > dataPartitions[j].Used
+			})
+		}
+		for _, dp := range dataPartitions {
+			dp.Total = cutil.FormatSize(dp.Size)
+			dp.UsedSize = cutil.FormatSize(dp.Used)
+		}
+		result.Total = int64(len(dataPartitions))
+		result.DataPartitions = cutil.Paginate(int(args.Page), int(args.PageSize), dataPartitions)
+	}
+	return result, nil
 }
 
 func (ts *TrafficService) listModuleTypeHandle(ctx context.Context, args struct {
@@ -534,6 +694,7 @@ func (ts *TrafficService) volLatencyHandle(ctx context.Context, args struct {
 	}, nil
 }
 
+// todo: 支持client模块的 跨机房比例
 func (ts *TrafficService) ipDetailsHandle(ctx context.Context, args struct {
 	Cluster       *string
 	Module        string
@@ -545,6 +706,7 @@ func (ts *TrafficService) ipDetailsHandle(ctx context.Context, args struct {
 	TopN          *int32  // 不指定action，默认的曲线条数
 	Op            *string // disk级别画线 op必填
 	Disk          *string
+	Volume        *string // 用户要查询的vol
 }) (*cproto.TrafficDetailsResponse, error) {
 	drawLevel := cproto.ActionDrawLineDimension
 	if args.DrawDimension != nil {
@@ -572,17 +734,25 @@ func (ts *TrafficService) ipDetailsHandle(ctx context.Context, args struct {
 	}
 	if args.Disk != nil {
 		request.Disk = *args.Disk
+		request.VolumeName = *args.Disk
 	}
-	var (
-		result [][]*cproto.FlowScheduleResult
-		err    error
-	)
-	switch drawLevel {
-	case cproto.ActionDrawLineDimension:
-		result, err = ts.flowSchedule.IPDetailsFromClickHouse(request)
 
-	case cproto.DiskDrawLineDimension:
-		result, err = ts.flowSchedule.IPDetailDiskLevel(request)
+	var (
+		result       [][]*cproto.FlowScheduleResult
+		err          error
+		clientPrefix = "client"
+	)
+	if strings.Contains(request.OperationType, clientPrefix) {
+		request.OperationType = strings.ToLower(request.OperationType[len(clientPrefix):])
+		result, err = ts.flowSchedule.ListClientMonitorData(request)
+	} else {
+		switch drawLevel {
+		case cproto.ActionDrawLineDimension:
+			result, err = ts.flowSchedule.IPDetailsFromClickHouse(request)
+
+		case cproto.DiskDrawLineDimension:
+			result, err = ts.flowSchedule.IPDetailDiskLevel(request)
+		}
 	}
 	if err != nil {
 		log.LogErrorf("ipDetail failed: request(%v) err(%v) diskLevel(%v)", request, err, args.DrawDimension)

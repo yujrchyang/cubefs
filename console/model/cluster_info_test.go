@@ -19,7 +19,7 @@ var (
 func InitTestDB() (*gorm.DB, error) {
 	var err error
 	cfg := &config.MysqlConfig{
-		Database: "console",
+		Database: "console-test",
 		Url:      "11.13.125.198",
 		Username: "root",
 		Password: "1qaz@WSX",

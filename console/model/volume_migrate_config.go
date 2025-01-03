@@ -6,6 +6,10 @@ import (
 	"time"
 )
 
+const (
+	volumeMigrateRecordKeepDay = 30
+)
+
 type VolumeMigrateConfig struct {
 	Id            uint64    `gorm:"column:id"`
 	ClusterName   string    `gorm:"column:cluster"`
@@ -16,11 +20,11 @@ type VolumeMigrateConfig struct {
 	HddDirs       string    `gorm:"column:hdd_dirs"`
 	Compact       int       `gorm:"column:compact"`
 	MigrationBack int       `gorm:"column:migrate_back"`
+	HddCapacity   float64   `gorm:"column:hdd_capacity"` //单副本使用量
+	SsdCapacity   float64   `gorm:"column:ssd_capacity"`
+	ReplicaNum    int       `gorm:"column:replica_num"`
 	UpdateTime    time.Time `gorm:"column:update_time"`
-	// todo: 使用量是单副本前还是✖️副本数后
-	HddCapacity float64 `gorm:"column:hdd_capacity"`
-	SsdCapacity float64 `gorm:"column:ssd_capacity"`
-	ReplicaNum  int     `gorm:"column:replica_num"`
+	UpdateAt      string    `gorm:"-"`
 }
 
 func (VolumeMigrateConfig) TableName() string {
@@ -41,10 +45,21 @@ func BatchInsertVolConfig(records []*VolumeMigrateConfig) (err error) {
 	return err
 }
 
+func CleanExpiredVolMigrateConfig(cluster, volume string) (err error) {
+	expired := time.Now().AddDate(0, 0, -volumeMigrateRecordKeepDay)
+	if err = cutil.CONSOLE_DB.Table(VolumeMigrateConfig{}.TableName()).
+		Where("cluster = ? AND volume = ? AND update_time <= ?", cluster, volume, expired).
+		Delete(&VolumeMigrateConfig{}).Error; err != nil {
+		log.LogErrorf("CleanExpiredVolMigrateConfig failed: cluster(%v) vol(%v) expired(%v) err(%v)",
+			cluster, volume, expired.Format(time.DateTime), err)
+	}
+	return
+}
+
 func LoadVolHddSsdCapacityData(cluster, volume string, start, end time.Time) (records []*VolumeMigrateConfig, err error) {
 	records = make([]*VolumeMigrateConfig, 0)
 	if err = cutil.CONSOLE_DB.Table(VolumeMigrateConfig{}.TableName()).
-		Where("cluster = ? AND volume = ? AND update_time > ? AND update_time < ?", cluster, volume, start, end).
+		Where("cluster = ? AND volume = ? AND update_time >= ? AND update_time < ?", cluster, volume, start, end).
 		Find(&records).Error; err != nil {
 		log.LogErrorf("LoadVolHddSsdCapacityData failed: vol(%v) err(%v)", volume, err)
 	}

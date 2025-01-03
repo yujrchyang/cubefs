@@ -16,7 +16,7 @@ const (
 func (cli *CliService) GetClusterConfig(cluster string, operation int) (result []*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetClusterConfig failed: cluster[%v] operation(%v:%v) err:%v", cluster, operation, cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetClusterConfig failed: cluster[%v] operation(%v:%v) err:%v", cluster, operation, cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 
@@ -80,15 +80,22 @@ func (cli *CliService) GetClusterConfig(cluster string, operation int) (result [
 		}
 		result = cproto.FormatArgsToValueMetrics(operation, enableFreeze)
 
+	case cproto.OpSetClusterPersistMode:
+		persistMode, err := cli.getClusterPersistMode(cluster)
+		if err != nil {
+			return nil, err
+		}
+		result = cproto.FormatArgsToValueMetrics(operation, int32(persistMode))
+
 	default:
-		return nil, fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		return nil, fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 	return
 }
 
 func (cli *CliService) SetClusterConfig(ctx context.Context, cluster string, operation int, metrics []*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetClusterConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOpShortMsg(operation))
+		msg := fmt.Sprintf("SetClusterConfig: cluster[%v] operation(%v:%v)", cluster, operation, cproto.GetOperationShortMsg(operation))
 		if err != nil {
 			log.LogErrorf("%s, err:%v", msg, err)
 		} else {
@@ -235,8 +242,15 @@ func (cli *CliService) SetClusterConfig(ctx context.Context, cluster string, ope
 		}
 		return cli.setClusterFreeze(cluster, enableFreeze)
 
+	case cproto.OpSetClusterPersistMode:
+		//persisitMode := args[metrics[0].ValueName].(int32)  下拉不需要校验参数 因为不会有不符合预期的值
+		if !skipXbp {
+			goto createXbpApply
+		}
+		return cli.api.SetRatelimitInfo(cluster, params)
+
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 		return
 	}
 
@@ -273,7 +287,7 @@ func (cli *CliService) getClusterRemoteCacheBoostStatus(cluster string) (bool, e
 		return false, ErrUnSupportOperation
 	}
 	mc := cli.api.GetMasterClient(cluster)
-	limitInfo, err := mc.AdminAPI().GetLimitInfo("")
+	limitInfo, err := mc.AdminAPI().GetLimitInfoWithNoCache("")
 	if err != nil {
 		log.LogErrorf("getClusterRemoteCacheBoostStatus: get limit info failed, err(%v)", err)
 		return false, err
@@ -400,4 +414,12 @@ func (cli *CliService) setClusterFreeze(cluster string, enableFreeze bool) error
 		mc := cli.api.GetMasterClient(cluster)
 		return mc.AdminAPI().IsFreezeCluster(enableFreeze)
 	}
+}
+
+func (cli *CliService) getClusterPersistMode(cluster string) (proto.PersistenceMode, error) {
+	limitInfo, err := cli.api.GetLimitInfoCache(cluster, false)
+	if err != nil {
+		return 0, err
+	}
+	return limitInfo.PersistenceMode, nil
 }

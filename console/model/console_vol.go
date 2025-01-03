@@ -252,8 +252,12 @@ func (table ConsoleVolume) LoadVolumeInfoByCluster(cluster string, date time.Tim
 }
 
 func CleanExpiredVolumeInfo(start, end, cluster string) error {
-	return cutil.CONSOLE_DB.Where("update_time >= ? AND update_time < ? AND cluster = ?", start, end, cluster).
+	err := cutil.CONSOLE_DB.Where("update_time >= ? AND update_time < ? AND cluster = ?", start, end, cluster).
 		Delete(&ConsoleVolume{}).Error
+	if err != nil {
+		log.LogErrorf("CleanExpiredVolumeInfo failed: start(%v) end(%v) err(%v)", start, end, err)
+	}
+	return err
 }
 
 type VolumeInfoTable struct {
@@ -322,6 +326,12 @@ func LoadVolumeHistoryData(cluster, volume string, start, end time.Time) (result
 	return
 }
 
-func CleanExpiredVolumeHistoryInfo(timeStr string) error {
-	return cutil.CONSOLE_DB.Table(VolumeHistoryTableName).Where("update_time < ?", timeStr).Delete(&ConsoleVolume{}).Error
+func CleanExpiredVolumeHistoryInfo(cluster, timeStr string) error {
+	err := cutil.CONSOLE_DB.Table(VolumeHistoryTableName).
+		Where("update_time <= ? AND cluster = ?", timeStr, cluster).
+		Delete(&ConsoleVolume{}).Error
+	if err != nil {
+		log.LogErrorf("MigrateVolumeHistoryData: clean expired records failed: cluster(%v) expireTime(%v) err(%v)", cluster, timeStr, err)
+	}
+	return err
 }

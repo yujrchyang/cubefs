@@ -149,6 +149,7 @@ func (f *FlowSchedule) queryDetail(sqlLine string, drawDimension int32) (results
 		entry.Time = time_.Format("2006/01/02 15:04:05")
 		if drawDimension == cproto.ClientZoneLineDimension {
 			entry.Zone = fields[2]
+			entry.OperationType = fields[2]
 			entry.Size, _ = strconv.ParseUint(fields[3], 10, 64)
 			entry.Count, _ = strconv.ParseUint(fields[4], 10, 64)
 		} else {

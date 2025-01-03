@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,36 +27,48 @@ func NewFileMigrateWorker(api *api.APIManager) *FileMigrateWorker {
 	return worker
 }
 
-func (fm *FileMigrateWorker) GetMigrateConfigs(cluster string) ([]*cproto.MigrateConfigView, error) {
+func (fm *FileMigrateWorker) GetMigrateConfigs(cluster, prefix string) ([]*cproto.MigrateConfigView, error) {
 	configList, err := fm.api.MigrateConfigList(cluster)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]*cproto.MigrateConfigView, 0, len(configList))
 	for _, config := range configList {
-		view := cproto.FormatMigrateConfigView(config)
-		result = append(result, view)
+		if strings.HasPrefix(config.VolName, prefix) {
+			view := cproto.FormatMigrateConfigView(config)
+			result = append(result, view)
+		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].UpdateAt > result[j].UpdateAt
+	})
 	return result, nil
 }
 
 func (fm *FileMigrateWorker) GetVolHddSsdDataHistory(cluster, volume string, start, end time.Time) ([]*model.VolumeMigrateConfig, error) {
-	return model.LoadVolHddSsdCapacityData(cluster, volume, start, end)
+	records, err := model.LoadVolHddSsdCapacityData(cluster, volume, start, end)
+	if err != nil {
+		return nil, err
+	}
+	for _, record := range records {
+		record.UpdateAt = record.UpdateTime.Format(time.DateTime)
+	}
+	return records, nil
 }
 
-// 新增配置，支持批量
 func (fm *FileMigrateWorker) CreateMigrateConfig(cluster, volume string, smart, migrateBack, compact int, hddDirs string,
 	rulesType cproto.RulesType, timeUnit cproto.RulesUnit, timeValue int64) error {
-	oldConfig, _ := fm.api.GetVolumeMigrateConfig(cluster, volume)
-	if oldConfig != nil {
-		return fmt.Errorf("该vol(%v)已存在迁移规则", volume)
-	}
+	// 已有迁移规则，直接覆盖
+	//oldConfig, _ := fm.api.GetVolumeMigrateConfig(cluster, volume)
+	//if oldConfig != nil {
+	//	return fmt.Errorf("该vol(%v)已存在迁移规则", volume)
+	//}
 	params := make(map[string]string)
 	params["smart"] = strconv.Itoa(smart)
 	params["migrationBack"] = strconv.Itoa(migrateBack)
 	params["compact"] = strconv.Itoa(compact)
 	params["hddDirs"] = hddDirs
-	smartRule, err := cproto.ParseSmartRules(rulesType, timeValue, timeUnit)
+	smartRule, err := cproto.ParseSmartRules(rulesType, timeUnit, timeValue)
 	if err != nil {
 		return err
 	}
@@ -63,8 +77,9 @@ func (fm *FileMigrateWorker) CreateMigrateConfig(cluster, volume string, smart, 
 	return err
 }
 
-func (fm *FileMigrateWorker) UpdateMigrateConfig(cluster, volume string, smart, migrateBack, compact int, hddDirs, rules string,
+func (fm *FileMigrateWorker) UpdateMigrateConfig(cluster, volume string, smart, migrateBack, compact int, hddDirs string,
 	rulesType cproto.RulesType, timeUnit cproto.RulesUnit, timeValue int64) error {
+
 	oldConfig, err := fm.api.GetVolumeMigrateConfig(cluster, volume)
 	if err != nil {
 		return err
@@ -82,7 +97,7 @@ func (fm *FileMigrateWorker) UpdateMigrateConfig(cluster, volume string, smart, 
 	if oldConfig.HddDirs != hddDirs {
 		params["hddDirs"] = hddDirs
 	}
-	smartRule, err := cproto.ParseSmartRules(rulesType, timeValue, timeUnit)
+	smartRule, err := cproto.ParseSmartRules(rulesType, timeUnit, timeValue)
 	if err != nil {
 		return err
 	}
@@ -120,7 +135,6 @@ func FindRegStr(dir string) (reg []string) {
 	return
 }
 
-// todo: 建表
 func CollectVolHddSsdCapacity() {
 	sdk := api.GetSdkApiManager()
 
@@ -156,7 +170,17 @@ func CollectVolHddSsdCapacity() {
 }
 
 func getVolHddSsdCapacity(clusterWg *sync.WaitGroup, recordChan chan<- *model.VolumeMigrateConfig, volMigConfig []*cproto.MigrateConfig, sdk *api.APIManager) {
-	defer clusterWg.Done()
+	defer func() {
+		clusterWg.Done()
+
+		if time.Now().Minute() == 0 {
+			// 整点，清理数据
+			log.LogInfof("CleanExpiredVolMigrateConfig: time(%v)", time.Now())
+			for _, vol := range volMigConfig {
+				model.CleanExpiredVolMigrateConfig(vol.ClusterName, vol.VolName)
+			}
+		}
+	}()
 	// 只有spark集群
 	var mc *master.MasterClient
 	if len(volMigConfig) > 0 {
@@ -179,7 +203,7 @@ func getVolHddSsdCapacity(clusterWg *sync.WaitGroup, recordChan chan<- *model.Vo
 			}()
 			dataPartitions, err := mc.ClientAPI().GetDataPartitions(config.VolName, nil)
 			if err != nil {
-				log.LogErrorf("getVolHddSsdCapacity: get partitions failed, ")
+				log.LogErrorf("getVolHddSsdCapacity: get partitions failed, err(%v)", err)
 				return
 			}
 			var (

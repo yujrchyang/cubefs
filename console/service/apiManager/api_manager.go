@@ -24,6 +24,7 @@ func SetSdkApiManager(s *APIManager) {
 	sdk = s
 }
 func GetSdkApiManager() *APIManager {
+	// 非定时任务链路 禁止调用
 	return sdk
 }
 
@@ -107,6 +108,30 @@ func (api *APIManager) GetClusterInfo(cluster string) *model.ConsoleCluster {
 		}
 	}
 	return nil
+}
+
+func (api *APIManager) GetDataNodeProf(cluster string) string {
+	api.RLock()
+	defer api.RUnlock()
+
+	for _, clusterInfo := range api.clusters {
+		if clusterInfo.ClusterName == cluster {
+			return clusterInfo.DataProf
+		}
+	}
+	return ""
+}
+
+func (api *APIManager) GetMetaNodeProf(cluster string) string {
+	api.RLock()
+	defer api.RUnlock()
+
+	for _, clusterInfo := range api.clusters {
+		if clusterInfo.ClusterName == cluster {
+			return clusterInfo.MetaProf
+		}
+	}
+	return ""
 }
 
 func (api *APIManager) GetMasterClient(cluster string) *master.MasterClient {
@@ -202,9 +227,7 @@ func (api *APIManager) GetNodeProfPort(cluster, module string) string {
 	return ""
 }
 
-// 这个limitInfoCache是怎么维护的？
-// 修改 触发更新
-// get的时候 cache过期 触发更新
+// 更新时机: get的时候发现过期 & 修改后更新
 func (api *APIManager) GetLimitInfoCache(cluster string, forceUpdate bool) (*proto.LimitInfo, error) {
 	info, err := api.CacheManager.GetLimitInfoCache(cluster, forceUpdate)
 	if err == nil {
@@ -632,4 +655,36 @@ func (api *APIManager) CreateOrUpdateMigrateConfig(cluster, volume string, param
 		log.LogErrorf("UpdateMigrateConfig failed: cluster(%v) vol(%v) params(%v) err(%v)", cluster, params, err)
 	}
 	return err
+}
+
+func (api *APIManager) GetMetaAllPartitions(cluster, addr string) ([]*cproto.PartitionOnMeta, error) {
+	host := fmt.Sprintf("%s:%s", strings.Split(addr, ":")[0], api.GetMetaNodeProf(cluster))
+	req := cutil.NewAPIRequest(http.MethodGet, fmt.Sprintf("http://%s%s", host, "/getAllPartitions"))
+	req.AddHeader("Accept", "application/json")
+
+	body, err := cutil.SendSimpleRequest(req, false)
+	if err != nil {
+		return nil, err
+	}
+	all := make([]*cproto.PartitionOnMeta, 0)
+	if err = json.Unmarshal(body, &all); err != nil {
+		return nil, err
+	}
+	return all, err
+}
+
+func (api *APIManager) GetDataAllPartitions(cluster, addr string) ([]*cproto.PartitionOnData, error) {
+	host := fmt.Sprintf("%s:%s", strings.Split(addr, ":")[0], api.GetDataNodeProf(cluster))
+	req := cutil.NewAPIRequest(http.MethodGet, fmt.Sprintf("http://%s%s", host, "/partitions"))
+	req.AddHeader("Accept", "application/json")
+
+	body, err := cutil.SendSimpleRequest(req, false)
+	if err != nil {
+		return nil, err
+	}
+	all := new(cproto.AllDataPartitions)
+	if err = json.Unmarshal(body, &all); err != nil {
+		return nil, err
+	}
+	return all.Partitions, err
 }

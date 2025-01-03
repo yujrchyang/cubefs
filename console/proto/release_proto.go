@@ -73,7 +73,7 @@ type MetaNodeView struct {
 
 type BadPartitionView struct {
 	Path        string
-	PartitionID []uint64
+	PartitionID uint64
 }
 
 type DataNodeBadDisksView struct {

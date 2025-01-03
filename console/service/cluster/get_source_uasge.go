@@ -12,7 +12,7 @@ import (
 // 因为model不能引用proto(循环引用)  所以放在service中
 func GetSourceUsageInfo(cluster, source, zone string, start, end time.Time) ([][]*cproto.SourceUsedInfo, error) {
 	db := cutil.CONSOLE_DB.Table(model.VolumeHistoryTableName).
-		Select("source, UNIX_TIMESTAMP(update_time) AS update_time, SUM(used_gb * dp_replica_num) as total_used").
+		Select("source, update_time, SUM(used_gb * dp_replica_num) as total_used").
 		Where("update_time >= ? AND update_time <= ?", start, end).
 		Where("cluster = ?", cluster)
 	if zone != "" {
@@ -34,6 +34,7 @@ func GetSourceUsageInfo(cluster, source, zone string, start, end time.Time) ([][
 
 	result := make(map[string][]*cproto.SourceUsedInfo)
 	for _, record := range records {
+		record.Date = record.UpdateTime.Unix()
 		if record.Source == "" {
 			record.Source = "-"
 		}

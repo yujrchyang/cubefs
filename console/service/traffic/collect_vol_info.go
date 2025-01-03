@@ -215,8 +215,8 @@ func cleanExpiredVolInfos(cluster string) {
 	end := time.Now().AddDate(0, 0, -volumeInfoKeepDay)
 	start := end.Add(-1 * time.Hour)
 	err := model.CleanExpiredVolumeInfo(start.Format(time.DateTime), end.Format(time.DateTime), cluster)
-	if err != nil {
-		log.LogWarnf("cleanExpiredVolOps failed: %v", err)
+	if err == nil {
+		log.LogInfof("cleanExpiredVolumeInfo success: cluster(%v)", cluster)
 	}
 }
 
@@ -236,8 +236,10 @@ func MigrateVolumeHistoryData() {
 		log.LogInfof("MigrateVolumeHistoryData: cluster(%v) time(%v)", cluster.ClusterName, date)
 	}
 	expired := date.AddDate(0, 0, -volumeHistoryKeepDay)
-	if err := model.CleanExpiredVolumeHistoryInfo(expired.Format(time.DateTime)); err != nil {
-		log.LogErrorf("MigrateVolumeHistoryData: clean expired records failed: err(%v)", err)
+	for _, cluster := range clusters {
+		if err := model.CleanExpiredVolumeHistoryInfo(cluster.ClusterName, expired.Format(time.DateTime)); err == nil {
+			log.LogInfof("MigrateVolumeHistoryData: clean expired records success, cluster(%v) now(%v)", cluster, time.Now())
+		}
 	}
 }
 

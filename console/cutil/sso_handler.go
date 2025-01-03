@@ -27,7 +27,7 @@ type SSOERPInfo struct {
 	Fullname   string `json:"fullname"`
 	Mobile     string `json:"mobile"`
 	OrgName    string `json:"orgName"`
-	Expire     int32  `json:"expire"`
+	Expire     uint64 `json:"expire"`
 	HrmDeptId  string `json:"hrmDeptId"`
 	OrgId      string `json:"orgId"`
 	PersonId   string `json:"personId"`

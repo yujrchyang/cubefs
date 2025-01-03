@@ -12,7 +12,7 @@ import (
 
 func (cli *CliService) GetBatchConfigList(cluster string, operation int) (result [][]*cproto.CliValueMetric, err error) {
 	defer func() {
-		msg := fmt.Sprintf("GetBatchConfigList: cluster[%v] operation(%v)", cluster, cproto.GetOpShortMsg(operation))
+		msg := fmt.Sprintf("GetBatchConfigList: cluster[%v] operation(%v)", cluster, cproto.GetOperationShortMsg(operation))
 		if err != nil {
 			log.LogErrorf("%s err(%v)", msg, err)
 		}
@@ -50,15 +50,18 @@ func (cli *CliService) GetBatchConfigList(cluster string, operation int) (result
 	case cproto.OpBatchSetJSSVolumeMetaTag:
 		result = append(result, cproto.FormatArgsToValueMetrics(operation, "", false))
 
+	case cproto.OpBatchSetVolPersistMode:
+		result = append(result, cproto.FormatOperationNilData(operation, "string", "int32"))
+
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 	return
 }
 
 func (cli *CliService) SetBatchConfigList(ctx context.Context, cluster string, operation int, metrics [][]*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetBatchConfigList: cluster[%v] operation(%v) metrics(%v) ", cluster, cproto.GetOpShortMsg(operation), metrics)
+		msg := fmt.Sprintf("SetBatchConfigList: cluster[%v] operation(%v) metrics(%v) ", cluster, cproto.GetOperationShortMsg(operation), metrics)
 		if err != nil {
 			log.LogErrorf("%s err(%v)", msg, err)
 		} else {
@@ -284,6 +287,27 @@ func (cli *CliService) SetBatchConfigList(ctx context.Context, cluster string, o
 			}
 			if skipXbp {
 				if err = cli.batchSetJSSVol(cluster, volList, metaOut); err != nil {
+					return err
+				}
+			}
+		}
+		if !skipXbp {
+			return cli.createXbpApply(ctx, cluster, cproto.BatchModuleType, operation, metrics, nil, nil, true)
+		}
+
+	case cproto.OpSetVolumePersistMode:
+		argList, e := getArgsFunc(operation, metrics)
+		if e != nil {
+			return e
+		}
+		for _, args := range argList {
+			// 每一组都是不一样的vol 参数
+			volList, persistMode, e1 := getBatchSetVolPersistMode(args, operation)
+			if e1 != nil {
+				return e1
+			}
+			if skipXbp {
+				if err = cli.batchSetVolPersistMode(cluster, volList, persistMode); err != nil {
 					return err
 				}
 			}
@@ -725,6 +749,43 @@ func (cli *CliService) batchSetJSSVol(cluster string, volList []string, metaOut 
 	var errResult error
 	var params = make(map[string]string)
 	params[proto.MetaOutKey] = strconv.FormatBool(metaOut)
+
+	for _, vol := range volList {
+		var err error
+		if cproto.IsRelease(cluster) {
+			err = cli.updateVolumeRelease(cluster, vol, params)
+		} else {
+			err = cli.updateVolume(cluster, vol, params)
+		}
+		if err != nil {
+			errResult = fmt.Errorf("%v, %v", errResult, err)
+		}
+	}
+	return errResult
+}
+
+func getBatchSetVolPersistMode(args map[string]interface{}, operation int) (volList []string, persistMode int32, err error) {
+	for _, baseMetric := range cproto.GetCliOperationBaseMetrics(operation) {
+		switch baseMetric.ValueName {
+		case "volume":
+			volListStr := args[baseMetric.ValueName].(string)
+			if volListStr == "" {
+				err = fmt.Errorf("请指定要设置的vol！")
+				return
+			}
+			volList = strings.Split(volListStr, ",")
+
+		case proto.PersistenceModeKey:
+			persistMode = args[baseMetric.ValueName].(int32)
+		}
+	}
+	return
+}
+
+func (cli *CliService) batchSetVolPersistMode(cluster string, volList []string, persistMode int32) error {
+	var errResult error
+	var params = make(map[string]string)
+	params[proto.MetaOutKey] = strconv.FormatInt(int64(persistMode), 10)
 
 	for _, vol := range volList {
 		var err error

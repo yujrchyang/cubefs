@@ -11,7 +11,7 @@ import (
 func (cli *CliService) GetNetworkConfig(cluster string, operation int) (result []*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetNetworkConfig failed: cluster[%v] operation(%v) err(%v)", cluster, cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetNetworkConfig failed: cluster[%v] operation(%v) err(%v)", cluster, cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 
@@ -25,14 +25,14 @@ func (cli *CliService) GetNetworkConfig(cluster string, operation int) (result [
 		}
 
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 	return
 }
 
 func (cli *CliService) SetNetworkConfig(ctx context.Context, cluster string, operation int, metric []*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetNetworkConfig: cluster[%v] operation(%v) metric(%v)", cluster, cproto.GetOpShortMsg(operation), metric)
+		msg := fmt.Sprintf("SetNetworkConfig: cluster[%v] operation(%v) metric(%v)", cluster, cproto.GetOperationShortMsg(operation), metric)
 		if err != nil {
 			log.LogErrorf("%s err(%v)", msg, err)
 		} else {
@@ -63,7 +63,7 @@ func (cli *CliService) SetNetworkConfig(ctx context.Context, cluster string, ope
 		return cli.api.SetRatelimitInfo(cluster, params)
 
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 		return
 	}
 }
@@ -71,7 +71,7 @@ func (cli *CliService) SetNetworkConfig(ctx context.Context, cluster string, ope
 func (cli *CliService) GetNetworkConfigList(cluster string, operation int) (result [][]*cproto.CliValueMetric, err error) {
 	defer func() {
 		if err != nil {
-			log.LogErrorf("GetNetworkConfigList failed: cluster[%v] operation(%v) err(%v)", cluster, cproto.GetOpShortMsg(operation), err)
+			log.LogErrorf("GetNetworkConfigList failed: cluster[%v] operation(%v) err(%v)", cluster, cproto.GetOperationShortMsg(operation), err)
 		}
 	}()
 
@@ -114,14 +114,14 @@ func (cli *CliService) GetNetworkConfigList(cluster string, operation int) (resu
 		}
 
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 	return
 }
 
 func (cli *CliService) SetNetworkConfigList(ctx context.Context, cluster string, operation int, metrics [][]*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetNetworkConfigList: cluster[%v] operation(%v) metrics(%v) ", cluster, cproto.GetOpShortMsg(operation), metrics)
+		msg := fmt.Sprintf("SetNetworkConfigList: cluster[%v] operation(%v) metrics(%v) ", cluster, cproto.GetOperationShortMsg(operation), metrics)
 		if err != nil {
 			log.LogErrorf("%s err(%v)", msg, err)
 		} else {
@@ -216,7 +216,7 @@ func (cli *CliService) SetNetworkConfigList(ctx context.Context, cluster string,
 		goto setRateLimit
 
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 		return
 	}
 
@@ -224,7 +224,7 @@ setRateLimit:
 	for _, param := range params {
 		err = cli.api.SetRatelimitInfo(cluster, param)
 		if err != nil {
-			log.LogWarnf("SetNetworkConfigList: operation(%v) args(%v) err(%v)", cproto.GetOpShortMsg(operation), args, err)
+			log.LogWarnf("SetNetworkConfigList: operation(%v) args(%v) err(%v)", cproto.GetOperationShortMsg(operation), args, err)
 			continue
 		}
 	}

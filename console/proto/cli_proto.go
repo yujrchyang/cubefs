@@ -3,11 +3,6 @@ package proto
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
-	"math"
-	"reflect"
-	"strconv"
-	"strings"
 )
 
 const (
@@ -20,13 +15,8 @@ const (
 	EmptyZoneVolFlag = "_"
 )
 
-type CliModule struct {
-	ModuleType int
-	Module     string
-}
-
 var CliModuleList = []*CliModule{
-	ClusterModule, MetaNodeModule, DataNodeModule, EcModule,
+	ClusterModule, MetaNodeModule, DataNodeModule, FlashNodeModule, EcModule,
 	RateLimitModule, NetworkModule, VolumeModule, BatchModule, KeyValueModule, FileMigrateModule,
 }
 
@@ -56,6 +46,10 @@ var DataNodeModule = &CliModule{
 	ModuleType: DataNodeModuleType,
 	Module:     "datanode配置",
 }
+var FlashNodeModule = &CliModule{
+	ModuleType: FlashNodeModuleType,
+	Module:     "flashnode配置",
+}
 var EcModule = &CliModule{
 	ModuleType: EcModuleType,
 	Module:     "ec配置",
@@ -67,10 +61,6 @@ var RateLimitModule = &CliModule{
 var NetworkModule = &CliModule{
 	ModuleType: NetworkModuleType,
 	Module:     "网络超时配置",
-}
-var FlashNodeModule = &CliModule{
-	ModuleType: FlashNodeModuleType,
-	Module:     "flashnode配置",
 }
 var VolumeModule = &CliModule{
 	ModuleType: VolumeModuleType,
@@ -117,28 +107,6 @@ func GetModule(t int) string {
 	return ""
 }
 
-type CliOperation struct {
-	OpType         int // 在module下唯一即可
-	Short          string
-	Desc           string
-	IsList         int // setConfig or setConfigList
-	ReleaseSupport bool
-	SparkSupport   bool
-}
-
-func NewCliOperation(opcode int, displayMsg string, isList bool, releaseSupport, sparkSupport bool) *CliOperation {
-	cliOp := &CliOperation{
-		OpType:         opcode,
-		Short:          displayMsg,
-		ReleaseSupport: releaseSupport,
-		SparkSupport:   sparkSupport,
-	}
-	if isList {
-		cliOp.IsList = 1
-	}
-	return cliOp
-}
-
 const (
 	_                  = iota
 	OpSetClientPkgAddr = iota
@@ -150,6 +118,7 @@ const (
 	OpLogMaxMB
 	OpTopologyManager
 	OpSetClusterFreeze
+	OpSetClusterPersistMode
 	// metanode
 	OpSetThreshold
 	OpSetRocksDBDiskThreshold
@@ -178,6 +147,12 @@ const (
 	OpDataNodeDiskReservedRatio
 	OpDataNodeRepairTaskCount
 	OpDataNodeExtentRepairTask
+	OpDataNodeDisableBlacklist
+	OpDataNodeTrashKeepTime
+	OpBatchSetDataNodeSettings
+	// flashnode
+	OpFlashNodeReadTimeoutUs
+	OpFlashNodeDisableStack
 	//  限速
 	OpClientReadVolRateLimit
 	OpClientWriteVolRateLimit
@@ -212,6 +187,8 @@ const (
 	OpVolSetChildFileMaxCount
 	OpVolS3ActionRateLimit
 	OpVolClearTrash
+	// todo: 编辑卷 高可用类型 支持新的类型
+	OpSetVolumePersistMode
 	// 批量
 	OpBatchSetVolForceROW
 	OpBatchSetVolWriteCache
@@ -223,6 +200,7 @@ const (
 	OpBatchSetVolFollowerReadCfg
 	OpBatchSetVolReqRemoveDup
 	OpBatchSetJSSVolumeMetaTag
+	OpBatchSetVolPersistMode
 	// key-value 查数据库表
 	// 文件迁移
 	OpMigrationConfigList
@@ -236,6 +214,7 @@ const (
 
 var (
 	MigrationConfigList              = NewCliOperation(OpMigrationConfigList, "迁移配置列表", isList, !releaseSupport, sparkSupport)
+	BatchSetVolPersistMode           = NewCliOperation(OpBatchSetVolPersistMode, "vol属性-persist mode", isList, !releaseSupport, sparkSupport)
 	BatchSetVolReqRemoveDup          = NewCliOperation(OpBatchSetVolReqRemoveDup, "vol属性-元数据请求去重", isList, !releaseSupport, sparkSupport)
 	BatchSetJSSVolumeMetaTag         = NewCliOperation(OpBatchSetJSSVolumeMetaTag, "vol属性-jss卷元数据标记", isList, !releaseSupport, sparkSupport)
 	BatchSetVolFollowerReadCfg       = NewCliOperation(OpBatchSetVolFollowerReadCfg, "vol属性-从读配置", isList, !releaseSupport, sparkSupport)
@@ -262,6 +241,7 @@ var (
 	SetClusterFreeze                 = NewCliOperation(OpSetClusterFreeze, "设置cluster freeze", !isList, !releaseSupport, sparkSupport)
 	SetMonitorSummarySecond          = NewCliOperation(OpMonitorSummarySecond, "monitor 收集/上报间隔(s)", !isList, releaseSupport, sparkSupport)
 	SetLogMaxMB                      = NewCliOperation(OpLogMaxMB, "log文件最大size", !isList, !releaseSupport, sparkSupport)
+	SetClusterPersistMode            = NewCliOperation(OpSetClusterPersistMode, "设置persist mode", !isList, !releaseSupport, sparkSupport)
 	SetThreshold                     = NewCliOperation(OpSetThreshold, "设置metanode内存阈值", !isList, releaseSupport, sparkSupport)
 	SetRocksDBDiskThreshold          = NewCliOperation(OpSetRocksDBDiskThreshold, "设置metanode rocksdb磁盘阈值", !isList, !releaseSupport, sparkSupport)
 	SetMemModeRocksDBDiskThreshold   = NewCliOperation(OpSetMemModeRocksDBDiskThreshold, "设置mem模式metanode rocksdb磁盘阈值", !isList, !releaseSupport, sparkSupport)
@@ -286,12 +266,17 @@ var (
 	DataNodeDiskReservedRatio        = NewCliOperation(OpDataNodeDiskReservedRatio, "设置磁盘保留阈值", !isList, !releaseSupport, sparkSupport)
 	DataNodeRepairTaskCount          = NewCliOperation(OpDataNodeRepairTaskCount, "设置repair task count", !isList, releaseSupport, !sparkSupport)
 	DataNodeExtentRepairTask         = NewCliOperation(OpDataNodeExtentRepairTask, "设置extent修复任务", isList, !releaseSupport, sparkSupport)
+	DataNodeDisableBlacklist         = NewCliOperation(OpDataNodeDisableBlacklist, "禁用连接池黑名单", !isList, !releaseSupport, sparkSupport)
+	DataNodeTrashKeepTime            = NewCliOperation(OpDataNodeTrashKeepTime, "设置trash保留时间", !isList, !releaseSupport, sparkSupport)
+	BatchSetDataNodeSettings         = NewCliOperation(OpBatchSetDataNodeSettings, "节点-setSettings", isList, !releaseSupport, sparkSupport)
 	ClientReadVolRateLimit           = NewCliOperation(OpClientReadVolRateLimit, "客户端 vol读请求限速", isList, releaseSupport, sparkSupport)
 	ClientWriteVolRateLimit          = NewCliOperation(OpClientWriteVolRateLimit, "客户端 vol写请求限速", isList, releaseSupport, sparkSupport)
 	ClientVolOpRateLimit             = NewCliOperation(OpClientVolOpRateLimit, "客户端 vol请求op限速(除读写外)", isList, !releaseSupport, sparkSupport)
 	ObjectNodeActionRateLimit        = NewCliOperation(OpObjectNodeActionRateLimit, "S3 请求action限速", isList, !releaseSupport, sparkSupport)
 	FlashNodeZoneRate                = NewCliOperation(OpFlashNodeZoneRate, "flashnode 按zone限速", isList, !releaseSupport, sparkSupport)
 	FlashNodeVolRate                 = NewCliOperation(OpFlashNodeVolRate, "flashnode 按vol限速", isList, !releaseSupport, sparkSupport)
+	FlashNodeReadTimeoutUs           = NewCliOperation(OpFlashNodeReadTimeoutUs, "flashnode 读超时时间", !isList, !releaseSupport, sparkSupport)
+	FlashNodeDisableStack            = NewCliOperation(OpFlashNodeDisableStack, "flashnode 区间读", !isList, !releaseSupport, sparkSupport)
 	DatanodeRateLimit                = NewCliOperation(OpDatanodeRateLimit, "datanode ratelimit限速", isList, releaseSupport, sparkSupport)
 	MetanodeRateLimit                = NewCliOperation(OpMetanodeRateLimit, "metanode ratelimit限速", isList, releaseSupport, sparkSupport)
 	FlashnodeRateLimit               = NewCliOperation(OpFlashnodeRateLimit, "flashnode ratelimit限速", isList, !releaseSupport, sparkSupport)
@@ -310,6 +295,7 @@ var (
 	SetVolAuthentication             = NewCliOperation(OpSetVolAuthentication, "编辑卷-鉴权", !isList, !releaseSupport, sparkSupport)
 	SetVolMeta                       = NewCliOperation(OpSetVolMeta, "编辑卷-meta相关", !isList, !releaseSupport, sparkSupport)
 	SetVolumeConnConfig              = NewCliOperation(OpSetVolumeConnConfig, "编辑卷-connConfig", !isList, !releaseSupport, sparkSupport)
+	SetVolumePersistMode             = NewCliOperation(OpSetVolumePersistMode, "编辑卷-persist mode", !isList, !releaseSupport, sparkSupport)
 	ClearVolumeTrash                 = NewCliOperation(OpVolClearTrash, "清理回收站数据", !isList, !releaseSupport, sparkSupport)
 )
 
@@ -324,6 +310,7 @@ var CliOperationMap = map[int][]*CliOperation{
 		TopologyManager,
 		SetAutoMergeNodeSet,
 		SetClusterFreeze,
+		SetClusterPersistMode,
 	},
 	VolumeModuleType: {
 		SetVolume,
@@ -342,6 +329,7 @@ var CliOperationMap = map[int][]*CliOperation{
 		VolAddDpRelease,
 		VolSetChildFileMaxCount,
 		VolS3ActionRateLimit,
+		SetVolumePersistMode,
 		ClearVolumeTrash,
 	},
 	MetaNodeModuleType: {
@@ -370,8 +358,14 @@ var CliOperationMap = map[int][]*CliOperation{
 		DataNodeDiskReservedRatio,
 		DataNodeRepairTaskCount,
 		DataNodeExtentRepairTask,
+		DataNodeDisableBlacklist,
+		DataNodeTrashKeepTime,
+		BatchSetDataNodeSettings,
 	},
-	//FlashNodeModuleType: {},
+	FlashNodeModuleType: {
+		FlashNodeReadTimeoutUs,
+		FlashNodeDisableStack,
+	},
 	EcModuleType: {
 		SetEcConfig,
 	},
@@ -405,6 +399,7 @@ var CliOperationMap = map[int][]*CliOperation{
 		BatchSetVolFollowerReadCfg,
 		BatchSetVolReqRemoveDup,
 		BatchSetJSSVolumeMetaTag,
+		BatchSetVolPersistMode,
 	},
 	FileMigrateModuleType: {
 		MigrationConfigList,
@@ -451,6 +446,9 @@ var CliOperations = map[int][]CliValueMetric{
 	OpTopologyManager: {
 		CliValueMetric{proto.TopologyFetchIntervalMinKey, "topologyManager force fetch interval, unit: second", "", "", manualSetValueForm(InputBox), 0},
 		CliValueMetric{proto.TopologyForceFetchIntervalSecKey, "topology fetch interval, unit: min", "", "", manualSetValueForm(InputBox), 0},
+	},
+	OpSetClusterPersistMode: {
+		CliValueMetric{proto.PersistenceModeKey, "0-未指定, 1-WriteBack(写PageCache不强制落盘), 2:WriteThrough(写穿, 强制落盘)", "", "", manualSetValueForm(DropDown), 0},
 	},
 	OpSetThreshold: {
 		CliValueMetric{"threshold", "Set memory threshold of metanodes, 0.00~1.00", "", "", manualSetValueForm(InputBox), 0},
@@ -541,6 +539,19 @@ var CliOperations = map[int][]CliValueMetric{
 		CliValueMetric{"extentID", "", "extID，多个用-分隔", "", manualSetValueForm(InputBox), 0},
 		CliValueMetric{"host", "datanode节点地址，无需端口", "", "", manualSetValueForm(InputBox), 0},
 	},
+	OpDataNodeDisableBlacklist: {
+		CliValueMetric{"dataNodeDisableBlacklist", "是否禁用DataNode连接池开关", "", "", manualSetValueForm(Slider), 0},
+	},
+	OpDataNodeTrashKeepTime: {
+		CliValueMetric{"dataNodeTrashKeepTimeSec", "DataNode Trash保留时间(秒)(>=-1, -1表示关闭)", "", "", manualSetValueForm(InputBox), 0},
+	},
+	OpBatchSetDataNodeSettings: {
+		// 开关设置成string类型，可以区分出填了还是没填
+		CliValueMetric{"hosts", "节点地址(多个,分隔)", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"disableBlackList", "是否禁用黑名单(true/false)", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"disableAutoDeleteTrash", "是否禁用Trash自动删除(true/false)", "", "", manualSetValueForm(InputBox), 0},
+		CliValueMetric{"trashKeepTimeSec", "Trash保留时间(秒)(>=-1, -1表示关闭)", "", "", manualSetValueForm(InputBox), 0},
+	},
 	// modul(请求接口的时候别忘了) zone vol opcode rateLimitIndex rateLimit
 	OpDatanodeRateLimit: {
 		CliValueMetric{"zoneName", " acts as default", "", "", manualSetValueForm(DropDown), 1},
@@ -599,6 +610,12 @@ var CliOperations = map[int][]CliValueMetric{
 		CliValueMetric{"zoneName", "if zone is empty, set rate limit for all zones", "", "", manualSetValueForm(DropDown), 1},
 		CliValueMetric{"volume", "", "", "", manualSetValueForm(InputBox), 1},
 		CliValueMetric{proto.FlashNodeVolRateKey, "flash node cache read request rate limit for a volume", "", "", manualSetValueForm(InputBox), 0},
+	},
+	OpFlashNodeReadTimeoutUs: {
+		CliValueMetric{"flashNodeReadTimeoutUs", "读超时，单位us(>=500)", "", "", manualSetValueForm(InputBox), 0},
+	},
+	OpFlashNodeDisableStack: {
+		CliValueMetric{"flashNodeDisableStack", "禁用FlashNode区间读", "", "", manualSetValueForm(Slider), 0},
 	},
 	OpRemoteReadConnTimeoutMs: {
 		CliValueMetric{proto.RemoteReadConnTimeoutKey, "缓存客户端读超时时间(ms)", "", "", manualSetValueForm(InputBox), 0},
@@ -717,6 +734,9 @@ var CliOperations = map[int][]CliValueMetric{
 	OpVolClearTrash: {
 		CliValueMetric{"doCleanTrash", "是否清理回收站", "", "", manualSetValueForm(Slider), 0},
 	},
+	OpSetVolumePersistMode: {
+		CliValueMetric{proto.PersistenceModeKey, "0-未指定, 1-WriteBack(写PageCache不强制落盘), 2:WriteThrough(写穿, 强制落盘)", "", "", manualSetValueForm(DropDown), 0},
+	},
 	OpBatchSetVolForceROW: {
 		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
 		CliValueMetric{"forceROW", "", "", "", manualSetValueForm(Slider), 0},
@@ -763,6 +783,10 @@ var CliOperations = map[int][]CliValueMetric{
 		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 0},
 		CliValueMetric{proto.MetaOutKey, "对象存储vol元数据标志", "bool", "", manualSetValueForm(Slider), 0},
 	},
+	OpBatchSetVolPersistMode: {
+		CliValueMetric{"volume", "", "", "", manualSetValueForm(MultiSelect), 1},
+		CliValueMetric{proto.PersistenceModeKey, "vol持久化模式：0-未指定, 1-WriteBack(写PageCache不强制落盘), 2:WriteThrough(写穿, 强制落盘)", "", "", manualSetValueForm(DropDown), 0},
+	},
 	OpMigrationConfigList: {
 		CliValueMetric{"volume", "卷名(可多选)", "string", "", manualSetValueForm(MultiSelect), 1},
 		CliValueMetric{"smart", "是否开启冷热分离", "bool", "", manualSetValueForm(Slider), 0},
@@ -774,15 +798,7 @@ var CliOperations = map[int][]CliValueMetric{
 	},
 }
 
-func GetKeyValueBasicMetric() []*CliValueMetric {
-	baseMetric := make([]*CliValueMetric, 0)
-	keyMetric := &CliValueMetric{"key", "master接口支持的key，请依照提示类型输入value", "string", "", manualSetValueForm(DropDown), 0}
-	valueMetric := &CliValueMetric{"value", "", "string", "", manualSetValueForm(InputBox), 0}
-	baseMetric = append(baseMetric, keyMetric, valueMetric)
-	return baseMetric
-}
-
-func GetOpShortMsg(operationCode int) string {
+func GetOperationShortMsg(operationCode int) string {
 	switch operationCode {
 	case OpSetClientPkgAddr:
 		return SetClientPkgAddr.Short
@@ -794,6 +810,8 @@ func GetOpShortMsg(operationCode int) string {
 		return SetClusterFreeze.Short
 	case OpLogMaxMB:
 		return SetLogMaxMB.Short
+	case OpSetClusterPersistMode:
+		return SetClusterPersistMode.Short
 	case OpSetThreshold:
 		return SetThreshold.Short
 	case OpSetRocksDBDiskThreshold:
@@ -896,6 +914,12 @@ func GetOpShortMsg(operationCode int) string {
 		return DataNodeRepairTaskCount.Short
 	case OpDataNodeExtentRepairTask:
 		return DataNodeExtentRepairTask.Short
+	case OpDataNodeDisableBlacklist:
+		return DataNodeDisableBlacklist.Short
+	case OpDataNodeTrashKeepTime:
+		return DataNodeTrashKeepTime.Short
+	case OpBatchSetDataNodeSettings:
+		return BatchSetDataNodeSettings.Short
 	case OpSetVolMinRWPartition:
 		return SetVolMinRWPartition.Short
 	case OpSetVolumeConnConfig:
@@ -912,6 +936,8 @@ func GetOpShortMsg(operationCode int) string {
 		return VolS3ActionRateLimit.Short
 	case OpVolClearTrash:
 		return ClearVolumeTrash.Short
+	case OpSetVolumePersistMode:
+		return SetVolumePersistMode.Short
 	case OpTopologyManager:
 		return TopologyManager.Short
 	case OpBatchSetVolForceROW:
@@ -934,276 +960,17 @@ func GetOpShortMsg(operationCode int) string {
 		return BatchSetVolReqRemoveDup.Short
 	case OpBatchSetJSSVolumeMetaTag:
 		return BatchSetJSSVolumeMetaTag.Short
+	case OpBatchSetVolPersistMode:
+		return BatchSetVolPersistMode.Short
 	case OpMigrationConfigList:
 		return MigrationConfigList.Short
+	case OpFlashNodeReadTimeoutUs:
+		return FlashNodeReadTimeoutUs.Short
+	case OpFlashNodeDisableStack:
+		return FlashNodeDisableStack.Short
 	default:
 	}
 	return fmt.Sprintf("undefined operation:%v", operationCode)
-}
-
-func GetCliOperationBaseMetrics(operation int) []CliValueMetric {
-	return CliOperations[operation]
-}
-
-type CliValueConfigList struct {
-	Data  [][]*CliValueMetric
-	Total int
-}
-
-type CliValueMetric struct {
-	ValueName string `json:"name"`
-	ValueDesc string `json:"-"`
-	ValueType string `json:"type"`
-	Value     string `json:"value"`
-	ValueForm string `json:"-"`
-	IsFilter  int32  `json:"-" gql:"output"` // 该配置项能否作为过滤条件
-}
-
-func (metric *CliValueMetric) String() string {
-	if metric == nil {
-		return ""
-	}
-	return fmt.Sprintf("%s=%s", metric.ValueName, metric.Value)
-}
-
-func (metric *CliValueMetric) SetValueName(name string) {
-	metric.ValueName = name
-}
-
-func (metric *CliValueMetric) SetValueDesc(desc string) {
-	metric.ValueDesc = desc
-}
-
-func (metric *CliValueMetric) SetValueType(vtype string) {
-	metric.ValueType = vtype
-}
-
-func (metric *CliValueMetric) SetValue(v string) {
-	metric.Value = v
-}
-
-type valueForm int
-
-const (
-	Slider valueForm = iota
-	InputBox
-	DropDown
-	MultiSelect
-)
-
-func manualSetValueForm(form valueForm) string {
-	return strconv.Itoa(int(form))
-}
-
-func FormatOperationNilData(operation int, paramTypes ...string) []*CliValueMetric {
-	metrics := CliOperations[operation]
-	if len(paramTypes) != len(metrics) {
-		log.LogErrorf("FormatOperationNilData failed: op[%v] expect %v args but %v", GetOpShortMsg(operation), len(metrics), len(paramTypes))
-		return nil
-	}
-	result := make([]*CliValueMetric, 0, len(metrics))
-	for index, paramType := range paramTypes {
-		metric := metrics[index]
-		metric.SetValueType(paramType)
-
-		result = append(result, &metric)
-	}
-	log.LogDebugf("FormatOperationNilData: %v:%v metrics:%v", operation, GetOpShortMsg(operation), result)
-	return result
-}
-
-func FormatArgsToValueMetrics(operation int, args ...interface{}) []*CliValueMetric {
-	// args长度及顺序和op中metrics必须一一对应
-	metrics := CliOperations[operation]
-	if len(args) != len(metrics) {
-		log.LogErrorf("FormatArgsToValueMetrics failed: op[%v] expect %v args but %v", GetOpShortMsg(operation), len(metrics), len(args))
-		return nil
-	}
-	results := make([]*CliValueMetric, 0, len(args))
-	for index, arg := range args {
-		metric := metrics[index]
-
-		value := reflect.ValueOf(arg)
-		typeof := value.Type().String()
-		metric.SetValueType(typeof)
-
-		if strings.Contains(typeof, BasicTypeUintPrefix) {
-			metric.SetValue(strconv.FormatUint(value.Uint(), 10))
-		} else if strings.Contains(typeof, BasicTypeIntPrefix) {
-			metric.SetValue(strconv.FormatInt(value.Int(), 10))
-		}
-		if strings.Contains(typeof, BasicTypeFloatPrefix) {
-			metric.SetValue(strconv.FormatFloat(value.Float(), 'f', 2, 64))
-		}
-		if strings.Contains(typeof, BasicTypeBool) {
-			metric.SetValue(strconv.FormatBool(value.Bool()))
-		}
-		if strings.Contains(typeof, BasicTypeString) {
-			metric.SetValue(value.String())
-		}
-		results = append(results, &metric)
-	}
-	if log.IsDebugEnabled() {
-		log.LogDebugf("FormatArgsToValueMetrics: %v:%v, metrics:%v", operation, GetOpShortMsg(operation), results)
-	}
-	return results
-}
-
-func ParseValueMetricsToArgs(operation int, metrics []*CliValueMetric) (map[string]interface{}, error) {
-	if len(metrics) == 0 {
-		return nil, fmt.Errorf("empty metrics, operation: %v:%v", operation, GetOpShortMsg(operation))
-	}
-	expectArgsNum := len(CliOperations[operation])
-	if expectArgsNum == 0 {
-		return nil, fmt.Errorf("undefined operation code: %v:%v", operation, GetOpShortMsg(operation))
-	}
-	if len(metrics) != expectArgsNum {
-		return nil, fmt.Errorf("args count is inconsistent, except:actural= %v:%v, operation: %v:%v",
-			expectArgsNum, len(metrics), operation, GetOpShortMsg(operation))
-	}
-	args := make(map[string]interface{})
-	for _, metric := range metrics {
-		value := metric.Value
-		vType := metric.ValueType
-
-		var (
-			arg interface{}
-			err error
-		)
-		if strings.Contains(vType, BasicTypeUintPrefix) {
-			bitsLen := strings.TrimPrefix(vType, BasicTypeUintPrefix)
-			bits, _ := strconv.Atoi(bitsLen)
-			arg, err = strconv.ParseUint(value, 10, bits)
-		} else if strings.Contains(vType, BasicTypeIntPrefix) {
-			bitsLen := strings.TrimPrefix(vType, BasicTypeIntPrefix)
-			bits, _ := strconv.Atoi(bitsLen)
-			arg, err = strconv.ParseInt(value, 10, bits)
-		}
-		if strings.Contains(vType, BasicTypeFloatPrefix) {
-			bitsLen := strings.TrimPrefix(vType, BasicTypeFloatPrefix)
-			bits, _ := strconv.Atoi(bitsLen)
-			var f float64
-			f, err = strconv.ParseFloat(value, bits)
-			if err == nil {
-				arg = math.Trunc(math.Round(f*100)) / 100
-			}
-		}
-		if strings.Contains(vType, BasicTypeBool) {
-			arg, err = strconv.ParseBool(value)
-		}
-		if strings.Contains(vType, BasicTypeString) {
-			arg = value
-		}
-
-		if arg == nil || err != nil {
-			return nil, fmt.Errorf("ParseValueMetricsToArgs: parse arg failed: %v, args(%v) err(%v)", metric, arg, err)
-		}
-		args[metric.ValueName] = arg
-	}
-	log.LogInfof("ParseValueMetricsToArgs: %v:%v, args:%v", operation, GetOpShortMsg(operation), args)
-	return args, nil
-}
-
-func ParseValueMetricsToParams(operation int, metrics []*CliValueMetric) (params map[string]string, isEmpty bool, err error) {
-	if len(metrics) != len(CliOperations[operation]) {
-		err = fmt.Errorf("args count is inconsistent, except:%v actural:%v, operation:%v",
-			len(CliOperations[operation]), len(metrics), GetOpShortMsg(operation))
-		return
-	}
-	if checkEmptyMetric(metrics) {
-		isEmpty = true
-		return
-	}
-	params = make(map[string]string)
-	for _, metric := range metrics {
-		params[metric.ValueName] = metric.Value
-	}
-	return
-}
-
-func ParseKeyValueParams(operation int, metrics [][]*CliValueMetric) (params map[string]string, err error) {
-	params = make(map[string]string)
-	for _, metric := range metrics {
-		if checkKeyValueEmpty(metric) {
-			continue
-		}
-		var (
-			key   string
-			value string
-		)
-		for _, entry := range metric {
-			entry.ValueName = strings.TrimSpace(entry.ValueName)
-			entry.Value = strings.TrimSpace(entry.Value)
-			switch entry.ValueName {
-			case "key":
-				key = entry.Value
-			case "value":
-				value = entry.Value
-			}
-		}
-		params[key] = value
-	}
-	if len(params) == 0 {
-		return nil, fmt.Errorf("empty key-value list")
-	}
-	return params, nil
-}
-
-func checkKeyValueEmpty(metrics []*CliValueMetric) bool {
-	for _, metric := range metrics {
-		if metric.Value == "" {
-			return true
-		}
-	}
-	return false
-}
-
-func checkEmptyMetric(metrics []*CliValueMetric) bool {
-	for _, metric := range metrics {
-		if metric.Value != "" {
-			return false
-		}
-	}
-	return true
-}
-
-// 非批量模块支持批量的的value
-func IsMultiSelectValue(operation int) bool {
-	switch operation {
-	case OpClientReadVolRateLimit, OpClientWriteVolRateLimit:
-		return true
-	default:
-		return false
-	}
-}
-
-type CliOpMetric struct {
-	OpCode string
-	OpMsg  string
-}
-
-func NewCliOpMetric(code, msg string) *CliOpMetric {
-	return &CliOpMetric{
-		OpCode: code,
-		OpMsg:  msg,
-	}
-}
-
-type CliValueFilter struct {
-	Key   string
-	Value string
-}
-
-func FormatFiltersToMap(filters []*CliValueFilter) map[string]string {
-	result := make(map[string]string)
-	for _, filter := range filters {
-		filter.Value = strings.TrimSpace(filter.Value)
-		if filter.Value == "" {
-			continue
-		}
-		result[filter.Key] = filter.Value
-	}
-	return result
 }
 
 var MetaRatelimitOpList = []uint8{
@@ -1277,6 +1044,8 @@ var DataRatelimitOpList_ext = []int{
 	proto.OpFetchDataPartitionView_,
 	proto.OpFixIssueFragments_,
 	proto.OpPlaybackTinyDelete_,
+	proto.OpStreamFollowerReadSrcFlashNode_,
+	proto.OpRecoverTrashExtent_,
 }
 
 const (
@@ -1414,24 +1183,4 @@ func GetApiOpMsg(op uint8) string {
 	default:
 		return ""
 	}
-}
-
-type CliOperationHistory struct {
-	XbpTicketId     uint64
-	XbpUrl          string
-	Cluster         string
-	Module          string
-	Operation       string
-	Params          string // 鼠标悬浮显示
-	XbpStatus       string // 审批状态
-	OperationStatus int    // 执行结果
-	Pin             string
-	Message         string //执行失败的提示信息
-	CreateTime      string
-	UpdateTime      string
-}
-
-type CliOperationHistoryResponse struct {
-	Total   int
-	Records []*CliOperationHistory
 }

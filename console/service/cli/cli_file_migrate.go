@@ -11,7 +11,7 @@ import (
 
 func (cli *CliService) GetFileMigrateConfigList(cluster string, operation int) (result [][]*cproto.CliValueMetric, err error) {
 	defer func() {
-		msg := fmt.Sprintf("GetFileMigrateConfigList: cluster(%v) operation(%v)", cluster, cproto.GetOpShortMsg(operation))
+		msg := fmt.Sprintf("GetFileMigrateConfigList: cluster(%v) operation(%v)", cluster, cproto.GetOperationShortMsg(operation))
 		if err != nil {
 			log.LogErrorf("%v, err(%v)", msg, err)
 		}
@@ -22,14 +22,14 @@ func (cli *CliService) GetFileMigrateConfigList(cluster string, operation int) (
 	case cproto.OpMigrationConfigList:
 		return cli.getMigrateConfigList(cluster, operation)
 	default:
-		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOpShortMsg(operation))
+		err = fmt.Errorf("undefined operation code: %v:%v", operation, cproto.GetOperationShortMsg(operation))
 	}
 	return
 }
 
 func (cli *CliService) SetFileMigrateConfigList(ctx context.Context, cluster string, operation int, metrics [][]*cproto.CliValueMetric, skipXbp bool) (err error) {
 	defer func() {
-		msg := fmt.Sprintf("SetFileMigrateConfigList cluster(%v) operation(%v)", cluster, cproto.GetOpShortMsg(operation))
+		msg := fmt.Sprintf("SetFileMigrateConfigList cluster(%v) operation(%v)", cluster, cproto.GetOperationShortMsg(operation))
 		if err != nil {
 			log.LogErrorf("%v err(%v)", msg, err)
 		} else {
