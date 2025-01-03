@@ -35,7 +35,8 @@ const (
 	MaxSelectDataPartitionForWrite = 32
 	MaxNewHandlerRetry             = 4
 	MaxUsePreHandlerRetry          = 1
-	MaxPacketErrorCount            = 32
+	MaxPacketErrorCount            = 64
+	MaxPacketCheckTimeoutCount	   = 16
 	MaxDirtyListLen                = 0
 )
 
@@ -463,16 +464,14 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 }
 
 func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool, enableOverwrite bool) (writeSize int, isROW bool, err error) {
-	if s.client.dataWrapper.VolNotExists() {
-		return 0, false, proto.ErrVolNotExists
-	}
 	var errmsg string
 	tryCount := 0
 	start := time.Now()
+	alarmInterval := 10 * time.Second
 	for {
 		tryCount++
-		if tryCount%100 == 0 {
-			log.LogWarnf("doOverWriteOrROW failed: try (%v)th times, ctx(%v) ino(%v) req(%v)", tryCount, ctx.Value((proto.ContextReq)), s.inode, req)
+		if s.client.dataWrapper.VolNotExists() {
+			return 0, false, proto.ErrVolNotExists
 		}
 		if enableOverwrite && req.ExtentKey != nil {
 			if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
@@ -484,14 +483,19 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 			isROW = true
 			break
 		}
-		log.LogWarnf("doOverWriteOrROW failed: ctx(%v) ino(%v) err(%v) req(%v)", ctx.Value(proto.ContextReq), s.inode, err, req)
+		retryCost := time.Since(start)
+		log.LogWarnf("doOverWriteOrROW failed: ctx(%v) ino(%v) err(%v) req(%v) tryCount(%v) in (%v)", ctx.Value(proto.ContextReq), s.inode, err, req, tryCount, retryCost)
 		if err == syscall.ENOENT {
 			break
 		}
-		errmsg = fmt.Sprintf("doOverWriteOrROW err(%v) ctx(%v) inode(%v) req(%v) try count(%v)", err, ctx.Value(proto.ContextReq), s.inode, req, tryCount)
-		common.HandleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
-		if time.Since(start) > StreamRetryTimeout {
-			log.LogWarnf("doOverWriteOrROW timeout: ctx(%v) ino(%v) err(%v) req(%v)", ctx.Value(proto.ContextReq), s.inode, err, req)
+		if retryCost >= alarmInterval {
+			errmsg = fmt.Sprintf("err(%v) ctx(%v) inode(%v) req(%v) try count(%v) in (%v)", err, ctx.Value(proto.ContextReq), s.inode, req, tryCount, retryCost)
+			common.HandleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
+			alarmInterval += retryCost + 10 * time.Second
+		}
+		writeRetryTime := atomic.LoadInt64(&s.client.dataWrapper.writeRetryTimeSec)
+		if writeRetryTime > 0 && retryCost >= time.Duration(writeRetryTime) * time.Second {
+			log.LogWarnf("doOverWriteOrROW failed: retry timeout-(%v)s ctx(%v) ino(%v) err(%v) req(%v)", writeRetryTime, ctx.Value(proto.ContextReq), s.inode, err, req)
 			break
 		}
 		time.Sleep(1 * time.Second)

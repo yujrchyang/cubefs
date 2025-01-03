@@ -120,6 +120,7 @@ type MetaWrapper struct {
 	ac              *authSDK.AuthClient
 	conns           *connpool.ConnectPool
 	connConfig      *proto.ConnConfig
+	retryTimeSec	int64
 
 	volNotExistCount  int32
 	crossRegionHAType proto.CrossRegionHAType
@@ -575,6 +576,15 @@ func (mw *MetaWrapper) VolNotExists() bool {
 		return true
 	}
 	return false
+}
+
+func (mw *MetaWrapper) SetRetryTimeSec(newRetryTimeSec int64) {
+	if newRetryTimeSec <= 0 {
+		newRetryTimeSec = DefaultRetryTimeSec
+	}
+	if atomic.LoadInt64(&mw.retryTimeSec) != newRetryTimeSec {
+		atomic.StoreInt64(&mw.retryTimeSec, newRetryTimeSec)
+	}
 }
 
 func (mw *MetaWrapper) SetClientID() {

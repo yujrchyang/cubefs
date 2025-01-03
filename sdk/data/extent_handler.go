@@ -346,7 +346,7 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 
 	var errmsg string
 	status := eh.getStatus()
-	if status >= ExtentStatusError {
+	if status >= ExtentStatusError || eh.stream.client.dataWrapper.VolNotExists() {
 		eh.discardPacket(packet)
 		log.LogErrorf("processReply discard packet: handler is in error status, inflight(%v) eh(%v) packet(%v)", atomic.LoadInt32(&eh.inflight), eh, packet)
 		return
@@ -370,7 +370,7 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 		metric.Set(err)
 	}()
 	cost := time.Since(start)
-	if cost > time.Second*proto.MaxPacketProcessTime {
+	if packet.ErrCount < MaxPacketCheckTimeoutCount && cost > time.Second*proto.MaxPacketProcessTime {
 		errmsg = fmt.Sprintf("processReply: time-out(%v) before recieve, costFromStart(%v), costFromSend(%v) "+
 			"packet(%v)", time.Second*proto.MaxPacketProcessTime, cost, time.Since(time.Unix(0, packet.SendT)), packet)
 		eh.processReplyError(packet, errmsg)
@@ -600,15 +600,20 @@ func (eh *ExtentHandler) waitForFlush(ctx context.Context) {
 
 func (eh *ExtentHandler) recoverPacket(packet *common.Packet, errmsg string) error {
 	packet.ErrCount++
-	if packet.ErrCount%50 == 0 {
-		log.LogWarnf("recoverPacket: try (%v)th times because of failing to write to extent, eh(%v) packet(%v)", packet.ErrCount, eh, packet)
-		umpMsg := fmt.Sprintf("append write recoverPacket err(%v) eh(%v) packet(%v) try count(%v)", errmsg, eh, packet, packet.ErrCount)
-		common.HandleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "recoverPacket", umpMsg)
-		time.Sleep(1 * time.Second)
+	if packet.RetryTimestamp == 0 {
+		packet.RetryTimestamp = time.Now().Unix()
 	}
-
-	if packet.ErrCount >= MaxPacketErrorCount {
-		return errors.New(fmt.Sprintf("recoverPacket failed: reach max error limit, eh(%v) packet(%v)", eh, packet))
+	retryCost := time.Now().Unix() - packet.RetryTimestamp
+	if packet.ErrCount % MaxPacketCheckTimeoutCount == 0 {
+		log.LogWarnf("recoverPacket: try (%v) times in (%v)s because of failing to write to extent, eh(%v) packet(%v)",
+			packet.ErrCount, retryCost, eh, packet)
+		umpMsg := fmt.Sprintf("append write err(%v) eh(%v) packet(%v) try count(%v)", errmsg, eh, packet, packet.ErrCount)
+		common.HandleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "recoverPacket", umpMsg)
+		time.Sleep(time.Duration(packet.ErrCount/MaxPacketCheckTimeoutCount) * time.Second)
+	}
+	writeRetryTime := atomic.LoadInt64(&eh.stream.client.dataWrapper.writeRetryTimeSec)
+	if packet.ErrCount > MaxPacketErrorCount && writeRetryTime > 0 && retryCost >= writeRetryTime {
+		return fmt.Errorf("recoverPacket failed: reach max retry time-(%v)s, eh(%v) packet(%v)", retryCost, eh, packet)
 	}
 
 	handler := eh.recoverHandler
@@ -668,17 +673,22 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 
 	loopCount := 0
 	start := time.Now()
+	alarmInterval := 10 * time.Second
 
 	// loop for creating extent until successfully
 	for {
 		loopCount++
-		if loopCount%50 == 0 {
-			log.LogWarnf("allocateExtent: err(%v) try (%v)th times because of failing to create extent, eh(%v)", err, loopCount, eh)
-			umpMsg := fmt.Sprintf("create extent failed(%v), eh(%v), try count(%v)", err, eh, loopCount)
-			common.HandleUmpAlarm(eh.dataWrapper.clusterName, eh.dataWrapper.volName, "allocateExtent", umpMsg)
+		retryCost := time.Since(start)
+		if retryCost >= alarmInterval {
+			log.LogWarnf("allocateExtent: err(%v) retry (%v) times in (%v) because of failing to create extent, eh(%v)",
+				err, loopCount, retryCost, eh)
+			umpMsg := fmt.Sprintf("create extent failed(%v), eh(%v), try count(%v) in (%v)", err, eh, loopCount, retryCost)
+			common.HandleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "allocateExtent", umpMsg)
+			alarmInterval += retryCost + 10 * time.Second
 		}
-		if time.Since(start) > StreamRetryTimeout {
-			log.LogWarnf("allocateExtent failed: retry (%v)th times err(%v) eh(%v)", loopCount, err, eh)
+		writeRetryTime := atomic.LoadInt64(&eh.stream.client.dataWrapper.writeRetryTimeSec)
+		if eh.stream.client.dataWrapper.VolNotExists() || (loopCount > MaxPacketErrorCount && writeRetryTime > 0 && retryCost >= time.Duration(writeRetryTime) * time.Second) {
+			log.LogWarnf("allocateExtent failed: retry (%v)th timeout-(%v)s err(%v) eh(%v)", loopCount, writeRetryTime, err, eh)
 			break
 		}
 
@@ -712,7 +722,7 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 		return nil
 	}
 
-	log.LogWarnf("allocateExtent failed: hit max retry time(%v) err(%v) eh(%v)", StreamRetryTimeout, err, eh)
+	log.LogWarnf("allocateExtent failed: hit max retry time-(%v)s err(%v) eh(%v)", time.Since(start), err, eh)
 	errmsg := fmt.Sprintf("allocateExtent failed: hit max retry time")
 	if err != nil {
 		err = errors.Trace(err, errmsg)

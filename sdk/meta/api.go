@@ -1224,9 +1224,9 @@ func (mw *MetaWrapper) InodeMergeExtents_ll(ctx context.Context, ino uint64, old
 	return mw.mergeInodeExtents(ctx, mp, ino, oldEks, newEks, mergeType)
 }
 
-func (mw *MetaWrapper) getTargetHosts(ctx context.Context, mp *MetaPartition, members []string, judgeErrNum int) (targetHosts []string, isErr bool) {
-	log.LogDebugf("getTargetHosts because of no leader: mp[%v] members[%v] judgeErrNum[%v]", mp, members, judgeErrNum)
-	appliedIDslice := make(map[string]uint64, len(members))
+func (mw *MetaWrapper) getTargetHosts(ctx context.Context, mp *MetaPartition, members, recorders []string, judgeErrNum int) (targetHosts []string, isErr bool) {
+	log.LogDebugf("getTargetHosts because of no leader: mp[%v] members[%v] recorders[%v] judgeErrNum[%v]", mp, members, recorders, judgeErrNum)
+	appliedIDslice := make(map[string]uint64, len(members)+len(recorders))
 	errSlice := make(map[string]bool)
 	isErr = false
 	var (
@@ -1234,31 +1234,44 @@ func (mw *MetaWrapper) getTargetHosts(ctx context.Context, mp *MetaPartition, me
 		lock         sync.Mutex
 		maxAppliedID uint64
 	)
+	getApplyIDFunc := func(curAddr string, isRecorder bool) {
+		appliedID, err := mw.getAppliedID(ctx, mp, curAddr, isRecorder)
+		ok := false
+		lock.Lock()
+		if err != nil {
+			errSlice[curAddr] = true
+		} else {
+			appliedIDslice[curAddr] = appliedID
+			ok = true
+		}
+		lock.Unlock()
+		log.LogDebugf("getTargetHosts: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, mp.PartitionID)
+	}
 	for _, addr := range members {
 		wg.Add(1)
 		go func(curAddr string) {
-			appliedID, err := mw.getAppliedID(ctx, mp, curAddr)
-			ok := false
-			lock.Lock()
-			if err != nil {
-				errSlice[curAddr] = true
-			} else {
-				appliedIDslice[curAddr] = appliedID
-				ok = true
-			}
-			lock.Unlock()
-			log.LogDebugf("getTargetHosts: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, mp.PartitionID)
+			getApplyIDFunc(curAddr, false)
+			wg.Done()
+		}(addr)
+	}
+	for _, addr := range recorders {
+		wg.Add(1)
+		go func(curAddr string) {
+			getApplyIDFunc(curAddr, true)
 			wg.Done()
 		}(addr)
 	}
 	wg.Wait()
 	if len(errSlice) >= judgeErrNum {
 		isErr = true
-		log.LogWarnf("getTargetHosts err: mp[%v], hosts[%v], appliedID[%v], judgeErrNum[%v]",
-			mp.PartitionID, members, appliedIDslice, judgeErrNum)
+		log.LogWarnf("getTargetHosts err: mp[%v], hosts[%v], recorders[%v], appliedID[%v], judgeErrNum[%v]",
+			mp.PartitionID, members, recorders, appliedIDslice, judgeErrNum)
 		return
 	}
-	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice)
+	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice, recorders)
+	if len(targetHosts) == 0 {
+		log.LogWarnf("mp[%v] no target hosts: applyIDMap[%v] recorders[%v]", mp.PartitionID, appliedIDslice, recorders)
+	}
 	log.LogDebugf("getTargetHosts: get max apply id[%v] from hosts[%v], pid[%v]", maxAppliedID, targetHosts, mp.PartitionID)
 	return targetHosts, isErr
 }
@@ -1285,7 +1298,7 @@ func contains(arr []string, element string) (ok bool) {
 	return
 }
 
-func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string, maxID uint64) {
+func getMaxApplyIDHosts(appliedIDslice map[string]uint64, recorders []string) (targetHosts []string, maxID uint64) {
 	maxID = uint64(0)
 	targetHosts = make([]string, 0)
 	for _, id := range appliedIDslice {
@@ -1294,7 +1307,7 @@ func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string,
 		}
 	}
 	for addr, id := range appliedIDslice {
-		if id == maxID {
+		if id == maxID && !contains(recorders, addr) {
 			targetHosts = append(targetHosts, addr)
 		}
 	}

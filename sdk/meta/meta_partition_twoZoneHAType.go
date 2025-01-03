@@ -18,7 +18,7 @@ func (mw *MetaWrapper) sendReadToNearHost(ctx context.Context, mp *MetaPartition
 		sortedHost = mp.Members
 	}
 	// 不允许转发，todo: leader会否报错
-	req.SetFollowerReadMetaPkt()
+	req.SetFollowerReadMetaPkt(len(mp.Recorders) > 0)
 
 	resp, _, err = mw.sendToHost(ctx, mp, req, sortedHost[0])
 	if err == nil && !resp.ShouldRetry() || err == proto.ErrVolNotExists {

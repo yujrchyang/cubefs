@@ -800,6 +800,8 @@ func (client *ExtentClient) updateConfig() {
 	}
 	client.dpTimeoutCntThreshold = limitInfo.DpTimeoutCntThreshold
 	client.dpConsistencyMode = limitInfo.DataPartitionConsistencyMode
+	client.dataWrapper.SetRetryTimeSec(limitInfo.ClientWriteRetryTimeSec, limitInfo.ClientReadRetryTimeSec)
+	client.metaWrapper.SetRetryTimeSec(limitInfo.ClientWriteRetryTimeSec)
 	log.LogInfof("updateConfig: vol(%v) limit(%v)", client.dataWrapper.volName, limitInfo)
 }
 

@@ -1057,10 +1057,22 @@ func (p *Packet) IsFollowerReadMetaPkt() bool {
 	return false
 }
 
-func (p *Packet) SetFollowerReadMetaPkt() {
-	p.ArgLen = 1
-	p.Arg = make([]byte, p.ArgLen)
-	p.Arg[0] = FollowerReadFlag
+func (p *Packet) SetFollowerReadMetaPkt(containsRecorder bool) {
+	if containsRecorder {
+		p.ArgLen = 2
+		p.Arg = make([]byte, p.ArgLen)
+		p.Arg[0] = FollowerReadFlag
+		p.Arg[1] = FollowerReadForwardFlag
+	} else {
+		p.ArgLen = 1
+		p.Arg = make([]byte, p.ArgLen)
+		p.Arg[0] = FollowerReadFlag
+	}
+}
+
+func (p *Packet) ClearArg() {
+	p.ArgLen = 0
+	p.Arg = make([]byte, 0)
 }
 
 func (p *Packet) IsForwardFollowerReadMetaPkt() bool {

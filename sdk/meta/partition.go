@@ -28,6 +28,7 @@ type MetaPartition struct {
 	End         uint64
 	Members     []string
 	Learners    []string
+	Recorders	[]string
 	LeaderAddr  proto.AtomicString
 	Status      int8
 
@@ -47,8 +48,8 @@ func (mp *MetaPartition) String() string {
 	if mp == nil {
 		return ""
 	}
-	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) Learners(%v) LeaderAddr(%v) Status(%v)",
-		mp.PartitionID, mp.Start, mp.End, mp.Members, mp.Learners, mp.GetLeaderAddr(), mp.Status)
+	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) Learners(%v) Recorders(%v) LeaderAddr(%v) Status(%v)",
+		mp.PartitionID, mp.Start, mp.End, mp.Members, mp.Learners, mp.Recorders, mp.GetLeaderAddr(), mp.Status)
 }
 
 func (mp *MetaPartition) GetLeaderAddr() string {

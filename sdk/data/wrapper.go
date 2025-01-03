@@ -100,6 +100,8 @@ type Wrapper struct {
 	volConnConfig     *proto.ConnConfig
 	zoneConnConfig    *proto.ConnConfig
 	clusterConnConfig *proto.ConnConfig
+	writeRetryTimeSec int64
+	readRetryTimeSec  int64
 
 	schedulerClient        *scheduler.SchedulerClient
 	dpMetricsReportDomain  string
@@ -179,6 +181,8 @@ func NewDataPartitionWrapper(volName string, masters []string, extentClientType 
 	w.partitions = new(sync.Map)
 	w.HostsStatus = make(map[string]hostStatus)
 	w.SetDefaultConnConfig()
+	w.writeRetryTimeSec = DefaultWriteRetryTimeSec
+	w.readRetryTimeSec = DefaultReadRetryTimeSec
 	w.dpMetricsReportConfig = &proto.DpMetricsReportConfig{
 		EnableReport:      false,
 		ReportIntervalSec: defaultMetricReportSec,
@@ -237,6 +241,8 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	w.partitions = new(sync.Map)
 	w.HostsStatus = make(map[string]hostStatus)
 	w.SetDefaultConnConfig()
+	w.writeRetryTimeSec = DefaultWriteRetryTimeSec
+	w.readRetryTimeSec = DefaultReadRetryTimeSec
 	w.dpMetricsReportConfig = &proto.DpMetricsReportConfig{
 		EnableReport:      false,
 		ReportIntervalSec: defaultMetricReportSec,
@@ -1240,6 +1246,25 @@ func (w *Wrapper) updateReadAheadConfig(readAheadMemMB, readAheadWindowMB int64)
 		w.readAheadController.updateWindowSize(readAheadWindowMB)
 	}
 	return
+}
+
+func (w *Wrapper) SetRetryTimeSec(newWriteRetrySec, newReadRetrySec int64) {
+	if newWriteRetrySec < MinWriteRetryTimeSec {
+		newWriteRetrySec = DefaultWriteRetryTimeSec
+	}
+	if newReadRetrySec <= 0 {
+		newReadRetrySec = DefaultReadRetryTimeSec
+	}
+	oldWriteRetryTimeSec := atomic.LoadInt64(&w.writeRetryTimeSec)
+	if oldWriteRetryTimeSec != newWriteRetrySec {
+		atomic.StoreInt64(&w.writeRetryTimeSec, newWriteRetrySec)
+		log.LogInfof("change writeRetryTimeSec from (%v)s to (%v)s", oldWriteRetryTimeSec, newWriteRetrySec)
+	}
+	oldReadRetryTimeSec := atomic.LoadInt64(&w.readRetryTimeSec)
+	if oldReadRetryTimeSec != newReadRetrySec {
+		atomic.StoreInt64(&w.readRetryTimeSec, newReadRetrySec)
+		log.LogInfof("change readRetryTimeSec from (%v)s to (%v)s", oldReadRetryTimeSec, newReadRetrySec)
+	}
 }
 
 func distanceFromLocal(b string) int {

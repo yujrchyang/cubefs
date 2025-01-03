@@ -1591,10 +1591,11 @@ func (mw *MetaWrapper) batchGetXAttr(ctx context.Context, mp *MetaPartition, ino
 	return resp.XAttrs, nil
 }
 
-func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr string) (appliedID uint64, err error) {
+func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr string, isRecorder bool) (appliedID uint64, err error) {
 
 	req := &proto.GetAppliedIDRequest{
 		PartitionId: mp.PartitionID,
+		IsRecorder: isRecorder,
 	}
 	packet := proto.NewPacketReqID(context.Background())
 	packet.Opcode = proto.OpMetaGetAppliedID

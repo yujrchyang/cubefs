@@ -727,6 +727,8 @@ type LimitInfo struct {
 	ZoneNetConnConfig        map[string]ConnConfig
 	FlashNodeLimitMap        map[string]uint64            //map[zone]
 	FlashNodeVolLimitMap     map[string]map[string]uint64 //map[zone]map[volume]
+	ClientWriteRetryTimeSec	 int64
+	ClientReadRetryTimeSec	 int64
 
 	ClientReqRecordsReservedCount int32
 	ClientReqRecordsReservedMin   int32

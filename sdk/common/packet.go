@@ -36,8 +36,9 @@ import (
 // Packet defines a wrapper of the packet in proto.
 type Packet struct {
 	proto.Packet
-	inode    uint64
-	ErrCount int
+	inode    		uint64
+	ErrCount 		int
+	RetryTimestamp	int64
 }
 
 func EncodeReplPacketArg(followers []string, quorum int) []byte {
@@ -313,6 +314,7 @@ func (p *Packet) Copy(allocateData bool) *Packet {
 	}
 	packet.SetCtx(p.Ctx())
 	packet.ErrCount = p.ErrCount
+	packet.RetryTimestamp = p.RetryTimestamp
 	return packet
 }
 

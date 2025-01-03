@@ -105,6 +105,7 @@ func (mw *MetaWrapper) saveVolView() *proto.VolView {
 			End:         mp.End,
 			Members:     mp.Members,
 			Learners:    mp.Learners,
+			Recorders:   mp.Recorders,
 			LeaderAddr:  mp.GetLeaderAddr(),
 			Status:      mp.Status,
 		}
@@ -185,6 +186,7 @@ func (mw *MetaWrapper) updateRanges(mps []*proto.MetaPartitionView, needNewRange
 			End:         mp.End,
 			Members:     mp.Members,
 			Learners:    mp.Learners,
+			Recorders:   mp.Recorders,
 			Status:      mp.Status,
 			LeaderAddr:  proto.NewAtomicString(mp.LeaderAddr),
 		}
