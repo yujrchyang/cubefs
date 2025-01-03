@@ -56,12 +56,14 @@ func (ns *NodeSettings) parse() (err error) {
 	// load switches
 	switches := make(map[string]bool)
 	bufSwitch := c.GetJsonObjectBytes("switchMap")
-	if err = json.Unmarshal(bufSwitch, &switches); err != nil {
-		return err
+	if len(bufSwitch) > 0 {
+		if err = json.Unmarshal(bufSwitch, &switches); err != nil {
+			return err
+		}
+		ns.SwitchMap = switches
 	}
-	ns.SwitchMap = switches
 
-	for m, s := range switches {
+	for m, s := range ns.SwitchMap {
 		err = ns.onSwitchChange(m, s)
 		if err != nil {
 			return err
