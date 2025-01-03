@@ -72,6 +72,7 @@ const (
 	SeqWriteCluster
 	ReadAheadMemMB
 	ReadAheadWindowMB
+	EnableMonitor
 
 	MaxMountOption
 )
@@ -84,6 +85,7 @@ const (
 	ObjectNodeDomain  = "objectNodeDomain"
 	MaxReadAhead      = 512 * 1024
 	ProfileAiPrefetch = "ai_prefetch"
+	Profile9N         = "9N"
 	MasterLBDomain    = "masterLBDomain"
 	MasterDomain      = "masterDomain"
 	MasterDefaultPort = "8868"
@@ -170,6 +172,7 @@ func InitMountOptions(opts []MountOption) {
 	opts[SeqWriteCluster] = NewMountOption("seqWriteCluster", "is sequential write cluster", false)
 	opts[ReadAheadMemMB] = NewMountOption("readAheadMemMB", "total memory usage size(MB) of read ahead", int64(0))
 	opts[ReadAheadWindowMB] = NewMountOption("readAheadWindowMB", "window size(MB) of read ahead", int64(0))
+	opts[EnableMonitor] = NewMountOption("enableMonitor", "client i/o operation report to monitor", false)
 }
 
 func ParseMountOptions(opts []MountOption, cfg *config.Config) {
@@ -321,6 +324,7 @@ type MountOptions struct {
 	NotCacheNode             bool
 	UseLastExtent            bool
 	SeqWriteCluster          bool
-	ReadAheadMemMB			 int64
-	ReadAheadWindowMB		 int64
+	ReadAheadMemMB           int64
+	ReadAheadWindowMB        int64
+	EnableMonitor            bool
 }

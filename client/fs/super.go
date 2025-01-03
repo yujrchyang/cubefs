@@ -140,8 +140,9 @@ func NewSuper(opt *proto.MountOptions, first_start bool, metaState *meta.MetaSta
 		OnPutIcache:         s.ic.Put,
 		MetaWrapper:         s.mw,
 		StreamerSegCount:    opt.StreamerSegCount,
-		ReadAheadMemMB:		 opt.ReadAheadMemMB,
-		ReadAheadWindowMB: 	 opt.ReadAheadWindowMB,
+		ReadAheadMemMB:      opt.ReadAheadMemMB,
+		ReadAheadWindowMB:   opt.ReadAheadWindowMB,
+		EnableMonitor:       opt.EnableMonitor,
 	}
 	if first_start {
 		s.ec, err = data.NewExtentClient(extentConfig, nil)
@@ -843,9 +844,9 @@ func (s *Super) SetReadAheadConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var (
-		memoryMB	int
-		windowMB 	int
-		err			error
+		memoryMB int
+		windowMB int
+		err      error
 	)
 	if memoryStr := r.FormValue("memMB"); memoryStr != "" {
 		memoryMB, err = strconv.Atoi(memoryStr)

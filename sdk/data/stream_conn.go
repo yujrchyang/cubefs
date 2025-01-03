@@ -78,6 +78,13 @@ func NewStreamConn(dp *DataPartition, follower bool) *StreamConn {
 		}
 	}
 
+	if dp.ClientWrapper.IsSameZoneReadHAType() {
+		return &StreamConn{
+			dp:       dp,
+			currAddr: dp.getSameZoneReadHost(),
+		}
+	}
+
 	if dp.ClientWrapper.NearRead() {
 		return &StreamConn{
 			dp:       dp,

@@ -29,6 +29,7 @@ import (
 
 	"github.com/cubefs/cubefs/proto"
 	authSDK "github.com/cubefs/cubefs/sdk/auth"
+	"github.com/cubefs/cubefs/sdk/common"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/auth"
 	"github.com/cubefs/cubefs/util/btree"
@@ -86,6 +87,7 @@ const (
 
 type RemoteCacheBloomFunc func() *bloom.BloomFilter
 type AsyncTaskErrorFunc func(err error)
+type EnableNearReadFunc func() bool
 
 func (f AsyncTaskErrorFunc) OnError(err error) {
 	if f != nil {
@@ -169,6 +171,9 @@ type MetaWrapper struct {
 
 	ClientID  uint64
 	StartTime int64
+	// consistent mode of two-zone HAType
+	MetaNearRead EnableNearReadFunc
+	HostsDelay   sync.Map // ip:port->ping time.Duration
 }
 
 type MetaState struct {
@@ -264,7 +269,6 @@ func NewMetaWrapper(config *MetaConfig) (*MetaWrapper, error) {
 
 	mw.wg.Add(2)
 	go mw.refresh()
-
 	go mw.startUpdateLimiterConfig()
 
 	return mw, nil
@@ -384,9 +388,9 @@ func (mw *MetaWrapper) Cluster() string {
 	return mw.cluster
 }
 
-//func (mw *MetaWrapper) WorkerAddr() string {
-//	return mw.localIP
-//}
+func (mw *MetaWrapper) LocalIP() string {
+	return mw.localIP
+}
 
 func (mw *MetaWrapper) startUpdateLimiterConfig() {
 	defer mw.wg.Done()
@@ -404,7 +408,7 @@ func (mw *MetaWrapper) startUpdateLimiterConfigWithRecover() (err error) {
 		if r := recover(); r != nil {
 			log.LogErrorf("refreshMetaLimitInfo panic: err(%v) stack(%v)", r, string(debug.Stack()))
 			msg := fmt.Sprintf("refreshMetaLimitInfo panic: err(%v)", r)
-			handleUmpAlarm(mw.cluster, mw.volname, "refreshMetaLimitInfo", msg)
+			common.HandleUmpAlarm(mw.cluster, mw.volname, "refreshMetaLimitInfo", msg)
 			err = errors.New(msg)
 		}
 	}()

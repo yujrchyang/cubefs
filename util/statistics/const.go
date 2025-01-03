@@ -9,6 +9,7 @@ const (
 	ModelMetaNode   = "metanode"
 	ModelObjectNode = "objectnode"
 	ModelFlashNode  = "flashnode"
+	ModelClient     = "client"
 )
 
 const (
@@ -16,11 +17,11 @@ const (
 	MonitorCollect = "/collect"
 
 	// Monitor Admin API
-	MonitorClusterSet 	= "/cluster/set"
-	MonitorClusterGet 	= "/cluster/get"
-	MonitorClusterAdd 	= "/cluster/add"
-	MonitorClusterDel	= "/cluster/del"
-	MonitorTopicSet 	= "/topic/set"
+	MonitorClusterSet = "/cluster/set"
+	MonitorClusterGet = "/cluster/get"
+	MonitorClusterAdd = "/cluster/add"
+	MonitorClusterDel = "/cluster/del"
+	MonitorTopicSet   = "/topic/set"
 )
 
 const (

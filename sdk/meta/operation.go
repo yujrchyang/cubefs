@@ -2583,7 +2583,7 @@ func (mw *MetaWrapper) iteratePartitions(operateFunc operatePartitionFunc) bool 
 	}
 
 	maxRetry := 10
-	partitions = mw.getPartitions()
+	partitions = mw.GetPartitions()
 	length = len(partitions)
 	for i := 0; i < length; i++ {
 		if i >= maxRetry {

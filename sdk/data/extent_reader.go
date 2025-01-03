@@ -50,7 +50,7 @@ func (er *ExtentReader) String() (m string) {
 		er.key.Marshal())
 }
 
-func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
+func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
 	offset := int(req.FileOffset) - int(er.key.FileOffset) + int(er.key.ExtentOffset)
 	size := req.Size
 
@@ -58,7 +58,7 @@ func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest
 
 	log.LogDebugf("grep : size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
-	readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
+	sc, readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
 
 	if err != nil {
 		log.LogWarnf("ExtentReader EcTinyExtentRead: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
@@ -69,17 +69,16 @@ func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest
 }
 
 // Read reads the extent request.
-func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
+func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
 	offset := int(req.FileOffset - er.key.FileOffset + er.key.ExtentOffset)
 	reqPacket := common.NewReadPacket(ctx, er.key, offset, req.Size, er.inode, req.FileOffset, er.followerRead)
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", req.Size, req, reqPacket)
-	readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
+	sc, readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
 	log.LogDebugf("ExtentReader Read exit: req(%v) reqPacket(%v) readBytes(%v) err(%v)", req, reqPacket, readBytes, err)
 	return
 }
 
-func (er *ExtentReader) read(dp *DataPartition, reqPacket *common.Packet, req *ExtentRequest, followerRead bool) (readBytes int, err error) {
-	var sc *StreamConn
+func (er *ExtentReader) read(dp *DataPartition, reqPacket *common.Packet, req *ExtentRequest, followerRead bool) (sc *StreamConn, readBytes int, err error) {
 	if dp.canEcRead() {
 		reqPacket.Opcode = proto.OpStreamEcRead
 		if sc, readBytes, err = dp.EcRead(reqPacket, req); err == nil {
@@ -99,7 +98,7 @@ func (er *ExtentReader) read(dp *DataPartition, reqPacket *common.Packet, req *E
 	}
 	if err != nil {
 		log.LogWarnf("ExtentReader read failed: ctx(%v) ino(%v) reqPacket(%v) req(%v) followerRead(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), er.inode, reqPacket, req, followerRead, err)
-		return readBytes, err
+		return sc, readBytes, err
 	}
 	return
 }

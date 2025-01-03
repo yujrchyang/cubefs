@@ -33,10 +33,11 @@ type DataPartitionSelector interface {
 	Name() string
 
 	// Refresh refreshes current selector instance by specified data partitions.
-	Refresh(partitions []*DataPartition) error
+	// sameZoneIndex is the len of sameZoneDps which ranked at front of partitions
+	Refresh(partitions []*DataPartition, sameZoneIndex int) error
 
 	// Select returns a data partition picked by selector.
-	Select() (*DataPartition, error)
+	Select(sameZone bool) (*DataPartition, error)
 
 	// RemoveDpForWrite removes specified data partition.
 	RemoveDpForWrite(partitionID uint64)
@@ -185,7 +186,7 @@ func (w *Wrapper) initDpSelector() (err error) {
 	return
 }
 
-func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
+func (w *Wrapper) refreshDpSelector(partitions []*DataPartition, sameZoneIndex int) {
 	w.RLock()
 	dpSelector := w.dpSelector
 	dpSelectorChanged := w.dpSelectorChanged
@@ -207,7 +208,7 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 				" use last valid selector. Please change dpSelector config through master.",
 				w.dpSelectorName, w.dpSelectorParm, w.quorum, err)
 		} else {
-			_ = newDpSelector.Refresh(partitions)
+			_ = newDpSelector.Refresh(partitions, sameZoneIndex)
 			w.Lock()
 			log.LogInfof("refreshDpSelector: change dpSelector to [%v %v %v]", w.dpSelectorName, w.dpSelectorParm, w.quorum)
 			w.dpSelector = newDpSelector
@@ -217,7 +218,7 @@ func (w *Wrapper) refreshDpSelector(partitions []*DataPartition) {
 		}
 	}
 
-	_ = dpSelector.Refresh(partitions)
+	_ = dpSelector.Refresh(partitions, sameZoneIndex)
 }
 
 // getDpForWrite returns an available data partition for write.
@@ -226,7 +227,7 @@ func (w *Wrapper) getDpForWrite() (*DataPartition, error) {
 	dpSelector := w.dpSelector
 	w.RUnlock()
 
-	return dpSelector.Select()
+	return dpSelector.Select(w.IsSameZoneReadHAType())
 }
 
 func (w *Wrapper) removeDpForWrite(partitionID uint64) {

@@ -257,12 +257,16 @@ func (s *Streamer) readFromDataNode(ctx context.Context, requests []*ExtentReque
 		if req.ExtentKey == nil || req.ExtentKey.PartitionId == 0 {
 			continue
 		}
-		var readBytes int
 		reader, err = s.GetExtentReader(req.ExtentKey)
 		if err != nil {
 			break
 		}
-		readBytes, err = reader.Read(ctx, req)
+		var readBytes int
+		var sc *StreamConn
+		sc, readBytes, err = reader.Read(ctx, req)
+		if err == nil {
+			s.UpdateRead(sc.currAddr, uint64(readBytes))
+		}
 		if log.IsDebugEnabled() {
 			log.LogDebugf("Stream readFromDataNode: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
 		}

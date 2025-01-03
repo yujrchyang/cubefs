@@ -93,6 +93,12 @@ func newConfig() *Config {
 	return result
 }
 
+func NewConfig(key string, value interface{}) *Config {
+	cfg := newConfig()
+	cfg.data[key] = value
+	return cfg
+}
+
 // LoadConfigFile loads config information from a JSON file.
 func LoadConfigFile(filename string) (*Config, error) {
 	result := newConfig()

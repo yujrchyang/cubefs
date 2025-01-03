@@ -379,7 +379,7 @@ func TestWrite_DataConsistency(t *testing.T) {
 // Then ek1 will be replaced by ek2, all following ek insertion of extent1 because of usePreExtentHandler should be rejected.
 func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 	info, err := create("TestStreamer_UsePreExtentHandler_ROWByOtherClient")
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
 	length := 1024
@@ -394,7 +394,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 	}
 
 	_, ec1, err := creatExtentClient()
-	ec1.OpenStream(info.Inode, false)
+	ec1.OpenStream(info.Inode, false, false)
 	streamer1 := ec1.GetStreamer(info.Inode)
 	streamer1.tinySize = 0
 	requests, _ := streamer1.extents.PrepareRequests(0, length, data)
@@ -415,7 +415,7 @@ func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
 
 func TestHandler_Recover(t *testing.T) {
 	info, err := create("TestHandler_Recover")
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
 	length := 1024
@@ -454,7 +454,7 @@ func TestHandler_Recover(t *testing.T) {
 
 func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
 	info, err := create("TestHandler_AppendWriteBuffer_Recover")
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
 	length := 1024
@@ -480,7 +480,7 @@ func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
 // Handler should be closed in truncate operation, otherwise dirty ek which has been formerly truncated, will be inserted again.
 func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 	info, err := create("TestStreamer_Truncate_CloseHandler")
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
 	length := 1024
@@ -506,7 +506,7 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 // Handler should be closed in ROW operation, otherwise dirty ek which has been formerly removed, will be inserted again.
 func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	info, err := create("TestStreamer_ROW_CloseHandler")
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
 	length := 1024
@@ -533,7 +533,7 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 func TestStreamer_InitServer(t *testing.T) {
 	info, err := create("TestStreamer_InitServer")
 	inodeID := info.Inode
-	err = ec.OpenStream(inodeID, false)
+	err = ec.OpenStream(inodeID, false, false)
 	assert.Equal(t, nil, err, "open streamer")
 	var (
 		readSize, writeSize int
@@ -549,7 +549,7 @@ func TestStreamer_InitServer(t *testing.T) {
 	assert.Equal(t, writeSize, readSize, "read file size")
 	assert.Equal(t, false, hasHole, "hole of file")
 
-	err = ec.OpenStream(inodeID, false)
+	err = ec.OpenStream(inodeID, false, false)
 	assert.Equal(t, nil, err, "open streamer again")
 	err = ec.Truncate(ctx, inodeID, uint64(writeSize), 0)
 	assert.Equal(t, nil, err, "truncate streamer")

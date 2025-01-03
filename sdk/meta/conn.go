@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -33,6 +34,7 @@ const (
 
 	ReadConsistenceRetryLimit   = 50
 	ReadConsistenceRetryTimeout = 60 * time.Second
+	hostErrCountLimit           = 5
 )
 
 type MetaConn struct {
@@ -89,7 +91,7 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 		}
 		log.LogWarnf("sendWriteToMP: err(%v) resp(%v) req(%v) mp(%v) retry time(%v)", err, resp, req, mp, retryCount)
 		umpMsg := fmt.Sprintf("send write(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
-		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
+		common.HandleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
 		time.Sleep(SendRetryInterval)
 	}
 }
@@ -98,6 +100,10 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 	if err = mw.checkLimiter(ctx, req.Opcode); err != nil {
 		log.LogWarnf("sendReadToMP: check limit err(%v) req(%v)", err, req)
 		return
+	}
+
+	if mw.MetaNearRead() && mw.IsSameZoneReadHAType() {
+		return mw.sendReadToNearHost(ctx, mp, req)
 	}
 
 	addr := mp.GetLeaderAddr()
@@ -131,7 +137,7 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 		}
 		log.LogWarnf("sendReadToMP: err(%v) resp(%v) req(%v) mp(%v) retry time(%v)", err, resp, req, mp, retryCount)
 		umpMsg := fmt.Sprintf("send read(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
-		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
+		common.HandleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
 		time.Sleep(SendRetryInterval)
 	}
 }
@@ -147,15 +153,13 @@ func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPart
 	for i := 0; i < ReadConsistenceRetryLimit; i++ {
 		errMap = make(map[string]error)
 		if strongConsistency {
-			members := excludeLearner(mp)
+			members := ExcludeLearner(mp)
 			targetHosts, isErr = mw.getTargetHosts(ctx, mp, members, (len(members)+1)/2)
 		} else {
 			targetHosts, isErr = mw.getTargetHosts(ctx, mp, mp.Members, len(mp.Members)-1)
 		}
 		if !isErr && len(targetHosts) > 0 {
-			req.ArgLen = 1
-			req.Arg = make([]byte, req.ArgLen)
-			req.Arg[0] = proto.FollowerReadFlag
+			req.SetFollowerReadMetaPkt()
 			for _, host := range targetHosts {
 				resp, _, err = mw.sendToHost(ctx, mp, req, host)
 				if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {

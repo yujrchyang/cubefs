@@ -543,7 +543,7 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 	return
 }
 
-func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, direct bool) (dp *DataPartition,
+func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, direct bool) (conn *net.TCPConn, dp *DataPartition,
 	extID, total int, err error) {
 	defer func() {
 		if err != nil {
@@ -555,9 +555,6 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 		}
 	}()
 
-	var (
-		conn *net.TCPConn
-	)
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		dp, err = s.client.dataWrapper.getDpForWrite()
 		if err != nil {
@@ -650,12 +647,16 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 	// close handler in case of extent key overwriting in following append write
 	s.closeOpenHandler(ctx)
 
-	var dp *DataPartition
-	var extID int
-	dp, extID, total, err = s.writeToNewExtent(ctx, oriReq, direct)
+	var (
+		extID int
+		dp    *DataPartition
+		conn  *net.TCPConn
+	)
+	conn, dp, extID, total, err = s.writeToNewExtent(ctx, oriReq, direct)
 	if err != nil {
 		return
 	}
+	s.UpdateOverWrite(conn.RemoteAddr().String(), uint64(total))
 
 	newEK := &proto.ExtentKey{
 		FileOffset:  uint64(oriReq.FileOffset),
@@ -738,7 +739,9 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 
 		total += packSize
 	}
-
+	if err == nil {
+		s.UpdateOverWrite(sc.currAddr, uint64(total))
+	}
 	return
 }
 

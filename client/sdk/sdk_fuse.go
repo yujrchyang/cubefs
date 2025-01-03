@@ -610,6 +610,11 @@ func parseMountOption(cfg *config.Config) (*proto.MountOptions, error) {
 			opt.LookupValid = 300
 		}
 	}
+	if opt.Profile == proto.Profile9N {
+		if !GlobalMountOptions[proto.EnableMonitor].HasConfig() {
+			opt.EnableMonitor = true
+		}
+	}
 	if opt.PrefetchThread > 0 {
 		if opt.PrefetchThread > MaxPreFetchThreadCount {
 			opt.PrefetchThread = MaxPreFetchThreadCount

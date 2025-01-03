@@ -1057,6 +1057,12 @@ func (p *Packet) IsFollowerReadMetaPkt() bool {
 	return false
 }
 
+func (p *Packet) SetFollowerReadMetaPkt() {
+	p.ArgLen = 1
+	p.Arg = make([]byte, p.ArgLen)
+	p.Arg[0] = FollowerReadFlag
+}
+
 func (p *Packet) IsForwardFollowerReadMetaPkt() bool {
 	if p.ArgLen >= 2 && p.Arg[0] == FollowerReadFlag && p.Arg[1] == FollowerReadForwardFlag {
 		return true

@@ -27,9 +27,9 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/multipart"
 )
@@ -172,7 +172,7 @@ func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name stri
 		}
 		log.LogWarnf("Create_ll: create inode failed, vol(%v) err(%v) status(%v) parentID(%v) name(%v) retry time(%v)", mw.volname, err, status, parentID, name, retryCount)
 		umpMsg := fmt.Sprintf("CreateInode err(%v) status(%v) parentID(%v) name(%v) retry time(%v)", err, status, parentID, name, retryCount)
-		handleUmpAlarm(mw.cluster, mw.volname, "CreateInode", umpMsg)
+		common.HandleUmpAlarm(mw.cluster, mw.volname, "CreateInode", umpMsg)
 		time.Sleep(SendRetryInterval)
 	}
 
@@ -1039,7 +1039,7 @@ func (mw *MetaWrapper) RemoveMultipart_ll(ctx context.Context, path, multipartID
 
 func (mw *MetaWrapper) broadcastGetMultipart(ctx context.Context, path, multipartId string) (info *proto.MultipartInfo, mpID uint64, err error) {
 	log.LogInfof("broadcastGetMultipart: find meta partition broadcast multipartId(%v)", multipartId)
-	partitions := mw.getPartitions()
+	partitions := mw.GetPartitions()
 	var (
 		mp *MetaPartition
 	)
@@ -1074,7 +1074,7 @@ func (mw *MetaWrapper) broadcastGetMultipart(ctx context.Context, path, multipar
 }
 
 func (mw *MetaWrapper) ListMultipart_ll(ctx context.Context, prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (sessionResponse []*proto.MultipartInfo, err error) {
-	partitions := mw.getPartitions()
+	partitions := mw.GetPartitions()
 	var wg = sync.WaitGroup{}
 	var wl = sync.Mutex{}
 	var sessions = make([]*proto.MultipartInfo, 0)
@@ -1263,7 +1263,7 @@ func (mw *MetaWrapper) getTargetHosts(ctx context.Context, mp *MetaPartition, me
 	return targetHosts, isErr
 }
 
-func excludeLearner(mp *MetaPartition) (members []string) {
+func ExcludeLearner(mp *MetaPartition) (members []string) {
 	members = make([]string, 0)
 	for _, host := range mp.Members {
 		if !contains(mp.Learners, host) {
@@ -1271,6 +1271,18 @@ func excludeLearner(mp *MetaPartition) (members []string) {
 		}
 	}
 	return members
+}
+func contains(arr []string, element string) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
+		}
+	}
+	return
 }
 
 func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string, maxID uint64) {
@@ -1284,30 +1296,6 @@ func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string,
 	for addr, id := range appliedIDslice {
 		if id == maxID {
 			targetHosts = append(targetHosts, addr)
-		}
-	}
-	return
-}
-
-func handleUmpAlarm(cluster, vol, act, msg string) {
-	umpKeyCluster := fmt.Sprintf("%s_client_warning", cluster)
-	umpMsgCluster := fmt.Sprintf("volume(%s) %s", vol, msg)
-	exporter.WarningBySpecialUMPKey(umpKeyCluster, umpMsgCluster)
-
-	umpKeyVol := fmt.Sprintf("%s_%s_warning", cluster, vol)
-	umpMsgVol := fmt.Sprintf("act(%s) - %s", act, msg)
-	exporter.WarningBySpecialUMPKey(umpKeyVol, umpMsgVol)
-}
-
-func contains(arr []string, element string) (ok bool) {
-	if arr == nil || len(arr) == 0 {
-		return
-	}
-
-	for _, e := range arr {
-		if e == element {
-			ok = true
-			break
 		}
 	}
 	return

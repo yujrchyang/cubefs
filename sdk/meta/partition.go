@@ -17,8 +17,8 @@ package meta
 import (
 	"context"
 	"fmt"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/btree"
 )
 
@@ -30,6 +30,8 @@ type MetaPartition struct {
 	Learners    []string
 	LeaderAddr  proto.AtomicString
 	Status      int8
+
+	pingElapsedSortedHosts *common.PingElapsedSortedHosts
 }
 
 func (this *MetaPartition) Less(than btree.Item) bool {
@@ -61,8 +63,6 @@ func (mw *MetaWrapper) ClearRWPartitions() {
 }
 
 // Meta partition managements
-//
-
 func (mw *MetaWrapper) addPartition(mp *MetaPartition) {
 	mw.partitions[mp.PartitionID] = mp
 	mw.ranges.ReplaceOrInsert(mp)
@@ -141,7 +141,7 @@ func (mw *MetaWrapper) getUnavailPartitions() []*MetaPartition {
 	return tempPartitions
 }
 
-func (mw *MetaWrapper) getPartitions() []*MetaPartition {
+func (mw *MetaWrapper) GetPartitions() []*MetaPartition {
 	mw.RLock()
 	defer mw.RUnlock()
 	tempPartitions := make([]*MetaPartition, 0, len(mw.partitions))

@@ -425,6 +425,8 @@ func (eh *ExtentHandler) processReply(packet *common.Packet) {
 
 	eh.dp.RecordWrite(packet.StartT, false)
 
+	eh.stream.UpdateWrite(eh.conn.RemoteAddr().String(), uint64(packet.Size))
+
 	var (
 		extID, extOffset uint64
 	)
@@ -601,7 +603,7 @@ func (eh *ExtentHandler) recoverPacket(packet *common.Packet, errmsg string) err
 	if packet.ErrCount%50 == 0 {
 		log.LogWarnf("recoverPacket: try (%v)th times because of failing to write to extent, eh(%v) packet(%v)", packet.ErrCount, eh, packet)
 		umpMsg := fmt.Sprintf("append write recoverPacket err(%v) eh(%v) packet(%v) try count(%v)", errmsg, eh, packet, packet.ErrCount)
-		handleUmpAlarm(eh.dataWrapper.clusterName, eh.dataWrapper.volName, "recoverPacket", umpMsg)
+		common.HandleUmpAlarm(eh.stream.client.dataWrapper.clusterName, eh.stream.client.dataWrapper.volName, "recoverPacket", umpMsg)
 		time.Sleep(1 * time.Second)
 	}
 
@@ -673,7 +675,7 @@ func (eh *ExtentHandler) allocateExtent(ctx context.Context) (err error) {
 		if loopCount%50 == 0 {
 			log.LogWarnf("allocateExtent: err(%v) try (%v)th times because of failing to create extent, eh(%v)", err, loopCount, eh)
 			umpMsg := fmt.Sprintf("create extent failed(%v), eh(%v), try count(%v)", err, eh, loopCount)
-			handleUmpAlarm(eh.dataWrapper.clusterName, eh.dataWrapper.volName, "allocateExtent", umpMsg)
+			common.HandleUmpAlarm(eh.dataWrapper.clusterName, eh.dataWrapper.volName, "allocateExtent", umpMsg)
 		}
 		if time.Since(start) > StreamRetryTimeout {
 			log.LogWarnf("allocateExtent failed: retry (%v)th times err(%v) eh(%v)", loopCount, err, eh)
