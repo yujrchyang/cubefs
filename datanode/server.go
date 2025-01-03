@@ -50,8 +50,6 @@ import (
 	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/topology"
 	"github.com/cubefs/cubefs/util/unit"
-	"golang.org/x/net/context"
-	"golang.org/x/time/rate"
 )
 
 var (
@@ -357,6 +355,8 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	var limitInfo *proto.LimitInfo
 	limitInfo, err = MasterClient.AdminAPI().GetLimitInfo("")
 	if err == nil && limitInfo != nil {
+		s.space.SetConsistencyMode(limitInfo.DataPartitionConsistencyMode)
+		s.space.SetPersistenceMode(limitInfo.PersistenceMode)
 		s.space.SetDiskReservedRatio(limitInfo.DataNodeDiskReservedRatio)
 	}
 
@@ -658,9 +658,8 @@ const (
 )
 
 var (
-	nodeInfoStopC     = make(chan struct{}, 0)
-	deleteLimiteRater = rate.NewLimiter(rate.Inf, DefaultMarkDeleteLimitBurst)
-	logMaxSize        uint64
+	nodeInfoStopC = make(chan struct{}, 0)
+	logMaxSize    uint64
 )
 
 func (s *DataNode) startUpdateNodeInfo() {
@@ -687,29 +686,19 @@ func (s *DataNode) stopUpdateNodeInfo() {
 }
 
 func (s *DataNode) updateNodeBaseInfo() {
-	//todo: better using a light weighted interface
 	limitInfo, err := MasterClient.AdminAPI().GetLimitInfo("")
 	if err != nil {
 		log.LogWarnf("[updateNodeBaseInfo] get limit info err: %s", err.Error())
 		return
 	}
 
-	r := limitInfo.DataNodeDeleteLimitRate
-	l := rate.Limit(r)
-	if r == 0 {
-		l = rate.Inf
-	}
-	deleteLimiteRater.SetLimit(l)
-
-	var ss = &SpaceSetting{
-		FixTinyDeleteRecordLimitOnDisk: limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk,
-		FlushFDIntervalSecond:          limitInfo.DataNodeFlushFDInterval,
-		SyncWALOnUnstableEnableState:   limitInfo.DataSyncWALOnUnstableEnableState,
-		FlushFDParallelismOnDisk:       limitInfo.DataNodeFlushFDParallelismOnDisk,
-		ConsistencyMode:                limitInfo.DataPartitionConsistencyMode,
-		PersistenceMode:                limitInfo.PersistenceMode,
-	}
-	s.space.ApplySetting(ss)
+	s.space.SetDiskFixTinyDeleteRecordLimit(limitInfo.DataNodeFixTinyDeleteRecordLimitOnDisk)
+	s.space.SetForceFlushFDInterval(limitInfo.DataNodeFlushFDInterval)
+	s.space.SetSyncWALOnUnstableEnableState(limitInfo.DataSyncWALOnUnstableEnableState)
+	s.space.SetForceFlushFDParallelismOnDisk(limitInfo.DataNodeFlushFDParallelismOnDisk)
+	s.space.SetNormalExtentDeleteExpireTime(limitInfo.DataNodeNormalExtentDeleteExpire)
+	s.space.SetConsistencyMode(limitInfo.DataPartitionConsistencyMode)
+	s.space.SetPersistenceMode(limitInfo.PersistenceMode)
 
 	if statistics.StatisticsModule != nil {
 		statistics.StatisticsModule.UpdateMonitorSummaryTime(limitInfo.MonitorSummarySec)
@@ -732,10 +721,6 @@ func (s *DataNode) updateLogMaxSize(val uint64) {
 		log.SetLogMaxSize(int64(val))
 		log.LogInfof("updateLogMaxSize, logMaxSize(old:%v, new:%v)", oldLogMaxSize, logMaxSize)
 	}
-}
-
-func DeleteLimiterWait() {
-	deleteLimiteRater.Wait(context.Background())
 }
 
 func (s *DataNode) startUpdateProcessStatInfo() {

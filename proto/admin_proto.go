@@ -1549,6 +1549,31 @@ type RateLimitInfo struct {
 	DataNodeDiskReservedRatio        float64
 }
 
+type NodeInfo struct {
+	MetaNodeDeleteBatchCount    uint64
+	MetaNodeDeleteWorkerSleepMs uint64
+
+	DataNodeFixTinyDeleteRecordLimitOnDisk uint64
+	DataNodeDeleteLimitRate                uint64
+	DataNodeFlushFDIntervalSeconds         uint32
+	DataNodeFlushFDParallelismOnDisk       uint64
+	DataNodeNormalExtentDeleteExpire       uint64
+	DataNodeSyncWALOnUnstable              bool
+	DataNodeDiskReservedRatio              float64
+	DataPartitionConsistencyMode           ConsistencyMode
+
+	PersistenceMode PersistenceMode
+
+	// Statistic settings
+	MonitorSummarySec uint64
+	MonitorReportSec  uint64
+
+	LogMaxSize uint64
+
+	TopologyFetchIntervalMin      int64
+	TopologyForceFetchIntervalSec int64
+}
+
 type ConvertMode uint8
 
 func (c ConvertMode) String() string {

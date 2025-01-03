@@ -2812,27 +2812,21 @@ func (m *Server) getNodeInfoHandler(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewModuleTP(proto.AdminGetNodeInfoUmpKey)
 	defer func() { metrics.Set(nil) }()
 
-	type Info struct{
-		MetaNodeDeleteBatchCount         uint64
-		MetaNodeDeleteWorkerSleepMs      uint64
-		DataNodeDeleteLimitRate          uint64
-		DataNodeFlushFDIntervalSeconds   uint32
-		DataNodeFlushFDParallelismOnDisk uint64
-		DataNodeNormalExtentDeleteExpire uint64
-		DataPartitionConsistencyMode     proto.ConsistencyMode
-		PersistenceMode					 proto.PersistenceMode
-	}
-
-	var info = &Info{
-		MetaNodeDeleteBatchCount:         m.cluster.cfg.MetaNodeDeleteBatchCount,
-		MetaNodeDeleteWorkerSleepMs:      m.cluster.cfg.MetaNodeDeleteWorkerSleepMs,
-		DataNodeDeleteLimitRate:          m.cluster.cfg.DataNodeDeleteLimitRate,
-		DataNodeFlushFDIntervalSeconds:   m.cluster.cfg.DataNodeFlushFDInterval,
-		DataNodeFlushFDParallelismOnDisk: m.cluster.cfg.DataNodeFlushFDParallelismOnDisk,
-		DataNodeNormalExtentDeleteExpire: m.cluster.cfg.DataNodeNormalExtentDeleteExpire,
-		DataPartitionConsistencyMode:     proto.ConsistencyMode(m.cluster.cfg.DataPartitionConsistencyMode),
-		PersistenceMode: 				  proto.PersistenceMode(m.cluster.cfg.PersistenceMode),
-
+	var info = &proto.NodeInfo{
+		MetaNodeDeleteBatchCount:               m.cluster.cfg.MetaNodeDeleteBatchCount,
+		MetaNodeDeleteWorkerSleepMs:            m.cluster.cfg.MetaNodeDeleteWorkerSleepMs,
+		DataNodeFixTinyDeleteRecordLimitOnDisk: m.cluster.dnFixTinyDeleteRecordLimit,
+		DataNodeDeleteLimitRate:                m.cluster.cfg.DataNodeDeleteLimitRate,
+		DataNodeFlushFDIntervalSeconds:         m.cluster.cfg.DataNodeFlushFDInterval,
+		DataNodeFlushFDParallelismOnDisk:       m.cluster.cfg.DataNodeFlushFDParallelismOnDisk,
+		DataNodeNormalExtentDeleteExpire:       m.cluster.cfg.DataNodeNormalExtentDeleteExpire,
+		DataNodeSyncWALOnUnstable:              m.cluster.cfg.DataSyncWALOnUnstableEnableState,
+		DataNodeDiskReservedRatio:              m.cluster.cfg.DataNodeDiskReservedRatio,
+		DataPartitionConsistencyMode:           proto.ConsistencyMode(m.cluster.cfg.DataPartitionConsistencyMode),
+		PersistenceMode:                        proto.PersistenceMode(m.cluster.cfg.PersistenceMode),
+		MonitorReportSec:                       m.cluster.cfg.MonitorReportSec,
+		MonitorSummarySec:                      m.cluster.cfg.MonitorSummarySec,
+		LogMaxSize:                             m.cluster.cfg.LogMaxSize,
 	}
 
 	sendOkReply(w, r, newSuccessHTTPReply(info))

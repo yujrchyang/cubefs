@@ -17,10 +17,11 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/log"
 	"strings"
 	"sync/atomic"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 )
 
 func (c *Cluster) updateVolInfoResponseCache() (body []byte, err error) {
@@ -140,6 +141,7 @@ func (c *Cluster) buildLimitInfo(volName string) (cInfo *proto.LimitInfo) {
 	dataNodeFlushFDInterval := atomic.LoadUint32(&c.cfg.DataNodeFlushFDInterval)
 	dataNodeFlushFDParallelismOnDisk := atomic.LoadUint64(&c.cfg.DataNodeFlushFDParallelismOnDisk)
 	dataPartitionConsistencyMode := proto.ConsistencyModeFromInt32(atomic.LoadInt32(&c.cfg.DataPartitionConsistencyMode))
+	persistenceMode := proto.PersistenceMode(atomic.LoadInt32(&c.cfg.PersistenceMode))
 	monitorSummarySec := atomic.LoadUint64(&c.cfg.MonitorSummarySec)
 	monitorReportSec := atomic.LoadUint64(&c.cfg.MonitorReportSec)
 	metaRocksDBWalFileSize := atomic.LoadUint64(&c.cfg.MetaRockDBWalFileSize)
@@ -178,6 +180,7 @@ func (c *Cluster) buildLimitInfo(volName string) (cInfo *proto.LimitInfo) {
 		DataNodeFlushFDInterval:                dataNodeFlushFDInterval,
 		DataNodeFlushFDParallelismOnDisk:       dataNodeFlushFDParallelismOnDisk,
 		DataPartitionConsistencyMode:           dataPartitionConsistencyMode,
+		PersistenceMode:                        persistenceMode,
 		DataNodeNormalExtentDeleteExpire:       normalExtentDeleteExpireTime,
 		DataNodeRepairTaskCountZoneLimit:       c.cfg.DataNodeRepairTaskCountZoneLimit,
 		NetworkFlowRatio:                       c.cfg.NetworkFlowRatio,

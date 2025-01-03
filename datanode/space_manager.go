@@ -42,15 +42,6 @@ import (
 	"github.com/tiglabs/raft/util"
 )
 
-type SpaceSetting struct {
-	FixTinyDeleteRecordLimitOnDisk uint64
-	FlushFDIntervalSecond          uint32
-	FlushFDParallelismOnDisk       uint64
-	SyncWALOnUnstableEnableState   bool
-	ConsistencyMode                proto.ConsistencyMode
-	PersistenceMode                proto.PersistenceMode
-}
-
 // SpaceManager manages the disk space.
 type SpaceManager struct {
 	clusterID            string
@@ -68,11 +59,15 @@ type SpaceManager struct {
 	createPartitionMutex sync.RWMutex // 该锁用于控制Partition创建的并发，保证同一时间只处理一个Partition的创建操作
 
 	// Parallel task limits on disk
-	//fixTinyDeleteRecordLimitOnDisk uint64
-	topoManager       *topology.TopologyManager
-	diskReservedRatio *atomic2.Float64
+	fixTinyDeleteRecordLimitOnDisk uint64
+	normalExtentDeleteExpireTime   uint64
+	flushFDIntervalSec             uint32
+	flushFDParallelismOnDisk       uint64
+	topoManager                    *topology.TopologyManager
+	diskReservedRatio              *atomic2.Float64
 
-	setting *SpaceSetting
+	consistencyMode proto.ConsistencyMode
+	persistenceMode proto.PersistenceMode
 }
 
 // NewSpaceManager creates a new space manager.
@@ -422,6 +417,7 @@ func (manager *SpaceManager) CreatePartition(request *proto.CreateDataPartitionR
 		PartitionSize:   request.PartitionSize,
 		ReplicaNum:      request.ReplicaNum,
 		VolHAType:       request.VolumeHAType,
+		ConsistencyMode: manager.consistencyMode,
 		PersistenceMode: request.PersistenceMode,
 	}
 	dp = manager.Partition(dpCfg.PartitionID)
@@ -517,67 +513,44 @@ func (manager *SpaceManager) DeletePartitionFromCache(dpID uint64) {
 	dp.Disk().DetachDataPartition(dp)
 }
 
-func (manager *SpaceManager) ApplySetting(setting *SpaceSetting) {
-	if setting == nil {
+func (manager *SpaceManager) SetDiskFixTinyDeleteRecordLimit(newValue uint64) {
+	if newValue > 0 && manager.fixTinyDeleteRecordLimitOnDisk != newValue {
+		log.LogInfof("action[spaceManager] change DiskFixTinyDeleteRecordLimit from(%v) to(%v)", manager.fixTinyDeleteRecordLimitOnDisk, newValue)
+		manager.fixTinyDeleteRecordLimitOnDisk = newValue
+		manager.diskMutex.Lock()
+		for _, disk := range manager.disks {
+			disk.SetFixTinyDeleteRecordLimitOnDisk(newValue)
+		}
+		manager.diskMutex.Unlock()
+	}
+	return
+}
+
+func (manager *SpaceManager) SetForceFlushFDParallelismOnDisk(newValue uint64) {
+	if newValue == 0 {
+		newValue = DefaultForceFlushFDParallelismOnDisk
+	}
+	if newValue > 0 && manager.flushFDParallelismOnDisk != newValue {
+		log.LogInfof("change ForceFlushFDParallelismOnDisk from %v  to %v", manager.flushFDParallelismOnDisk, newValue)
+		manager.flushFDParallelismOnDisk = newValue
+		manager.diskMutex.Lock()
+		for _, disk := range manager.disks {
+			disk.SetForceFlushFDParallelism(newValue)
+		}
+		manager.diskMutex.Unlock()
+	}
+}
+
+func (manager *SpaceManager) SetConsistencyMode(mode proto.ConsistencyMode) {
+	if !mode.Valid() {
 		return
 	}
-	if setting.FixTinyDeleteRecordLimitOnDisk == 0 {
-		setting.FixTinyDeleteRecordLimitOnDisk = DefaultFixTinyDeleteRecordLimitOnDisk
+	manager.consistencyMode = mode
+	manager.partitionMutex.RLock()
+	for _, partition := range manager.partitions {
+		partition.SetConsistencyMode(mode)
 	}
-	if setting.FlushFDIntervalSecond != 0 {
-		setting.FlushFDIntervalSecond = DefaultForceFlushFDSecond
-	}
-	if setting.FlushFDParallelismOnDisk == 0 {
-		setting.FlushFDParallelismOnDisk = DefaultForceFlushFDParallelismOnDisk
-	}
-
-	prev := manager.setting
-	manager.setting = setting
-
-	if (prev == nil || prev.FixTinyDeleteRecordLimitOnDisk != setting.FixTinyDeleteRecordLimitOnDisk) && setting.FixTinyDeleteRecordLimitOnDisk > 0 {
-		manager.WalkDisks(func(disk *Disk) bool {
-			disk.SetFixTinyDeleteRecordLimitOnDisk(setting.FixTinyDeleteRecordLimitOnDisk)
-			return true
-		})
-		log.LogInfof("SPCMGR: change DiskFixTinyDeleteRecordLimit to %v", setting.FixTinyDeleteRecordLimitOnDisk)
-	}
-
-	if prev == nil || prev.FlushFDIntervalSecond != setting.FlushFDIntervalSecond {
-		manager.WalkDisks(func(disk *Disk) bool {
-			disk.SetFlushInterval(setting.FlushFDIntervalSecond)
-			return true
-		})
-		log.LogInfof("SPCMGR: change FlushFDInterval to %v", setting.FlushFDIntervalSecond)
-	}
-
-	if prev == nil || prev.FlushFDParallelismOnDisk != setting.FlushFDParallelismOnDisk {
-		manager.WalkDisks(func(disk *Disk) bool {
-			disk.SetForceFlushFDParallelism(setting.FlushFDParallelismOnDisk)
-			return true
-		})
-		log.LogInfof("SPCMGR: change FlushFDParallelismOnDisk to %v", setting.FlushFDParallelismOnDisk)
-	}
-
-	if prev == nil || prev.ConsistencyMode != setting.ConsistencyMode {
-		manager.WalkPartitions(func(partition *DataPartition) bool {
-			partition.SetConsistencyMode(setting.ConsistencyMode)
-			return true
-		})
-		log.LogInfof("SPCMGR: change ConsistencyMode to %v", setting.ConsistencyMode)
-	}
-
-	if prev == nil || prev.SyncWALOnUnstableEnableState != setting.SyncWALOnUnstableEnableState {
-		manager.raftStore.SetSyncWALOnUnstable(setting.SyncWALOnUnstableEnableState)
-		log.LogInfof("SPCMGR: change SyncWALOnUnstableEnableState to %v", setting.SyncWALOnUnstableEnableState)
-	}
-
-	// 	if newValue == 0 {
-	//		newValue = DefaultNormalExtentDeleteExpireTime
-	//	}
-	//	if newValue > 0 && manager.normalExtentDeleteExpireTime != newValue {
-	//		log.LogInfof("action[spaceManager] change normalExtentDeleteExpireTime from(%v) to(%v)", manager.normalExtentDeleteExpireTime, newValue)
-	//		manager.normalExtentDeleteExpireTime = newValue
-	//	}
+	manager.partitionMutex.RUnlock()
 }
 
 const (
@@ -588,6 +561,40 @@ const (
 	DefaultDeletionConcurrencyOnDisk       = 2
 	DefaultIssueFixConcurrencyOnDisk       = 16
 )
+
+func (manager *SpaceManager) SetForceFlushFDInterval(newValue uint32) {
+	if newValue == 0 {
+		newValue = DefaultForceFlushFDSecond
+	}
+	if newValue > 0 && manager.flushFDIntervalSec != newValue {
+		log.LogInfof("action[spaceManager] change ForceFlushFDInterval from(%v) to(%v)", manager.flushFDIntervalSec, newValue)
+		manager.flushFDIntervalSec = newValue
+	}
+}
+
+func (manager *SpaceManager) SetSyncWALOnUnstableEnableState(enableState bool) {
+	if enableState == manager.raftStore.IsSyncWALOnUnstable() {
+		return
+	}
+	log.LogInfof("action[spaceManager] change SyncWALOnUnstableEnableState from(%v) to(%v)", manager.raftStore.IsSyncWALOnUnstable(), enableState)
+	manager.raftStore.SetSyncWALOnUnstable(enableState)
+}
+func (manager *SpaceManager) SetNormalExtentDeleteExpireTime(newValue uint64) {
+	if newValue == 0 {
+		newValue = DefaultNormalExtentDeleteExpireTime
+	}
+	if newValue > 0 && manager.normalExtentDeleteExpireTime != newValue {
+		log.LogInfof("action[spaceManager] change normalExtentDeleteExpireTime from(%v) to(%v)", manager.normalExtentDeleteExpireTime, newValue)
+		manager.normalExtentDeleteExpireTime = newValue
+	}
+}
+
+func (manager *SpaceManager) SetPersistenceMode(mode proto.PersistenceMode) {
+	if !mode.Valid() {
+		return
+	}
+	manager.persistenceMode = mode
+}
 
 func (manager *SpaceManager) SetDiskReservedRatio(ratio float64) {
 	if ratio < proto.DataNodeDiskReservedMinRatio || ratio > proto.DataNodeDiskReservedMaxRatio {
@@ -728,8 +735,6 @@ func (manager *SpaceManager) updateVolumesConfigs(window time.Duration) {
 	// 控制从Master拉取配置的频率
 	rate := rate2.NewLimiter(rate2.Every(window/time.Duration(len(volumeDPs))), 1)
 
-	var ss = manager.setting
-
 	for volume, dps := range volumeDPs {
 		if err := rate.Wait(context.Background()); err != nil {
 			continue
@@ -743,12 +748,10 @@ func (manager *SpaceManager) updateVolumesConfigs(window time.Duration) {
 			var ps = dp.CurrentSetting()
 			ps.CrossRegionHAType = info.CrossRegionHAType
 			ps.DPReplicaNum = int(info.DpReplicaNum)
-			if ss != nil {
-				if ss.PersistenceMode != proto.PersistenceMode_Nil {
-					ps.PersistenceMode = ss.PersistenceMode
-				} else {
-					ps.PersistenceMode = info.PersistenceMode
-				}
+			if manager.persistenceMode != proto.PersistenceMode_Nil {
+				ps.PersistenceMode = manager.persistenceMode
+			} else {
+				ps.PersistenceMode = info.PersistenceMode
 			}
 
 			if err := dp.ApplySetting(ps); err != nil {

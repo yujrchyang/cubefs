@@ -385,7 +385,6 @@ func (s *DataNode) handleBatchMarkDeletePacket(p *repl.Packet, c net.Conn) {
 
 	var batch = storage.BatchMarker(len(keys))
 	for _, key := range keys {
-		DeleteLimiterWait()
 		if log.IsDebugEnabled() {
 			log.LogDebugf("handleBatchMarkDeletePacket Delete PartitionID(%v)_InodeID(%v)_Extent(%v)_Offset(%v)_Size(%v) from(%v)",
 				p.PartitionID, key.InodeId, key.ExtentId, key.ExtentOffset, key.Size, remote)
