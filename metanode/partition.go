@@ -2066,6 +2066,7 @@ func (mp *metaPartition) checkDirInodeNlink() (nlinkWithUnexpectInodes []uint64,
 
 func (mp *metaPartition) getTargetHostsForReadConsistent() (isSelf bool, targetHosts []string, err error) {
 	peers := mp.config.Peers
+	recorders := mp.config.Recorders
 	appliedIDMap := make(map[string]uint64)
 	errMap := make(map[string]error)
 	var (
@@ -2084,7 +2085,7 @@ func (mp *metaPartition) getTargetHostsForReadConsistent() (isSelf bool, targetH
 			lock.Lock()
 			if err != nil {
 				errMap[p.Addr] = err
-			} else if !p.IsRecorder() {
+			} else {
 				appliedIDMap[p.Addr] = appliedID
 			}
 			lock.Unlock()
@@ -2099,7 +2100,11 @@ func (mp *metaPartition) getTargetHostsForReadConsistent() (isSelf bool, targetH
 		log.LogWarnf("err[%v] getAppliedID[%v]", err, appliedIDMap)
 		return
 	}
-	isSelf, targetHosts, maxAppliedID = mp.getMaxApplyIDHosts(appliedIDMap)
+	isSelf, targetHosts, maxAppliedID = mp.getMaxApplyIDHosts(appliedIDMap, recorders)
+	if !isSelf && len(targetHosts) == 0 {
+		err = fmt.Errorf("mp[%v] get max apply id[%v] appliedIDMap[%v] recorders[%v]", mp.config.PartitionId, maxAppliedID, appliedIDMap, recorders)
+		return
+	}
 	if log.IsDebugEnabled() {
 		log.LogDebugf("mp[%v] get max apply id[%v] from hosts[%v] isSelf[%v], errMap[%v] applyIDMap[%v]",
 			mp.config.PartitionId, maxAppliedID, targetHosts, isSelf, errMap, appliedIDMap)
@@ -2107,7 +2112,7 @@ func (mp *metaPartition) getTargetHostsForReadConsistent() (isSelf bool, targetH
 	return
 }
 
-func (mp *metaPartition) getMaxApplyIDHosts(appliedIDMap map[string]uint64) (isSelf bool, targetHosts []string, maxID uint64) {
+func (mp *metaPartition) getMaxApplyIDHosts(appliedIDMap map[string]uint64, recorders []string) (isSelf bool, targetHosts []string, maxID uint64) {
 	maxID = uint64(0)
 	targetHosts = make([]string, 0)
 	for _, id := range appliedIDMap {
@@ -2122,7 +2127,7 @@ func (mp *metaPartition) getMaxApplyIDHosts(appliedIDMap map[string]uint64) (isS
 		return
 	}
 	for addr, id := range appliedIDMap {
-		if id == maxID {
+		if id == maxID && !contains(recorders, addr) {
 			targetHosts = append(targetHosts, addr)
 		}
 	}

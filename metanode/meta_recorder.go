@@ -431,3 +431,17 @@ func (mr *metaRecorder) UpdateStatus() {
 		mr.status = proto.ReadWrite
 	}
 }
+
+func (mr *metaRecorder) ResponseLoadMetaPartition(p *Packet) error {
+	resp := &proto.MetaPartitionLoadResponse{
+		PartitionID: mr.partitionID,
+		DoCompare:   true,
+	}
+	resp.ApplyID = mr.Recorder().GetApplyID()
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return fmt.Errorf("load recorder json marshal err: %v", err)
+	}
+	p.PacketOkWithBody(data)
+	return nil
+}

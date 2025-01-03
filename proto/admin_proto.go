@@ -1100,6 +1100,7 @@ type MetaPartitionDecommissionResponse struct {
 // MetaPartitionLoadRequest defines the request to load meta partition.
 type MetaPartitionLoadRequest struct {
 	PartitionID uint64
+	IsRecorder	bool
 }
 
 // MetaPartitionLoadResponse defines the response to the request of loading meta partition.

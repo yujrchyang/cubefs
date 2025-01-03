@@ -1292,23 +1292,36 @@ func (m *metadataManager) loadRecorder(fileName string) (mr *metaRecorder, err e
 }
 
 func (m *metadataManager) startRecorders() error {
-	// todo 并行？测试一下性能
-	failCnt, successCnt := 0, 0
+	var wg sync.WaitGroup
+	failCnt, successCnt, totalCnt := int64(0), int64(0), int64(0)
 	start := time.Now()
+	recorderStartChan := make(chan *metaRecorder, defParallelismStartMRCount)
+	for i := 0; i < defParallelismStartMRCount; i++ {
+		wg.Add(1)
+		go func(recorderC chan *metaRecorder) {
+			defer wg.Done()
+			for mr := range recorderC {
+				if err := mr.start(); err != nil {
+					log.LogErrorf("recorder[%v] start failed: %v", mr.partitionID, err)
+					atomic.AddInt64(&failCnt, 1)
+				} else {
+					atomic.AddInt64(&successCnt, 1)
+				}
+			}
+		}(recorderStartChan)
+	}
 	m.walkRecorders(func(mr *metaRecorder) bool {
-		if err := mr.start(); err != nil {
-			log.LogErrorf("recorder[%v] start failed: %v", mr.partitionID, err)
-			failCnt++
-		} else {
-			successCnt++
-		}
+		recorderStartChan <- mr
+		totalCnt++
 		return true
 	})
+	close(recorderStartChan)
+	wg.Wait()
 	if failCnt != 0 {
 		log.LogErrorf("start %d recorders failed", failCnt)
 		return fmt.Errorf("start %d recorders failed", failCnt)
 	}
-	log.LogInfof("start %d recorders cost :%v", successCnt, time.Since(start))
+	log.LogInfof("start %d recorders cost: %v, totalCnt(%v)", successCnt, time.Since(start), totalCnt)
 	return nil
 }
 

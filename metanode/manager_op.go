@@ -837,14 +837,27 @@ func (m *metadataManager) opLoadMetaPartition(conn net.Conn, p *Packet,
 		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
 		return
 	}
-	mp, err := m.getPartition(req.PartitionID)
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
-		m.respondToClient(conn, p)
-		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
-		return
+	if req.IsRecorder {
+		var mr *metaRecorder
+		if mr, err = m.GetRecorder(req.PartitionID); err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+			return
+		}
+		err = mr.ResponseLoadMetaPartition(p)
+	} else {
+		var mp MetaPartition
+		mp, err = m.getPartition(req.PartitionID)
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+			m.respondToClient(conn, p)
+			err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+			return
+		}
+		err = mp.ResponseLoadMetaPartition(p)
 	}
-	if err = mp.ResponseLoadMetaPartition(p); err != nil {
+	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
 		log.LogErrorf("%s [opLoadMetaPartition] req[%v], "+
 			"response marshal[%v]", remoteAddr, req, err.Error())

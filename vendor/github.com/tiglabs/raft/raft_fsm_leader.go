@@ -34,7 +34,7 @@ func (r *raftFsm) becomeLeader() {
 	if r.maybeChangeState(UnstableState) && logger.IsEnableDebug() {
 		logger.Debug("raft[%v] change rist state to %v cause become leader", r.id, UnstableState)
 	}
-	_ = r.recoverCommit()
+	//_ = r.recoverCommit()
 	lasti := r.raftLog.lastIndex()
 	r.step = stepLeader
 	r.reset(r.term, lasti, true, true)
