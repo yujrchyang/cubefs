@@ -152,7 +152,7 @@ const (
 )
 
 const (
-	DisableBlackListSwitch = "DisableBlackList"
+	SettingKeyDisableBlackList = "DisableBlackList"
 )
 
 const (

@@ -7,9 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/connman"
-	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/multirate"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -20,6 +17,10 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/connman"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/multirate"
 
 	"github.com/cubefs/cubefs/datanode/riskdata"
 	"github.com/cubefs/cubefs/proto"
@@ -80,8 +81,8 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/getRecentDeleteExtents", s.getRecentDeleteExtents)
 	http.HandleFunc("/batchRecoverTrashExtents", s.batchRecoverExtents)
 	http.HandleFunc("/batchDeleteTrashExtents", s.batchDeleteTrashExtents)
-	http.HandleFunc("/setSwitchCollection", s.setSwitchCollection)
-	http.HandleFunc("/listSwitchCollection", s.listSwitchCollection)
+	http.HandleFunc("/setSettings", s.setSettings)
+	http.HandleFunc("/getSettings", s.getSettings)
 }
 
 // handler
@@ -1841,7 +1842,7 @@ type SwitchCollectionPara struct {
 	DisableBlackList string `json:"disableBlackList,omitempty"`
 }
 
-func (s *DataNode) setSwitchCollection(w http.ResponseWriter, r *http.Request) {
+func (s *DataNode) setSettings(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseForm()
 	if err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
@@ -1869,17 +1870,24 @@ func (s *DataNode) setSwitchCollection(w http.ResponseWriter, r *http.Request) {
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		err = s.nodeSettings.updateAndPersistSwitch(DisableBlackListSwitch, isDisable)
-		if err != nil {
+		if err = s.settings.Set(SettingKeyDisableBlackList, strconv.FormatBool(isDisable)); err != nil {
 			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 			return
+		}
+		if gConnPool != nil {
+			gConnPool.DisableBlackList(isDisable)
 		}
 	}
 	s.buildSuccessResp(w, fmt.Sprintf("set switch collection success"))
 }
 
-func (s *DataNode) listSwitchCollection(w http.ResponseWriter, r *http.Request) {
-	s.buildSuccessResp(w, s.nodeSettings.SwitchMap)
+func (s *DataNode) getSettings(w http.ResponseWriter, r *http.Request) {
+	var settings = make(map[string]string)
+	s.settings.Walk(func(key, value string) bool {
+		settings[key] = value
+		return true
+	})
+	s.buildSuccessResp(w, settings)
 }
 
 func (s *DataNode) releaseTrashExtents(w http.ResponseWriter, r *http.Request) {

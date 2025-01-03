@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/cubefs/cubefs/util/connman"
 	"io/ioutil"
 	"net"
 	"os"
@@ -32,6 +31,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/cubefs/cubefs/util/connman"
+	"github.com/cubefs/cubefs/util/settings"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -82,11 +84,10 @@ const (
 )
 
 const (
-	ModuleName           = "dataNode"
-	SystemStartTimeFile  = "SYS_START_TIME"
-	DataSettingsFile     = "data_settings.json"
-	TempDataSettingsFile = "data_settings.tmp"
-	MAX_OFFSET_OF_TIME   = 5
+	ModuleName          = "dataNode"
+	SystemStartTimeFile = "SYS_START_TIME"
+	DataSettingsFile    = "data_settings"
+	MAX_OFFSET_OF_TIME  = 5
 )
 
 const (
@@ -126,7 +127,7 @@ type DataNode struct {
 	processStatInfo          *statinfo.ProcessStatInfo
 	topoManager              *topology.TopologyManager
 	transferDeleteLock       sync.Mutex
-	nodeSettings             *NodeSettings
+	settings                 *settings.KeyValues
 }
 
 func NewServer() *DataNode {
@@ -163,9 +164,9 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 		return
 	}
 
-	s.nodeSettings = NewNodeSettings(getBasePath(), s.onSwitchChange)
-	if err = s.nodeSettings.parse(); err != nil {
-		return err
+	var settingPath = path.Join(getBasePath(), DataSettingsFile)
+	if s.settings, err = settings.OpenKeyValues(settingPath); err != nil {
+		return
 	}
 
 	repl.SetConnectPool(gConnPool)
@@ -832,12 +833,4 @@ func (s *DataNode) asyncLoadDataPartition(task *proto.AdminTask) {
 		err = utilErrors.Trace(err, "load DataPartition failed,PartitionID(%v)", request.PartitionId)
 		log.LogError(utilErrors.Stack(err))
 	}
-}
-
-func (s *DataNode) onSwitchChange(switchName string, stat bool) (err error) {
-	switch switchName {
-	case DisableBlackListSwitch:
-		gConnPool.DisableBlackList(stat)
-	}
-	return nil
 }
