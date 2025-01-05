@@ -29,11 +29,11 @@ Sample *master.json* is shown as follows,
 
    {
      "role": "master",
-     "ip": "10.196.59.198",
+     "ip": "192.168.0.11",
      "listen": "17010",
      "prof":"17020",
      "id":"1",
-     "peers": "1:10.196.59.198:17010,2:10.196.59.199:17010,3:10.196.59.200:17010",
+     "peers": "1:192.168.0.11:17010,2:192.168.0.12:17010,3:192.168.0.13:17010",
      "retainLogs":"2000",
      "logDir": "/cfs/master/log",
      "logLevel":"info",
@@ -73,9 +73,9 @@ Sample *meta.json is* shown as follows,
        "consulAddr": "http://consul.prometheus-cfs.local",
        "exporterPort": 9501,
        "masterAddr": [
-           "10.196.59.198:17010",
-           "10.196.59.199:17010",
-           "10.196.59.200:17010"
+           "192.168.0.11:17010",
+           "192.168.0.12:17010",
+           "192.168.0.13:17010"
        ]
    }
 
@@ -137,9 +137,9 @@ Start Datanode
         "consulAddr": "http://consul.prometheus-cfs.local",
         "exporterPort": 9502,
         "masterAddr": [
-           "10.196.59.198:17010",
-           "10.196.59.199:17010",
-           "10.196.59.200:17010"
+           "192.168.0.11:17010",
+           "192.168.0.12:17010",
+           "192.168.0.13:17010"
         ],
         "disks": [
            "/data0:10737418240",
@@ -167,9 +167,9 @@ Sample *objectnode.json is* shown as follows,
         ],
         "listen": 17410,
         "masterAddr": [
-           "10.196.59.198:17010",
-           "10.196.59.199:17010",
-           "10.196.59.200:17010"
+           "192.168.0.11:17010",
+           "192.168.0.12:17010",
+           "192.168.0.13:17010"
         ],
         "logLevel": "info",
         "logDir": "/cfs/Logs/objectnode"
@@ -218,13 +218,13 @@ By default, there are only a few data partitions allocated upon volume creation,
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/admin/createVol?name=test&capacity=10000&owner=cfs"
+   curl -v "http://192.168.0.11:17010/admin/createVol?name=test&capacity=10000&owner=cfs"
 
 For performance evaluation, extra data partitions shall be pre-created according to the amount of data nodes and disks to reach maximum performance.
 
 .. code-block:: bash
 
-    curl -v "http://10.196.59.198:17010/dataPartition/create?name=test&count=120"
+    curl -v "http://192.168.0.11:17010/dataPartition/create?name=test&count=120"
 
 Mount Client
 ------------
@@ -241,7 +241,7 @@ Mount Client
         "mountPoint": "/cfs/mountpoint",
         "volName": "ltptest",
         "owner": "ltptest",
-        "masterAddr": "10.196.59.198:17010,10.196.59.199:17010,10.196.59.200:17010",
+        "masterAddr": "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010",
         "logDir": "/cfs/client/log",
         "profPort": "17510",
         "exporterPort": "9504",
@@ -260,7 +260,7 @@ Upgrading
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/cluster/freeze?enable=true"
+   curl -v "http://192.168.0.11:17010/cluster/freeze?enable=true"
 
 2. upgrade each module
 
@@ -268,4 +268,4 @@ Upgrading
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/cluster/freeze?enable=false"
+   curl -v "http://192.168.0.11:17010/cluster/freeze?enable=false"

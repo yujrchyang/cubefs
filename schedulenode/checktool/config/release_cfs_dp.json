@@ -3,14 +3,14 @@
   "isEnable": false,
   "cfsDomains": [
     {
-      "host": "11.13.129.66:80",
+      "host": "192.168.0.2:80",
       "isDbbak": true,
       "isEnable": true,
       "dataNodeHttpPort": "6001",
       "timeLocation": "Europe/Amsterdam"
     },
     {
-      "host": "11.97.58.130:17010",
+      "host": "192.168.0.1:17010",
       "isDbbak": false,
       "isEnable": true,
       "dataNodeHttpPort": "6001",

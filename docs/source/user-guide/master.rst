@@ -56,10 +56,10 @@ ChubaoFS use **JSON** as configuration file format.
    {
     "role": "master",
     "id":"1",
-    "ip": "10.196.59.198",
+    "ip": "192.168.0.11",
     "listen": "17010",
     "prof":"17020",
-    "peers": "1:10.196.59.198:17010,2:10.196.59.199:17010,3:10.196.59.200:17010",
+    "peers": "1:192.168.0.11:17010,2:192.168.0.12:17010,3:192.168.0.13:17010",
     "retainLogs":"20000",
     "logDir": "/cfs/master/log",
     "logLevel":"info",

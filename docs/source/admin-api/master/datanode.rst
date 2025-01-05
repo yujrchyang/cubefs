@@ -6,7 +6,7 @@ GET
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/dataNode/get?addr=10.196.59.201:17310"  | python -m json.tool
+   curl -v "http://192.168.0.11:17010/dataNode/get?addr=10.196.59.201:17310"  | python -m json.tool
 
 
 Show the base information of the dataNode, such as addr, disk total size, disk used size and so on.
@@ -45,7 +45,7 @@ Decommission
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/dataNode/decommission?addr=10.196.59.201:17310"
+   curl -v "http://192.168.0.11:17010/dataNode/decommission?addr=10.196.59.201:17310"
 
 
 Remove the dataNode from cluster, data partitions which locate the dataNode will be migrate other available dataNode asynchronous.

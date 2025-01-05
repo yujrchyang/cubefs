@@ -6,7 +6,7 @@ GET
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/metaNode/get?addr=10.196.59.202:17210"  | python -m json.tool
+   curl -v "http://192.168.0.11:17010/metaNode/get?addr=10.196.59.202:17210"  | python -m json.tool
 
 
 Show the base information of the metaNode, such as addr, total memory, used memory and so on.

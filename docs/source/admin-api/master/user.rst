@@ -6,7 +6,7 @@ Create
 
 .. code-block:: bash
 
-   curl -H "Content-Type:application/json" -X POST --data '{"id":"testuser","pwd":"12345","type":3}' "http://10.196.59.198:17010/user/create"
+   curl -H "Content-Type:application/json" -X POST --data '{"id":"testuser","pwd":"12345","type":3}' "http://192.168.0.11:17010/user/create"
 
 Create a user in the cluster to access object storage service. When the cluster starts, the ``root`` user is automatically created (the value of ``type`` is ``0x1``).
 
@@ -28,7 +28,7 @@ Delete
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/user/delete?user=testuser"
+   curl -v "http://192.168.0.11:17010/user/delete?user=testuser"
 
 Delete the specified user in the cluster.
 
@@ -51,7 +51,7 @@ Query by User ID
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/user/info?user=testuser" | python -m json.tool
+   curl -v "http://192.168.0.11:17010/user/info?user=testuser" | python -m json.tool
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -63,7 +63,7 @@ Query by Access Key
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/user/akInfo?ak=0123456789123456" | python -m json.tool
+   curl -v "http://192.168.0.11:17010/user/akInfo?ak=0123456789123456" | python -m json.tool
 
 .. csv-table:: Parameters
    :header: "Parameter", "Type", "Description"
@@ -96,7 +96,7 @@ List Users
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/user/list?keywords=test" | python -m json.tool
+   curl -v "http://192.168.0.11:17010/user/list?keywords=test" | python -m json.tool
 
 Query information about all users in a cluster whose user ID contains the keyword.
 
@@ -110,7 +110,7 @@ Update
 
 .. code-block:: bash
 
-   curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","access_key":"KzuIVYCFqvu0b3Rd","secret_key":"iaawlCchJeeuGSnmFW72J2oDqLlSqvA5","type":3}' "http://10.196.59.198:17010/user/update"
+   curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","access_key":"KzuIVYCFqvu0b3Rd","secret_key":"iaawlCchJeeuGSnmFW72J2oDqLlSqvA5","type":3}' "http://192.168.0.11:17010/user/update"
 
 Update the specified user's information, including access key, secret key and user type.
 
@@ -127,7 +127,7 @@ Update Permission
 
 .. code-block:: bash
 
-   curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","volume":"vol","policy":["perm:builtin:ReadOnly","perm:custom:PutObjectAction"]}' "http://10.196.59.198:17010/user/updatePolicy"
+   curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","volume":"vol","policy":["perm:builtin:ReadOnly","perm:custom:PutObjectAction"]}' "http://192.168.0.11:17010/user/updatePolicy"
 
 Update the specified user's permission to a volume. There are three types of values for ``policy``:
 
@@ -149,7 +149,7 @@ Remove Permission
 
 .. code-block:: bash
 
-   curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","volume":"vol"}' "http://10.196.59.198:17010/user/removePolicy"
+   curl -H "Content-Type:application/json" -X POST --data '{"user_id":"testuser","volume":"vol"}' "http://192.168.0.11:17010/user/removePolicy"
 
 Remove all permissions of a specified user for a volume.
 
@@ -164,7 +164,7 @@ Transfer Volume
 
 .. code-block:: bash
 
-   curl -H "Content-Type:application/json" -X POST --data '{"volume":"vol","user_src":"user1","user_dst":"user2","force":"true"}' "http://10.196.59.198:17010/user/transferVol"
+   curl -H "Content-Type:application/json" -X POST --data '{"volume":"vol","user_src":"user1","user_dst":"user2","force":"true"}' "http://192.168.0.11:17010/user/transferVol"
 
 Transfer the ownership of the specified volume. This operation removes the specified volume from the ``owner_vols`` of source user name and adds it to the ``owner_vols`` of target user name; At the same time, the value of the field ``Owner`` in the volume structure will also be updated to the target user ID.
 

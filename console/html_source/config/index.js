@@ -11,24 +11,21 @@ module.exports = {
     assetsPublicPath: "/",
     proxyTable: {
       "/proxy": {
-        // target: 'http://console.chubao.io/', // 测试环境API
-        target: "http://11.116.195.5/", // 测试环境API
+        target: 'http://console-test.chubao.io/', // 测试环境API
         changeOrigin: true,
         pathRewrite: {
           "^/proxy": "/"
         }
       },
       "/api": {
-        // target: "http://console.chubao.io/", // 测试环境API
-        target: "http://11.116.195.5/", // 测试环境API
+        target: "http://console-test.chubao.io/", // 测试环境API
         changeOrigin: true,
         pathRewrite: {
           "^/api": "/api"
         }
       },
       "/console": {
-        // target: "http://console.chubao.io/", // 测试环境API
-        target: "http://11.116.195.5/", // 测试环境API
+        target: "http://console-test.chubao.io/", // 测试环境API
         changeOrigin: true,
         pathRewrite: {
           "^/console": "/console"
@@ -37,7 +34,7 @@ module.exports = {
     },
 
     // Various Dev Server settings
-    host: "dev.jd.com", // can be overwritten by process.env.HOST
+    host: "dev.console.chubaofs.com", // can be overwritten by process.env.HOST
     port: 8080, // can be overwritten by process.env.PORT, if port is in use, a free one will be determined
     autoOpenBrowser: false,
     errorOverlay: true,

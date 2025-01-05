@@ -6,7 +6,7 @@ Overview
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/admin/getCluster" | python -m json.tool
+   curl -v "http://192.168.0.11:17010/admin/getCluster" | python -m json.tool
 
 
 Display the base information of the cluster, such as the detail of metaNode, dataNode, vol and so on.
@@ -17,7 +17,7 @@ response
 
    {
        "Name": "test",
-       "LeaderAddr": "10.196.59.198:17010",
+       "LeaderAddr": "192.168.0.11:17010",
        "DisableAutoAlloc": false,
        "Applied": 225,
        "MaxDataPartitionID": 100,
@@ -38,7 +38,7 @@ Freeze
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/cluster/freeze?enable=true"
+   curl -v "http://192.168.0.11:17010/cluster/freeze?enable=true"
 
 If cluster is freezed, the vol never allocates dataPartitions automatically.
 
@@ -53,7 +53,7 @@ Statistics
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/cluster/stat"
+   curl -v "http://192.168.0.11:17010/cluster/stat"
 
 Show cluster space information by zone.
 
@@ -101,7 +101,7 @@ Topology
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/topo/get"
+   curl -v "http://192.168.0.11:17010/topo/get"
 
 Show cluster topology information by zone.
 
@@ -141,7 +141,7 @@ Update Zone
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/zone/update?name=zone1&enable=false"
+   curl -v "http://192.168.0.11:17010/zone/update?name=zone1&enable=false"
 
 Set the status of the zone to available or unavailable.
 
@@ -156,7 +156,7 @@ Get Zone
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/zone/list"
+   curl -v "http://192.168.0.11:17010/zone/list"
 
 Get name and status of all zones.
 

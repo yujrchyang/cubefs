@@ -124,9 +124,9 @@ Set parameters of the ChubaoFS cluster in **iplist**.
 .. code-block:: yaml
 
     [master]
-    10.196.59.198
-    10.196.59.199
-    10.196.59.200
+    192.168.0.11
+    192.168.0.12
+    192.168.0.13
     [datanode]
     ...
     [cfs:vars]

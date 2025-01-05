@@ -6,7 +6,7 @@ Create
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/dataPartition/create?count=400&name=test"
+   curl -v "http://192.168.0.11:17010/dataPartition/create?count=400&name=test"
 
 
 Create a set of data partition.
@@ -22,7 +22,7 @@ Get
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/dataPartition/get?id=100"  | python -m json.tool
+   curl -v "http://192.168.0.11:17010/dataPartition/get?id=100"  | python -m json.tool
 
 Get information of the specified data partition.
 
@@ -56,7 +56,7 @@ Decommission
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/dataPartition/decommission?id=13&addr=10.196.59.201:17310"
+   curl -v "http://192.168.0.11:17010/dataPartition/decommission?id=13&addr=10.196.59.201:17310"
 
 
 Remove the replica of data partition, and create new replica asynchronous.
@@ -72,7 +72,7 @@ Load
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/dataPartition/load?id=1"
+   curl -v "http://192.168.0.11:17010/dataPartition/load?id=1"
 
 
 Send load task to the dataNode which data partition locate on, then check the crc of each file in the data partition asynchronous.
@@ -87,7 +87,7 @@ Offline Disk
 
 .. code-block:: bash
 
-   curl -v "http://10.196.59.198:17010/disk/decommission?addr=10.196.59.201:17310&disk=/cfs1"
+   curl -v "http://192.168.0.11:17010/disk/decommission?addr=10.196.59.201:17310&disk=/cfs1"
 
 Synchronously offline all the data partitions on the disk, and create a new replica for each data partition in the cluster.
 

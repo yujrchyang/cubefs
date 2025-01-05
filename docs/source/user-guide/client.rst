@@ -22,7 +22,7 @@ fuse.json
      "mountPoint": "/cfs/mountpoint",
      "volName": "ltptest",
      "owner": "ltptest",
-     "masterAddr": "10.196.59.198:17010,10.196.59.199:17010,10.196.59.200:17010",
+     "masterAddr": "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010",
      "logDir": "/cfs/client/log",
      "logLevel": "info",
      "profPort": "27510"

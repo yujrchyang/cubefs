@@ -56,9 +56,9 @@ Object Node using `JSON` format configuration file.
         "logDir": "/cfs/Logs/objectnode",
         "logLevel": "info",
         "masterAddr": [
-            "10.196.59.198:17010",
-            "10.196.59.199:17010",
-            "10.196.59.200:17010"
+            "192.168.0.11:17010",
+            "192.168.0.12:17010",
+            "192.168.0.13:17010"
 
         ],
         "exporterPort": 9503,

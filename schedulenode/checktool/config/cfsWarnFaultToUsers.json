@@ -2,7 +2,7 @@
   "WarnFaultToUsersCheckInterval": 600,
   "WarnFaultToUsers": [
     {
-      "ClusterDomain": "11.97.58.130:17010",
+      "ClusterDomain": "192.168.0.1:17010",
       "IsDbbak": false,
       "Users": [
         {
