@@ -17,6 +17,9 @@ package data
 import (
 	"context"
 	"fmt"
+	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
@@ -50,7 +53,7 @@ func (er *ExtentReader) String() (m string) {
 		er.key.Marshal())
 }
 
-func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
+func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
 	offset := int(req.FileOffset) - int(er.key.FileOffset) + int(er.key.ExtentOffset)
 	size := req.Size
 
@@ -58,7 +61,7 @@ func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest
 
 	log.LogDebugf("grep : size(%v) req(%v) reqPacket(%v)", size, req, reqPacket)
 
-	readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
+	sc, readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
 
 	if err != nil {
 		log.LogWarnf("ExtentReader EcTinyExtentRead: err(%v) req(%v) reqPacket(%v)", err, req, reqPacket)
@@ -69,37 +72,54 @@ func (er *ExtentReader) EcTinyExtentRead(ctx context.Context, req *ExtentRequest
 }
 
 // Read reads the extent request.
-func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
+func (er *ExtentReader) Read(ctx context.Context, req *ExtentRequest) (sc *StreamConn, readBytes int, err error) {
 	offset := int(req.FileOffset - er.key.FileOffset + er.key.ExtentOffset)
 	reqPacket := common.NewReadPacket(ctx, er.key, offset, req.Size, er.inode, req.FileOffset, er.followerRead)
 	log.LogDebugf("ExtentReader Read enter: size(%v) req(%v) reqPacket(%v)", req.Size, req, reqPacket)
-	readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
+	sc, readBytes, err = er.read(er.dp, reqPacket, req, er.followerRead)
 	log.LogDebugf("ExtentReader Read exit: req(%v) reqPacket(%v) readBytes(%v) err(%v)", req, reqPacket, readBytes, err)
 	return
 }
 
-func (er *ExtentReader) read(dp *DataPartition, reqPacket *common.Packet, req *ExtentRequest, followerRead bool) (readBytes int, err error) {
-	var sc *StreamConn
-	if dp.canEcRead() {
-		reqPacket.Opcode = proto.OpStreamEcRead
-		if sc, readBytes, err = dp.EcRead(reqPacket, req); err == nil {
+func (er *ExtentReader) read(dp *DataPartition, reqPacket *common.Packet, req *ExtentRequest, followerRead bool) (sc *StreamConn, readBytes int, err error) {
+	retryCount := 0
+	start := time.Now()
+	alarmInterval := 10 * time.Second
+	for {
+		if dp.canEcRead() {
+			reqPacket.Opcode = proto.OpStreamEcRead
+			if sc, readBytes, err = dp.EcRead(reqPacket, req); err == nil {
+				return
+			}
+			log.LogWarnf("read error: read EC failed, read data from replicate, err(%v)", err)
+			errMsg := fmt.Sprintf("read EC failed inode(%v) req(%v)", er.inode, req)
+			common.HandleUmpAlarm(dp.ClientWrapper.clusterName, dp.ClientWrapper.volName, "ecRead", errMsg)
+		}
+		if !followerRead {
+			sc, readBytes, err = dp.LeaderRead(reqPacket, req)
+			if err != nil {
+				log.LogWarnf("read error: read leader failed, err(%v)", err)
+				readBytes, err = dp.ReadConsistentFromHosts(sc, reqPacket, req)
+			}
+		} else {
+			sc, readBytes, err = dp.FollowerRead(reqPacket, req)
+		}
+		if err == nil {
 			return
 		}
-		log.LogWarnf("read error: read EC failed, read data from replicate, err(%v)", err)
-		errMsg := fmt.Sprintf("read EC failed inode(%v) req(%v)", er.inode, req)
-		common.HandleUmpAlarm(dp.ClientWrapper.clusterName, dp.ClientWrapper.volName, "ecRead", errMsg)
-	}
-	if !followerRead {
-		sc, readBytes, err = dp.LeaderRead(reqPacket, req)
-		if err != nil {
-			readBytes, err = dp.ReadConsistentFromHosts(sc, reqPacket, req)
+		if strings.Contains(err.Error(), proto.ExtentNotFoundError.Error()) || strings.Contains(err.Error(), proto.GetResultMsg(proto.OpNotExistErr)) {
+			return
 		}
-	} else {
-		sc, readBytes, err = dp.FollowerRead(reqPacket, req)
+		retryCount++
+		retryCost := time.Since(start)
+		if retryCost > time.Duration(atomic.LoadInt64(&dp.ClientWrapper.readRetryTimeSec)) * time.Second {
+			return
+		}
+		umpMsg := fmt.Sprintf("read err(%v), retry (%v) times in (%v)", err, retryCount, retryCost)
+		log.LogWarnf(umpMsg)
+		if retryCost > alarmInterval {
+			common.HandleUmpAlarm(dp.ClientWrapper.clusterName, dp.ClientWrapper.volName, "read", umpMsg)
+			alarmInterval += retryCost + 10 * time.Second
+		}
 	}
-	if err != nil {
-		log.LogWarnf("ExtentReader read failed: ctx(%v) ino(%v) reqPacket(%v) req(%v) followerRead(%v) err(%v)", reqPacket.Ctx().Value(proto.ContextReq), er.inode, reqPacket, req, followerRead, err)
-		return readBytes, err
-	}
-	return
 }

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/util/btree"
 	"github.com/cubefs/cubefs/util/cryptoutil"
@@ -47,6 +48,7 @@ type VolumeView struct {
 	CreateTime        int64
 	CrossRegionHAType proto.CrossRegionHAType
 	ConnConfig        *proto.ConnConfig
+	MetaNearRead      bool
 }
 
 type OSSSecure struct {
@@ -103,6 +105,7 @@ func (mw *MetaWrapper) saveVolView() *proto.VolView {
 			End:         mp.End,
 			Members:     mp.Members,
 			Learners:    mp.Learners,
+			Recorders:   mp.Recorders,
 			LeaderAddr:  mp.GetLeaderAddr(),
 			Status:      mp.Status,
 		}
@@ -177,15 +180,20 @@ func (mw *MetaWrapper) updateConfigByVolView(vv *proto.VolView) {
 
 func (mw *MetaWrapper) updateRanges(mps []*proto.MetaPartitionView, needNewRange bool) {
 	var convert = func(mp *proto.MetaPartitionView) *MetaPartition {
-		return &MetaPartition{
+		partition := &MetaPartition{
 			PartitionID: mp.PartitionID,
 			Start:       mp.Start,
 			End:         mp.End,
 			Members:     mp.Members,
 			Learners:    mp.Learners,
+			Recorders:   mp.Recorders,
 			Status:      mp.Status,
 			LeaderAddr:  proto.NewAtomicString(mp.LeaderAddr),
 		}
+		if proto.IsTwoZoneHAType(mw.crossRegionHAType) {
+			mw.refreshHostPingElapsed(partition)
+		}
+		return partition
 	}
 
 	var (
@@ -317,7 +325,7 @@ func (mw *MetaWrapper) refreshWithRecover() (panicErr error) {
 		if r := recover(); r != nil {
 			log.LogErrorf("refreshMetaInfo panic: err(%v) stack(%v)", r, string(debug.Stack()))
 			msg := fmt.Sprintf("refreshMetaInfo panic: err(%v)", r)
-			handleUmpAlarm(mw.cluster, mw.volname, "refreshMetaInfo", msg)
+			common.HandleUmpAlarm(mw.cluster, mw.volname, "refreshMetaInfo", msg)
 			panicErr = errors.New(msg)
 		}
 	}()

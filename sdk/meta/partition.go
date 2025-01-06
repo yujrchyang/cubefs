@@ -17,8 +17,8 @@ package meta
 import (
 	"context"
 	"fmt"
-
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/btree"
 )
 
@@ -28,8 +28,11 @@ type MetaPartition struct {
 	End         uint64
 	Members     []string
 	Learners    []string
+	Recorders	[]string
 	LeaderAddr  proto.AtomicString
 	Status      int8
+
+	pingElapsedSortedHosts *common.PingElapsedSortedHosts
 }
 
 func (this *MetaPartition) Less(than btree.Item) bool {
@@ -45,8 +48,8 @@ func (mp *MetaPartition) String() string {
 	if mp == nil {
 		return ""
 	}
-	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) Learners(%v) LeaderAddr(%v) Status(%v)",
-		mp.PartitionID, mp.Start, mp.End, mp.Members, mp.Learners, mp.GetLeaderAddr(), mp.Status)
+	return fmt.Sprintf("PartitionID(%v) Start(%v) End(%v) Members(%v) Learners(%v) Recorders(%v) LeaderAddr(%v) Status(%v)",
+		mp.PartitionID, mp.Start, mp.End, mp.Members, mp.Learners, mp.Recorders, mp.GetLeaderAddr(), mp.Status)
 }
 
 func (mp *MetaPartition) GetLeaderAddr() string {
@@ -61,8 +64,6 @@ func (mw *MetaWrapper) ClearRWPartitions() {
 }
 
 // Meta partition managements
-//
-
 func (mw *MetaWrapper) addPartition(mp *MetaPartition) {
 	mw.partitions[mp.PartitionID] = mp
 	mw.ranges.ReplaceOrInsert(mp)
@@ -141,7 +142,7 @@ func (mw *MetaWrapper) getUnavailPartitions() []*MetaPartition {
 	return tempPartitions
 }
 
-func (mw *MetaWrapper) getPartitions() []*MetaPartition {
+func (mw *MetaWrapper) GetPartitions() []*MetaPartition {
 	mw.RLock()
 	defer mw.RUnlock()
 	tempPartitions := make([]*MetaPartition, 0, len(mw.partitions))

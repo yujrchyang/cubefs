@@ -15,13 +15,13 @@ import (
 )
 
 var (
-	testDataPartitions  []*DataPartition
-	reportDpMetrics		[]*proto.DataPartitionMetrics
+	testDataPartitions []*DataPartition
+	reportDpMetrics    []*proto.DataPartitionMetrics
 
-	schedulerDomain 		= "127.0.0.1:10080"
-	failedSchedulerDomain 	= "127.0.0.1:10081"
-	testCluster				= "test"
-	testVol					= "testVol"
+	schedulerDomain       = "127.0.0.1:10080"
+	failedSchedulerDomain = "127.0.0.1:10081"
+	testCluster           = "test"
+	testVol               = "testVol"
 )
 
 func TestWrapper_SummaryAndSortReadDelay(t *testing.T) {
@@ -29,7 +29,7 @@ func TestWrapper_SummaryAndSortReadDelay(t *testing.T) {
 		clusterName:               testCluster,
 		volName:                   testVol,
 		dpFollowerReadDelayConfig: &proto.DpFollowerReadDelayConfig{EnableCollect: true},
-		partitions: 				new(sync.Map),
+		partitions:                new(sync.Map),
 	}
 
 	testDataPartitions = make([]*DataPartition, 6)
@@ -56,7 +56,7 @@ func TestWrapper_SummaryAndSortReadDelay(t *testing.T) {
 	wrapper.SummaryAndSortReadDelay()
 	// check sorted ReadMetrics
 	dp, _ := wrapper.partitions.Load(uint64(0))
-	sortedHost :=  dp.(*DataPartition).ReadMetrics.SortedHost
+	sortedHost := dp.(*DataPartition).ReadMetrics.SortedHost
 	testForHostDelay := []struct {
 		name string
 		host string
@@ -90,16 +90,16 @@ func TestReportMetrics(t *testing.T) {
 	LocalIP = "127.0.0.0"
 	var err error
 	wrapper := &Wrapper{
-		clusterName: 			testCluster,
-		volName: 				testVol,
-		dpMetricsReportConfig: 	&proto.DpMetricsReportConfig{EnableReport: true},
+		clusterName:           testCluster,
+		volName:               testVol,
+		dpMetricsReportConfig: &proto.DpMetricsReportConfig{EnableReport: true},
 	}
 	wrapper.schedulerClient = scheduler.NewSchedulerClient(schedulerDomain, false)
 	wrapper.dpSelector, err = newKFasterRandomSelector(&DpSelectorParam{kValue: "50", quorum: 3})
 	if err != nil {
 		t.Fatalf("TestReportMetrics: new kfaster err(%v)", err)
 	}
-	wrapper.refreshDpSelector(testDataPartitions)
+	wrapper.refreshDpSelector(testDataPartitions, 0)
 	time.Sleep(3 * time.Second)
 	// check report
 	wrapper.reportMetrics()
@@ -134,16 +134,16 @@ func TestRemoteFail(t *testing.T) {
 	LocalIP = "127.0.0.0"
 	var err error
 	wrapper := &Wrapper{
-		clusterName: 			testCluster,
-		volName: 				testVol,
-		dpMetricsReportConfig: 	&proto.DpMetricsReportConfig{EnableReport: true},
+		clusterName:           testCluster,
+		volName:               testVol,
+		dpMetricsReportConfig: &proto.DpMetricsReportConfig{EnableReport: true},
 	}
 	wrapper.schedulerClient = scheduler.NewSchedulerClient(failedSchedulerDomain, false)
 	wrapper.dpSelector, err = newKFasterRandomSelector(&DpSelectorParam{kValue: "50", quorum: 3})
 	if err != nil {
 		t.Fatalf("TestReportMetrics: new kfaster err(%v)", err)
 	}
-	wrapper.refreshDpSelector(testDataPartitions)
+	wrapper.refreshDpSelector(testDataPartitions, 0)
 	// test fetch fail
 	for i := 0; i < 4; i++ {
 		wrapper.refreshMetrics()
@@ -183,8 +183,8 @@ func initTestDataPartitionsMetricsHelper(startServer bool) {
 	for i := 0; i < len(testDataPartitions); i++ {
 		testDataPartitions[i] = &DataPartition{
 			Metrics: &proto.DataPartitionMetrics{
-				SumWriteLatencyNano: 	int64(i * 1e9),
-				WriteOpNum: 			int64(i),
+				SumWriteLatencyNano: int64(i * 1e9),
+				WriteOpNum:          int64(i),
 			},
 		}
 		testDataPartitions[i].PartitionID = uint64(i)
@@ -246,11 +246,11 @@ func fetchHandler(w http.ResponseWriter, r *http.Request) {
 
 func checkParams(r *http.Request) (err error) {
 	var (
-		version 	uint64
-		cluster		string
-		vol			string
-		ip			string
-		timestamp	int64
+		version   uint64
+		cluster   string
+		vol       string
+		ip        string
+		timestamp int64
 	)
 	fmt.Println("check params enter")
 	if verStr := r.FormValue("version"); verStr == "" {
@@ -273,7 +273,7 @@ func checkParams(r *http.Request) (err error) {
 		return fmt.Errorf("key time not found")
 	} else {
 		timestamp, err = strconv.ParseInt(timeStr, 10, 64)
-		if err != nil || (time.Now().Unix() - timestamp) > 10 {
+		if err != nil || (time.Now().Unix()-timestamp) > 10 {
 			return fmt.Errorf("err(%v) key time(%v) not correct", err, timestamp)
 		}
 	}

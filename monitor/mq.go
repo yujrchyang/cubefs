@@ -109,6 +109,9 @@ func (mqProducer *MQProducer) Produce(msgChan chan *statistics.ReportInfo, produ
 }
 
 func constructMQMessage(cluster, module, zone, ip string, data *statistics.ReportData) []byte {
+	if module == statistics.ModelClient {
+		zone = data.Zone
+	}
 	msg := fmt.Sprintf("%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v,%v",
 		data.ReportTime, cluster, module, ip, data.Action, data.VolName, data.PartitionID,
 		data.Size, data.Count, data.Max, data.Avg, data.Tp99, data.DiskPath, zone)

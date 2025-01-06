@@ -35,7 +35,8 @@ const (
 	MaxSelectDataPartitionForWrite = 32
 	MaxNewHandlerRetry             = 4
 	MaxUsePreHandlerRetry          = 1
-	MaxPacketErrorCount            = 32
+	MaxPacketErrorCount            = 64
+	MaxPacketCheckTimeoutCount     = 16
 	MaxDirtyListLen                = 0
 )
 
@@ -463,16 +464,14 @@ func (s *Streamer) write(ctx context.Context, data []byte, offset uint64, size i
 }
 
 func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, direct bool, enableOverwrite bool) (writeSize int, isROW bool, err error) {
-	if s.client.dataWrapper.VolNotExists() {
-		return 0, false, proto.ErrVolNotExists
-	}
 	var errmsg string
 	tryCount := 0
 	start := time.Now()
+	alarmInterval := 10 * time.Second
 	for {
 		tryCount++
-		if tryCount%100 == 0 {
-			log.LogWarnf("doOverWriteOrROW failed: try (%v)th times, ctx(%v) ino(%v) req(%v)", tryCount, ctx.Value((proto.ContextReq)), s.inode, req)
+		if s.client.dataWrapper.VolNotExists() {
+			return 0, false, proto.ErrVolNotExists
 		}
 		if enableOverwrite && req.ExtentKey != nil {
 			if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
@@ -484,14 +483,19 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 			isROW = true
 			break
 		}
-		log.LogWarnf("doOverWriteOrROW failed: ctx(%v) ino(%v) err(%v) req(%v)", ctx.Value(proto.ContextReq), s.inode, err, req)
+		retryCost := time.Since(start)
+		log.LogWarnf("doOverWriteOrROW failed: ctx(%v) ino(%v) err(%v) req(%v) tryCount(%v) in (%v)", ctx.Value(proto.ContextReq), s.inode, err, req, tryCount, retryCost)
 		if err == syscall.ENOENT {
 			break
 		}
-		errmsg = fmt.Sprintf("doOverWriteOrROW err(%v) ctx(%v) inode(%v) req(%v) try count(%v)", err, ctx.Value(proto.ContextReq), s.inode, req, tryCount)
-		common.HandleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
-		if time.Since(start) > StreamRetryTimeout {
-			log.LogWarnf("doOverWriteOrROW timeout: ctx(%v) ino(%v) err(%v) req(%v)", ctx.Value(proto.ContextReq), s.inode, err, req)
+		if retryCost >= alarmInterval {
+			errmsg = fmt.Sprintf("err(%v) ctx(%v) inode(%v) req(%v) try count(%v) in (%v)", err, ctx.Value(proto.ContextReq), s.inode, req, tryCount, retryCost)
+			common.HandleUmpAlarm(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, "doOverWriteOrROW", errmsg)
+			alarmInterval += retryCost + 10*time.Second
+		}
+		writeRetryTime := atomic.LoadInt64(&s.client.dataWrapper.writeRetryTimeSec)
+		if writeRetryTime > 0 && retryCost >= time.Duration(writeRetryTime)*time.Second {
+			log.LogWarnf("doOverWriteOrROW failed: retry timeout-(%v)s ctx(%v) ino(%v) err(%v) req(%v)", writeRetryTime, ctx.Value(proto.ContextReq), s.inode, err, req)
 			break
 		}
 		time.Sleep(1 * time.Second)
@@ -543,7 +547,7 @@ func (s *Streamer) writeToExtent(ctx context.Context, oriReq *ExtentRequest, dp 
 	return
 }
 
-func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, direct bool) (dp *DataPartition,
+func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, direct bool) (conn *net.TCPConn, dp *DataPartition,
 	extID, total int, err error) {
 	defer func() {
 		if err != nil {
@@ -555,9 +559,6 @@ func (s *Streamer) writeToNewExtent(ctx context.Context, oriReq *ExtentRequest, 
 		}
 	}()
 
-	var (
-		conn *net.TCPConn
-	)
 	for i := 0; i < MaxSelectDataPartitionForWrite; i++ {
 		dp, err = s.client.dataWrapper.getDpForWrite()
 		if err != nil {
@@ -650,12 +651,16 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 	// close handler in case of extent key overwriting in following append write
 	s.closeOpenHandler(ctx)
 
-	var dp *DataPartition
-	var extID int
-	dp, extID, total, err = s.writeToNewExtent(ctx, oriReq, direct)
+	var (
+		extID int
+		dp    *DataPartition
+		conn  *net.TCPConn
+	)
+	conn, dp, extID, total, err = s.writeToNewExtent(ctx, oriReq, direct)
 	if err != nil {
 		return
 	}
+	s.UpdateOverWrite(conn.RemoteAddr().String(), uint64(total))
 
 	newEK := &proto.ExtentKey{
 		FileOffset:  uint64(oriReq.FileOffset),
@@ -665,7 +670,7 @@ func (s *Streamer) doROW(ctx context.Context, oriReq *ExtentRequest, direct bool
 	}
 
 	s.extents.Insert(newEK, true)
-	err = s.client.insertExtentKey(ctx, s.inode, *newEK, false)
+	err = s.client.insertExtentKey(ctx, s.inode, *newEK)
 	if err != nil {
 		return
 	}
@@ -738,7 +743,9 @@ func (s *Streamer) doOverwrite(ctx context.Context, req *ExtentRequest, direct b
 
 		total += packSize
 	}
-
+	if err == nil {
+		s.UpdateOverWrite(sc.currAddr, uint64(total))
+	}
 	return
 }
 
@@ -1088,6 +1095,8 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 
 	preEk := s.extents.Pre(uint64(offset))
 	if preEk == nil ||
+		preEk.PartitionId == 0 ||
+		preEk.ExtentId == 0 ||
 		s.dirtylist.Len() != 0 ||
 		proto.IsTinyExtent(preEk.ExtentId) ||
 		preEk.FileOffset+uint64(preEk.Size) != uint64(offset) ||
@@ -1115,22 +1124,11 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 		return false
 	}
 
-	s.handler = NewExtentHandler(s, preEk.FileOffset, proto.NormalExtentType)
-
+	s.handler = NewExtentHandler(s, offset, proto.NormalExtentType)
 	s.handler.dp = dp
 	s.handler.extID = int(preEk.ExtentId)
-	s.handler.key = &proto.ExtentKey{
-		FileOffset:   preEk.FileOffset,
-		PartitionId:  preEk.PartitionId,
-		ExtentId:     preEk.ExtentId,
-		ExtentOffset: preEk.ExtentOffset,
-		Size:         preEk.Size,
-		CRC:          preEk.CRC,
-	}
-	s.handler.isPreExtent = true
-	s.handler.size = int(preEk.Size)
 	s.handler.conn = conn
-	s.handler.extentOffset = int(preEk.ExtentOffset)
+	s.handler.extentOffset = int(preEk.ExtentOffset) + int(preEk.Size)
 
 	return true
 }

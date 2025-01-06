@@ -16,6 +16,7 @@ import (
 const (
 	defaultSummarySecond = 5
 	defaultReportSecond  = 10
+	DefaultMonitorAddr   = "monitorcfs.jd.local"
 )
 
 var (
@@ -62,6 +63,7 @@ type ReportData struct {
 	ReportTime  int64
 	TimeStr     string
 	DiskPath    string // disk of dp
+	Zone        string
 }
 
 type ReportInfo struct {
@@ -82,8 +84,8 @@ func (data *MonitorData) String() string {
 }
 
 func (data *ReportData) String() string {
-	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)Tp99(%v)Max(%v)Avg(%v)Disk(%v)ReportTime(%v)}",
-		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.Tp99, data.Max, data.Avg, data.DiskPath, data.ReportTime)
+	return fmt.Sprintf("{Vol(%v)Pid(%v)Action(%v)ActionNum(%v)Count(%v)Size(%v)Tp99(%v)Max(%v)Avg(%v)Disk(%v)Zone(%v)ReportTime(%v)}",
+		data.VolName, data.PartitionID, data.ActionStr, data.Action, data.Count, data.Size, data.Tp99, data.Max, data.Avg, data.DiskPath, data.Zone, data.ReportTime)
 }
 
 func newStatistics(monitorAddr, cluster, moduleName, zone, nodeAddr string) *Statistics {
@@ -158,6 +160,9 @@ func InitMonitorData(module string) []*MonitorData {
 	case ModelFlashNode:
 		num = len(proto.ActionFlashMap)
 		actionMap = proto.ActionFlashMap
+	case ModelClient:
+		num = len(proto.ActionClientMap)
+		actionMap = proto.ActionClientMap
 	}
 	m := make([]*MonitorData, num)
 	for i := 0; i < num; i++ {
@@ -216,7 +221,7 @@ func (data *MonitorData) UpdateData(dataSize uint64) {
 	atomic.AddUint64(&data.Size, dataSize)
 }
 
-func (data *MonitorData) GenReportData(vol, path string, pid uint64, reportTime int64) *ReportData {
+func (data *MonitorData) GenReportData(vol, path string, pid uint64, reportTime int64, zone string) *ReportData {
 	if atomic.LoadUint64(&data.Count) == 0 {
 		return nil
 	}
@@ -230,6 +235,7 @@ func (data *MonitorData) GenReportData(vol, path string, pid uint64, reportTime 
 		DiskPath:    path,
 		Size:        atomic.SwapUint64(&data.Size, 0),
 		Count:       atomic.SwapUint64(&data.Count, 0),
+		Zone:        zone,
 	}
 	if data.tpMonitor != nil {
 		reportData.Max, reportData.Avg, reportData.Tp99 = data.tpMonitor.CalcTp()
@@ -254,7 +260,11 @@ func (m *Statistics) summaryJob() {
 			reportTime := time.Now().Unix()
 			dataList := make([]*ReportData, 0)
 			m.Range(func(data *MonitorData, vol, path string, pid uint64) {
-				reportData := data.GenReportData(vol, path, pid, reportTime)
+				var zone string
+				if m.module == ModelClient {
+					zone = path
+				}
+				reportData := data.GenReportData(vol, path, pid, reportTime, zone)
 				if reportData != nil && reportData.Count != 0 {
 					dataList = append(dataList, reportData)
 				}

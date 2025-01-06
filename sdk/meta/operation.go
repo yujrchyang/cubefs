@@ -713,14 +713,13 @@ func (mw *MetaWrapper) readdir(ctx context.Context, mp *MetaPartition, parentID 
 	return statusOK, children, next, nil
 }
 
-func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey, isPreExtent bool) (status int, err error) {
+func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, inode uint64, ek proto.ExtentKey) (status int, err error) {
 
 	req := &proto.InsertExtentKeyRequest{
 		VolName:         mw.volname,
 		PartitionID:     mp.PartitionID,
 		Inode:           inode,
 		Extent:          ek,
-		IsPreExtent:     isPreExtent,
 		ClientID:        mw.GetClientID(),
 		ClientStartTime: mw.GetStartTime(),
 	}
@@ -761,7 +760,7 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 		log.LogWarnf("insertExtentKey: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 		newMp := mw.getRefreshMp(ctx, inode)
 		if newMp != nil && newMp.PartitionID != mp.PartitionID {
-			return mw.insertExtentKey(ctx, newMp, inode, ek, isPreExtent)
+			return mw.insertExtentKey(ctx, newMp, inode, ek)
 		}
 	}
 	if status != statusOK {
@@ -1591,10 +1590,11 @@ func (mw *MetaWrapper) batchGetXAttr(ctx context.Context, mp *MetaPartition, ino
 	return resp.XAttrs, nil
 }
 
-func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr string) (appliedID uint64, err error) {
+func (mw *MetaWrapper) getAppliedID(ctx context.Context, mp *MetaPartition, addr string, isRecorder bool) (appliedID uint64, err error) {
 
 	req := &proto.GetAppliedIDRequest{
 		PartitionId: mp.PartitionID,
+		IsRecorder:  isRecorder,
 	}
 	packet := proto.NewPacketReqID(context.Background())
 	packet.Opcode = proto.OpMetaGetAppliedID
@@ -2583,7 +2583,7 @@ func (mw *MetaWrapper) iteratePartitions(operateFunc operatePartitionFunc) bool 
 	}
 
 	maxRetry := 10
-	partitions = mw.getPartitions()
+	partitions = mw.GetPartitions()
 	length = len(partitions)
 	for i := 0; i < length; i++ {
 		if i >= maxRetry {

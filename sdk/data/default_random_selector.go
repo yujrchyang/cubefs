@@ -43,29 +43,45 @@ func newDefaultRandomSelector(param *DpSelectorParam) (selector DataPartitionSel
 type DefaultRandomSelector struct {
 	sync.RWMutex
 	BaseSelector
-	partitions []*DataPartition
-	param      *DpSelectorParam
+	partitions    []*DataPartition
+	sameZoneIndex int // samezone partition的长度
+	param         *DpSelectorParam
 }
 
 func (s *DefaultRandomSelector) Name() string {
 	return DefaultRandomSelectorName
 }
 
-func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition) (err error) {
+func (s *DefaultRandomSelector) Refresh(partitions []*DataPartition, sameZoneIndex int) (err error) {
 	s.Lock()
 	s.partitions = partitions
 	s.Unlock()
 
 	s.ClearRemoveInfo()
+	s.sameZoneIndex = sameZoneIndex
 	return
 }
 
-func (s *DefaultRandomSelector) Select() (dp *DataPartition, err error) {
+func (s *DefaultRandomSelector) Select(sameZone bool) (dp *DataPartition, err error) {
+	var (
+		allPartitions []*DataPartition
+		partitions    []*DataPartition
+	)
+
 	s.RLock()
-	partitions := s.partitions
+	allPartitions = s.partitions
+	if sameZone && s.sameZoneIndex > 0 {
+		partitions = s.partitions[0:s.sameZoneIndex]
+	} else {
+		partitions = s.partitions
+	}
 	s.RUnlock()
 
 	dp = s.getRandomDataPartition(partitions)
+	length := len(allPartitions)
+	if dp == nil && length > 0 {
+		dp = allPartitions[rand.Intn(length)]
+	}
 	if dp == nil {
 		err = fmt.Errorf("no writable data partition")
 	}

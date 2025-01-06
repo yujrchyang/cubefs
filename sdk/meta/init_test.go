@@ -36,7 +36,7 @@ func setUp() func() {
 	if err != nil {
 		fmt.Println("init log in /cfs/log failed")
 	}
-	mw, _ = creatExtentClient()
+	mw, _ = createMetaWrapper()
 	mc = masterSDK.NewMasterClient(ltptestMaster, false)
 	return func() {
 		log.LogFlush()
@@ -48,7 +48,7 @@ func TestInit(t *testing.T) {
 	assert.NotNil(t, mw)
 }
 
-func creatExtentClient() (mw *MetaWrapper, err error) {
+func createMetaWrapper() (mw *MetaWrapper, err error) {
 	if mw, err = NewMetaWrapper(&MetaConfig{
 		Volume:        ltptestVolume,
 		Masters:       ltptestMaster,

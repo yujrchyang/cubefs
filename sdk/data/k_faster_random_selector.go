@@ -56,8 +56,8 @@ type KFasterRandomSelector struct {
 	sync.RWMutex
 	BaseSelector
 	kValueHundred int
-	kValue        int
 	partitions    []*DataPartition
+	sameZoneIndex int
 	param         *DpSelectorParam
 }
 
@@ -65,12 +65,12 @@ func (s *KFasterRandomSelector) Name() string {
 	return KFasterRandomSelectorName
 }
 
-func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition) (err error) {
-	kValue := s.updateKValue(partitions)
-	selectKminDataPartition(partitions, kValue)
+func (s *KFasterRandomSelector) Refresh(partitions []*DataPartition, sameZoneIndex int) (err error) {
+	selectKminDataPartition(partitions[0:sameZoneIndex], s.updateKValue(partitions[0:sameZoneIndex]))
+	selectKminDataPartition(partitions[sameZoneIndex:], s.updateKValue(partitions[sameZoneIndex:]))
 
 	s.Lock()
-	s.kValue = kValue
+	s.sameZoneIndex = sameZoneIndex
 	s.partitions = partitions
 	defer s.Unlock()
 
@@ -83,13 +83,22 @@ func (s *KFasterRandomSelector) updateKValue(partitions []*DataPartition) (kValu
 	return
 }
 
-func (s *KFasterRandomSelector) Select() (dp *DataPartition, err error) {
+func (s *KFasterRandomSelector) Select(sameZone bool) (dp *DataPartition, err error) {
+	var (
+		allPartitions []*DataPartition
+		partitions    []*DataPartition
+	)
 	s.RLock()
-	partitions := s.partitions
-	kValue := s.kValue
+	allPartitions = s.partitions
+	if sameZone && s.sameZoneIndex > 0 {
+		partitions = s.partitions[0:s.sameZoneIndex]
+	} else {
+		partitions = s.partitions
+	}
+	kValue := s.updateKValue(partitions)
 	s.RUnlock()
 
-	if len(partitions) == 0 {
+	if len(allPartitions) == 0 {
 		return nil, fmt.Errorf("no writable data partition")
 	}
 
@@ -124,9 +133,9 @@ func (s *KFasterRandomSelector) Select() (dp *DataPartition, err error) {
 	log.LogWarnf("KFasterRandomSelector: all fasterRwPartitions were excluded, get partition from slower")
 
 	// if all fasterRwPartitions are excluded, select random dataPartition in slowerRwPartitions
-	slowerRwPartitionsNum := len(partitions) - kValue
+	slowerRwPartitionsNum := len(allPartitions) - kValue
 	for i := 0; i < slowerRwPartitionsNum; i++ {
-		dp = partitions[(index+i)%slowerRwPartitionsNum+kValue]
+		dp = allPartitions[(index+i)%slowerRwPartitionsNum+kValue]
 		_, removed := s.removeDpForWrite.Load(dp.PartitionID)
 		if !isExcludedByHost(dp, exclude, s.param.quorum) && !removed {
 			log.LogDebugf("KFasterRandomSelector: select slower dp[%v], index %v, kValue(%v/%v)",

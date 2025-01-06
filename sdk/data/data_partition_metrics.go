@@ -215,7 +215,7 @@ func (w *Wrapper) GetAvgDelayAndSort(sumMetrics []*proto.ReadMetrics) {
 		if err != nil {
 			continue
 		}
-		w.updateDpReadMetrics(sortedHosts)
+		w.updateDpReadMetrics(metrics.PartitionId, sortedHosts)
 	}
 }
 
@@ -264,12 +264,12 @@ func sortHostAvgDelayMap(hostsAvgDelay map[string]int64) (sortedHosts []string) 
 	return
 }
 
-func (w *Wrapper) updateDpReadMetrics(sortedHosts []string) {
-	w.partitions.Range(func(key, value interface{}) bool {
-		dp := value.(*DataPartition)
-		dp.UpdateReadMetricsHost(sortedHosts)
-		return true
-	})
+func (w *Wrapper) updateDpReadMetrics(dpId uint64, sortedHosts []string) {
+	dp, err := w.GetDataPartition(dpId)
+	if err != nil {
+		return
+	}
+	dp.UpdateReadMetricsHost(sortedHosts)
 }
 
 func (w *Wrapper) clearDpReadMetrics() {

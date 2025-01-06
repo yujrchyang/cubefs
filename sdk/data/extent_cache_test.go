@@ -2,13 +2,13 @@ package data
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_PrepareRequests(t *testing.T) {
@@ -24,7 +24,7 @@ func Test_PrepareRequests(t *testing.T) {
 	ek3 := proto.ExtentKey{FileOffset: 100, PartitionId: 3, ExtentId: 1003, ExtentOffset: 0, Size: 20}
 	eks = append(eks, ek1, ek2, ek3)
 	testExtentCache := NewExtentCache(1)
-	testExtentCache.update(0, 0, eks)
+	testExtentCache.update(0, 0, eks, false)
 
 	testCases := []struct {
 		name string
@@ -60,22 +60,22 @@ func Test_PrepareRequests(t *testing.T) {
 	}
 }
 
-func Test_ExtentRangePerformance(t *testing.T)  {
+func Test_ExtentRangePerformance(t *testing.T) {
 	extentCache := NewExtentCache(2)
 	ekLen := 500000
 	for i := 0; i < ekLen; i++ {
 		ek := proto.ExtentKey{
-			FileOffset:   uint64(i)*4096,
-			PartitionId:  uint64(i+1),
-			ExtentId:     uint64(i+1),
-			Size:         4096,
+			FileOffset:  uint64(i) * 4096,
+			PartitionId: uint64(i + 1),
+			ExtentId:    uint64(i + 1),
+			Size:        4096,
 		}
 		extentCache.Insert(&ek, true)
 	}
 	fmt.Println("ek slice length: ", extentCache.root.Len())
 
 	rand.Seed(time.Now().UnixNano())
-	round := ekLen/100
+	round := ekLen / 100
 	offsetSlice := make([]uint64, 0)
 	for i := 0; i < round; i++ {
 		off := rand.Intn(ekLen)
@@ -86,30 +86,30 @@ func Test_ExtentRangePerformance(t *testing.T)  {
 	data := make([]byte, size)
 	start := time.Now()
 	for _, off := range offsetSlice {
-		start := off*4096
+		start := off * 4096
 		extentCache.PrepareRequests(start, size, data)
 	}
-	if cost := time.Since(start)/time.Duration(round); cost > 20 * time.Microsecond {
+	if cost := time.Since(start) / time.Duration(round); cost > 20*time.Microsecond {
 		t.Fatalf("Test_ExtentRangePerformance range extents cost too long: %v, ekLen(%v)", cost, ekLen)
 	}
 }
 
-func Test_PreExtentPerformance(t *testing.T)  {
+func Test_PreExtentPerformance(t *testing.T) {
 	extentCache := NewExtentCache(2)
 	ekLen := 500000
 	for i := 0; i < ekLen; i++ {
 		ek := proto.ExtentKey{
-			FileOffset:   uint64(i)*4096,
-			PartitionId:  uint64(i+1),
-			ExtentId:     uint64(i+1),
-			Size:         4096,
+			FileOffset:  uint64(i) * 4096,
+			PartitionId: uint64(i + 1),
+			ExtentId:    uint64(i + 1),
+			Size:        4096,
 		}
 		extentCache.Insert(&ek, true)
 	}
 	fmt.Println("ek slice length: ", extentCache.root.Len())
 
 	rand.Seed(time.Now().UnixNano())
-	round := ekLen/100
+	round := ekLen / 100
 	offsetSlice := make([]uint64, 0)
 	for i := 0; i < round; i++ {
 		off := rand.Intn(ekLen)
@@ -118,29 +118,29 @@ func Test_PreExtentPerformance(t *testing.T)  {
 
 	start := time.Now()
 	for _, off := range offsetSlice {
-		extentCache.Pre(off*4096)
+		extentCache.Pre(off * 4096)
 	}
-	if cost := time.Since(start)/time.Duration(round); cost > 20 * time.Microsecond {
+	if cost := time.Since(start) / time.Duration(round); cost > 20*time.Microsecond {
 		t.Fatalf("Test_PreExtentPerformance find previous extent cost too long: %v, ekLen(%v)", cost, ekLen)
 	}
 }
 
-func Test_InsertExtentPerformance(t *testing.T)  {
+func Test_InsertExtentPerformance(t *testing.T) {
 	extentCache := NewExtentCache(2)
 	ekLen := 100000
 	for i := 0; i < ekLen; i++ {
 		ek := proto.ExtentKey{
-			FileOffset:   uint64(i)*4096,
-			PartitionId:  uint64(i+1),
-			ExtentId:     uint64(i+1),
-			Size:         4096,
+			FileOffset:  uint64(i) * 4096,
+			PartitionId: uint64(i + 1),
+			ExtentId:    uint64(i + 1),
+			Size:        4096,
 		}
 		extentCache.Insert(&ek, true)
 	}
 	fmt.Println("ek slice length: ", extentCache.root.Len())
 
 	rand.Seed(time.Now().UnixNano())
-	round := ekLen/100
+	round := ekLen / 100
 	offsetSlice := make([]uint64, 0)
 	for i := 0; i < round; i++ {
 		off := rand.Intn(ekLen)
@@ -150,12 +150,12 @@ func Test_InsertExtentPerformance(t *testing.T)  {
 	start := time.Now()
 	for _, off := range offsetSlice {
 		ek := &proto.ExtentKey{
-			FileOffset:   uint64(off)*4096,
-			Size:         4096,
+			FileOffset: uint64(off) * 4096,
+			Size:       4096,
 		}
 		extentCache.Insert(ek, true)
 	}
-	if cost := time.Since(start)/time.Duration(round); cost > 1 * time.Millisecond {
+	if cost := time.Since(start) / time.Duration(round); cost > 1*time.Millisecond {
 		t.Fatalf("Test_InsertExtentPerformance insert extent cost too long: %v, ekLen(%v)", cost, ekLen)
 	}
 }
@@ -185,7 +185,7 @@ func TestExtentCache_Update(t *testing.T) {
 		{FileOffset: 250, Size: 200, PartitionId: 10, ExtentId: 10, ExtentOffset: 100},
 		{FileOffset: 450, Size: 100},
 	}
-	extents.update(1, 450, updateEks)
+	extents.update(1, 450, updateEks, false)
 	eks := extents.List()
 	assert.Equal(t, len(expectedEks), len(eks), "ek len")
 	for i, ek := range eks {

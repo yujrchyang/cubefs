@@ -138,7 +138,7 @@ func TestExcludeLeaner(t *testing.T) {
 		Members:     []string{"192.168.0.21:17020", "192.168.0.22:17020", "192.168.0.23:17020", "192.168.0.24:17020", "192.168.0.25:17020"},
 		Learners:    []string{"192.168.0.21:17020", "192.168.0.25:17020"},
 	}
-	voters := excludeLearner(mp)
+	voters := ExcludeLearner(mp)
 	if strings.Join(voters, ",") != strings.Join([]string{"192.168.0.22:17020", "192.168.0.23:17020", "192.168.0.24:17020"}, ",") {
 		t.Fatalf("TestExcludeLeaner: failed, actual(%v)", voters)
 	}

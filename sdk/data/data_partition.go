@@ -32,60 +32,6 @@ import (
 	"github.com/cubefs/cubefs/util/log"
 )
 
-type hostPingElapsed struct {
-	host    string
-	elapsed time.Duration
-}
-
-type PingElapsedSortedHosts struct {
-	sortedHosts  []string
-	updateTSUnix int64 // Timestamp (unix second) of latest update.
-	getHosts     func() (hosts []string)
-	getElapsed   func(host string) (elapsed time.Duration, ok bool)
-}
-
-func (h *PingElapsedSortedHosts) isNeedUpdate() bool {
-	return h.updateTSUnix == 0 || time.Now().Unix()-h.updateTSUnix > 10
-}
-
-func (h *PingElapsedSortedHosts) update(getHosts func() []string, getElapsed func(host string) (time.Duration, bool)) []string {
-	var hosts = getHosts()
-	hostElapses := make([]*hostPingElapsed, 0, len(hosts))
-	for _, host := range hosts {
-		var hostElapsed *hostPingElapsed
-		if elapsed, ok := getElapsed(host); ok {
-			hostElapsed = &hostPingElapsed{host: host, elapsed: elapsed}
-		} else {
-			hostElapsed = &hostPingElapsed{host: host, elapsed: time.Duration(0)}
-		}
-		hostElapses = append(hostElapses, hostElapsed)
-	}
-	sort.SliceStable(hostElapses, func(i, j int) bool {
-		return hostElapses[j].elapsed == 0 || hostElapses[i].elapsed < hostElapses[j].elapsed
-	})
-	sorted := make([]string, len(hostElapses))
-	for i, hotElapsed := range hostElapses {
-		sorted[i] = hotElapsed.host
-	}
-	h.sortedHosts = sorted
-	h.updateTSUnix = time.Now().Unix()
-	return sorted
-}
-
-func (h *PingElapsedSortedHosts) GetSortedHosts() []string {
-	if h.isNeedUpdate() {
-		return h.update(h.getHosts, h.getElapsed)
-	}
-	return h.sortedHosts
-}
-
-func NewPingElapsedSortHosts(getHosts func() []string, getElapsed func(host string) (time.Duration, bool)) *PingElapsedSortedHosts {
-	return &PingElapsedSortedHosts{
-		getHosts:   getHosts,
-		getElapsed: getElapsed,
-	}
-}
-
 // DataPartition defines the wrapper of the data partition.
 type DataPartition struct {
 	// Will not be changed
@@ -100,7 +46,7 @@ type DataPartition struct {
 	ecEnable           bool
 	ReadMetrics        *proto.ReadMetrics
 
-	pingElapsedSortedHosts *PingElapsedSortedHosts
+	pingElapsedSortedHosts *common.PingElapsedSortedHosts
 }
 
 // If the connection fails, take punitive measures. Punish time is 5s.
@@ -385,6 +331,9 @@ func (dp *DataPartition) sendReadCmdToDataPartition(sc *StreamConn, reqPacket *c
 			// 'tryOther' means network failure
 			dp.updateCrossRegionMetrics(sc.currAddr, tryOther)
 		}
+		if dp.ClientWrapper.IsSameZoneReadHAType() {
+			dp.updateSameZoneHostRank(sc.currAddr)
+		}
 		metric.Set(err)
 	}()
 	if conn, err = sc.sendToDataPartition(reqPacket); err != nil {
@@ -496,8 +445,8 @@ func (dp *DataPartition) getEpochReadHost(hosts []string) (err error, addr strin
 	dp.Epoch += 1
 	for retry := 0; retry < len(hosts); retry++ {
 		addr = hosts[(epoch+uint64(retry))%uint64(len(hosts))]
-		active, ok := hostsStatus[addr]
-		if ok && active {
+		hs, ok := hostsStatus[addr]
+		if ok && hs.status {
 			return nil, addr
 		}
 	}
@@ -509,7 +458,7 @@ func chooseEcNode(hosts []string, stripeUnitSize, extentOffset uint64, dp *DataP
 	index := int(div) % int(dp.EcDataNum)
 	hostsStatus := dp.ClientWrapper.HostsStatus
 
-	if status, ok := hostsStatus[hosts[index]]; ok && status {
+	if hs, ok := hostsStatus[hosts[index]]; ok && hs.status {
 		host = hosts[index]
 	}
 	return
@@ -538,7 +487,7 @@ func (dp *DataPartition) EcRead(reqPacket *common.Packet, req *ExtentRequest) (s
 		if addr == host {
 			continue
 		}
-		if status, ok := hostsStatus[addr]; !ok || !status {
+		if hs, ok := hostsStatus[addr]; !ok || !hs.status {
 			continue
 		}
 		sc.currAddr = addr
@@ -661,7 +610,7 @@ func (dp *DataPartition) getLowestReadDelayHost(hosts []string) (err error, addr
 	// check hosts status to get available hosts
 	hostsStatus := dp.ClientWrapper.HostsStatus
 	for _, addr = range sortedHosts {
-		if status, ok := hostsStatus[addr]; ok && status {
+		if hs, ok := hostsStatus[addr]; ok && hs.status {
 			if len(hosts) == 0 || contains(hosts, addr) {
 				availableHost = append(availableHost, addr)
 			}
@@ -753,29 +702,12 @@ func (this *HostDelay) Less(that *HostDelay) bool {
 	return this.delay < that.delay
 }
 
-func (dp *DataPartition) sortHostsByPingElapsed() []string {
-	if dp.pingElapsedSortedHosts == nil {
-		var getHosts = func() []string {
-			return dp.Hosts
-		}
-		var getElapsed = func(host string) (time.Duration, bool) {
-			delay, ok := dp.ClientWrapper.HostsDelay.Load(host)
-			if !ok {
-				return 0, false
-			}
-			return delay.(time.Duration), true
-		}
-		dp.pingElapsedSortedHosts = NewPingElapsedSortHosts(getHosts, getElapsed)
-	}
-	return dp.pingElapsedSortedHosts.GetSortedHosts()
-}
-
 func (dp *DataPartition) getNearestHost() string {
 	hostsStatus := dp.ClientWrapper.HostsStatus
 	for _, addr := range dp.NearHosts {
-		status, ok := hostsStatus[addr]
+		hs, ok := hostsStatus[addr]
 		if ok {
-			if !status {
+			if !hs.status {
 				continue
 			}
 		}
@@ -818,6 +750,8 @@ func sortByStatus(dp *DataPartition, failedHost string) (hosts []string) {
 	var dpHosts []string
 	if dp.ClientWrapper.CrossRegionHATypeQuorum() {
 		dpHosts = dp.getSortedCrossRegionHosts()
+	} else if dp.ClientWrapper.IsSameZoneReadHAType() {
+		dpHosts = dp.sortHostsByPingElapsed()
 	} else if dp.ClientWrapper.FollowerRead() && dp.ClientWrapper.NearRead() {
 		dpHosts = dp.NearHosts
 	}
@@ -829,9 +763,9 @@ func sortByStatus(dp *DataPartition, failedHost string) (hosts []string) {
 		if addr == failedHost {
 			continue
 		}
-		status, ok := hostsStatus[addr]
+		hs, ok := hostsStatus[addr]
 		if ok {
-			if status {
+			if hs.status {
 				hosts = append(hosts, addr)
 			} else {
 				inactiveHosts = append(inactiveHosts, addr)

@@ -18,10 +18,12 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 )
@@ -33,6 +35,9 @@ const (
 
 	ReadConsistenceRetryLimit   = 50
 	ReadConsistenceRetryTimeout = 60 * time.Second
+	hostErrCountLimit           = 5
+
+	DefaultRetryTimeSec	= 0		// 无限重试
 )
 
 type MetaConn struct {
@@ -74,6 +79,8 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 	addr := mp.GetLeaderAddr()
 	retryCount := 0
 	var successAddr string
+	start := time.Now()
+	alarmInterval := 10 * time.Second
 	for {
 		retryCount++
 		resp, needCheckRead, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
@@ -84,13 +91,18 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 			return
 		}
 		// operations don't need to retry
-		if req.Opcode == proto.OpMetaCreateInode || !mw.InfiniteRetry {
+		retryCost := time.Since(start)
+		retryTimeSec := atomic.LoadInt64(&mw.retryTimeSec)
+		if req.Opcode == proto.OpMetaCreateInode || (!mw.InfiniteRetry && retryTimeSec > 0 && retryCost > time.Duration(retryTimeSec) * time.Second) {
 			return
 		}
 		log.LogWarnf("sendWriteToMP: err(%v) resp(%v) req(%v) mp(%v) retry time(%v)", err, resp, req, mp, retryCount)
-		umpMsg := fmt.Sprintf("send write(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
-		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
-		time.Sleep(SendRetryInterval)
+		if retryCost > alarmInterval {
+			umpMsg := fmt.Sprintf("send write(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
+			common.HandleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
+			alarmInterval += retryCost + 10 * time.Second
+		}
+		time.Sleep(1 * time.Second)
 	}
 }
 
@@ -100,40 +112,58 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 		return
 	}
 
-	addr := mp.GetLeaderAddr()
 	retryCount := 0
-	var successAddr string
+	start := time.Now()
+	alarmInterval := 10 * time.Second
 	for {
 		retryCount++
-		resp, _, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+		if mw.MetaNearRead() && mw.IsSameZoneReadHAType() {
+			resp, err = mw.sendReadToNearHost(ctx, mp, req)
+		} else {
+			resp, err = mw.sendReadToLeader(ctx, mp, req)
+		}
 		if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
-			if successAddr != "" && successAddr != addr {
-				mp.LeaderAddr = proto.NewAtomicString(successAddr)
-			}
 			return
 		}
-		if proto.IsDbBack {
-			return
-		}
-		log.LogWarnf("sendReadToMP: send to leader failed and try to read consistent, req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp)
-		resp, err = mw.readConsistentFromHosts(ctx, mp, req, true)
-		if err == nil && !resp.ShouldRetry() {
-			return
-		}
-		if mw.CrossRegionHATypeQuorum() {
-			resp, err = mw.readConsistentFromHosts(ctx, mp, req, false)
-			if err == nil && !resp.ShouldRetry() {
-				return
-			}
-		}
-		if !mw.InfiniteRetry {
+		// 当前 packet.Arg 仅一致性读时使用：'F'和'FT'（含recorder成员）
+		req.ClearArg()
+		retryCost := time.Since(start)
+		retryTimeSec := atomic.LoadInt64(&mw.retryTimeSec)
+		if !mw.InfiniteRetry && retryTimeSec > 0 && retryCost > time.Duration(retryTimeSec) * time.Second {
 			return
 		}
 		log.LogWarnf("sendReadToMP: err(%v) resp(%v) req(%v) mp(%v) retry time(%v)", err, resp, req, mp, retryCount)
-		umpMsg := fmt.Sprintf("send read(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
-		handleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
-		time.Sleep(SendRetryInterval)
+		if retryCost > alarmInterval {
+			umpMsg := fmt.Sprintf("send read(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
+			common.HandleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
+			alarmInterval += retryCost + 10 * time.Second
+		}
+		time.Sleep(1 * time.Second)
 	}
+}
+
+func (mw *MetaWrapper) sendReadToLeader(ctx context.Context, mp *MetaPartition, req *proto.Packet) (resp *proto.Packet, err error) {
+	addr := mp.GetLeaderAddr()
+	var successAddr string
+	resp, _, successAddr, err = mw.sendToMetaPartition(ctx, mp, req, addr)
+	if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {
+		if successAddr != "" && successAddr != addr {
+			mp.LeaderAddr = proto.NewAtomicString(successAddr)
+		}
+		return
+	}
+	if proto.IsDbBack {
+		return
+	}
+	log.LogWarnf("sendReadToMP: send to leader failed and try to read consistent, req(%v) mp(%v) err(%v) resp(%v)", req, mp, err, resp)
+	resp, err = mw.readConsistentFromHosts(ctx, mp, req, true)
+	if err == nil && !resp.ShouldRetry() {
+		return
+	}
+	if mw.CrossRegionHATypeQuorum() {
+		resp, err = mw.readConsistentFromHosts(ctx, mp, req, false)
+	}
+	return
 }
 
 func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPartition, req *proto.Packet, strongConsistency bool) (resp *proto.Packet, err error) {
@@ -147,15 +177,13 @@ func (mw *MetaWrapper) readConsistentFromHosts(ctx context.Context, mp *MetaPart
 	for i := 0; i < ReadConsistenceRetryLimit; i++ {
 		errMap = make(map[string]error)
 		if strongConsistency {
-			members := excludeLearner(mp)
-			targetHosts, isErr = mw.getTargetHosts(ctx, mp, members, (len(members)+1)/2)
+			members := ExcludeLearner(mp)
+			targetHosts, isErr = mw.getTargetHosts(ctx, mp, members, mp.Recorders, (len(members)+len(mp.Recorders)+1)/2)
 		} else {
-			targetHosts, isErr = mw.getTargetHosts(ctx, mp, mp.Members, len(mp.Members)-1)
+			targetHosts, isErr = mw.getTargetHosts(ctx, mp, mp.Members, nil, len(mp.Members)-1)
 		}
 		if !isErr && len(targetHosts) > 0 {
-			req.ArgLen = 1
-			req.Arg = make([]byte, req.ArgLen)
-			req.Arg[0] = proto.FollowerReadFlag
+			req.SetFollowerReadMetaPkt(len(mp.Recorders) > 0)
 			for _, host := range targetHosts {
 				resp, _, err = mw.sendToHost(ctx, mp, req, host)
 				if (err == nil && !resp.ShouldRetry()) || err == proto.ErrVolNotExists {

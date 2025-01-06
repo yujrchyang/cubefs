@@ -375,47 +375,42 @@ func TestWrite_DataConsistency(t *testing.T) {
 	close(streamer.done)
 }
 
-// One client insert ek1 at some position, another client insert ek2 at the same position with ROW.
-// Then ek1 will be replaced by ek2, all following ek insertion of extent1 because of usePreExtentHandler should be rejected.
-func TestStreamer_UsePreExtentHandler_ROWByOtherClient(t *testing.T) {
-	info, err := create("TestStreamer_UsePreExtentHandler_ROWByOtherClient")
-	ec.OpenStream(info.Inode, false)
+func TestStreamer_MultiClientWrite(t *testing.T) {
+	testStreamer_MultiClientWrite(t, true)
+	testStreamer_MultiClientWrite(t, false)
+}
+
+func testStreamer_MultiClientWrite(t *testing.T, usePreExtent bool) {
+	testFile := "streamerMultiClientWrite"
+	info, _ := create(testFile)
+
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
-	streamer.tinySize = 0
-	length := 1024
-	data := make([]byte, length)
-	_, _, err = streamer.write(ctx, data, 0, length, false)
-	if err != nil {
-		t.Fatalf("write failed: err(%v)", err)
-	}
-	err = streamer.flush(ctx, true)
-	if err != nil {
-		t.Fatalf("flush failed: err(%v)", err)
+	length := 3
+	streamer.write(ctx, []byte("123"), 0, length, false)
+	streamer.flush(ctx, true)
+	if usePreExtent {
+		streamer.closeOpenHandler(ctx)
 	}
 
-	_, ec1, err := creatExtentClient()
-	ec1.OpenStream(info.Inode, false)
+	_, ec1, _ := creatExtentClient()
+	ec1.OpenStream(info.Inode, false, false)
 	streamer1 := ec1.GetStreamer(info.Inode)
-	streamer1.tinySize = 0
-	requests, _ := streamer1.extents.PrepareRequests(0, length, data)
-	_, err = streamer1.doROW(ctx, requests[0], false)
-	if err != nil {
-		t.Fatalf("doROW failed: err(%v)", err)
-	}
+	requests, _ := streamer1.extents.PrepareRequests(0, length, []byte("abc"))
+	streamer1.doROW(ctx, requests[0], false)
 
-	_, _, err = streamer.write(ctx, data, uint64(length), length, false)
-	if err != nil {
-		t.Fatalf("write failed: err(%v)", err)
-	}
-	err = streamer.flush(ctx, true)
-	if err == nil {
-		t.Fatalf("usePreExtentHandler should fail when the extent has removed by other clients")
-	}
+	streamer.write(ctx, []byte("456"), uint64(length), length, false)
+	streamer.flush(ctx, true)
+
+	streamer1.GetExtents(ctx)
+	data := make([]byte, length*2)
+	streamer1.read(ctx, data, 0, length*2)
+	assert.Equal(t, []byte("abc456"), data)
 }
 
 func TestHandler_Recover(t *testing.T) {
 	info, err := create("TestHandler_Recover")
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
 	length := 1024
@@ -454,7 +449,7 @@ func TestHandler_Recover(t *testing.T) {
 
 func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
 	info, err := create("TestHandler_AppendWriteBuffer_Recover")
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
 	length := 1024
@@ -480,7 +475,7 @@ func TestHandler_AppendWriteBuffer_Recover(t *testing.T) {
 // Handler should be closed in truncate operation, otherwise dirty ek which has been formerly truncated, will be inserted again.
 func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 	info, err := create("TestStreamer_Truncate_CloseHandler")
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
 	length := 1024
@@ -506,7 +501,7 @@ func TestStreamer_Truncate_CloseHandler(t *testing.T) {
 // Handler should be closed in ROW operation, otherwise dirty ek which has been formerly removed, will be inserted again.
 func TestStreamer_ROW_CloseHandler(t *testing.T) {
 	info, err := create("TestStreamer_ROW_CloseHandler")
-	ec.OpenStream(info.Inode, false)
+	ec.OpenStream(info.Inode, false, false)
 	streamer := ec.GetStreamer(info.Inode)
 	streamer.tinySize = 0
 	length := 1024
@@ -533,7 +528,7 @@ func TestStreamer_ROW_CloseHandler(t *testing.T) {
 func TestStreamer_InitServer(t *testing.T) {
 	info, err := create("TestStreamer_InitServer")
 	inodeID := info.Inode
-	err = ec.OpenStream(inodeID, false)
+	err = ec.OpenStream(inodeID, false, false)
 	assert.Equal(t, nil, err, "open streamer")
 	var (
 		readSize, writeSize int
@@ -549,7 +544,7 @@ func TestStreamer_InitServer(t *testing.T) {
 	assert.Equal(t, writeSize, readSize, "read file size")
 	assert.Equal(t, false, hasHole, "hole of file")
 
-	err = ec.OpenStream(inodeID, false)
+	err = ec.OpenStream(inodeID, false, false)
 	assert.Equal(t, nil, err, "open streamer again")
 	err = ec.Truncate(ctx, inodeID, uint64(writeSize), 0)
 	assert.Equal(t, nil, err, "truncate streamer")

@@ -47,9 +47,14 @@ var (
 const (
 	VolNotExistInterceptThresholdMin = 60 * 24
 	VolNotExistClearViewThresholdMin = 0
-
-	RefreshHostLatencyInterval = time.Hour
+	RefreshHostLatencyInterval       = time.Hour
+	defaultTwoZoneHTypePingRule      = "400"
 )
+
+type hostStatus struct {
+	status bool
+	zone   string
+}
 
 type DataPartitionView struct {
 	DataPartitions []*DataPartition
@@ -85,7 +90,7 @@ type Wrapper struct {
 
 	dpSelector DataPartitionSelector
 
-	HostsStatus map[string]bool
+	HostsStatus map[string]hostStatus
 
 	crossRegionHAType      proto.CrossRegionHAType
 	crossRegionHostLatency sync.Map // key: host, value: ping time
@@ -95,6 +100,8 @@ type Wrapper struct {
 	volConnConfig     *proto.ConnConfig
 	zoneConnConfig    *proto.ConnConfig
 	clusterConnConfig *proto.ConnConfig
+	writeRetryTimeSec int64
+	readRetryTimeSec  int64
 
 	schedulerClient        *scheduler.SchedulerClient
 	dpMetricsReportDomain  string
@@ -114,12 +121,16 @@ type Wrapper struct {
 	cacheTTL                int64
 	cacheReadTimeoutMs      int64
 	remoteCache             *flash.RemoteCache
-	HostsDelay              sync.Map
 	extentClientType        ExtentClientType
+	HostsDelay              sync.Map //dp host延时数据，1小时全量统计一次，每分钟更新之前失败的
 	umpKeyPrefix            string
-	getStreamerFunc			func(inode uint64) *Streamer
-	readAheadController		*ReadAheadController
-	readAheadInitMutex		sync.Mutex
+	getStreamerFunc         func(inode uint64) *Streamer
+	readAheadController     *ReadAheadController
+	readAheadInitMutex      sync.Mutex
+
+	twoZoneHATypePingRule   string //赋值前检查高可用类型， 非跨两机房高可用，不动
+	twoZoneHATypeRankedPing [][]time.Duration
+	MpFollowerRead          bool
 }
 
 type DataState struct {
@@ -168,8 +179,10 @@ func NewDataPartitionWrapper(volName string, masters []string, extentClientType 
 	w.volName = volName
 	w.extentClientType = extentClientType
 	w.partitions = new(sync.Map)
-	w.HostsStatus = make(map[string]bool)
+	w.HostsStatus = make(map[string]hostStatus)
 	w.SetDefaultConnConfig()
+	w.writeRetryTimeSec = DefaultWriteRetryTimeSec
+	w.readRetryTimeSec = DefaultReadRetryTimeSec
 	w.dpMetricsReportConfig = &proto.DpMetricsReportConfig{
 		EnableReport:      false,
 		ReportIntervalSec: defaultMetricReportSec,
@@ -184,26 +197,26 @@ func NewDataPartitionWrapper(volName string, masters []string, extentClientType 
 		w.updateReadAheadLocalConfig(readAheadMemMB, readAheadWindowMB)
 	}
 	if err = w.updateClusterInfo(); err != nil {
-		err = errors.Trace(err, "NewDataPartitionWrapper:")
+		err = errors.Trace(err, "NewDataPartitionWrapper: updateClusterInfo failed: ")
 		return
 	}
 	if err = w.getSimpleVolView(); err != nil {
-		err = errors.Trace(err, "NewDataPartitionWrapper:")
+		err = errors.Trace(err, "NewDataPartitionWrapper: getVolView failed: ")
 		return
 	}
 	if err = w.initDpSelector(); err != nil {
-		log.LogErrorf("NewDataPartitionWrapper: init initDpSelector failed, [%v]", err)
+		err = errors.Trace(err, "NewDataPartitionWrapper: initDpSelector failed: ")
 		return
 	}
 	if err = w.updateDataPartition(true); err != nil {
-		err = errors.Trace(err, "NewDataPartitionWrapper:")
+		err = errors.Trace(err, "NewDataPartitionWrapper: updateDataPartition failed: ")
 		return
 	}
 	if err = w.updateClientClusterView(); err != nil {
-		log.LogErrorf("NewDataPartitionWrapper: init DataNodeStatus failed, [%v]", err)
+		err = errors.Trace(err, "NewDataPartitionWrapper: updateClusterView failed: ")
+		return
 	}
 
-	err = nil
 	StreamConnPoolInitOnce.Do(func() {
 		StreamConnPool = connpool.NewConnectPoolWithTimeoutAndCap(0, 10, time.Duration(w.connConfig.IdleTimeoutSec)*time.Second, time.Duration(w.connConfig.ConnectTimeoutNs))
 	})
@@ -226,8 +239,10 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	w.volName = volName
 	w.extentClientType = extentClientType
 	w.partitions = new(sync.Map)
-	w.HostsStatus = make(map[string]bool)
+	w.HostsStatus = make(map[string]hostStatus)
 	w.SetDefaultConnConfig()
+	w.writeRetryTimeSec = DefaultWriteRetryTimeSec
+	w.readRetryTimeSec = DefaultReadRetryTimeSec
 	w.dpMetricsReportConfig = &proto.DpMetricsReportConfig{
 		EnableReport:      false,
 		ReportIntervalSec: defaultMetricReportSec,
@@ -409,13 +424,14 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
 	_ = w.updateReadAheadRemoteConfig(view.ReadAheadMemMB, view.ReadAheadWindowMB)
+	w.MpFollowerRead = view.MpFollowerRead
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) enableWriteCache(%v) createTime(%v) dpSelectorName(%v) "+
-		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v) dpFolReadDelayConfig(%v) connConfig(%v) readAheadMemMB(%v) readAheadWindowMB(%v)",
+		"dpSelectorParm(%v) quorum(%v) extentCacheExpireSecond(%v) dpFolReadDelayConfig(%v) connConfig(%v) readAheadMemMB(%v) readAheadWindowMB(%v) mpFollowerRead(%v)",
 		view.ID, view.Name, view.Owner, view.Status, view.Capacity, view.MpReplicaNum, view.DpReplicaNum, view.MpCnt,
 		view.DpCnt, view.FollowerRead, view.ForceROW, view.EnableWriteCache, view.CreateTime, view.DpSelectorName, view.DpSelectorParm,
-		view.Quorum, view.ExtentCacheExpireSec, view.DpFolReadDelayConfig, view.ConnConfig, view.ReadAheadMemMB, view.ReadAheadWindowMB)
+		view.Quorum, view.ExtentCacheExpireSec, view.DpFolReadDelayConfig, view.ConnConfig, view.ReadAheadMemMB, view.ReadAheadWindowMB, view.MpFollowerRead)
 	return nil
 }
 
@@ -434,8 +450,9 @@ func (w *Wrapper) saveSimpleVolView() *proto.SimpleVolView {
 		EcEnable:             w.ecEnable,
 		ExtentCacheExpireSec: w.extentCacheExpireSec,
 		UmpKeyPrefix:         w.umpKeyPrefix,
-		ReadAheadMemMB: 	  w.readAheadController.getMemoryMB(),
-		ReadAheadWindowMB:	  w.readAheadController.getWindowMB(),
+		ReadAheadMemMB:       w.readAheadController.getMemoryMB(),
+		ReadAheadWindowMB:    w.readAheadController.getWindowMB(),
+		MpFollowerRead:       w.MpFollowerRead,
 	}
 	view.ConnConfig = &proto.ConnConfig{
 		IdleTimeoutSec:   w.connConfig.IdleTimeoutSec,
@@ -478,18 +495,12 @@ func (w *Wrapper) updateWithRecover() (err error) {
 	}()
 	ticker := time.NewTicker(time.Minute)
 	checkRemovedDpTimer = time.NewTimer(0)
-	refreshLatency := time.NewTimer(0)
 
 	defer func() {
 		ticker.Stop()
 		checkRemovedDpTimer.Stop()
-		refreshLatency.Stop()
 	}()
 
-	var (
-		retryHosts map[string]bool
-		hostsLock  sync.Mutex
-	)
 	for {
 		select {
 		case <-w.stopC:
@@ -499,9 +510,6 @@ func (w *Wrapper) updateWithRecover() (err error) {
 			w.updateSimpleVolView()
 			w.updateDataPartition(false)
 
-			hostsLock.Lock()
-			retryHosts = w.retryHostsPingtime(retryHosts)
-			hostsLock.Unlock()
 		case <-checkRemovedDpTimer.C:
 			leastCheckCount := w.checkDpForOverWrite()
 			d := time.Second
@@ -513,58 +521,8 @@ func (w *Wrapper) updateWithRecover() (err error) {
 				d = 5 * time.Second
 			}
 			checkRemovedDpTimer.Reset(d)
-		case <-refreshLatency.C:
-			if w.IsCacheBoostEnabled() {
-				hostsLock.Lock()
-				retryHosts = w.updateHostsPingtime()
-				hostsLock.Unlock()
-			}
-
-			refreshLatency.Reset(RefreshHostLatencyInterval)
 		}
 	}
-}
-
-func (w *Wrapper) updateHostsPingtime() map[string]bool {
-	failedHosts := make(map[string]bool)
-	allHosts := make(map[string]bool)
-	w.partitions.Range(func(id, value interface{}) bool {
-		dp := value.(*DataPartition)
-		for _, host := range dp.Hosts {
-			if _, ok := allHosts[host]; ok {
-				continue
-			}
-			allHosts[host] = true
-			avgTime, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
-			if err != nil {
-				avgTime = time.Duration(0)
-				failedHosts[host] = true
-				log.LogWarnf("updateHostsPingtime: host(%v) err(%v)", host, err)
-			} else {
-				log.LogDebugf("updateHostsPingtime: host(%v) ping time(%v)", host, avgTime)
-			}
-			w.HostsDelay.Store(host, avgTime)
-		}
-		return true
-	})
-	return failedHosts
-}
-
-func (w *Wrapper) retryHostsPingtime(retryHosts map[string]bool) map[string]bool {
-	if retryHosts == nil || len(retryHosts) == 0 {
-		return nil
-	}
-	failedHosts := make(map[string]bool)
-	for host, _ := range retryHosts {
-		avgTime, err := iputil.PingWithTimeout(strings.Split(host, ":")[0], pingCount, pingTimeout*pingCount)
-		if err != nil {
-			avgTime = time.Duration(0)
-			failedHosts[host] = true
-		} else {
-			w.HostsDelay.Store(host, avgTime)
-		}
-	}
-	return failedHosts
 }
 
 func (w *Wrapper) updateSimpleVolView() (err error) {
@@ -735,7 +693,19 @@ func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit boo
 		}
 	}
 
-	rwPartitionGroups := make([]*DataPartition, 0)
+	sameZonePartitions := make([]*DataPartition, 0)
+	rwPartitions := make([]*DataPartition, 0)
+	var seperatePartitionByHostPingElapsed = func(dp *DataPartition, sameZonePingTh time.Duration) {
+		if w.IsSameZoneReadHAType() {
+			delay, ok := w.HostsDelay.Load(dp.Hosts[0])
+			if ok && delay.(time.Duration) < sameZonePingTh {
+				sameZonePartitions = append(sameZonePartitions, dp)
+				return
+			}
+		}
+		rwPartitions = append(rwPartitions, dp)
+	}
+
 	for _, partition := range dpv.DataPartitions {
 		dp := convert(partition)
 		if len(dp.Hosts) == 0 {
@@ -746,12 +716,12 @@ func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit boo
 		actualDp := w.replaceOrInsertPartition(dp)
 		if w.extentClientType == Normal {
 			if actualDp.Status == proto.ReadWrite {
-				rwPartitionGroups = append(rwPartitionGroups, actualDp)
+				seperatePartitionByHostPingElapsed(dp, w.getPingElapsedTh())
 			}
 		} else if w.extentClientType == Smart {
 			if actualDp.MediumType == proto.MediumHDDName &&
 				actualDp.TransferStatus == proto.ReadWrite {
-				rwPartitionGroups = append(rwPartitionGroups, actualDp)
+				rwPartitions = append(rwPartitions, actualDp)
 			}
 		} else {
 			err = errors.NewErrorf("updateDataPartition: extentClientType(%v) is incorrect", w.extentClientType)
@@ -759,10 +729,12 @@ func (w *Wrapper) convertDataPartition(dpv *proto.DataPartitionsView, isInit boo
 		}
 	}
 
+	rwPartitionGroups := append(sameZonePartitions, rwPartitions...)
+
 	// isInit used to identify whether this call is caused by mount action
 	if isInit || (len(rwPartitionGroups) >= MinWriteAbleDataPartitionCnt) {
 		log.LogInfof("updateDataPartition: update rwPartitionGroups count(%v)", len(rwPartitionGroups))
-		w.refreshDpSelector(rwPartitionGroups)
+		w.refreshDpSelector(rwPartitionGroups, len(sameZonePartitions))
 	} else {
 		err = errors.New("updateDataPartition: no writable data partition")
 	}
@@ -790,6 +762,8 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) (actualDp *DataPar
 		dp.CrossRegionMetrics.CrossRegionHosts = w.classifyCrossRegionHosts(dp.Hosts)
 		log.LogDebugf("classifyCrossRegionHosts: dp(%v) hosts(%v) crossRegionMetrics(%v)", dp.PartitionID, dp.Hosts, dp.CrossRegionMetrics)
 		dp.CrossRegionMetrics.Unlock()
+	} else if w.IsSameZoneReadHAType() {
+		dp.refreshHostPingElapsed()
 	} else if w.followerRead && w.nearRead {
 		dp.NearHosts = w.sortHostsByDistance(dp.Hosts)
 	}
@@ -825,6 +799,9 @@ func (w *Wrapper) replaceOrInsertPartition(dp *DataPartition) (actualDp *DataPar
 		old.CrossRegionMetrics.CrossRegionHosts = dp.CrossRegionMetrics.CrossRegionHosts
 		old.CrossRegionMetrics.Unlock()
 		old.ecEnable = w.ecEnable
+		// 如果不是两副本高可用， 会是nil
+		// 如果在cacheRead链路上 还是原来10s的逻辑
+		old.pingElapsedSortedHosts = dp.pingElapsedSortedHosts
 		actualDp = old
 	} else {
 		dp.Metrics = proto.NewDataPartitionMetrics()
@@ -977,17 +954,27 @@ func (w *Wrapper) updateClientClusterView() (err error) {
 			w.updateConnConfig(zoneCfg, zoneConfig)
 		}
 	}
+	if w.IsSameZoneReadHAType() && validPingRule(cf.TwoZoneHATypePingRule) {
+		if cf.TwoZoneHATypePingRule == "" {
+			cf.TwoZoneHATypePingRule = defaultTwoZoneHTypePingRule
+		}
+		if w.twoZoneHATypePingRule != cf.TwoZoneHATypePingRule {
+			log.LogInfof("updateClientClusterView: twoZoneHTypePingRule from(%s)to(%s)", w.twoZoneHATypePingRule, cf.TwoZoneHATypePingRule)
+			w.twoZoneHATypePingRule = cf.TwoZoneHATypePingRule
+			w.twoZoneHATypeRankedPing = common.ParseRankedRuleStr(w.twoZoneHATypePingRule)
+		}
+	}
 	return
 }
 
 func (w *Wrapper) updateDataNodeStatus(dataNodes *[]proto.NodeView, ecNodes *[]proto.NodeView) {
-	newHostsStatus := make(map[string]bool)
+	newHostsStatus := make(map[string]hostStatus)
 	for _, node := range *dataNodes {
-		newHostsStatus[node.Addr] = node.Status
+		newHostsStatus[node.Addr] = hostStatus{status: node.Status, zone: node.Zone}
 	}
 
 	for _, node := range *ecNodes {
-		newHostsStatus[node.Addr] = node.Status
+		newHostsStatus[node.Addr] = hostStatus{status: node.Status}
 	}
 	log.LogInfof("updateDataNodeStatus: update %d hosts status", len(newHostsStatus))
 
@@ -1004,8 +991,8 @@ func (w *Wrapper) saveClientClusterView() *proto.ClientClusterConf {
 		DataNodes:       make([]proto.NodeView, 0, len(w.HostsStatus)),
 		SchedulerDomain: w.dpMetricsReportDomain,
 	}
-	for addr, status := range w.HostsStatus {
-		cf.DataNodes = append(cf.DataNodes, proto.NodeView{Addr: addr, Status: status})
+	for addr, hs := range w.HostsStatus {
+		cf.DataNodes = append(cf.DataNodes, proto.NodeView{Addr: addr, Status: hs.status, Zone: hs.zone})
 	}
 	return cf
 }
@@ -1164,8 +1151,8 @@ func (w *Wrapper) VolNotExists() bool {
 
 func (w *Wrapper) updateReadAheadLocalConfig(localReadAheadMemMB, localReadAheadWindowMB int64) (err error) {
 	var (
-		newMemMB	int64
-		newWindowMB	int64
+		newMemMB    int64
+		newWindowMB int64
 	)
 	if err = validateReadAheadConfig(localReadAheadMemMB, localReadAheadWindowMB); err != nil {
 		log.LogErrorf("invalid read ahead config: memMB(%v), windowMB(%v)", localReadAheadMemMB, localReadAheadWindowMB)
@@ -1261,20 +1248,29 @@ func (w *Wrapper) updateReadAheadConfig(readAheadMemMB, readAheadWindowMB int64)
 	return
 }
 
+func (w *Wrapper) SetRetryTimeSec(newWriteRetrySec, newReadRetrySec int64) {
+	if newWriteRetrySec < MinWriteRetryTimeSec {
+		newWriteRetrySec = DefaultWriteRetryTimeSec
+	}
+	if newReadRetrySec <= 0 {
+		newReadRetrySec = DefaultReadRetryTimeSec
+	}
+	oldWriteRetryTimeSec := atomic.LoadInt64(&w.writeRetryTimeSec)
+	if oldWriteRetryTimeSec != newWriteRetrySec {
+		atomic.StoreInt64(&w.writeRetryTimeSec, newWriteRetrySec)
+		log.LogInfof("change writeRetryTimeSec from (%v)s to (%v)s", oldWriteRetryTimeSec, newWriteRetrySec)
+	}
+	oldReadRetryTimeSec := atomic.LoadInt64(&w.readRetryTimeSec)
+	if oldReadRetryTimeSec != newReadRetrySec {
+		atomic.StoreInt64(&w.readRetryTimeSec, newReadRetrySec)
+		log.LogInfof("change readRetryTimeSec from (%v)s to (%v)s", oldReadRetryTimeSec, newReadRetrySec)
+	}
+}
+
 func distanceFromLocal(b string) int {
 	remote := strings.Split(b, ":")[0]
 
 	return iputil.GetDistance(net.ParseIP(LocalIP), net.ParseIP(remote))
-}
-
-func handleUmpAlarm(cluster, vol, act, msg string) {
-	umpKeyCluster := fmt.Sprintf("%s_client_warning", cluster)
-	umpMsgCluster := fmt.Sprintf("volume(%s) %s", vol, msg)
-	exporter.WarningBySpecialUMPKey(umpKeyCluster, umpMsgCluster)
-
-	umpKeyVol := fmt.Sprintf("%s_%s_warning", cluster, vol)
-	umpMsgVol := fmt.Sprintf("act(%s) - %s", act, msg)
-	exporter.WarningBySpecialUMPKey(umpKeyVol, umpMsgVol)
 }
 
 func getVolZoneConnConfig(zones string, zonesCfg map[string]proto.ConnConfig) (cfg *proto.ConnConfig) {

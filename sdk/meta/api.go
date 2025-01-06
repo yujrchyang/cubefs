@@ -27,9 +27,9 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/util/bloomfilter"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/multipart"
 )
@@ -172,7 +172,7 @@ func (mw *MetaWrapper) Create_ll(ctx context.Context, parentID uint64, name stri
 		}
 		log.LogWarnf("Create_ll: create inode failed, vol(%v) err(%v) status(%v) parentID(%v) name(%v) retry time(%v)", mw.volname, err, status, parentID, name, retryCount)
 		umpMsg := fmt.Sprintf("CreateInode err(%v) status(%v) parentID(%v) name(%v) retry time(%v)", err, status, parentID, name, retryCount)
-		handleUmpAlarm(mw.cluster, mw.volname, "CreateInode", umpMsg)
+		common.HandleUmpAlarm(mw.cluster, mw.volname, "CreateInode", umpMsg)
 		time.Sleep(SendRetryInterval)
 	}
 
@@ -720,11 +720,11 @@ func (mw *MetaWrapper) AppendExtentKeys(ctx context.Context, inode uint64, eks [
 	return
 }
 
-func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey, isPreExtent bool) (err error) {
+func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek proto.ExtentKey) (err error) {
 	var status int
 	defer func() {
 		if err != nil && err != syscall.ENOENT {
-			log.LogErrorf("InsertExtentKey: vol(%v) ino(%v) ek(%v) isPreExtent(%v) err(%v) status(%v)", mw.volname, inode, ek, isPreExtent, err, status)
+			log.LogErrorf("InsertExtentKey: vol(%v) ino(%v) ek(%v) err(%v) status(%v)", mw.volname, inode, ek, err, status)
 		}
 	}()
 	mp := mw.getPartitionByInode(ctx, inode)
@@ -732,11 +732,11 @@ func (mw *MetaWrapper) InsertExtentKey(ctx context.Context, inode uint64, ek pro
 		return syscall.ENOENT
 	}
 
-	status, err = mw.insertExtentKey(ctx, mp, inode, ek, isPreExtent)
+	status, err = mw.insertExtentKey(ctx, mp, inode, ek)
 	if err != nil || status != statusOK {
 		err = statusToErrno(status)
 	}
-	log.LogDebugf("InsertExtentKey: ino(%v) ek(%v) isPreExtent(%v)", inode, ek, isPreExtent)
+	log.LogDebugf("InsertExtentKey: ino(%v) ek(%v)", inode, ek)
 	return
 }
 
@@ -1039,7 +1039,7 @@ func (mw *MetaWrapper) RemoveMultipart_ll(ctx context.Context, path, multipartID
 
 func (mw *MetaWrapper) broadcastGetMultipart(ctx context.Context, path, multipartId string) (info *proto.MultipartInfo, mpID uint64, err error) {
 	log.LogInfof("broadcastGetMultipart: find meta partition broadcast multipartId(%v)", multipartId)
-	partitions := mw.getPartitions()
+	partitions := mw.GetPartitions()
 	var (
 		mp *MetaPartition
 	)
@@ -1074,7 +1074,7 @@ func (mw *MetaWrapper) broadcastGetMultipart(ctx context.Context, path, multipar
 }
 
 func (mw *MetaWrapper) ListMultipart_ll(ctx context.Context, prefix, delimiter, keyMarker string, multipartIdMarker string, maxUploads uint64) (sessionResponse []*proto.MultipartInfo, err error) {
-	partitions := mw.getPartitions()
+	partitions := mw.GetPartitions()
 	var wg = sync.WaitGroup{}
 	var wl = sync.Mutex{}
 	var sessions = make([]*proto.MultipartInfo, 0)
@@ -1224,9 +1224,9 @@ func (mw *MetaWrapper) InodeMergeExtents_ll(ctx context.Context, ino uint64, old
 	return mw.mergeInodeExtents(ctx, mp, ino, oldEks, newEks, mergeType)
 }
 
-func (mw *MetaWrapper) getTargetHosts(ctx context.Context, mp *MetaPartition, members []string, judgeErrNum int) (targetHosts []string, isErr bool) {
-	log.LogDebugf("getTargetHosts because of no leader: mp[%v] members[%v] judgeErrNum[%v]", mp, members, judgeErrNum)
-	appliedIDslice := make(map[string]uint64, len(members))
+func (mw *MetaWrapper) getTargetHosts(ctx context.Context, mp *MetaPartition, members, recorders []string, judgeErrNum int) (targetHosts []string, isErr bool) {
+	log.LogDebugf("getTargetHosts because of no leader: mp[%v] members[%v] recorders[%v] judgeErrNum[%v]", mp, members, recorders, judgeErrNum)
+	appliedIDslice := make(map[string]uint64, len(members)+len(recorders))
 	errSlice := make(map[string]bool)
 	isErr = false
 	var (
@@ -1234,36 +1234,49 @@ func (mw *MetaWrapper) getTargetHosts(ctx context.Context, mp *MetaPartition, me
 		lock         sync.Mutex
 		maxAppliedID uint64
 	)
+	getApplyIDFunc := func(curAddr string, isRecorder bool) {
+		appliedID, err := mw.getAppliedID(ctx, mp, curAddr, isRecorder)
+		ok := false
+		lock.Lock()
+		if err != nil {
+			errSlice[curAddr] = true
+		} else {
+			appliedIDslice[curAddr] = appliedID
+			ok = true
+		}
+		lock.Unlock()
+		log.LogDebugf("getTargetHosts: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, mp.PartitionID)
+	}
 	for _, addr := range members {
 		wg.Add(1)
 		go func(curAddr string) {
-			appliedID, err := mw.getAppliedID(ctx, mp, curAddr)
-			ok := false
-			lock.Lock()
-			if err != nil {
-				errSlice[curAddr] = true
-			} else {
-				appliedIDslice[curAddr] = appliedID
-				ok = true
-			}
-			lock.Unlock()
-			log.LogDebugf("getTargetHosts: get apply id[%v] ok[%v] from host[%v], pid[%v]", appliedID, ok, curAddr, mp.PartitionID)
+			getApplyIDFunc(curAddr, false)
+			wg.Done()
+		}(addr)
+	}
+	for _, addr := range recorders {
+		wg.Add(1)
+		go func(curAddr string) {
+			getApplyIDFunc(curAddr, true)
 			wg.Done()
 		}(addr)
 	}
 	wg.Wait()
 	if len(errSlice) >= judgeErrNum {
 		isErr = true
-		log.LogWarnf("getTargetHosts err: mp[%v], hosts[%v], appliedID[%v], judgeErrNum[%v]",
-			mp.PartitionID, members, appliedIDslice, judgeErrNum)
+		log.LogWarnf("getTargetHosts err: mp[%v], hosts[%v], recorders[%v], appliedID[%v], judgeErrNum[%v]",
+			mp.PartitionID, members, recorders, appliedIDslice, judgeErrNum)
 		return
 	}
-	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice)
+	targetHosts, maxAppliedID = getMaxApplyIDHosts(appliedIDslice, recorders)
+	if len(targetHosts) == 0 {
+		log.LogWarnf("mp[%v] no target hosts: applyIDMap[%v] recorders[%v]", mp.PartitionID, appliedIDslice, recorders)
+	}
 	log.LogDebugf("getTargetHosts: get max apply id[%v] from hosts[%v], pid[%v]", maxAppliedID, targetHosts, mp.PartitionID)
 	return targetHosts, isErr
 }
 
-func excludeLearner(mp *MetaPartition) (members []string) {
+func ExcludeLearner(mp *MetaPartition) (members []string) {
 	members = make([]string, 0)
 	for _, host := range mp.Members {
 		if !contains(mp.Learners, host) {
@@ -1272,8 +1285,20 @@ func excludeLearner(mp *MetaPartition) (members []string) {
 	}
 	return members
 }
+func contains(arr []string, element string) (ok bool) {
+	if arr == nil || len(arr) == 0 {
+		return
+	}
+	for _, e := range arr {
+		if e == element {
+			ok = true
+			break
+		}
+	}
+	return
+}
 
-func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string, maxID uint64) {
+func getMaxApplyIDHosts(appliedIDslice map[string]uint64, recorders []string) (targetHosts []string, maxID uint64) {
 	maxID = uint64(0)
 	targetHosts = make([]string, 0)
 	for _, id := range appliedIDslice {
@@ -1282,32 +1307,8 @@ func getMaxApplyIDHosts(appliedIDslice map[string]uint64) (targetHosts []string,
 		}
 	}
 	for addr, id := range appliedIDslice {
-		if id == maxID {
+		if id == maxID && !contains(recorders, addr) {
 			targetHosts = append(targetHosts, addr)
-		}
-	}
-	return
-}
-
-func handleUmpAlarm(cluster, vol, act, msg string) {
-	umpKeyCluster := fmt.Sprintf("%s_client_warning", cluster)
-	umpMsgCluster := fmt.Sprintf("volume(%s) %s", vol, msg)
-	exporter.WarningBySpecialUMPKey(umpKeyCluster, umpMsgCluster)
-
-	umpKeyVol := fmt.Sprintf("%s_%s_warning", cluster, vol)
-	umpMsgVol := fmt.Sprintf("act(%s) - %s", act, msg)
-	exporter.WarningBySpecialUMPKey(umpKeyVol, umpMsgVol)
-}
-
-func contains(arr []string, element string) (ok bool) {
-	if arr == nil || len(arr) == 0 {
-		return
-	}
-
-	for _, e := range arr {
-		if e == element {
-			ok = true
-			break
 		}
 	}
 	return

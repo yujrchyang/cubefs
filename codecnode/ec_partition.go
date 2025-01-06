@@ -4,7 +4,7 @@
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
 //
-//     http://www.apache.org/licenses/LICENSE-2.0
+//	http://www.apache.org/licenses/LICENSE-2.0
 //
 // Unless required by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
@@ -52,7 +52,7 @@ type EcPartition struct {
 	dataWrapper      *dataSdk.Wrapper
 }
 
-type readFunc func(ctx context.Context, req *dataSdk.ExtentRequest) (readBytes int, err error)
+type readFunc func(ctx context.Context, req *dataSdk.ExtentRequest) (sc *dataSdk.StreamConn, readBytes int, err error)
 
 func getDataSdkWrapper(volume string, masters []string) (w *dataSdk.Wrapper, err error) {
 	SdkMapLock.Lock()
@@ -315,7 +315,7 @@ func (ecp *EcPartition) Read(ctx context.Context, extentId uint64, data []byte, 
 	} else {
 		readFunc = reader.Read
 	}
-	if readSize, err = readFunc(ctx, req); err != nil || readSize < size {
+	if _, readSize, err = readFunc(ctx, req); err != nil || readSize < size {
 		err = errors.NewErrorf("failed to read data[%v] size[%v]", err, readSize)
 	}
 

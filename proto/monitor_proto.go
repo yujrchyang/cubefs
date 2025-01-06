@@ -121,3 +121,15 @@ var ActionFlashMap = map[int]string{
 	ActionCacheMiss:    "miss",
 	ActionCacheExpire:  "expire",
 }
+
+const (
+	ActionClientRead = iota
+	ActionClientWrite
+	ActionClientOverWrite
+)
+
+var ActionClientMap = map[int]string{
+	ActionClientRead:      "read",
+	ActionClientWrite:     "write",
+	ActionClientOverWrite: "overwrite",
+}

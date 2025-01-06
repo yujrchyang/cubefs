@@ -37,7 +37,7 @@ const (
 	StreamSendSleepInterval = 100 * time.Millisecond
 	StreamSendTimeout       = 2 * time.Minute
 
-	StreamReadConsistenceRetry   = 50
+	StreamReadConsistenceRetry   = 3
 	StreamReadConsistenceTimeout = 1 * time.Minute
 
 	IdleConnTimeoutData  = 30
@@ -46,7 +46,10 @@ const (
 	WriteTimeoutData     = 3
 
 	HostErrAccessTimeout = 300 // second
-	StreamRetryTimeout   = 10 * time.Minute
+
+	MinWriteRetryTimeSec		= 60 * 10	// 10 min
+	DefaultWriteRetryTimeSec	= 0			// 无限重试
+	DefaultReadRetryTimeSec 	= 60 * 60	// 1 hour
 )
 
 type GetReplyFunc func(conn *net.TCPConn) (err error, again bool)
@@ -75,6 +78,13 @@ func NewStreamConn(dp *DataPartition, follower bool) *StreamConn {
 		return &StreamConn{
 			dp:       dp,
 			currAddr: dp.getNearestCrossRegionHost(),
+		}
+	}
+
+	if dp.ClientWrapper.IsSameZoneReadHAType() {
+		return &StreamConn{
+			dp:       dp,
+			currAddr: dp.getSameZoneReadHost(),
 		}
 	}
 

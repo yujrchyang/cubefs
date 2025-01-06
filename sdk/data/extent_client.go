@@ -30,15 +30,18 @@ import (
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/bloomfilter"
+	utilCfg "github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/iputil"
 	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/statistics"
 	"github.com/cubefs/cubefs/util/unit"
 	"golang.org/x/time/rate"
 )
 
 type InodeGetFunc func(ctx context.Context, ino uint64) (*proto.InodeInfo, error)
-type InsertExtentKeyFunc func(ctx context.Context, inode uint64, key proto.ExtentKey, isPreExtent bool) error
+type InsertExtentKeyFunc func(ctx context.Context, inode uint64, key proto.ExtentKey) error
 type GetExtentsFunc func(ctx context.Context, inode uint64) (uint64, uint64, []proto.ExtentKey, error)
 type TruncateFunc func(ctx context.Context, inode, oldSize, size uint64) error
 type EvictIcacheFunc func(ctx context.Context, inode uint64)
@@ -122,6 +125,7 @@ type ExtentConfig struct {
 	ExtentClientType    ExtentClientType
 	ReadAheadMemMB      int64
 	ReadAheadWindowMB   int64
+	EnableMonitor       bool
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -160,7 +164,8 @@ type ExtentClient struct {
 	stopC chan struct{}
 	wg    sync.WaitGroup
 
-	prepareCh chan *PrepareRequest
+	prepareCh         chan *PrepareRequest
+	monitorStatistics sync.Map // zone(string)->[]*statistic.MonitorData
 }
 
 const (
@@ -194,6 +199,7 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	client.dataWrapper.SetMetaWrapper(client.metaWrapper)
 	if client.metaWrapper != nil {
 		client.metaWrapper.RemoteCacheBloom = client.RemoteCacheBloom
+		client.metaWrapper.MetaNearRead = client.MetaNearRead
 	}
 	if client.dataWrapper.IsCacheBoostEnabled() {
 		client.dataWrapper.initRemoteCache()
@@ -242,7 +248,14 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	client.masterClient = masterSDK.NewMasterClient(config.Masters, false)
 	client.wg.Add(1)
 	go client.startUpdateConfig()
-
+	if config.EnableMonitor {
+		statistics.InitStatistics(utilCfg.NewConfig(statistics.ConfigMonitorAddr, statistics.DefaultMonitorAddr),
+			config.MetaWrapper.Cluster(),
+			"client",
+			"",
+			config.MetaWrapper.LocalIP(),
+			client.summaryMonitorData)
+	}
 	return
 }
 
@@ -432,7 +445,7 @@ func (client *ExtentClient) SyncWrite(ctx context.Context, inode uint64, offset 
 
 	oriReq := &ExtentRequest{FileOffset: offset, Size: len(data), Data: data}
 	var exID int
-	dp, exID, write, err = s.writeToNewExtent(ctx, oriReq, direct)
+	_, dp, exID, write, err = s.writeToNewExtent(ctx, oriReq, true)
 	if err != nil {
 		return
 	}
@@ -713,21 +726,40 @@ func (client *ExtentClient) startUpdateConfig() {
 func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf("updateDataLimitConfig panic: err(%v) stack(%v)", r, string(debug.Stack()))
-			msg := fmt.Sprintf("updateDataLimitConfig panic: err(%v)", r)
-			common.HandleUmpAlarm(client.dataWrapper.clusterName, client.dataWrapper.volName, "updateDataLimitConfig", msg)
+			log.LogErrorf("startUpdateConfigWithRecover panic: err(%v) stack(%v)", r, string(debug.Stack()))
+			msg := fmt.Sprintf("startUpdateConfigWithRecover panic: err(%v)", r)
+			common.HandleUmpAlarm(client.dataWrapper.clusterName, client.dataWrapper.volName, "startUpdateConfigWithRecover", msg)
 			err = errors.New(msg)
 		}
 	}()
-	timer := time.NewTimer(0)
+
+	var (
+		retryHosts         map[string]bool
+		dataPort, metaPort string
+	)
+	client.updateConfig()
+	timer := time.NewTimer(updateConfigTicket)
 	defer timer.Stop()
+
+	if client.dataWrapper.IsCacheBoostEnabled() || client.dataWrapper.IsSameZoneReadHAType() {
+		retryHosts, dataPort, metaPort = client.updateHostsPingTime()
+	}
+	refreshHostLatency := time.NewTimer(RefreshHostLatencyInterval)
+	defer refreshHostLatency.Stop()
+
 	for {
 		select {
 		case <-client.stopC:
 			return
+
 		case <-timer.C:
 			client.updateConfig()
-			timer.Reset(updateConfigTicket)
+			retryHosts = client.retryHostsPingTime(retryHosts, dataPort, metaPort)
+
+		case <-refreshHostLatency.C:
+			if client.dataWrapper.IsCacheBoostEnabled() || client.dataWrapper.IsSameZoneReadHAType() {
+				retryHosts, dataPort, metaPort = client.updateHostsPingTime()
+			}
 		}
 	}
 }
@@ -768,6 +800,8 @@ func (client *ExtentClient) updateConfig() {
 	}
 	client.dpTimeoutCntThreshold = limitInfo.DpTimeoutCntThreshold
 	client.dpConsistencyMode = limitInfo.DataPartitionConsistencyMode
+	client.dataWrapper.SetRetryTimeSec(limitInfo.ClientWriteRetryTimeSec, limitInfo.ClientReadRetryTimeSec)
+	client.metaWrapper.SetRetryTimeSec(limitInfo.ClientWriteRetryTimeSec)
 	log.LogInfof("updateConfig: vol(%v) limit(%v)", client.dataWrapper.volName, limitInfo)
 }
 
@@ -932,4 +966,92 @@ func (c *ExtentClient) GetReadAheadConfig() (memMB, windowMB int64) {
 	memMB = c.GetReadAheadController().getMemoryMB()
 	windowMB = c.GetReadAheadController().getWindowMB()
 	return
+}
+
+func (c *ExtentClient) updateHostsPingTime() (failedHosts map[string]bool, dataPort, metaPort string) {
+	now := time.Now()
+	pingHostCount := 0
+	failedHosts = make(map[string]bool)
+	allHosts := make(map[string]time.Duration)
+	// range dp host first
+	c.dataWrapper.partitions.Range(func(id, value interface{}) bool {
+		dp := value.(*DataPartition)
+		for _, host := range dp.Hosts {
+			ip := strings.Split(host, ":")[0]
+			if dataPort == "" && len(strings.Split(host, ":")) == 2 {
+				dataPort = strings.Split(host, ":")[1]
+			}
+
+			if _, ok := allHosts[ip]; ok {
+				continue
+			}
+			pingHostCount++
+			pingElapsed, success := getHostPingElapsed(ip)
+			if !success {
+				failedHosts[ip] = success
+			}
+			allHosts[ip] = pingElapsed
+			c.dataWrapper.HostsDelay.Store(host, pingElapsed)
+		}
+		return true
+	})
+	// then range mp host, except leaner
+	for _, mp := range c.metaWrapper.GetPartitions() {
+		hosts := meta.ExcludeLearner(mp)
+		for _, host := range hosts {
+			ip := strings.Split(host, ":")[0]
+			if metaPort == "" && len(strings.Split(host, ":")) == 2 {
+				metaPort = strings.Split(host, ":")[1]
+			}
+
+			if pingElapsed, ok := allHosts[ip]; ok {
+				c.metaWrapper.HostsDelay.Store(host, pingElapsed)
+				continue
+			}
+			pingHostCount++
+			pingElapsed, success := getHostPingElapsed(ip)
+			if !success {
+				failedHosts[ip] = success
+			}
+			allHosts[ip] = pingElapsed
+			c.metaWrapper.HostsDelay.Store(host, pingElapsed)
+		}
+	}
+	log.LogInfof("updateHostsPingTime: totalPingCnt(%v) failedCnt(%v) cost(%v)", pingHostCount, len(failedHosts), time.Since(now))
+	return
+}
+
+func (c *ExtentClient) retryHostsPingTime(retryHosts map[string]bool, dataPort, metaPort string) map[string]bool {
+	if log.IsDebugEnabled() {
+		log.LogDebugf("retryHostsPingTime: len(retryHost)=%v, dataPort: %v, metaPort: %v", len(retryHosts), dataPort, metaPort)
+	}
+	if retryHosts == nil || len(retryHosts) == 0 {
+		return nil
+	}
+	failed := make(map[string]bool)
+	for ip, _ := range retryHosts {
+		pingElapsed, success := getHostPingElapsed(ip)
+		if !success {
+			failed[ip] = success
+		} else {
+			c.dataWrapper.HostsDelay.Store(fmt.Sprintf("%s:%s", ip, dataPort), pingElapsed)
+			c.metaWrapper.HostsDelay.Store(fmt.Sprintf("%s:%s", ip, metaPort), pingElapsed)
+		}
+	}
+	return failed
+}
+
+func getHostPingElapsed(ip string) (time.Duration, bool) {
+	avg, err := iputil.PingWithTimeout(ip, pingCount, pingTimeout)
+	if err != nil {
+		avg = time.Duration(0)
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("hostPingElapsed: ip(%v) ping time(%v) err(%v)", ip, avg, err)
+	}
+	return avg, avg > 0
+}
+
+func (c *ExtentClient) MetaNearRead() bool {
+	return c.dataWrapper.MpFollowerRead
 }
