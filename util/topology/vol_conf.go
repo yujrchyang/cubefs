@@ -1,6 +1,10 @@
 package topology
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/cubefs/cubefs/proto"
+)
 
 type VolumeConfig struct {
 	sync.RWMutex
@@ -18,6 +22,7 @@ type VolumeConfig struct {
 	truncateEKCount                   int
 	bitmapSnapFrozenHour              int64
 	enableCheckDeleteEK               bool
+	persistenceMode                   proto.PersistenceMode
 }
 
 func (conf *VolumeConfig) GetEnableBitMapFlag() bool {
@@ -118,6 +123,13 @@ func (conf *VolumeConfig) GetEnableCheckDeleteEKFlag() bool {
 	return conf.enableCheckDeleteEK
 }
 
+func (conf *VolumeConfig) GetPersistenceMode() proto.PersistenceMode {
+	conf.RLock()
+	defer conf.RUnlock()
+
+	return conf.persistenceMode
+}
+
 func (conf *VolumeConfig) update(newConf *VolumeConfig) {
 	conf.Lock()
 	defer conf.Unlock()
@@ -136,4 +148,5 @@ func (conf *VolumeConfig) update(newConf *VolumeConfig) {
 	conf.enableCheckDeleteEK = newConf.enableCheckDeleteEK
 	conf.reqRecordsMaxCount = newConf.reqRecordsMaxCount
 	conf.reqRecordsReservedTime = newConf.reqRecordsReservedTime
+	conf.persistenceMode = newConf.persistenceMode
 }

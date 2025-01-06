@@ -18,10 +18,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/multirate"
-	"github.com/cubefs/cubefs/util/tokenmanager"
-	"github.com/cubefs/cubefs/util/unit"
-	"github.com/tiglabs/raft"
 	"io/fs"
 	"io/ioutil"
 	"net"
@@ -33,6 +29,11 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/multirate"
+	"github.com/cubefs/cubefs/util/tokenmanager"
+	"github.com/cubefs/cubefs/util/unit"
+	"github.com/tiglabs/raft"
 
 	"github.com/cubefs/cubefs/util/exporter"
 
@@ -87,8 +88,8 @@ type metadataManager struct {
 	state                 uint32
 	mu                    sync.RWMutex
 	createMu              sync.RWMutex
-	partitions            map[uint64]MetaPartition 	// Key: metaRangeId, Val: metaPartition
-	recorders             sync.Map 					// Key: metaRangeId, Val: metaRecorder
+	partitions            map[uint64]MetaPartition // Key: metaRangeId, Val: metaPartition
+	recorders             sync.Map                 // Key: metaRangeId, Val: metaRecorder
 	startFailedPartitions sync.Map
 	metaNode              *MetaNode
 	flDeleteBatchCount    atomic.Value
@@ -119,7 +120,6 @@ type MetaNodeVersion struct {
 	Patch int64
 }
 
-
 func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
 	labels = make([]string, 3)
 	mp, err := m.getPartition(p.PartitionID)
@@ -135,7 +135,7 @@ func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
 	return
 }
 
-func (m *metadataManager) statisticsOpTimeDelay(p *Packet, startTime time.Time, cost int)  {
+func (m *metadataManager) statisticsOpTimeDelay(p *Packet, startTime time.Time, cost int) {
 	partition, err := m.GetPartition(p.PartitionID)
 	if err != nil {
 		return
@@ -181,14 +181,14 @@ func (m *metadataManager) statisticsOpTimeDelay(p *Packet, startTime time.Time, 
 // HandleMetadataOperation handles the metadata operations.
 func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
-	metric := exporter.NewModuleTPUsWithStart(p.GetOpMsg() + "_us", start)
+	metric := exporter.NewModuleTPUsWithStart(p.GetOpMsg()+"_us", start)
 	defer func() {
 		cost := time.Since(start)
 		metric.SetWithCost(int64(cost/time.Microsecond), err)
 		m.statisticsOpTimeDelay(p, start, int(cost/time.Microsecond))
 	}()
 
-	if err = m.rateLimit(conn, p, remoteAddr); err != nil{
+	if err = m.rateLimit(conn, p, remoteAddr); err != nil {
 		err = fmt.Errorf("limit time out")
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		m.respondToClient(conn, p)
@@ -529,13 +529,13 @@ func (m *metadataManager) syncMetaPartitionsRocksDBWalLogScheduler() {
 }
 
 func (m *metadataManager) doCheckNoLeaderPartitionsSchedule() {
-	ticker := time.NewTicker(time.Second*NoLeaderCheckIntervalSecond)
+	ticker := time.NewTicker(time.Second * NoLeaderCheckIntervalSecond)
 	for {
-		select{
-		case <- m.stopC:
+		select {
+		case <-m.stopC:
 			ticker.Stop()
 			return
-		case <- ticker.C:
+		case <-ticker.C:
 			m.checkNoLeaderPartitions()
 		}
 	}
@@ -568,7 +568,7 @@ func (m *metadataManager) checkNoLeaderPartitions() {
 		lastNoLeaderTimestamp, ok := m.noLeaderMpsMap[id]
 		if !ok {
 			m.noLeaderMpsMap[id] = time.Now().Unix()
-		} else if time.Now().Unix() - lastNoLeaderTimestamp >= 6*NoLeaderCheckIntervalSecond {
+		} else if time.Now().Unix()-lastNoLeaderTimestamp >= 6*NoLeaderCheckIntervalSecond {
 			noLeaderMPsID = append(noLeaderMPsID, id)
 		}
 	}
@@ -584,10 +584,10 @@ func (m *metadataManager) cleanOldDeleteEKRecordFileSchedule() {
 	timer := time.NewTicker(cleanDelEKRecordFileTimerInterval)
 	for {
 		select {
-		case <- m.stopC:
+		case <-m.stopC:
 			timer.Stop()
 			return
-		case <- timer.C:
+		case <-timer.C:
 			m.doCleanOldDeleteEKRecordFile()
 		}
 	}
@@ -609,7 +609,7 @@ func (m *metadataManager) doCleanOldDeleteEKRecordFile() {
 	expiredTime := time.Now().Add(-delEKRecordFileRetentionTime)
 	for _, mpID := range mpIDs {
 		partition, err := m.getPartition(mpID)
-		if err != nil{
+		if err != nil {
 			continue
 		}
 
@@ -624,7 +624,7 @@ func (m *metadataManager) doCleanOldDeleteEKRecordFile() {
 
 	var metaDataDiskUsedRatio float64
 	if metaDataDisk, ok := m.metaNode.disks[m.metaNode.metadataDir]; ok {
-		metaDataDiskUsedRatio = metaDataDisk.Used/metaDataDisk.Total
+		metaDataDiskUsedRatio = metaDataDisk.Used / metaDataDisk.Total
 	}
 	if metaDataDiskUsedRatio < ForceCleanDelEKRecordFileMaxMetaDataDiskUsedFactor {
 		log.LogDebugf("[removeOldDeleteEKRecordFile] meta data disk used ratio:%v", metaDataDiskUsedRatio)
@@ -634,7 +634,7 @@ func (m *metadataManager) doCleanOldDeleteEKRecordFile() {
 	recordFileMaxTotalSize := uint64(defForceDeleteEKRecordFileMaxTotalSize)
 	for _, mpID := range mpIDs {
 		partition, err := m.getPartition(mpID)
-		if err != nil{
+		if err != nil {
 			continue
 		}
 
@@ -942,6 +942,12 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 
 	partitionId := fmt.Sprintf("%d", request.PartitionID)
 
+	// 集群级别PersistenceMode优先级高于Volume级别
+	persistenceMode := nodeInfo.PersistenceMode
+	if persistenceMode == proto.PersistenceMode_Nil {
+		persistenceMode = request.PersistenceMode
+	}
+
 	mpc := &MetaPartitionConfig{
 		PartitionId:        request.PartitionID,
 		VolName:            request.VolName,
@@ -950,7 +956,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		Cursor:             request.Start,
 		Peers:              request.Members,
 		Learners:           request.Learners,
-		Recorders: 			request.Recorders,
+		Recorders:          request.Recorders,
 		RaftStore:          m.raftStore,
 		NodeId:             m.nodeId,
 		RootDir:            path.Join(m.rootDir, partitionPrefix+partitionId),
@@ -958,6 +964,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		TrashRemainingDays: int32(request.TrashDays),
 		StoreMode:          request.StoreMode,
 		CreationType:       request.CreationType,
+		PersistenceMode:    persistenceMode,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)
@@ -1045,7 +1052,7 @@ func (m *metadataManager) MarshalJSON() (data []byte, err error) {
 	return json.Marshal(m.partitions)
 }
 
-func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string) (error){
+func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string) error {
 	// ignore rate limit if request is from cluster master nodes
 	if p.isMasterRequest() {
 		return nil
@@ -1062,7 +1069,7 @@ func (m *metadataManager) rateLimit(conn net.Conn, p *Packet, remoteAddr string)
 		ps = append(ps, multirate.Property{Type: multirate.PropertyTypePartition, Value: strconv.Itoa(int(pid))})
 	}
 	stat := multirate.Stat{
-		Count: 1,
+		Count:   1,
 		InBytes: int(unit.PacketHeaderSize + p.ArgLen + p.Size),
 	}
 	return multirate.WaitNUseDefaultTimeout(context.Background(), ps, stat)
@@ -1272,7 +1279,7 @@ func (m *metadataManager) loadMetaInfo() (metaNodeInfo *proto.MetaNodeInfo, file
 }
 
 func (m *metadataManager) loadRecorder(fileName string) (mr *metaRecorder, err error) {
-	var	id	uint64
+	var id uint64
 	recorderIdStr := fileName[len(RecorderPrefix):]
 	if id, err = strconv.ParseUint(recorderIdStr, 10, 64); err != nil {
 		return
@@ -1345,15 +1352,15 @@ func (m *metadataManager) createRecorder(request *proto.CreateMetaRecorderReques
 
 	var mr *metaRecorder
 	cfg := &raftstore.RecorderConfig{
-		VolName:        request.VolName,
-		PartitionID:	request.PartitionID,
-		Peers:          request.Members,
-		Learners:       request.Learners,
-		Recorders: 		request.Recorders,
-		ClusterID:		m.metaNode.clusterId,
-		NodeID:         m.nodeId,
-		RaftStore:      m.raftStore,
-		CreateTime: 	time.Now().Format("2006-01-02 15:04:05"),
+		VolName:     request.VolName,
+		PartitionID: request.PartitionID,
+		Peers:       request.Members,
+		Learners:    request.Learners,
+		Recorders:   request.Recorders,
+		ClusterID:   m.metaNode.clusterId,
+		NodeID:      m.nodeId,
+		RaftStore:   m.raftStore,
+		CreateTime:  time.Now().Format("2006-01-02 15:04:05"),
 	}
 	if mr, err = NewMetaRecorder(cfg, m); err != nil {
 		err = errors.NewErrorf("[newRecorder]->%s", err.Error())
@@ -1433,7 +1440,7 @@ func (m *metadataManager) isExpiredRecorder(fileName string, partitions []uint64
 	return isExpiredPartition(fileName, partitions, recorderPrefix)
 }
 
-func (m *metadataManager) expireRecorder(fileName string)  {
+func (m *metadataManager) expireRecorder(fileName string) {
 	oldName := path.Join(m.rootDir, fileName)
 	newName := path.Join(m.rootDir, ExpiredRecorderPrefix+fileName+"_"+strconv.FormatInt(time.Now().Unix(), 10))
 	if tempErr := os.Rename(oldName, newName); tempErr != nil {
@@ -1470,9 +1477,9 @@ func NewMetadataManager(conf MetadataManagerConfig, metaNode *MetaNode) (Metadat
 	}
 
 	var (
-		metaNodeInfo	*proto.MetaNodeInfo
-		fileInfoList	[]fs.FileInfo
-		err				error
+		metaNodeInfo *proto.MetaNodeInfo
+		fileInfoList []fs.FileInfo
+		err          error
 	)
 	if metaNodeInfo, fileInfoList, err = mm.loadMetaInfo(); err != nil {
 		return nil, err

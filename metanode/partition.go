@@ -20,8 +20,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/topology"
 	"io/ioutil"
 	"net"
 	"os"
@@ -32,6 +30,9 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/topology"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -78,11 +79,11 @@ type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
 	PartitionId        uint64                `json:"partition_id"`
 	VolName            string                `json:"vol_name"`
-	Start              uint64                `json:"start"`    // Minimal Inode ID of this range. (Required during initialization)
-	End                uint64                `json:"end"`      // Maximal Inode ID of this range. (Required during initialization)
-	Peers              []proto.Peer          `json:"peers"`    // Peers information of the raftStore
-	Learners           []proto.Learner       `json:"learners"` // Learners information of the raftStore
-	Recorders		   []string            	 `json:"recorders"`// Recorders information of the raftStore
+	Start              uint64                `json:"start"`     // Minimal Inode ID of this range. (Required during initialization)
+	End                uint64                `json:"end"`       // Maximal Inode ID of this range. (Required during initialization)
+	Peers              []proto.Peer          `json:"peers"`     // Peers information of the raftStore
+	Learners           []proto.Learner       `json:"learners"`  // Learners information of the raftStore
+	Recorders          []string              `json:"recorders"` // Recorders information of the raftStore
 	TrashRemainingDays int32                 `json:"-"`
 	Cursor             uint64                `json:"-"` // Cursor ID of the inode that have been assigned
 	NodeId             uint64                `json:"-"`
@@ -106,6 +107,8 @@ type MetaPartitionConfig struct {
 	RocksLogReversedTime uint64 `json:"rocks_log_reversed"`
 	RocksLogReVersedCnt  uint64 `json:"rocks_log_re_versed_cnt"`
 	RocksWalTTL          uint64 `json:"rocks_wal_ttl"`
+
+	PersistenceMode proto.PersistenceMode `json:"persistence_mode"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -479,8 +482,8 @@ func (mp *metaPartition) startRaft() (err error) {
 		addr := strings.Split(peer.Addr, ":")[0]
 		rp := raftstore.PeerAddress{
 			Peer: raftproto.Peer{
-				ID: 	peer.ID,
-				Type: 	raftproto.PeerType(peer.Type),
+				ID:   peer.ID,
+				Type: raftproto.PeerType(peer.Type),
 			},
 			Address:       addr,
 			HeartbeatPort: heartbeatPort,
@@ -514,8 +517,8 @@ func (mp *metaPartition) startRaft() (err error) {
 
 		LogIndexCheck: true, //if mp.applyID more than raft log last index or less than first index, don't start meta partition
 
-		WALSync: true,
-		WALSyncRotate: true,
+		WALSync:       mp.config.PersistenceMode == proto.PersistenceMode_WriteThrough,
+		WALSyncRotate: mp.config.PersistenceMode == proto.PersistenceMode_WriteThrough,
 		StorageListener: raftstore.NewStorageListenerBuilder().
 			ListenStoredEntry(mp.listenStoredRaftLogEntry).
 			Build(),
@@ -1219,7 +1222,7 @@ func (mp *metaPartition) activeBitmapAllocator() {
 		return
 	}
 
-	freezeSecond := mp.getBitmapSnapFrozenDuration()/time.Second
+	freezeSecond := mp.getBitmapSnapFrozenDuration() / time.Second
 	newActiveTime := freezeTime + int64(freezeSecond)
 	if newActiveTime > activeTime && time.Now().Before(time.Unix(newActiveTime, 0)) {
 		mp.updateBitmapAllocatorActiveTime(newActiveTime)
@@ -1709,7 +1712,7 @@ func (mp *metaPartition) FreeInode(val []byte) (err error) {
 }
 
 func (mp *metaPartition) checkRecoverAfterStart() {
-	ticker := time.NewTicker(time.Second*5)
+	ticker := time.NewTicker(time.Second * 5)
 	defer ticker.Stop()
 
 	for {
@@ -1795,7 +1798,7 @@ func (mp *metaPartition) isVolFirstPartition() bool {
 func (mp *metaPartition) initInodeIDAllocator() (err error) {
 	if mp.HasMemStore() {
 		_ = mp.inodeIDAllocator.SetStatus(allocatorStatusInit)
-		if err =  mp.loadBitMapAllocatorInfo(path.Join(mp.config.RootDir, snapshotDir)); err != nil {
+		if err = mp.loadBitMapAllocatorInfo(path.Join(mp.config.RootDir, snapshotDir)); err != nil {
 			return
 		}
 	}
@@ -1945,7 +1948,7 @@ func (mp *metaPartition) getBitmapSnapFrozenDuration() (intervalDuration time.Du
 	var interval int64
 	volConf := mp.topoManager.GetVolConf(mp.config.VolName)
 	if volConf == nil {
-		intervalDuration = time.Hour*time.Duration(defBitMapAllocatorFrozenHour)
+		intervalDuration = time.Hour * time.Duration(defBitMapAllocatorFrozenHour)
 		return
 	}
 
@@ -1953,7 +1956,7 @@ func (mp *metaPartition) getBitmapSnapFrozenDuration() (intervalDuration time.Du
 	if interval <= 0 {
 		interval = defBitMapAllocatorFrozenHour
 	}
-	return time.Hour*time.Duration(interval)
+	return time.Hour * time.Duration(interval)
 }
 func (mp *metaPartition) CorrectInodesAndDelInodesTotalSize(ctx context.Context, req *proto.CorrectMPInodesAndDelInodesTotalSizeReq) (err error) {
 	var data []byte

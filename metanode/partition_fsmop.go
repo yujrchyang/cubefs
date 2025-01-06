@@ -19,13 +19,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/util/errors"
 	"os"
 	"path"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/errors"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
@@ -71,7 +72,7 @@ func (mp *metaPartition) decommissionPartition() (err error) {
 	return
 }
 
-func (mp *metaPartition) fsmConfigHasChanged() bool{
+func (mp *metaPartition) fsmConfigHasChanged() bool {
 	needStore := false
 
 	if mp.CreationType != mp.config.CreationType {
@@ -294,9 +295,9 @@ func (mp *metaPartition) confRemoveRecorder(req *proto.RemoveMetaPartitionRaftRe
 
 func (mp *metaPartition) ApplyResetMember(req *proto.ResetMetaPartitionRaftMemberRequest) {
 	var (
-		newPeers          []proto.Peer
-		newLearners       []proto.Learner
-		newRecorders	  []string
+		newPeers     []proto.Peer
+		newLearners  []proto.Learner
+		newRecorders []string
 	)
 	data, _ := json.Marshal(req)
 	log.LogInfof("Start ResetRaftNode  PartitionID(%v) nodeID(%v)  do RaftLog (%v) ",
@@ -501,7 +502,7 @@ func (mp *metaPartition) evictExpiredRequestRecords(dbWriteHandle interface{}, e
 	if mp.HasRocksDBStore() {
 		startKey, endKey := []byte{byte(ReqRecordsTable)}, []byte{byte(ReqRecordsTable + 1)}
 		dbSnap := mp.db.OpenSnap()
-		if dbSnap == nil{
+		if dbSnap == nil {
 			log.LogErrorf("evictExpiredRequestRecords genSnap failed, partitionID(%v), error:%v",
 				mp.config.PartitionId, err)
 			return
@@ -529,13 +530,13 @@ func (mp *metaPartition) evictExpiredRequestRecords(dbWriteHandle interface{}, e
 }
 
 func (mp *metaPartition) fsmCorrectInodesAndDelInodesTotalSize(req *proto.CorrectMPInodesAndDelInodesTotalSizeReq) {
-	if !contains(req.NeedCorrectHosts, mp.manager.metaNode.localAddr + ":" + mp.manager.metaNode.listen) {
+	if !contains(req.NeedCorrectHosts, mp.manager.metaNode.localAddr+":"+mp.manager.metaNode.listen) {
 		log.LogDebugf("fsmCorrectInodesAndDelInodesTotalSize, partition(%v) in local node no need correct", mp.config.PartitionId)
 		return
 	}
 
 	delInodesOldTotalSize := mp.inodeDeletedTree.GetDelInodesTotalSize()
-	inodesOldTotalSize    := mp.inodeTree.GetInodesTotalSize()
+	inodesOldTotalSize := mp.inodeTree.GetInodesTotalSize()
 	snap := NewSnapshot(mp)
 
 	go func() {
@@ -565,19 +566,19 @@ func (mp *metaPartition) fsmCorrectInodesAndDelInodesTotalSize(req *proto.Correc
 		wg.Wait()
 
 		if inodesTotalSize >= inodesOldTotalSize {
-			mp.updateInodesTotalSize(inodesTotalSize - inodesOldTotalSize, 0)
+			mp.updateInodesTotalSize(inodesTotalSize-inodesOldTotalSize, 0)
 		} else {
-			mp.updateInodesTotalSize(0, inodesOldTotalSize - inodesTotalSize)
+			mp.updateInodesTotalSize(0, inodesOldTotalSize-inodesTotalSize)
 		}
 		log.LogDebugf("fsmCorrectInodesAndDelInodesTotalSize, correct inodes total size partitionID: %v, changeSize: %v",
-			mp.config.PartitionId, inodesTotalSize - inodesOldTotalSize)
+			mp.config.PartitionId, inodesTotalSize-inodesOldTotalSize)
 
 		if delInodesTotalSize > delInodesOldTotalSize {
-			mp.updateDelInodesTotalSize(delInodesTotalSize - delInodesOldTotalSize, 0)
+			mp.updateDelInodesTotalSize(delInodesTotalSize-delInodesOldTotalSize, 0)
 		} else {
-			mp.updateDelInodesTotalSize(0, delInodesOldTotalSize - delInodesTotalSize)
+			mp.updateDelInodesTotalSize(0, delInodesOldTotalSize-delInodesTotalSize)
 		}
 		log.LogDebugf("fsmCorrectInodesAndDelInodesTotalSize, correct delInodes total size partitionID: %v, changeSize: %v",
-			mp.config.PartitionId, delInodesTotalSize - delInodesOldTotalSize)
+			mp.config.PartitionId, delInodesTotalSize-delInodesOldTotalSize)
 	}()
 }

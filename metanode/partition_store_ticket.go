@@ -18,10 +18,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/unit"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/unit"
 
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -44,7 +45,7 @@ func (mp *metaPartition) updateRaftStorageParam() {
 		logSize = nodeCfg.raftLogSizeFromMaster * unit.MB
 	}
 
-	if nodeCfg.raftLogSizeFromLoc  > 0 {
+	if nodeCfg.raftLogSizeFromLoc > 0 {
 		logSize = nodeCfg.raftLogSizeFromLoc * unit.MB
 	}
 
@@ -52,7 +53,7 @@ func (mp *metaPartition) updateRaftStorageParam() {
 		logCap = nodeCfg.raftLogCapFromMaster
 	}
 
-	if nodeCfg.raftLogCapFromLoc  > 0 {
+	if nodeCfg.raftLogCapFromLoc > 0 {
 		logCap = nodeCfg.raftLogCapFromLoc
 	}
 
@@ -62,9 +63,9 @@ func (mp *metaPartition) updateRaftStorageParam() {
 	}
 
 	if logSize != 0 && logSize != raftPartition.GetWALFileSize() &&
-		logSize >= (proto.MinMetaRaftLogSize * unit.MB ) && logSize <= (proto.MaxMetaRaftLogSize * unit.MB) {
+		logSize >= (proto.MinMetaRaftLogSize*unit.MB) && logSize <= (proto.MaxMetaRaftLogSize*unit.MB) {
 		raftPartition.SetWALFileSize(logSize)
-		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File size :%d MB", mp.config.PartitionId, logSize / unit.MB)
+		log.LogWarnf("[updateRaftStorageParam] partitionId=%d: File size :%d MB", mp.config.PartitionId, logSize/unit.MB)
 	}
 
 	if logCap != 0 && logCap != raftPartition.GetWALFileCacheCapacity() && logCap >= proto.MinMetaRaftLogCap {
@@ -134,7 +135,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				return
 
 			case <-storeTicker.C:
-				if time.Now().Unix() - atomic.LoadInt64(&mp.lastDumpTime) < int64(intervalToPersistData / time.Second){
+				if time.Now().Unix()-atomic.LoadInt64(&mp.lastDumpTime) < int64(intervalToPersistData/time.Second) {
 					continue
 				}
 
@@ -176,7 +177,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 			case <-timer.C:
 				if mp.applyID <= curIndex {
-					log.LogDebugf("[startSchedule] meta partition apply id less than curIndex, partitionID: %v," +
+					log.LogDebugf("[startSchedule] meta partition apply id less than curIndex, partitionID: %v,"+
 						"applyID: %v, curIndex: %v", mp.config.PartitionId, mp.applyID, curIndex)
 					timer.Reset(intervalToPersistData)
 					continue
@@ -198,7 +199,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerCursor.Reset(intervalToSyncCursor)
-			case <- timerSyncReqRecordsEvictTimestamp.C:
+			case <-timerSyncReqRecordsEvictTimestamp.C:
 				if _, ok := mp.IsLeader(); !ok {
 					timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
 					continue
@@ -212,7 +213,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)
-			case <- activeBitMapAllocateTicker.C:
+			case <-activeBitMapAllocateTicker.C:
 				if _, ok := mp.IsLeader(); !ok {
 					continue
 				}
@@ -255,7 +256,7 @@ func (mp *metaPartition) startCleanTrashScheduler() {
 
 				if time.Since(mp.trashExpiresFirstUpdateTime) < (intervalToUpdateAllVolsConf + intervalToUpdateVolTrashExpires) {
 					log.LogDebugf("mp[%v] since trashExpiresFirstUpdateTime less than %v",
-						mp.config.PartitionId, intervalToUpdateAllVolsConf+ intervalToUpdateVolTrashExpires)
+						mp.config.PartitionId, intervalToUpdateAllVolsConf+intervalToUpdateVolTrashExpires)
 					continue
 				}
 				err := mp.CleanExpiredDeletedDentry()
@@ -315,9 +316,27 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 				mp.config.ChildFileMaxCount = conf.GetChildFileMaxCount()
 				mp.config.TrashCleanInterval = conf.GetTrashCleanInterval()
 				mp.config.EnableRemoveDupReq = conf.GetEnableRemoveDupReqFlag()
+
 				mp.updateMetaPartitionInodeAllocatorState(conf.GetEnableBitMapFlag())
-				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, childFileMaxCount: %v, trashCleanInterval: %vMin",
-					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.ChildFileMaxCount, mp.config.TrashCleanInterval)
+
+				// 对集群级别和Volume级别PersistenceMode设置进行合并， 优先使用集群级别的设置
+				persistenceMode := nodeInfo.PersistenceMode
+				if persistenceMode == proto.PersistenceMode_Nil {
+					persistenceMode = conf.GetPersistenceMode()
+				}
+				if mp.raftPartition != nil {
+					mp.raftPartition.SetWALSync(persistenceMode == proto.PersistenceMode_WriteThrough)
+					mp.raftPartition.SetWALSyncRotate(persistenceMode == proto.PersistenceMode_WriteThrough)
+				}
+				if persistenceMode != mp.config.PersistenceMode {
+					mp.config.PersistenceMode = persistenceMode
+					if err := mp.PersistMetadata(); err != nil {
+						log.LogErrorf("Vol: %v, PartitionID: %v, persistMetadata failed, err: %v", mp.config.VolName, mp.config.PartitionId, err)
+					}
+				}
+
+				log.LogDebugf("Vol: %v, PartitionID: %v, trash-days: %v, childFileMaxCount: %v, trashCleanInterval: %vMin, persistenceMode: %v",
+					mp.config.VolName, mp.config.PartitionId, mp.config.TrashRemainingDays, mp.config.ChildFileMaxCount, mp.config.TrashCleanInterval, mp.config.PersistenceMode)
 			}
 		}
 	}(mp.stopC)

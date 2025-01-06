@@ -1,11 +1,12 @@
 package metanode
 
 import (
-	"github.com/cubefs/cubefs/util/exporter"
-	"golang.org/x/time/rate"
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/util/exporter"
+	"golang.org/x/time/rate"
 
 	"github.com/cubefs/cubefs/util/unit"
 
@@ -24,7 +25,7 @@ const (
 	DefaultRocksDBModeMaxFsUsedPercent   = 60
 	DefaultMemModeMaxFsUsedFactorPercent = 80
 	DefaultDelEKLimitBurst               = 10 * 10000 //10w todo:待定
-	DefaultDelEKBatchCount 			     = 1000
+	DefaultDelEKBatchCount               = 1000
 	DefaultTruncateEKCount               = 128
 )
 
@@ -56,8 +57,10 @@ type NodeInfo struct {
 	CleanTrashItemMaxDurationEachTime int32 //min
 	CleanTrashItemMaxCountEachTime    int32
 
-	DumpSnapCountCluster      uint64
-	DumpSnapCountLoc  	      uint64
+	DumpSnapCountCluster uint64
+	DumpSnapCountLoc     uint64
+
+	PersistenceMode proto.PersistenceMode
 }
 
 var (
@@ -65,7 +68,7 @@ var (
 	nodeInfoStopC              = make(chan struct{}, 0)
 	deleteWorkerSleepMs uint64 = 0
 
-	delExtentRateLimitLocal uint64
+	delExtentRateLimitLocal   uint64
 	delExtentRateLimiterLocal = rate.NewLimiter(rate.Inf, DefaultDelEKLimitBurst)
 
 	// all cluster internal nodes
@@ -282,7 +285,7 @@ func (m *MetaNode) updateBitMapAllocatorConf(info *proto.LimitInfo) {
 func (m *MetaNode) getBitMapAllocatorMaxUsedFactor() float64 {
 	factor := defBitMapAllocatorMaxUsedFactorForAvailable
 	nodeConf := getGlobalConfNodeInfo()
-	if nodeConf.bitMapAllocatorMaxUsedFactorForAvailable > 0 && nodeConf.bitMapAllocatorMaxUsedFactorForAvailable < 1{
+	if nodeConf.bitMapAllocatorMaxUsedFactorForAvailable > 0 && nodeConf.bitMapAllocatorMaxUsedFactorForAvailable < 1 {
 		factor = nodeConf.bitMapAllocatorMaxUsedFactorForAvailable
 	}
 	return factor
@@ -330,7 +333,16 @@ func (m *MetaNode) setClusterDisableCheckEKFlag(disableFlag bool) {
 	disableClusterCheckDeleteEK = disableFlag
 }
 
-func (m *MetaNode)GetDumpSnapCount() uint64 {
+func (m *MetaNode) setClusterPersistenceMode(mode proto.PersistenceMode) {
+	if mode == nodeInfo.PersistenceMode {
+		return
+	}
+
+	log.LogInfof("setClusterPersistenceMode, persistenceMode: %v ==> %v", nodeInfo.PersistenceMode, mode)
+	nodeInfo.PersistenceMode = mode
+}
+
+func (m *MetaNode) GetDumpSnapCount() uint64 {
 	dumpCount := uint64(0)
 	dumpCount = atomic.LoadUint64(&nodeInfo.DumpSnapCountCluster)
 
@@ -345,7 +357,7 @@ func (m *MetaNode)GetDumpSnapCount() uint64 {
 	return dumpCount
 }
 
-func (m *MetaNode)GetDumpSnapRunningCount() uint64 {
+func (m *MetaNode) GetDumpSnapRunningCount() uint64 {
 	Count := uint64(0)
 	if m.metadataManager != nil {
 		Count = m.metadataManager.GetDumpSnapRunningCount()
@@ -353,14 +365,14 @@ func (m *MetaNode)GetDumpSnapRunningCount() uint64 {
 	return Count
 }
 
-func (m *MetaNode)GetDumpSnapMPID() []uint64 {
+func (m *MetaNode) GetDumpSnapMPID() []uint64 {
 	if m.metadataManager != nil {
 		return m.metadataManager.GetDumpSnapMPID()
 	}
 	return nil
 }
 
-func (m *MetaNode)SetDumpSnapCount() {
+func (m *MetaNode) SetDumpSnapCount() {
 	Count := m.GetDumpSnapCount()
 	if m.metadataManager != nil {
 		m.metadataManager.ResetDumpSnapShotConfCount(Count)
@@ -368,7 +380,7 @@ func (m *MetaNode)SetDumpSnapCount() {
 	return
 }
 
-func (m *MetaNode)updateDumpSnapCountCluster(info *proto.LimitInfo) {
+func (m *MetaNode) updateDumpSnapCountCluster(info *proto.LimitInfo) {
 	clusterCount, ok := info.MetaNodeDumpSnapCountByZone[m.zoneName]
 	if !ok {
 		clusterCount = 0
@@ -378,7 +390,7 @@ func (m *MetaNode)updateDumpSnapCountCluster(info *proto.LimitInfo) {
 	return
 }
 
-func (m *MetaNode)updateDumpSnapCountLoc(dumpCount uint64) {
+func (m *MetaNode) updateDumpSnapCountLoc(dumpCount uint64) {
 	atomic.StoreUint64(&nodeInfo.DumpSnapCountLoc, dumpCount)
 	m.SetDumpSnapCount()
 	return
@@ -449,6 +461,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 	m.setRequestRecordsReservedMin(limitInfo.ClientReqRecordsReservedMin)
 	m.setRemoveDupReqFlag(limitInfo.ClientReqRemoveDupFlag)
 	m.setClusterDisableCheckEKFlag(limitInfo.DisableClusterCheckDeleteEK)
+	m.setClusterPersistenceMode(limitInfo.PersistenceMode)
 	m.updateDumpSnapCountCluster(limitInfo)
 
 	if statistics.StatisticsModule != nil {

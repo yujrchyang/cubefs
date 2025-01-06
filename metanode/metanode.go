@@ -16,12 +16,13 @@ package metanode
 
 import (
 	"fmt"
-	"github.com/cubefs/cubefs/util/iputil"
-	"github.com/cubefs/cubefs/util/topology"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cubefs/cubefs/util/iputil"
+	"github.com/cubefs/cubefs/util/topology"
 
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/statinfo"
@@ -140,6 +141,9 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	if err = m.register(); err != nil {
 		return
 	}
+
+	m.updateClusterMap()
+	m.updateDeleteLimitInfo()
 
 	if err = m.startRaftServer(); err != nil {
 		return

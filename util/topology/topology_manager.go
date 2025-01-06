@@ -3,15 +3,16 @@ package topology
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/master"
-	"github.com/cubefs/cubefs/util/log"
-	"github.com/cubefs/cubefs/util/multirate"
 	"runtime/debug"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/cubefs/cubefs/util/multirate"
 )
 
 var rateLimitProperties = multirate.Properties{
@@ -450,10 +451,11 @@ func (f *TopologyManager) updateVolumeConf() (err error) {
 			truncateEKCount:                   volConf.TruncateEKCountEveryTime,
 			bitmapSnapFrozenHour:              volConf.BitMapSnapFrozenHour,
 			enableCheckDeleteEK:               volConf.EnableCheckDeleteEK,
+			persistenceMode:                   volConf.PersistenceMode,
 		})
 		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, "+
 			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v,"+
-			" enableRemoveDupReq:%v, reqRecordReservedTime: %vmin, reqRecordMaxCount: %v, batchInodeDelCnt: %v," +
+			" enableRemoveDupReq:%v, reqRecordReservedTime: %vmin, reqRecordMaxCount: %v, batchInodeDelCnt: %v,"+
 			" delInodeInterval: %v, truncateEKCountEveryTime: %v, bitmapSnapFrozenHour: %v, enableCheckDeleteEK: %v",
 			volConf.Name, volConf.TrashRemainingDays, volConf.ChildFileMaxCnt, volConf.TrashCleanInterval,
 			strconv.FormatBool(volConf.EnableBitMapAllocator), volConf.CleanTrashMaxDurationEachTime,

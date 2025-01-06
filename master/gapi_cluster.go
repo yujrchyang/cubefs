@@ -299,12 +299,16 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 	if err != nil {
 		return nil, err
 	}
+	var vol *Vol
+	if vol, err = m.cluster.getVol(mp.volName); err != nil {
+		return nil, err
+	}
 
 	if !(args.storeMode == uint8(proto.StoreModeMem) || args.storeMode == uint8(proto.StoreModeRocksDb) || args.storeMode == uint8(proto.StoreModeDef)) {
 		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, args.storeMode)
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, "", false, proto.StoreMode(args.storeMode)); err != nil {
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, "", false, proto.StoreMode(args.storeMode), vol.PersistenceMode); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)

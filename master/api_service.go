@@ -822,13 +822,14 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var vol *Vol
+	vol, err = m.cluster.getVol(mp.volName)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+
 	if proto.StoreMode(storeMode) == proto.StoreModeDef {
-		var vol *Vol
-		vol, err = m.cluster.getVol(mp.volName)
-		if err != nil {
-			sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
-			return
-		}
 		storeMode = int(vol.DefaultStoreMode)
 	}
 
@@ -853,7 +854,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.addMetaReplica(mp, addr, proto.StoreMode(storeMode)); err != nil {
+	if err = m.cluster.addMetaReplica(mp, addr, proto.StoreMode(storeMode), vol.PersistenceMode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -954,7 +955,7 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold, isNeedIncreaseMPLearnerNum, proto.StoreMode(storeMode)); err != nil {
+	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold, isNeedIncreaseMPLearnerNum, proto.StoreMode(storeMode), vol.PersistenceMode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3056,6 +3057,7 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		nodeAddr    string
 		destAddr    string
 		mp          *MetaPartition
+		vol         *Vol
 		msg         string
 		storeMode   int
 		err         error
@@ -3071,6 +3073,11 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	if vol, err = m.cluster.getVol(mp.volName); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+
 	if !(storeMode == int(proto.StoreModeMem) || storeMode == int(proto.StoreModeRocksDb) || storeMode == int(proto.StoreModeDef)) {
 		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, storeMode)
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
@@ -3081,7 +3088,7 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, getTargetAddressForMetaPartitionDecommission, destAddr, false, proto.StoreMode(storeMode)); err != nil {
+	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, getTargetAddressForMetaPartitionDecommission, destAddr, false, proto.StoreMode(storeMode), vol.PersistenceMode); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -6127,6 +6134,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				volInfo.EnableCheckDeleteEK = vol.EnableCheckDeleteEK
 				volInfo.ReqRecordMaxCount = vol.reqRecordMaxCount
 				volInfo.ReqRecordsReservedTime = vol.reqRecordReservedTime
+				volInfo.PersistenceMode = vol.PersistenceMode
 				volsInfo = append(volsInfo, volInfo)
 			}
 		}

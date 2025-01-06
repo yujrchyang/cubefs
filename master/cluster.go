@@ -263,9 +263,13 @@ func (c *Cluster) repairMetaPartition(wg sync.WaitGroup) {
 				if mp, err = c.getMetaPartitionByID(task.Pid); err != nil {
 					return
 				}
+				var vol *Vol
+				if vol, err = c.getVol(mp.volName); err != nil {
+					return
+				}
 				switch task.RType {
 				case BalanceMetaZone:
-					if err = c.decommissionMetaPartition("", mp, getTargetAddressForRepairMetaZone, "", false, 0); err != nil {
+					if err = c.decommissionMetaPartition("", mp, getTargetAddressForRepairMetaZone, "", false, 0, vol.PersistenceMode); err != nil {
 						return
 					}
 					log.LogInfof("action[repairMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
@@ -860,10 +864,10 @@ func (c *Cluster) syncCreateMetaRecorderToMetaNode(addr string, mp *MetaPartitio
 	return
 }
 
-func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
+func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32, persistenceMode proto.PersistenceMode) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
-	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName, storeMode, trashDays)
+	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName, storeMode, trashDays, persistenceMode)
 	metaNode, err := c.metaNode(host)
 	if err != nil {
 		return
@@ -875,7 +879,13 @@ func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartiti
 }
 
 func (c *Cluster) doCreateMetaPartition(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
-	if err = c.syncCreateMetaPartitionToMetaNode(host, mp, storeMode, trashDays); err != nil {
+
+	var vol *Vol
+	if vol, err = c.getVol(mp.volName); err != nil {
+		return
+	}
+
+	if err = c.syncCreateMetaPartitionToMetaNode(host, mp, storeMode, trashDays, vol.PersistenceMode); err != nil {
 		return
 	}
 	mp.Lock()
@@ -2718,8 +2728,17 @@ func (c *Cluster) decommissionMetaNode(metaNode *MetaNode, strictMode bool) (err
 		wg.Add(1)
 		go func(mp *MetaPartition) {
 			defer wg.Done()
-			if err1 := c.decommissionMetaPartition(metaNode.Addr, mp, getTargetAddressForMetaPartitionDecommission, "", strictMode, proto.StoreModeDef); err1 != nil {
-				errChannel <- err1
+
+			var err error
+
+			var vol *Vol
+			if vol, err = c.getVol(mp.volName); err != nil {
+				errChannel <- err
+				return
+			}
+
+			if err = c.decommissionMetaPartition(metaNode.Addr, mp, getTargetAddressForMetaPartitionDecommission, "", strictMode, proto.StoreModeDef, vol.PersistenceMode); err != nil {
+				errChannel <- err
 			}
 		}(mp)
 	}

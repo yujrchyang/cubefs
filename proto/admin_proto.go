@@ -1442,6 +1442,7 @@ type VolInfo struct {
 	FileTotalSize                 uint64
 	TrashUsedSize                 uint64
 	EnableCheckDeleteEK           bool
+	PersistenceMode               PersistenceMode
 }
 
 func NewVolInfo(name, owner string, createTime int64, status uint8, totalSize, usedSize uint64,

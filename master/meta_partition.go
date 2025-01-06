@@ -15,9 +15,10 @@
 package master
 
 import (
-	stringutil "github.com/cubefs/cubefs/util/string"
 	"sync"
 	"sync/atomic"
+
+	stringutil "github.com/cubefs/cubefs/util/string"
 
 	"fmt"
 	"math"
@@ -754,20 +755,21 @@ func (mp *MetaPartition) checkRecordersInfo(c *Cluster, volName string, alarmInt
 }
 
 func (mp *MetaPartition) buildNewMetaPartitionTasks(specifyAddrs []string, peers []proto.Peer, volName string,
-	storeMode proto.StoreMode, trashDays uint32) (tasks []*proto.AdminTask) {
+	storeMode proto.StoreMode, trashDays uint32, persistenceMode proto.PersistenceMode) (tasks []*proto.AdminTask) {
 	tasks = make([]*proto.AdminTask, 0)
 	hosts := make([]string, 0)
 	req := &proto.CreateMetaPartitionRequest{
-		Start:        mp.Start,
-		End:          mp.End,
-		PartitionID:  mp.PartitionID,
-		Members:      peers,
-		VolName:      volName,
-		Learners:     mp.Learners,
-		Recorders:    mp.Recorders,
-		StoreMode:    storeMode,
-		TrashDays:    trashDays,
-		CreationType: proto.NormalCreateMetaPartition,
+		Start:           mp.Start,
+		End:             mp.End,
+		PartitionID:     mp.PartitionID,
+		Members:         peers,
+		VolName:         volName,
+		Learners:        mp.Learners,
+		Recorders:       mp.Recorders,
+		StoreMode:       storeMode,
+		TrashDays:       trashDays,
+		CreationType:    proto.NormalCreateMetaPartition,
+		PersistenceMode: persistenceMode,
 	}
 	if specifyAddrs == nil {
 		hosts = mp.Hosts
@@ -800,17 +802,18 @@ func (mp *MetaPartition) createTaskToTryToChangeLeader(addr string) (task *proto
 	return
 }
 
-func (mp *MetaPartition) createTaskToCreateReplica(host string, storeMode proto.StoreMode) (t *proto.AdminTask, err error) {
+func (mp *MetaPartition) createTaskToCreateReplica(host string, storeMode proto.StoreMode, persistenceMode proto.PersistenceMode) (t *proto.AdminTask, err error) {
 	req := &proto.CreateMetaPartitionRequest{
-		Start:        mp.Start,
-		End:          mp.End,
-		PartitionID:  mp.PartitionID,
-		Members:      mp.Peers,
-		VolName:      mp.volName,
-		Learners:     mp.Learners,
-		Recorders:    mp.Recorders,
-		StoreMode:    storeMode,
-		CreationType: proto.DecommissionedCreateMetaPartition,
+		Start:           mp.Start,
+		End:             mp.End,
+		PartitionID:     mp.PartitionID,
+		Members:         mp.Peers,
+		VolName:         mp.volName,
+		Learners:        mp.Learners,
+		Recorders:       mp.Recorders,
+		StoreMode:       storeMode,
+		CreationType:    proto.DecommissionedCreateMetaPartition,
+		PersistenceMode: persistenceMode,
 	}
 	t = proto.NewAdminTask(proto.OpCreateMetaPartition, host, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)

@@ -22,7 +22,7 @@ import (
 type PeerType uint8
 
 const (
-	PeerNormal		PeerType = iota
+	PeerNormal PeerType = iota
 	PeerArbiter
 	PeerRecorder
 )
@@ -52,9 +52,9 @@ type CreateNameSpaceResponse struct {
 
 // Peer defines the peer of the node id and address.
 type Peer struct {
-	ID   uint64 	`json:"id"`
-	Addr string 	`json:"addr"`
-	Type PeerType	`json:"type"`
+	ID   uint64   `json:"id"`
+	Addr string   `json:"addr"`
+	Type PeerType `json:"type"`
 }
 
 func (p *Peer) String() string {
@@ -97,10 +97,12 @@ type CreateMetaPartitionRequest struct {
 	PartitionID  uint64
 	Members      []Peer
 	Learners     []Learner
-	Recorders	 []string
+	Recorders    []string
 	StoreMode    StoreMode
 	TrashDays    uint32
 	CreationType int
+
+	PersistenceMode PersistenceMode
 }
 
 // CreateMetaPartitionResponse defines the response to the request of creating a meta partition.
@@ -117,14 +119,14 @@ type MNMetaPartitionInfo struct {
 	Learners   []Learner `json:"learners"`
 	NodeId     uint64    `json:"nodeId"`
 	Cursor     uint64    `json:"cursor"`
-	RaftStatus *Status	 `json:"raft_status"`
+	RaftStatus *Status   `json:"raft_status"`
 }
 
 type MNMetaRecorderInfo struct {
 	Peers      []Peer    `json:"peers"`
 	Learners   []Learner `json:"learners"`
 	NodeId     uint64    `json:"nodeId"`
-	RaftStatus *Status	 `json:"raft_status"`
+	RaftStatus *Status   `json:"raft_status"`
 }
 
 type MetaDataCRCSumInfo struct {
@@ -161,5 +163,5 @@ type InodeInfoWithEK struct {
 }
 
 type CorrectMPInodesAndDelInodesTotalSizeReq struct {
-	NeedCorrectHosts        []string `json:"needCorrectHosts"`
+	NeedCorrectHosts []string `json:"needCorrectHosts"`
 }
