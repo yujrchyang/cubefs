@@ -13,6 +13,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cubefs/cubefs/util/topology"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -22,18 +24,20 @@ import (
 )
 
 const (
-	RecorderPrefix			= "recorder_"
-	ExpiredRecorderPrefix 	= "expired_"
+	RecorderPrefix        = "recorder_"
+	ExpiredRecorderPrefix = "expired_"
 )
 
 type metaRecorder struct {
+	config      *raftstore.RecorderConfig
 	recorder    *raftstore.Recorder
 	partitionID uint64
-	status		int8
-	isRecover	bool
-	manager    	*metadataManager
-	stopC		chan bool
-	stopOnce	sync.Once
+	status      int8
+	isRecover   bool
+	manager     *metadataManager
+	stopC       chan bool
+	stopOnce    sync.Once
+	topoManager *topology.TopologyManager
 }
 
 func NewMetaRecorder(cfg *raftstore.RecorderConfig, m *metadataManager) (*metaRecorder, error) {
@@ -43,10 +47,11 @@ func NewMetaRecorder(cfg *raftstore.RecorderConfig, m *metadataManager) (*metaRe
 		return nil, err
 	}
 	mr := &metaRecorder{
-		partitionID: 	recorder.Config().PartitionID,
-		recorder:    	recorder,
-		manager:     	m,
-		stopC: 			make(chan bool, 0),
+		config:      cfg,
+		partitionID: recorder.Config().PartitionID,
+		recorder:    recorder,
+		manager:     m,
+		stopC:       make(chan bool, 0),
 	}
 	return mr, nil
 }
@@ -90,6 +95,7 @@ func (mr *metaRecorder) start() (err error) {
 
 	go mr.startRecorderWorker()
 	go mr.checkRecoverAfterStart()
+	go mr.startUpdatePartitionConfigScheduler()
 
 	return nil
 }
@@ -111,11 +117,11 @@ func (mr *metaRecorder) startRecorderWorker() {
 	log.LogInfof("recorder(%v) start recorder worker", mr.partitionID)
 	for {
 		select {
-		case <- mr.stopC:
+		case <-mr.stopC:
 			log.LogInfof("recorder(%v) stop recorder worker", mr.partitionID)
 			return
 
-		case <- persistTicker.C:
+		case <-persistTicker.C:
 			applyIndex, err := mr.Recorder().PersistApplyIndex()
 			if err != nil {
 				log.LogWarnf("recorder(%v) persist apply index(%v) err(%v)", mr.partitionID, applyIndex, err)
@@ -126,7 +132,7 @@ func (mr *metaRecorder) startRecorderWorker() {
 			if err != nil {
 				failTruncateCount++
 				log.LogWarnf("recorder(%v) get truncate index err(%v) failCnt(%v)", mr.partitionID, err, failTruncateCount)
-				if failTruncateCount % 10 == 0 {
+				if failTruncateCount%10 == 0 {
 					msg := fmt.Sprintf("vol(%v) mp(%v) recorderNode(%v) truncate fail cnt(%v) err(%v)",
 						mr.Recorder().VolName(), mr.Recorder().PartitionID(), mr.Recorder().NodeID(), failTruncateCount, err)
 					exporter.WarningAppendKey(raftstore.RecorderCriticalUmpKey, msg)
@@ -158,7 +164,7 @@ func (mr *metaRecorder) checkRecoverAfterStart() {
 
 	for {
 		select {
-		case <- ticker.C:
+		case <-ticker.C:
 			leaderAddr := mr.Recorder().GetRaftLeader()
 			if leaderAddr == "" {
 				log.LogErrorf("CheckRecoverAfterStart mr(%v) no leader", mr)
@@ -177,10 +183,44 @@ func (mr *metaRecorder) checkRecoverAfterStart() {
 			mr.isRecover = false
 			log.LogInfof("CheckRecoverAfterStart mr(%v) recover finish, applyID(leader:%v, current node:%v)", mr, leaderApplyID, applyID)
 			return
-		case <- mr.stopC:
+		case <-mr.stopC:
 			return
 		}
 	}
+}
+
+func (mr *metaRecorder) startUpdatePartitionConfigScheduler() {
+	ticker := time.NewTicker(intervalToUpdateVolTrashExpires)
+	go func(stopC chan bool) {
+		for {
+			select {
+			case <-stopC:
+				ticker.Stop()
+				return
+			case <-ticker.C:
+				volTopo := mr.topoManager.GetVolume(mr.config.VolName)
+				if volTopo.Config() == nil {
+					continue
+				}
+				conf := volTopo.Config()
+
+				// 对集群级别和Volume级别PersistenceMode设置进行合并， 优先使用集群级别的设置
+				persistenceMode := nodeInfo.PersistenceMode
+				if persistenceMode == proto.PersistenceMode_Nil {
+					persistenceMode = conf.GetPersistenceMode()
+				}
+				sync := persistenceMode == proto.PersistenceMode_WriteThrough
+				changed := mr.config.WALSync != sync || mr.config.WALSyncRotate != sync
+				mr.recorder.SetWALSync(persistenceMode == proto.PersistenceMode_WriteThrough)
+				mr.recorder.SetWALSyncRotate(persistenceMode == proto.PersistenceMode_WriteThrough)
+				if changed {
+					if err := mr.recorder.Persist(); err != nil {
+						log.LogErrorf("recorder(%v) persist recorder config failed: %v", mr.partitionID, err)
+					}
+				}
+			}
+		}
+	}(mr.stopC)
 }
 
 func (mr *metaRecorder) Stop(needPersist bool) {

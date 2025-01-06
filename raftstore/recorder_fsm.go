@@ -22,14 +22,14 @@ import (
 )
 
 const (
-	MetadataFileName     	= "META"
-	TempMetadataFileName	= ".meta"
-	ApplyIndexFileName      = "APPLY"
-	TempApplyIndexFile      = ".apply"
+	MetadataFileName     = "META"
+	TempMetadataFileName = ".meta"
+	ApplyIndexFileName   = "APPLY"
+	TempApplyIndexFile   = ".apply"
 
-	defRaftLogSize        	= 8 * unit.MB
+	defRaftLogSize = 8 * unit.MB
 
-	RecorderCriticalUmpKey	= "recorder_critical"
+	RecorderCriticalUmpKey = "recorder_critical"
 )
 
 type sortedPeers []proto.Peer
@@ -47,31 +47,50 @@ func (sp sortedPeers) Swap(i, j int) {
 }
 
 type Recorder struct {
-	metaPath 		string
-	walPath			string
-	config   		*RecorderConfig
-	raftPartition	Partition
-	applyID			uint64
-	persistApplyID	uint64
+	metaPath       string
+	walPath        string
+	config         *RecorderConfig
+	raftPartition  Partition
+	applyID        uint64
+	persistApplyID uint64
 }
 
 type RecorderConfig struct {
 	VolName     string          `json:"VolName"`
-	PartitionID	uint64          `json:"PartitionID"`
+	PartitionID uint64          `json:"PartitionID"`
 	Peers       []proto.Peer    `json:"Peers"`
-	Learners    []proto.Learner	`json:"Learners"`
-	Recorders	[]string		`json:"recorders"`
-	CreateTime	string			`json:"CreateTime"`
-	ClusterID	string			`json:"-"`
-	NodeID		uint64			`json:"-"`
-	RaftStore   RaftStore 		`json:"-"`
+	Learners    []proto.Learner `json:"Learners"`
+	Recorders   []string        `json:"recorders"`
+	CreateTime  string          `json:"CreateTime"`
+	ClusterID   string          `json:"-"`
+	NodeID      uint64          `json:"-"`
+	RaftStore   RaftStore       `json:"-"`
+
+	WALSync       bool `json:"WALSync"`
+	WALSyncRotate bool `json:"WALSyncRotate"`
 
 	sync.RWMutex
 }
 
+func (cfg *RecorderConfig) Dup() *RecorderConfig {
+	return &RecorderConfig{
+		VolName:       cfg.VolName,
+		PartitionID:   cfg.PartitionID,
+		Peers:         cfg.Peers,
+		Learners:      cfg.Learners,
+		Recorders:     cfg.Recorders,
+		CreateTime:    cfg.CreateTime,
+		ClusterID:     cfg.ClusterID,
+		NodeID:        cfg.NodeID,
+		RaftStore:     cfg.RaftStore,
+		WALSync:       cfg.WALSync,
+		WALSyncRotate: cfg.WALSyncRotate,
+	}
+}
+
 func LoadRecorderConfig(clusterID, recorderDir string, nodeID uint64, rs RaftStore) (cfg *RecorderConfig, err error) {
 	var (
-		metaFileData	[]byte
+		metaFileData []byte
 	)
 	if metaFileData, err = ioutil.ReadFile(path.Join(recorderDir, MetadataFileName)); err != nil {
 		return
@@ -129,7 +148,7 @@ func NewRaftRecorder(metaPath, walPath string, cfg *RecorderConfig) (r *Recorder
 	r = &Recorder{
 		metaPath: metaPath,
 		walPath:  walPath,
-		config:   cfg,
+		config:   cfg.Dup(),
 	}
 	return
 }
@@ -191,13 +210,15 @@ func (r *Recorder) Persist() (err error) {
 	sort.Sort(sp)
 
 	meta := &RecorderConfig{
-		VolName:     r.config.VolName,
-		PartitionID: r.config.PartitionID,
-		Peers:       r.GetPeers(),
-		Learners:    r.GetLearners(),
-		Recorders: 	 r.GetRecorders(),
-		CreateTime:  r.config.CreateTime,
-		NodeID: 	 r.NodeID(),
+		VolName:       r.config.VolName,
+		PartitionID:   r.config.PartitionID,
+		Peers:         r.GetPeers(),
+		Learners:      r.GetLearners(),
+		Recorders:     r.GetRecorders(),
+		CreateTime:    r.config.CreateTime,
+		NodeID:        r.NodeID(),
+		WALSync:       r.config.WALSync,
+		WALSyncRotate: r.config.WALSyncRotate,
 	}
 	if err = meta.CheckValidate(); err != nil {
 		msg := fmt.Sprintf("cluster(%v) vol(%v) mp(%v) recorderNode(%v) config invalid(%v), peers(%v) recorders(%v)",
@@ -275,8 +296,8 @@ func (r *Recorder) StartRaft(fsm *FunctionalPartitionFsm) (err error) {
 		addr := strings.Split(peer.Addr, ":")[0]
 		rp := PeerAddress{
 			Peer: raftproto.Peer{
-				ID: 	peer.ID,
-				Type:	raftproto.PeerType(peer.Type),
+				ID:   peer.ID,
+				Type: raftproto.PeerType(peer.Type),
 			},
 			Address:       addr,
 			HeartbeatPort: heartbeatPort,
@@ -304,11 +325,13 @@ func (r *Recorder) StartRaft(fsm *FunctionalPartitionFsm) (err error) {
 		SM:                 fsm,
 		WalPath:            r.walPath,
 		StartCommit:        0,
-		GetStartIndex: 		func(firstIndex, lastIndex uint64) (startIndex uint64) { return r.applyID },
+		GetStartIndex:      func(firstIndex, lastIndex uint64) (startIndex uint64) { return r.applyID },
 		WALContinuityCheck: false,
 		WALContinuityFix:   false,
 		Mode:               proto.StandardMode,
-		StorageListener: 	nil,
+		StorageListener:    nil,
+		WALSync:            r.config.WALSync,
+		WALSyncRotate:      r.config.WALSyncRotate,
 	}
 	r.raftPartition = r.config.RaftStore.CreatePartition(pc)
 	r.raftPartition.SetWALFileSize(defRaftLogSize)
@@ -554,9 +577,9 @@ func (r *Recorder) ResetRaftMember(newPeers []proto.Peer) (update bool, err erro
 
 	update = true
 	var (
-		peers 			[]raftproto.Peer
-		newLearners		= make([]proto.Learner, 0, len(newPeers))
-		newRecorders	= make([]string, 0, len(newPeers))
+		peers        []raftproto.Peer
+		newLearners  = make([]proto.Learner, 0, len(newPeers))
+		newRecorders = make([]string, 0, len(newPeers))
 	)
 	for _, peer := range newPeers {
 		peers = append(peers, raftproto.Peer{ID: peer.ID, Type: raftproto.PeerType(peer.Type)})
@@ -727,7 +750,7 @@ func (r *Recorder) PersistApplyIndex() (index uint64, err error) {
 
 func (r *Recorder) GetMinTruncateIndex(ctx context.Context, getRemoteTruncateIndex func(ctx context.Context, targetHost string) (uint64, error)) (minTruncateIndex uint64, err error) {
 	truncateIndexes := make(map[string]uint64)
-	futures := make(map[string]*async.Future) 	// host -> future
+	futures := make(map[string]*async.Future) // host -> future
 	for _, peer := range r.GetPeers() {
 		if peer.IsRecorder() {
 			continue
@@ -786,6 +809,20 @@ func (r *Recorder) IsEqualCreateRecorderRequest(volName string, peers []proto.Pe
 		return false
 	}
 	return true
+}
+
+func (r *Recorder) SetWALSync(sync bool) {
+	r.config.WALSync = sync
+	if r.raftPartition != nil {
+		r.raftPartition.SetWALSync(sync)
+	}
+}
+
+func (r *Recorder) SetWALSyncRotate(syncRotate bool) {
+	r.config.WALSyncRotate = syncRotate
+	if r.raftPartition != nil {
+		r.raftPartition.SetWALSyncRotate(syncRotate)
+	}
 }
 
 func contains(arr []string, element string) (ok bool) {

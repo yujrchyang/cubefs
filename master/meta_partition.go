@@ -852,13 +852,14 @@ func (mp *MetaPartition) createTaskToRemoveRaftMember(removePeer proto.Peer) (t 
 	return
 }
 
-func (mp *MetaPartition) createTaskToCreateRecorder(host string) (t *proto.AdminTask) {
+func (mp *MetaPartition) createTaskToCreateRecorder(host string, persistenceMode proto.PersistenceMode) (t *proto.AdminTask) {
 	req := &proto.CreateMetaRecorderRequest{
-		PartitionID: mp.PartitionID,
-		Members:     mp.Peers,
-		VolName:     mp.volName,
-		Learners:    mp.Learners,
-		Recorders:   mp.Recorders,
+		PartitionID:     mp.PartitionID,
+		Members:         mp.Peers,
+		VolName:         mp.volName,
+		Learners:        mp.Learners,
+		Recorders:       mp.Recorders,
+		PersistenceMode: persistenceMode,
 	}
 	t = proto.NewAdminTask(proto.OpCreateMetaRecorder, host, req)
 	resetMetaPartitionTaskID(t, mp.PartitionID)

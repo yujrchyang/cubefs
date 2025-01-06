@@ -875,11 +875,12 @@ type ResetMetaRecorderRaftMemberRequest struct {
 
 // CreateMetaRecorderRequest defines the request to create a meta partition.
 type CreateMetaRecorderRequest struct {
-	VolName     string
-	PartitionID uint64
-	Members     []Peer
-	Learners    []Learner
-	Recorders   []string
+	VolName         string
+	PartitionID     uint64
+	Members         []Peer
+	Learners        []Learner
+	Recorders       []string
+	PersistenceMode PersistenceMode
 }
 
 func (req *CreateMetaRecorderRequest) String() string {

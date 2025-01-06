@@ -853,7 +853,12 @@ func (c *Cluster) syncCreateDataPartitionToDataNode(host string, size uint64, dp
 }
 
 func (c *Cluster) syncCreateMetaRecorderToMetaNode(addr string, mp *MetaPartition) (err error) {
-	task := mp.createTaskToCreateRecorder(addr)
+	var vol *Vol
+	if vol, err = c.getVol(mp.volName); err != nil {
+		return
+	}
+
+	task := mp.createTaskToCreateRecorder(addr, vol.PersistenceMode)
 	var metaNode *MetaNode
 	if metaNode, err = c.metaNode(addr); err != nil {
 		return

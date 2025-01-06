@@ -1350,17 +1350,24 @@ func (m *metadataManager) createRecorder(request *proto.CreateMetaRecorderReques
 		return
 	}
 
+	var persistenceMode = nodeInfo.PersistenceMode
+	if persistenceMode == proto.PersistenceMode_Nil {
+		persistenceMode = request.PersistenceMode
+	}
+
 	var mr *metaRecorder
 	cfg := &raftstore.RecorderConfig{
-		VolName:     request.VolName,
-		PartitionID: request.PartitionID,
-		Peers:       request.Members,
-		Learners:    request.Learners,
-		Recorders:   request.Recorders,
-		ClusterID:   m.metaNode.clusterId,
-		NodeID:      m.nodeId,
-		RaftStore:   m.raftStore,
-		CreateTime:  time.Now().Format("2006-01-02 15:04:05"),
+		VolName:       request.VolName,
+		PartitionID:   request.PartitionID,
+		Peers:         request.Members,
+		Learners:      request.Learners,
+		Recorders:     request.Recorders,
+		ClusterID:     m.metaNode.clusterId,
+		NodeID:        m.nodeId,
+		RaftStore:     m.raftStore,
+		CreateTime:    time.Now().Format("2006-01-02 15:04:05"),
+		WALSync:       persistenceMode == proto.PersistenceMode_WriteThrough,
+		WALSyncRotate: persistenceMode == proto.PersistenceMode_WriteThrough,
 	}
 	if mr, err = NewMetaRecorder(cfg, m); err != nil {
 		err = errors.NewErrorf("[newRecorder]->%s", err.Error())
