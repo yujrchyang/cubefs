@@ -7,6 +7,7 @@
 syntax = "proto3";
 package proto;
 
+option go_package = "github.com/cubefs/cubefs/proto";
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 message DataPartitionResponsePb {
     option (gogoproto.goproto_getters) = false;
@@ -262,7 +263,8 @@ message SimpleVolViewPb {
     int32                     ReqRecordsReservedTime = 107;
     int32                     ReqRecordsMaxCount     = 108;
     string                    MpZones                = 109;
-    bool                    MpFollowerRead                = 110;
+    bool                      MpFollowerRead         = 110;
+    int32                     PersistenceMode        = 111;
 }
 
 message NodeStatInfoPb {

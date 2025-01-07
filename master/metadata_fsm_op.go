@@ -516,6 +516,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		MetaOut:                  vol.MetaOut,
 		MpFollowerRead:           vol.MpFollowerRead,
 		MpZones:                  vol.MpZones,
+
+		PersistenceMode: vol.PersistenceMode,
 	}
 	return
 }
@@ -1145,6 +1147,7 @@ func (c *Cluster) loadClusterValue() (err error) {
 		c.updateDataNodeFlushFDParallelismOnDisk(cv.DataNodeFlushFDParallelismOnDisk)
 		c.updateNormalExtentDeleteExpire(cv.DataNodeNormalExtentDeleteExpire)
 		c.updateDataPartitionConsistencyMode(cv.DataPartitionConsistencyMode)
+		c.updatePersisenceMode(cv.PersistenceMode)
 		atomic.StoreUint64(&c.cfg.MetaNodeReadDirLimitNum, cv.MetaNodeReadDirLimitNum)
 		c.updateDataNodeDeleteLimitRate(cv.DataNodeDeleteLimitRate)
 		atomic.StoreUint64(&c.cfg.DataNodeRepairTaskCount, cv.DataNodeRepairTaskCount)

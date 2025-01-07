@@ -362,6 +362,7 @@ func ConvertSimpleVolViewPb(vv *SimpleVolViewPb) *SimpleVolView {
 		MpZones:                  vv.MpZones,
 		ReqRecordMaxCount:        vv.ReqRecordsMaxCount,
 		ReqRecordReservedTime:    vv.ReqRecordsReservedTime,
+		PersistenceMode:          PersistenceModeFromInt32(vv.PersistenceMode),
 	}
 	if vv.SmartRules != nil {
 		simpleVolView.SmartRules = vv.SmartRules
@@ -479,6 +480,7 @@ func ConvertSimpleVolView(vv *SimpleVolView) *SimpleVolViewPb {
 		MpFollowerRead:         vv.MpFollowerRead,
 		ReqRecordsReservedTime: vv.ReqRecordReservedTime,
 		ReqRecordsMaxCount:     vv.ReqRecordMaxCount,
+		PersistenceMode:        vv.PersistenceMode.Int32(),
 	}
 }
 

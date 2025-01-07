@@ -507,7 +507,8 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	batchDelInodeCnt, delInodeInterval uint32, umpCollectWay exporter.UMPCollectMethod, trashCleanDuration, trashCleanMaxCount int32,
 	enableBitMapAllocator bool, remoteCacheBoostPath string, remoteCacheBoostEnable, remoteCacheAutoPrepare bool,
 	remoteCacheTTL int64, enableRemoveDupReq bool, connTimeout, readConnTimeout, writeConnTimeout int64, truncateEKCount int,
-	bitMapSnapFrozenHour int64, notCacheNode bool, flock bool, metaOut bool, reqRecordReservedTime, reqRecordMaxCount int32) (err error) {
+	bitMapSnapFrozenHour int64, notCacheNode bool, flock bool, metaOut bool, reqRecordReservedTime, reqRecordMaxCount int32,
+	persistenceMode proto.PersistenceMode) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminUpdateVol)
 	request.addParam("name", volName)
 	request.addParam("authKey", authKey)
@@ -565,6 +566,9 @@ func (api *AdminAPI) UpdateVolume(volName string, capacity uint64, replicas, mpR
 	}
 	if reqRecordReservedTime >= 0 {
 		request.addParam(proto.ReqRecordReservedTimeKey, strconv.FormatInt(int64(reqRecordReservedTime), 10))
+	}
+	if persistenceMode.Valid() {
+		request.addParam(proto.PersistenceModeKey, strconv.FormatInt(int64(persistenceMode.Int32()), 10))
 	}
 	if _, _, err = api.mc.serveRequest(request); err != nil {
 		return
@@ -1036,6 +1040,9 @@ func (api *AdminAPI) SetRateLimit(info *proto.RateLimitInfo) (err error) {
 	}
 	if info.DataNodeDiskReservedRatio >= 0 {
 		request.addParam(proto.DataNodeDiskReservedRatioKey, strconv.FormatFloat(info.DataNodeDiskReservedRatio, 'f', -1, 64))
+	}
+	if mode := proto.PersistenceModeFromInt32(info.PersistenceMode); mode.Valid() {
+		request.addParam(proto.PersistenceModeKey, strconv.FormatInt(int64(mode.Int32()), 10))
 	}
 	request.addParam(proto.VolumeKey, info.Volume)
 	request.addParam("zoneName", info.ZoneName)

@@ -315,6 +315,9 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 			if info.DataNodeDiskReservedRatio >= 0 {
 				msg += fmt.Sprintf("Data Node Disk Reserved Ratio: %v, ", info.DataNodeDiskReservedRatio)
 			}
+			if mode := proto.PersistenceModeFromInt32(info.PersistenceMode); mode.Valid() {
+				msg += fmt.Sprintf("Persistence Mode: %v, ", mode.String())
+			}
 			if msg == "" {
 				stdout("No valid parameters\n")
 				return
@@ -394,6 +397,7 @@ func newRateLimitSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&info.TopologyFetchIntervalMin, proto.TopologyFetchIntervalMinKey, 0, "topology fetch interval, unit: min")
 	cmd.Flags().Int64Var(&info.TopologyForceFetchIntervalSec, proto.TopologyForceFetchIntervalSecKey, 0, "topology force fetch interval, unit: second")
 	cmd.Flags().Float64Var(&info.DataNodeDiskReservedRatio, proto.DataNodeDiskReservedRatioKey, -1, "data node disk reserved ratio, greater than or equal 0")
+	cmd.Flags().Int32Var(&info.PersistenceMode, "persistenceMode", -1, "persistence mode, 0:nil, 1:write-back, 2:write-through")
 	return cmd
 }
 
@@ -463,6 +467,7 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  TopologyFroceFetchInterval       : %v Sec\n", info.TopologyForceFetchIntervalSec))
 	sb.WriteString(fmt.Sprintf("  DataNodeDiskReservedRatio        : %v\n", info.DataNodeDiskReservedRatio))
 	sb.WriteString(fmt.Sprintf("  ClusterCheckDeleteEK             : %v\n", formatEnabledDisabled(!info.DisableClusterCheckDeleteEK)))
+	sb.WriteString(fmt.Sprintf("  PersistenceMode                  : %v (%v)\n", info.PersistenceMode.String(), info.PersistenceMode.Int32()))
 	return sb.String()
 }
 

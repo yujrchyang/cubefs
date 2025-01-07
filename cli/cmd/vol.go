@@ -373,6 +373,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 		optBitMapSnapFrozenHour     int64
 		optNotCacheNode             string
 		optFlock                    string
+		optPersistenceMode          int32
 	)
 	var cmd = &cobra.Command{
 		Use:   CliOpSet + " [VOLUME NAME]",
@@ -827,6 +828,14 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 			} else {
 				confirmString.WriteString(fmt.Sprintf("  Flock : %v\n", formatEnabledDisabled(vv.Flock)))
 			}
+			if persistenceMode := proto.PersistenceModeFromInt32(optPersistenceMode); persistenceMode.Valid() {
+				isChange = true
+				confirmString.WriteString(fmt.Sprintf("  PersistenceMode : %v (%v) -> %v (%v)\n",
+					vv.PersistenceMode.String(), vv.PersistenceMode.Int32(), persistenceMode.String(), persistenceMode.Int32()))
+					vv.PersistenceMode = persistenceMode
+			} else {
+				confirmString.WriteString(fmt.Sprintf("  PersistenceMode : %v\n", vv.PersistenceMode))
+			}
 
 			if err != nil {
 				return
@@ -856,7 +865,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 				vv.RemoteCacheBoostPath, vv.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL,
 				vv.EnableRemoveDupReq, vv.ConnConfig.ConnectTimeoutNs, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs,
 				vv.TruncateEKCountEveryTime, vv.BitMapSnapFrozenHour, vv.NotCacheNode, vv.Flock, vv.MetaOut, vv.ReqRecordMaxCount,
-				vv.ReqRecordReservedTime)
+				vv.ReqRecordReservedTime, vv.PersistenceMode)
 			if err != nil {
 				return
 			}
@@ -914,6 +923,7 @@ func newVolSetCmd(client *master.MasterClient) *cobra.Command {
 	cmd.Flags().Int64Var(&optBitMapSnapFrozenHour, CliFlagBitMapSnapFrozenHour, -1, "bit map snap frozen interval")
 	cmd.Flags().StringVar(&optNotCacheNode, CliFlagNotCacheNode, "", "Not cache node info in fuse")
 	cmd.Flags().StringVar(&optFlock, CliFlagFlock, "", "with flock support")
+	cmd.Flags().Int32Var(&optPersistenceMode, CliFlagPersistenceMode, -1, "set volume persistence mode [0:Nil, 1:WriteBack, 2:WriteThrough]")
 	return cmd
 }
 

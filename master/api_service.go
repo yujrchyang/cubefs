@@ -1832,7 +1832,7 @@ func (m *Server) updateVol(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	persistenceMode, err = parseSyncModeToUpdateVol(r, vol)
+	persistenceMode, err = parsePersistenceModeToUpdateVol(r, vol)
 	if err != nil {
 		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
@@ -2298,6 +2298,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		MetaOut:                  vol.MetaOut,
 		MpFollowerRead:           vol.MpFollowerRead,
 		MpZones:                  vol.MpZones,
+		PersistenceMode:          vol.PersistenceMode,
 	}
 }
 
@@ -3935,12 +3936,12 @@ func parseCrossRegionHATypeToUpdateVol(r *http.Request, vol *Vol) (hAType proto.
 	return
 }
 
-func parseSyncModeToUpdateVol(r *http.Request, vol *Vol) (proto.PersistenceMode, error) {
+func parsePersistenceModeToUpdateVol(r *http.Request, vol *Vol) (proto.PersistenceMode, error) {
 	if err := r.ParseForm(); err != nil {
 		return proto.PersistenceMode_Nil, err
 	}
-	if syncModeStr := r.FormValue(persistenceModeKey); syncModeStr != "" {
-		intVal, err := strconv.ParseUint(syncModeStr, 10, 64)
+	if persistenceModeStr := r.FormValue(persistenceModeKey); persistenceModeStr != "" {
+		intVal, err := strconv.ParseUint(persistenceModeStr, 10, 64)
 		if err != nil {
 			return proto.PersistenceMode_Nil, unmatchedKey(persistenceModeKey)
 		}
@@ -3950,7 +3951,7 @@ func parseSyncModeToUpdateVol(r *http.Request, vol *Vol) (proto.PersistenceMode,
 		}
 		return mode, nil
 	}
-	return proto.PersistenceMode_Nil, nil
+	return vol.PersistenceMode, nil
 }
 
 func parseSmartToUpdateVol(r *http.Request, vol *Vol) (isSmart bool, smartRules []string, err error) {

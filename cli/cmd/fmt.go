@@ -230,6 +230,7 @@ func formatSimpleVolView(svv *proto.SimpleVolView) string {
 	sb.WriteString(fmt.Sprintf("  ReadAheadWindowMB       : %v MB\n", svv.ReadAheadWindowMB))
 	sb.WriteString(fmt.Sprintf("  ReqRecordMaxCount       : %v\n", svv.ReqRecordMaxCount))
 	sb.WriteString(fmt.Sprintf("  ReqRecordReservedTime   : %v Minute\n", svv.ReqRecordReservedTime))
+	sb.WriteString(fmt.Sprintf("  PersistenceMode         : %v (%v)\n", svv.PersistenceMode.String(), svv.PersistenceMode.Int32()))
 	return sb.String()
 }
 

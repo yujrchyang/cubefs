@@ -488,7 +488,7 @@ func (v *VolumeService) updateVolume(ctx context.Context, args struct {
 			vv.RemoteCacheBoostPath, *args.RemoteCacheBoostEnable, vv.RemoteCacheAutoPrepare, vv.RemoteCacheTTL,
 			vv.EnableRemoveDupReq, vv.ConnConfig.ConnectTimeoutNs, vv.ConnConfig.ReadTimeoutNs, vv.ConnConfig.WriteTimeoutNs, vv.TruncateEKCountEveryTime,
 			vv.BitMapSnapFrozenHour, vv.NotCacheNode, vv.Flock, vv.MetaOut, vv.ReqRecordMaxCount, vv.ReqRecordReservedTime,
-		); err != nil {
+			vv.PersistenceMode); err != nil {
 			log.LogErrorf("updateVolume failed")
 			return view, err
 		}

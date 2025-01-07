@@ -67,7 +67,7 @@ func TestUpdateVol(t *testing.T) {
 		updateFollowerRead, false, false, false, false, false, false, false, false, authKey, testZoneName,
 		testMpLyout, "", 0, 0, 0, "default", 0, 0, 0, 0, 0, exporter.UMPCollectMethodUnknown, -1, -1, false,
 		"", false, false, 0, false, 0, readConnTimeout,
-		readConnTimeout, 0, 0, false, false, false, 0, 0)
+		readConnTimeout, 0, 0, false, false, false, 0, 0, proto.PersistenceMode_Nil)
 	if err != nil {
 		t.Errorf("update vol failed: err(%v) vol(%v)", err, testVolName)
 		t.FailNow()

@@ -328,6 +328,7 @@ const (
 	ReqRecordReservedTimeKey           = "volReqRecordReservedTime"
 	ReqRecordMaxCountKey               = "volReqRecordMaxCount"
 	EnableUsedVolLimitInfoRespCacheKey = "enableUsedVolLimitInfoRespCache"
+	PersistenceModeKey				   = "persistenceMode"
 
 	IDsKey            = "ids"
 	MetaOutKey        = "metaOut"
@@ -1549,6 +1550,7 @@ type RateLimitInfo struct {
 	TopologyFetchIntervalMin         int64
 	TopologyForceFetchIntervalSec    int64
 	DataNodeDiskReservedRatio        float64
+	PersistenceMode                  int32
 }
 
 type NodeInfo struct {
