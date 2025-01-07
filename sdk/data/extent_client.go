@@ -63,7 +63,7 @@ const (
 	defaultReadLimitBurst  = 128
 	defaultWriteLimitRate  = rate.Inf
 	defaultWriteLimitBurst = 128
-	updateConfigTicket     = 1 * time.Minute
+	updateConfigTicker     = 1 * time.Minute
 
 	defaultMaxAlignSize = 128 * 1024
 	maxReadRetryLimit   = 3
@@ -738,13 +738,13 @@ func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 		dataPort, metaPort string
 	)
 	client.updateConfig()
-	timer := time.NewTimer(updateConfigTicket)
+	timer := time.NewTicker(updateConfigTicker)
 	defer timer.Stop()
 
 	if client.dataWrapper.IsCacheBoostEnabled() || client.dataWrapper.IsSameZoneReadHAType() {
 		retryHosts, dataPort, metaPort = client.updateHostsPingTime()
 	}
-	refreshHostLatency := time.NewTimer(RefreshHostLatencyInterval)
+	refreshHostLatency := time.NewTicker(RefreshHostLatencyInterval)
 	defer refreshHostLatency.Stop()
 
 	for {
@@ -809,6 +809,7 @@ func (client *ExtentClient) Close(ctx context.Context) error {
 	close(client.stopC)
 	client.wg.Wait()
 	client.dataWrapper.Stop()
+	statistics.CloseStatistics()
 	// release streamers
 	inodes := client.streamerConcurrentMap.Keys()
 	for _, inode := range inodes {

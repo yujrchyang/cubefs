@@ -37,7 +37,7 @@ const (
 	ReadConsistenceRetryTimeout = 60 * time.Second
 	hostErrCountLimit           = 5
 
-	DefaultRetryTimeSec	= 0		// 无限重试
+	DefaultRetryTimeSec = 0 // 无限重试
 )
 
 type MetaConn struct {
@@ -93,14 +93,14 @@ func (mw *MetaWrapper) sendWriteToMP(ctx context.Context, mp *MetaPartition, req
 		// operations don't need to retry
 		retryCost := time.Since(start)
 		retryTimeSec := atomic.LoadInt64(&mw.retryTimeSec)
-		if req.Opcode == proto.OpMetaCreateInode || (!mw.InfiniteRetry && retryTimeSec > 0 && retryCost > time.Duration(retryTimeSec) * time.Second) {
+		if req.Opcode == proto.OpMetaCreateInode || (!mw.InfiniteRetry && retryTimeSec > 0 && retryCost > time.Duration(retryTimeSec)*time.Second) {
 			return
 		}
 		log.LogWarnf("sendWriteToMP: err(%v) resp(%v) req(%v) mp(%v) retry time(%v)", err, resp, req, mp, retryCount)
 		if retryCost > alarmInterval {
 			umpMsg := fmt.Sprintf("send write(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
 			common.HandleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
-			alarmInterval += retryCost + 10 * time.Second
+			alarmInterval += retryCost + 10*time.Second
 		}
 		time.Sleep(1 * time.Second)
 	}
@@ -117,7 +117,7 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 	alarmInterval := 10 * time.Second
 	for {
 		retryCount++
-		if mw.MetaNearRead() && mw.IsSameZoneReadHAType() {
+		if mw.IsSameZoneReadHAType() && mw.MetaNearRead != nil && mw.MetaNearRead() {
 			resp, err = mw.sendReadToNearHost(ctx, mp, req)
 		} else {
 			resp, err = mw.sendReadToLeader(ctx, mp, req)
@@ -129,14 +129,14 @@ func (mw *MetaWrapper) sendReadToMP(ctx context.Context, mp *MetaPartition, req 
 		req.ClearArg()
 		retryCost := time.Since(start)
 		retryTimeSec := atomic.LoadInt64(&mw.retryTimeSec)
-		if !mw.InfiniteRetry && retryTimeSec > 0 && retryCost > time.Duration(retryTimeSec) * time.Second {
+		if !mw.InfiniteRetry && retryTimeSec > 0 && retryCost > time.Duration(retryTimeSec)*time.Second {
 			return
 		}
 		log.LogWarnf("sendReadToMP: err(%v) resp(%v) req(%v) mp(%v) retry time(%v)", err, resp, req, mp, retryCount)
 		if retryCost > alarmInterval {
 			umpMsg := fmt.Sprintf("send read(%v) to mp(%v) err(%v) resp(%v) retry time(%v)", req, mp, err, resp, retryCount)
 			common.HandleUmpAlarm(mw.cluster, mw.volname, req.GetOpMsg(), umpMsg)
-			alarmInterval += retryCost + 10 * time.Second
+			alarmInterval += retryCost + 10*time.Second
 		}
 		time.Sleep(1 * time.Second)
 	}

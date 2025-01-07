@@ -144,6 +144,12 @@ func (m *Statistics) CloseStatistics() {
 	}
 }
 
+func CloseStatistics() {
+	if StatisticsModule != nil {
+		StatisticsModule.CloseStatistics()
+	}
+}
+
 func InitMonitorData(module string) []*MonitorData {
 	var num int
 	var actionMap map[int]string
