@@ -308,6 +308,8 @@ func linearWithDelLeader(t *testing.T, testName string, isLease bool, mode RaftM
 	// delete raft leader server and add
 	leadServer, servers = delAndAddLeader(peers, servers, w, t)
 	waitForApply(servers, 1, w)
+	time.Sleep(1 * time.Second)
+	leadServer = waitElect(servers, 1, w)
 	startIndex := verifyRestoreValue(servers, leadServer, w)
 	output("start put data")
 	if _, err := leadServer.putData(1, startIndex, PutDataStep/5, w); err != nil {
@@ -319,7 +321,7 @@ func linearWithDelLeader(t *testing.T, testName string, isLease bool, mode RaftM
 }
 
 func linearWithFollowerDown(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
-	servers := initTestServer(peers, true, false, 1, StandardMode)
+	servers := initTestServer(peers, true, true, 1, StandardMode)
 	f, w := getLogFile("", testName+".log")
 	defer func() {
 		w.Flush()
@@ -388,7 +390,7 @@ func linearWithLeaderDown(t *testing.T, testName string, isLease bool, mode Raft
 
 	leadServer := waitElect(servers, 1, w)
 	printStatus(servers, w)
-	time.Sleep(time.Second)
+	waitForApply(servers, 1, w)
 	dataLen := verifyRestoreValue(servers, leadServer, w)
 	leadServer = waitElect(servers, 1, w)
 

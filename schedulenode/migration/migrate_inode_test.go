@@ -258,6 +258,9 @@ func TestLockAndUnlockExtent(t *testing.T) {
 }
 
 func TestReadExtentAllHost(t *testing.T) {
+	logDir := "/cfs/log/migrate"
+	log.InitLog(logDir, "test", log.DebugLevel, nil)
+
 	setVolForceRow(true)
 	defer setVolForceRow(false)
 
@@ -273,6 +276,7 @@ func TestReadExtentAllHost(t *testing.T) {
 	stat := getFileStat(t, testFile)
 	ctx := context.Background()
 	defer func() {
+		log.LogFlush()
 		ec.Close(ctx)
 	}()
 	writeRowFileBySdk(t, ctx, stat.Ino, size10M, ec)

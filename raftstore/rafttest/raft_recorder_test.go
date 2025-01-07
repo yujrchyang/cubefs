@@ -221,10 +221,15 @@ func recorder_filterMsgs_leaderDown(t *testing.T, name string, msgFilter raft.Ms
 	}
 	waitForApply(servers, 1, w)
 	// start down server
-	_, servers = startServer(recorderPeers, servers, downServer, w)
-	applyIndex := waitForApply(servers, 1, w)
-	// check data，减去2条选举产生的空白日志
-	err = verifyStrictRestoreValue(int(applyIndex-2), servers, w)
+	leadServer, servers = startServer(recorderPeers, servers, downServer, w)
+	waitForApply(servers, 1, w)
+	dataLen = verifyRestoreValue(servers, leadServer, w)
+	printStatus(servers, w)
+	dataLen, err = leadServer.putData(1, dataLen, putDataStep, w)
+	assert.NoError(t, err, "put data after recover")
+	waitForApply(servers, 1, w)
+	printStatus(servers, w)
+	err = verifyStrictRestoreValue(dataLen, servers, w)
 	assert.Equal(t, nil, err, "verify data is inconsistent")
 }
 

@@ -172,9 +172,7 @@ func createDefaultMasterServerForTest() *Server {
 		"walDir":"/tmp/chubaofs/raft",
 		"storeDir":"/tmp/chubaofs/rocksdbstore",
 		"clusterName":"chubaofs",
-		"mqAddr":"yufa-nameserver.jmq.jd.local:50088",
-  		"mqAppName":"JMQOnCFS",
-  		"mqTopic":"JMQ_CFS_Test"
+		"mqProducerState": "false"
 	}`
 	testServer, err := createMasterServer(cfgJSON)
 	if err != nil {

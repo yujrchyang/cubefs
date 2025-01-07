@@ -268,32 +268,37 @@ func withLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode
 	w.WriteString(fmt.Sprintf("[%s] shutdown all Follower \r\n", time.Now().Format(format_time)))
 	shutServer = make([]*testServer, 0)
 	newServers = make([]*testServer, 0)
+	stopT := time.Now()
 	for _, s := range servers {
 		if lead, _ := s.raft.LeaderTerm(1); s.nodeID != lead {
 			s.raft.Stop()
 			shutServer = append(shutServer, s)
+			if len(shutServer) == (len(peers)+1)/2 {	// 宕机过半数
+				stopT = time.Now()
+			}
 		} else {
 			newServers = append(newServers, s)
 		}
 	}
-	stopT := time.Now()
-	w.WriteString(fmt.Sprintf("[%s] shutdown all Follower \r\n", stopT.Format(format_time)))
+	//w.WriteString(fmt.Sprintf("[%s] shutdown all Follower \r\n", stopT.Format(format_time)))
 	servers = newServers
 	var end time.Time
 	for {
 		flag := false
 		for _, s := range servers {
 			if lead, _ := s.raft.LeaderTerm(1); lead == 0 {
-				flag = true
 				end = time.Now()
+				flag = true
 			}
 		}
 		if flag {
 			break
 		}
 	}
+	w.WriteString(fmt.Sprintf("[%s] Shutdown quorum follower.\r\n", stopT.Format(format_time)))
 	w.WriteString(fmt.Sprintf("[%s] Leader step down.\r\n", end.Format(format_time)))
-	if (end.Sub(stopT).Nanoseconds() + int64(htbTick)*tickInterval.Nanoseconds()) < int64(elcTick)*tickInterval.Nanoseconds() {
+	// leader 使用 r.config.ElectionTick - 1 作为 randElectionTick
+	if (end.Sub(stopT).Nanoseconds() + int64(htbTick)*tickInterval.Nanoseconds()) < int64(elcTick-1)*tickInterval.Nanoseconds() {
 		w.WriteString("Leader step down not lost lease.")
 		t.Fatal("Leader step down not lost lease.")
 	}

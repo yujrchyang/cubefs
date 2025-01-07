@@ -510,7 +510,9 @@ func tryToLeader(nodeID uint64, servers []*testServer, w *bufio.Writer) (leadSer
 	output("start try to leader: %v", nodeID)
 	printLog(w, fmt.Sprintf("try leader(%v) start", nodeID))
 	for {
-		servers[nodeID-1].raft.TryToLeader(1)
+		for i := 0; i < len(servers); i++ {
+			servers[i].raft.TryToLeader(1)
+		}
 		leadServer = waitElect(servers, 1, w)
 		if leadServer.nodeID == nodeID {
 			break

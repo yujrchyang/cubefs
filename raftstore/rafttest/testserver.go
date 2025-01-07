@@ -234,7 +234,7 @@ func createRaftServer(nodeId uint64, isLease, clear bool, groupNum int, raftConf
 	config.ReplicateAddr = resolver.allAddrs[nodeId].repl
 	config.Resolver = resolver
 	config.RetainLogs = 0
-	config.MaxSizePerMsg = 16 * raft.KB
+	config.MaxSizePerMsg = 32 * raft.KB
 
 	rs, err := raft.NewRaftServer(config)
 	if err != nil {
