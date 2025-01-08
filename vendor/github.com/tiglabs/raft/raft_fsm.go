@@ -694,6 +694,9 @@ func (r *raftFsm) setMinimumCommitIndex(mci uint64) {
 }
 
 func (r *raftFsm) maybeUpdateReplica(id, match, committed uint64) {
+	if !r.consistencyMode.Equals(StrictMode) {
+		return
+	}
 	if re, exist := r.replicas[id]; exist {
 		re.maybeUpdate(match, committed)
 		if logger.IsEnableDebug() {
