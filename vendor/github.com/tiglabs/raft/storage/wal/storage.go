@@ -96,11 +96,23 @@ func NewStorage(dir string, c *Config) (*Storage, error) {
 }
 
 func (s *Storage) SetSync(sync bool) {
-	s.c.Sync = sync
+	if s != nil && s.c != nil {
+		prev := s.c.Sync
+		s.c.Sync = sync
+		if prev != sync {
+			logger.Debug("storage[%v] set config, Sync=%v", s.ls.dir, sync)
+		}
+	}
 }
 
 func (s *Storage) SetSyncRotate(syncRotate bool) {
-	s.c.SyncRotate = syncRotate
+	if s != nil && s.c != nil {
+		prev := s.c.SyncRotate
+		s.c.SyncRotate = syncRotate
+		if prev != syncRotate {
+			logger.Debug("storage[%v] set config, SyncRotate=%v", s.ls.dir, syncRotate)
+		}
+	}
 }
 
 func (s *Storage) truncateFirstDummy() error {

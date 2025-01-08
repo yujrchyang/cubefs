@@ -379,6 +379,10 @@ func (p *partition) initWALStorage() (err error) {
 		if err != nil {
 			return
 		}
+		if log.IsInfoEnabled() {
+			log.LogInfof("RaftPartition(%v): inited storage, WALFileCacheCapacity=%v, WALFileSize=%v, WALContinuityCheck=%v, WALContinuityFix=%v, WALSync=%v, WALSyncRotate=%v",
+					p.id, p.config.WALFileCacheCapacity, p.config.WALFileSize, p.config.WALContinuityCheck, p.config.WALContinuityFix, p.config.WALSync, p.config.WALSyncRotate)
+		}
 	}
 	return
 }
@@ -394,18 +398,26 @@ func (p *partition) SetWALFileSize(filesize int) {
 
 func (p *partition) SetWALSync(sync bool) {
 	if p != nil && p.config != nil {
+		prev := p.config.WALSync
 		p.config.WALSync = sync
 		if p.ws != nil {
 			p.ws.SetSync(sync)
+		}
+		if prev != sync && log.IsInfoEnabled() {
+			log.LogInfof("RaftPartition(%v): set storage config, WALSync=%v", p.id, sync)
 		}
 	}
 }
 
 func (p *partition) SetWALSyncRotate(syncRotate bool) {
 	if p != nil && p.config != nil {
+		prev := p.config.WALSyncRotate
 		p.config.WALSyncRotate = syncRotate
 		if p.ws != nil {
 			p.ws.SetSyncRotate(syncRotate)
+		}
+		if prev != syncRotate && log.IsInfoEnabled() {
+			log.LogInfof("RaftPartition(%v): set storage config WALSyncRotate=%v", p.id, syncRotate)
 		}
 	}
 }
