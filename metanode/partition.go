@@ -382,8 +382,9 @@ type metaPartition struct {
 	lastDumpTime                 int64
 	lastValidRaftLogIndex        uint64
 	lastValidIndexOnLeaderChange uint64
-	ctx                          context.Context
-	cancelFunc                   context.CancelFunc
+	waitCtxMu                    sync.RWMutex
+	waitCtx                      context.Context   //切主后读请求等待新主应用到last index水位后返回
+	waitCancelFunc               context.CancelFunc
 }
 
 // Start starts a meta partition.
@@ -2138,22 +2139,30 @@ func (mp *metaPartition) getMaxApplyIDHosts(appliedIDMap map[string]uint64, reco
 }
 
 func (mp *metaPartition) checkAndWaitForPendingActionApplied() (err error){
-	if mp.ctx == nil && mp.cancelFunc == nil {
+	mp.waitCtxMu.RLock()
+	waitCtx := mp.waitCtx
+	mp.waitCtxMu.RUnlock()
+
+	if waitCtx == nil {
 		return
 	}
 
 	metric := exporter.NewModuleTP("checkAndWaitPendingActionApplied")
 	defer metric.Set(nil)
-	var ctx, _ = context.WithTimeout(context.Background(), time.Millisecond*200)
-	select {
-	case <- mp.ctx.Done():
-		log.LogCriticalf("meta partition apply pending action complete, partitionID: %v, curRaftApplyIndex: %v," +
+
+	ctx, cancelFunc := context.WithTimeout(waitCtx, time.Millisecond*200)
+	defer cancelFunc()
+
+	<- ctx.Done()
+	if ctx.Err() != nil && strings.Contains(ctx.Err().Error(), context.DeadlineExceeded.Error()) {
+		log.LogDebugf("meta partition wait apply pending action time out, partitionID: %v, curRaftApplyIndex: %v," +
 			" lastIndexOnLeaderChange: %v", mp.config.PartitionId, mp.applyID, mp.lastValidIndexOnLeaderChange)
-	case <- ctx.Done():
 		err =  fmt.Errorf("wait apply pending action timeout")
-		log.LogCriticalf("meta partition wait apply pending action time out, partitionID: %v, curRaftApplyIndex: %v," +
-			" lastIndexOnLeaderChange: %v", mp.config.PartitionId, mp.applyID, mp.lastValidIndexOnLeaderChange)
+		return
 	}
+
+	log.LogDebugf("meta partition apply pending action complete, partitionID: %v, curRaftApplyIndex: %v," +
+		" lastIndexOnLeaderChange: %v", mp.config.PartitionId, mp.applyID, mp.lastValidIndexOnLeaderChange)
 	return
 }
 

@@ -58,13 +58,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	mp.waitPersistCommitCnt++
 
 	defer func() {
-		if mp.ctx != nil && mp.cancelFunc != nil && index >= atomic.LoadUint64(&mp.lastValidIndexOnLeaderChange) {
-			mp.cancelFunc()
-			mp.ctx = nil
-			mp.cancelFunc = nil
-			log.LogCriticalf("meta partition apply pending action complete, partitionID: %v, curApplyIndex: %v, lastIndexOnLeaderChange: %v",
-				mp.config.PartitionId, index, mp.lastValidIndexOnLeaderChange)
-		}
+		mp.cancelWaitApplyCompleteCtx(index)
 		if err != nil {
 			log.LogErrorf("Mp[%d] action[Apply] failed,index:%v,msg:%v,resp:%v,err:%v", mp.config.PartitionId, index, msg, resp, err)
 			if err == accessDBError {
@@ -403,6 +397,27 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 	}
 
 	return
+}
+
+func (mp *metaPartition) cancelWaitApplyCompleteCtx(index uint64) {
+	mp.waitCtxMu.RLock()
+	waitCtx := mp.waitCtx
+	mp.waitCtxMu.RUnlock()
+	if waitCtx == nil {
+		return
+	}
+
+	mp.waitCtxMu.Lock()
+	if mp.waitCtx != nil && index >= mp.lastValidIndexOnLeaderChange {
+		if mp.waitCancelFunc != nil {
+			mp.waitCancelFunc()
+			mp.waitCancelFunc = nil
+		}
+		mp.waitCtx = nil
+	}
+	mp.waitCtxMu.Unlock()
+	log.LogDebugf("meta partition apply pending action complete, partitionID: %v, curApplyIndex: %v, lastIndexOnLeaderChange: %v",
+		mp.config.PartitionId, index, mp.lastValidIndexOnLeaderChange)
 }
 
 // ApplyMemberChange  apply changes to the raft member.
@@ -1173,19 +1188,23 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 		command: startStoreTick,
 	}
 
-	lastValidIndex := atomic.LoadUint64(&mp.lastValidRaftLogIndex)
-	atomic.StoreUint64(&mp.lastValidIndexOnLeaderChange, lastValidIndex)
-	curApplyId := mp.raftPartition.AppliedIndex()
-	if curApplyId < mp.lastValidIndexOnLeaderChange {
-		mp.ctx, mp.cancelFunc = context.WithCancel(context.Background())
-	}
-	log.LogCriticalf("metaPartition changeLeader, partitionID: %v, curApplyIndex: %v, curLastApplyIndex: %v, needPending: %v",
-		mp.config.PartitionId, curApplyId, mp.lastValidIndexOnLeaderChange, mp.ctx != nil)
+	mp.initWaitApplyCompleteCtx()
 	atomic.CompareAndSwapUint64(&mp.config.Cursor, 0, 1)
 	if mp.config.Start == 0 {
 		ino := NewInode(proto.RootIno, proto.Mode(os.ModePerm|os.ModeDir))
 		go mp.initInode(ino)
 	}
+}
+
+func (mp *metaPartition) initWaitApplyCompleteCtx() {
+	mp.waitCtxMu.Lock()
+	mp.lastValidIndexOnLeaderChange = atomic.LoadUint64(&mp.lastValidRaftLogIndex)
+	if mp.waitCtx != nil && mp.applyID < mp.lastValidIndexOnLeaderChange {
+		mp.waitCtx, mp.waitCancelFunc = context.WithCancel(context.Background())
+	}
+	mp.waitCtxMu.Unlock()
+	log.LogCriticalf("metaPartition changeLeader, partitionID: %v, curApplyIndex: %v, curLastApplyIndex: %v, needPending: %v",
+		mp.config.PartitionId, mp.applyID, mp.lastValidIndexOnLeaderChange, mp.waitCtx != nil)
 }
 
 func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, data []byte, reqInfo *RequestInfo) (resp interface{}, err error) {
