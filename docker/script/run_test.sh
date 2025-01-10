@@ -351,6 +351,7 @@ run_unit_test() {
             ./sdk/data/... \
             ./sdk/meta/... \
             ./sdk/master/... \
+            ./sdk/s3/... \
             ./repl/... \
             ./raftstore/rafttest/... \
             ./util/... \
