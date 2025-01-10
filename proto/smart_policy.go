@@ -478,6 +478,9 @@ func parseMediumType(mediumString string) (mediumType MediumType, err error) {
 	if mediumString == MediumECName {
 		return MediumEC, nil
 	}
+	if mediumString == MediumS3Name {
+		return MediumS3, nil
+	}
 	return 0, errors.New("invalid target medium type")
 }
 

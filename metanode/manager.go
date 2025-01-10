@@ -357,6 +357,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opStatDeletedFileInfo(conn, p, remoteAddr)
 	case proto.OpMetaGetExtentsNoModifyAccessTime:
 		err = m.opGetExtentsNoModifyAccessTime(conn, p, remoteAddr)
+	case proto.OpBoundS3Bucket:
+		err = m.opBoundS3Bucket(conn, p, remoteAddr)
 	default:
 		err = fmt.Errorf("%s unknown Opcode: %d, reqId: %d", remoteAddr,
 			p.Opcode, p.GetReqID())
@@ -980,6 +982,7 @@ func (m *metadataManager) createPartition(request *proto.CreateMetaPartitionRequ
 		StoreMode:          request.StoreMode,
 		CreationType:       request.CreationType,
 		PersistenceMode:    persistenceMode,
+		BoundBucketInfo:    request.BoundBucket,
 	}
 	mpc.AfterStop = func() {
 		m.detachPartition(request.PartitionID)

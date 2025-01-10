@@ -1,4 +1,4 @@
-package extentdoubleallocatecheck
+package extentallocatecheck
 
 import (
 	"encoding/json"
@@ -25,7 +25,7 @@ type ClusterConfig struct {
 	IsDBBack     bool     `json:"isDBBack"`
 }
 
-type ExtentDoubleAllocateCheckWorker struct {
+type ExtentAllocateChecker struct {
 	worker.BaseWorker
 	sync.RWMutex
 	port               string
@@ -38,17 +38,16 @@ type ExtentDoubleAllocateCheckWorker struct {
 	alarmPhones        []string
 }
 
-
-func NewExtentDoubleAllocateCheckWorker() *ExtentDoubleAllocateCheckWorker {
-	return &ExtentDoubleAllocateCheckWorker{}
+func NewExtentAllocateChecker() *ExtentAllocateChecker {
+	return &ExtentAllocateChecker{}
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) Start(cfg *config.Config) (err error) {
+func (w *ExtentAllocateChecker) Start(cfg *config.Config) (err error) {
 	return w.Control.Start(w, cfg, doStart)
 }
 
 func doStart(s common.Server, cfg *config.Config) (err error) {
-	w, ok := s.(*ExtentDoubleAllocateCheckWorker)
+	w, ok := s.(*ExtentAllocateChecker)
 	if !ok {
 		err = errors.New("Invalid Node Type")
 		return
@@ -90,29 +89,29 @@ func doStart(s common.Server, cfg *config.Config) (err error) {
 	return
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) Shutdown() {
+func (w *ExtentAllocateChecker) Shutdown() {
 	w.Control.Shutdown(w, doShutdown)
 }
 
 func doShutdown(s common.Server) {
-	m, ok := s.(*ExtentDoubleAllocateCheckWorker)
+	m, ok := s.(*ExtentAllocateChecker)
 	if !ok {
 		return
 	}
 	close(m.StopC)
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) Sync() {
+func (w *ExtentAllocateChecker) Sync() {
 	w.Control.Sync()
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) parseConfig(cfg *config.Config) (err error) {
+func (w *ExtentAllocateChecker) parseConfig(cfg *config.Config) (err error) {
 	err = w.ParseBaseConfig(cfg)
 	if err != nil {
 		return
 	}
 
-	w.exportDir =cfg.GetString(config.ConfigKeyExportDir)
+	w.exportDir = cfg.GetString(config.ConfigKeyExportDir)
 	clustersInfoData := cfg.GetJsonObjectSlice(config.ConfigKeyClusterInfo)
 	w.clusterConfigMap = make(map[string]*ClusterConfig, len(clustersInfoData))
 	for _, clusterInfoData := range clustersInfoData {
@@ -127,7 +126,7 @@ func (w *ExtentDoubleAllocateCheckWorker) parseConfig(cfg *config.Config) (err e
 	return
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) ConsumeTask(task *proto.Task) (restore bool, err error) {
+func (w *ExtentAllocateChecker) ConsumeTask(task *proto.Task) (restore bool, err error) {
 	log.LogDebugf("ConsumeTask task(%v)", task)
 	w.concurrencyLimiter.Add()
 	defer func() {
@@ -151,7 +150,7 @@ func (w *ExtentDoubleAllocateCheckWorker) ConsumeTask(task *proto.Task) (restore
 	return
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) clustersID() []string {
+func (w *ExtentAllocateChecker) clustersID() []string {
 	w.RLock()
 	defer w.RUnlock()
 
@@ -162,13 +161,13 @@ func (w *ExtentDoubleAllocateCheckWorker) clustersID() []string {
 	return clustersID
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) updateNotifyMembers() {
+func (w *ExtentAllocateChecker) updateNotifyMembers() {
 	timer := time.NewTimer(0)
 	for {
 		select {
-		case <- w.StopC:
+		case <-w.StopC:
 			return
-		case <- timer.C:
+		case <-timer.C:
 			timer.Reset(time.Hour * 1)
 			emailMembers, alarmMembers, callMembers, err := mysql.SelectNotifyMembers(w.WorkerType)
 			if err != nil {

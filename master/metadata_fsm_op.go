@@ -420,6 +420,8 @@ type volValue struct {
 	MetaOut                  bool
 	MpFollowerRead           bool
 	MpZones                  string
+
+	BoundBucket *bsProto.BoundBucketInfo
 }
 
 func (v *volValue) Bytes() (raw []byte, err error) {
@@ -526,8 +528,8 @@ func newVolValue(vol *Vol) (vv *volValue) {
 		MetaOut:                  vol.MetaOut,
 		MpFollowerRead:           vol.MpFollowerRead,
 		MpZones:                  vol.MpZones,
-
-		PersistenceMode: vol.PersistenceMode,
+		PersistenceMode:          vol.PersistenceMode,
+		BoundBucket:              vol.BoundBucket,
 	}
 	return
 }

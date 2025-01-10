@@ -154,6 +154,7 @@ type Vol struct {
 	MpZones                    string
 	limitInfoRespCache         []byte
 	limitInfoRespCacheMutex    sync.RWMutex
+	BoundBucket                *proto.BoundBucketInfo
 	sync.RWMutex
 }
 
@@ -366,6 +367,7 @@ func newVolFromVolValue(vv *volValue) (vol *Vol) {
 	vol.MetaOut = vv.MetaOut
 	vol.MpFollowerRead = vv.MpFollowerRead
 	vol.MpZones = vv.MpZones
+	vol.BoundBucket = vv.BoundBucket
 	return vol
 }
 
@@ -1386,14 +1388,15 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	}
 	log.LogInfof("vol:%v, mp:%v, target meta hosts:%v, recorders:%v, peers:%v", vol.Name, mp.PartitionID, hosts, recorders, peers)
 
-	parallelFunc := func(putErr bool, addrs []string, opFunc func(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error)) {
+	parallelFunc := func(putErr bool, addrs []string, opFunc func(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32,
+		bucketInfo *proto.BoundBucketInfo) (err error)) {
 		for _, addr := range addrs {
 			wg.Add(1)
 			go func(addr string) {
 				defer func() {
 					wg.Done()
 				}()
-				opErr := opFunc(addr, mp, storeMode, vol.trashRemainingDays)
+				opErr := opFunc(addr, mp, storeMode, vol.trashRemainingDays, vol.BoundBucket)
 				if putErr && opErr != nil {
 					errChannel <- opErr
 				}

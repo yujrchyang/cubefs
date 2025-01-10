@@ -134,6 +134,9 @@ func getInodeInfo(client *sdk.MasterClient, addr string, volumeName string, ino 
 				mediumType = partition.MediumType
 			}
 		}
+		if inodeExtentInfoView.CRC == 1 {
+			mediumType = proto.MediumS3Name
+		}
 		stdout("%v\n", formatInodeExtentInfoTableRow(inodeExtentInfoView, mediumType))
 	}
 	return

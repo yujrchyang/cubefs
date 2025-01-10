@@ -20,6 +20,9 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/s3"
+	"github.com/cubefs/cubefs/util/exporter"
+	"github.com/cubefs/cubefs/util/topology"
 	"io/ioutil"
 	"net"
 	"os"
@@ -30,9 +33,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/cubefs/cubefs/util/exporter"
-	"github.com/cubefs/cubefs/util/topology"
 
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
@@ -79,6 +79,7 @@ type MetaPartitionConfig struct {
 	// Identity for raftStore group. RaftStore nodes in the same raftStore group must have the same groupID.
 	PartitionId        uint64                `json:"partition_id"`
 	VolName            string                `json:"vol_name"`
+	VolID              uint64                `json:"vol_id"`
 	Start              uint64                `json:"start"`     // Minimal Inode ID of this range. (Required during initialization)
 	End                uint64                `json:"end"`       // Maximal Inode ID of this range. (Required during initialization)
 	Peers              []proto.Peer          `json:"peers"`     // Peers information of the raftStore
@@ -109,6 +110,7 @@ type MetaPartitionConfig struct {
 	RocksWalTTL          uint64 `json:"rocks_wal_ttl"`
 
 	PersistenceMode proto.PersistenceMode `json:"persistence_mode"`
+	BoundBucketInfo *proto.BoundBucketInfo `json:"bound_bucket"`
 }
 
 func (c *MetaPartitionConfig) checkMeta() (err error) {
@@ -161,9 +163,10 @@ func (c *MetaPartitionConfig) persist() (err error) {
 	log.LogInfof("persistMetata: persist complete: partitionID(%v) volume(%v) range(%v,%v) cursor(%v)",
 		c.PartitionId, c.VolName, c.Start, c.End, c.Cursor)
 	log.LogInfof("persistMetadata: persist complete: partitionID(%v) creationType(%v) RocksDBWalFileSize(%v) +"+
-		"RocksDBWalMemSize(%v) RocksDBLogFileSize(%v) RocksDBReservedCount(%v) RocksDBLogReservedTime(%v) WALTTL(%v)", c.PartitionId,
+		"RocksDBWalMemSize(%v) RocksDBLogFileSize(%v) RocksDBReservedCount(%v) RocksDBLogReservedTime(%v) WALTTL(%v)" +
+		"RelatedBucket(%v)", c.PartitionId,
 		c.CreationType, c.RocksWalFileSize, c.RocksWalMemSize, c.RocksLogFileSize,
-		c.RocksLogReVersedCnt, c.RocksLogReversedTime, c.RocksWalTTL)
+		c.RocksLogReVersedCnt, c.RocksLogReversedTime, c.RocksWalTTL, c.BoundBucketInfo)
 	return
 }
 
@@ -387,6 +390,7 @@ type metaPartition struct {
 	waitCtxMu                    sync.RWMutex
 	waitCtx                      context.Context   //切主后读请求等待新主应用到last index水位后返回
 	waitCancelFunc               context.CancelFunc
+	s3Client                     *s3.S3Client
 }
 
 // Start starts a meta partition.
@@ -628,6 +632,10 @@ func NewMetaPartition(conf *MetaPartitionConfig, manager *metadataManager) *meta
 		stopChState:                  mpStopChOpenState,
 		reqRecords:                   NewRequestRecords(),
 		topoManager:                  manager.metaNode.topoManager,
+	}
+	if conf.BoundBucketInfo != nil {
+		mp.s3Client = s3.NewS3Client(conf.BoundBucketInfo.Region, conf.BoundBucketInfo.EndPoint, conf.BoundBucketInfo.AccessKey,
+			conf.BoundBucketInfo.SecretAccessKey, false)
 	}
 	return mp
 }
@@ -2172,4 +2180,19 @@ func (mp *metaPartition) listenStoredRaftLogEntry(entry *raftproto.Entry) {
 	if entry.Type == raftproto.EntryNormal && len(entry.Data) > 0 && entry.Index > mp.lastValidRaftLogIndex {
 		atomic.StoreUint64(&mp.lastValidRaftLogIndex, entry.Index)
 	}
+}
+
+func (mp *metaPartition) BoundBucket(ctx context.Context, req *proto.BoundS3BucketToMetaNodeRequest) (err error) {
+	reqData, err := json.Marshal(req.BucketInfo)
+	if err != nil {
+		return
+	}
+	r, err := mp.submit(ctx, opFSMBoundS3Bucket, "", reqData, nil)
+	if err != nil {
+		return
+	}
+	if status := r.(uint8); status != proto.OpOk {
+		err = fmt.Errorf("bound bucket failed, req: %v, status: %v", req, status)
+	}
+	return
 }

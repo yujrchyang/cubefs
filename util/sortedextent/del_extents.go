@@ -189,6 +189,7 @@ func (s *DelExtentKeyBtree) GetDelExtentKeys(eks []proto.ExtentKey) []proto.Meta
 	for i := 0; i < len(eks); i++ {
 		tmpDelEk.PartitionId = eks[i].PartitionId
 		tmpDelEk.ExtentId = eks[i].ExtentId
+		tmpDelEk.CRC = eks[i].CRC
 		s.tree.Delete(tmpDelEk)
 		if s.tree.Len() == 0 {
 			break
@@ -208,6 +209,7 @@ func (s *DelExtentKeyBtree) GetDelExtentKeys(eks []proto.ExtentKey) []proto.Meta
 }
 
 type DelEkKey struct {
+	EKType      proto.ExtentType
 	PartitionId uint64
 	ExtentId    uint64
 }
@@ -226,7 +228,7 @@ func (s *DelExtentKeyMap) Put(ek *proto.ExtentKey, ino, srcType uint64) {
 		ExtentKey: proto.ExtentKey{FileOffset: ek.FileOffset, PartitionId: ek.PartitionId,
 			ExtentId: ek.ExtentId, ExtentOffset: ek.ExtentOffset, Size: ek.Size, CRC: ek.CRC},
 		InodeId:   ino, TimeStamp: time.Now().Unix(), SrcType: srcType}
-	s.ekMap[DelEkKey{PartitionId: ek.PartitionId, ExtentId: ek.ExtentId}] = meteDekEk
+	s.ekMap[DelEkKey{EKType: proto.ExtentType(ek.CRC), PartitionId: ek.PartitionId, ExtentId: ek.ExtentId}] = meteDekEk
 }
 
 func (s *DelExtentKeyMap) Put2(ek *proto.ExtentKey, ino, srcType uint64) {
@@ -234,7 +236,7 @@ func (s *DelExtentKeyMap) Put2(ek *proto.ExtentKey, ino, srcType uint64) {
 		ExtentKey: proto.ExtentKey{FileOffset: ek.FileOffset, PartitionId: ek.PartitionId,
 			ExtentId: ek.ExtentId, ExtentOffset: ek.ExtentOffset, Size: ek.Size, CRC: ek.CRC},
 		InodeId:   ino, TimeStamp: time.Now().Unix(), SrcType: srcType}
-	s.ekMap[DelEkKey{PartitionId: ek.PartitionId, ExtentId: ek.ExtentId}] = meteDekEk
+	s.ekMap[DelEkKey{EKType: proto.ExtentType(ek.CRC), PartitionId: ek.PartitionId, ExtentId: ek.ExtentId}] = meteDekEk
 }
 
 func (s *DelExtentKeyMap) GetDelExtentKeys(eks []proto.ExtentKey) []proto.MetaDelExtentKey {
@@ -246,6 +248,7 @@ func (s *DelExtentKeyMap) GetDelExtentKeys(eks []proto.ExtentKey) []proto.MetaDe
 	for i := 0; i < len(eks); i++ {
 		tmpDelEk.PartitionId = eks[i].PartitionId
 		tmpDelEk.ExtentId = eks[i].ExtentId
+		tmpDelEk.EKType = proto.ExtentType(eks[i].CRC)
 		delete(s.ekMap, tmpDelEk)
 		if len(s.ekMap) == 0 {
 			break

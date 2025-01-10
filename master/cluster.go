@@ -18,14 +18,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/collection"
 	"math"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/cubefs/cubefs/util/collection"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
@@ -869,10 +868,11 @@ func (c *Cluster) syncCreateMetaRecorderToMetaNode(addr string, mp *MetaPartitio
 	return
 }
 
-func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32, persistenceMode proto.PersistenceMode) (err error) {
+func (c *Cluster) syncCreateMetaPartitionToMetaNode(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32,
+	persistenceMode proto.PersistenceMode, bucketInfo *proto.BoundBucketInfo) (err error) {
 	hosts := make([]string, 0)
 	hosts = append(hosts, host)
-	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName, storeMode, trashDays, persistenceMode)
+	tasks := mp.buildNewMetaPartitionTasks(hosts, mp.Peers, mp.volName, storeMode, trashDays, persistenceMode, bucketInfo)
 	metaNode, err := c.metaNode(host)
 	if err != nil {
 		return
@@ -890,7 +890,7 @@ func (c *Cluster) doCreateMetaPartition(host string, mp *MetaPartition, storeMod
 		return
 	}
 
-	if err = c.syncCreateMetaPartitionToMetaNode(host, mp, storeMode, trashDays, vol.PersistenceMode); err != nil {
+	if err = c.syncCreateMetaPartitionToMetaNode(host, mp, storeMode, trashDays, vol.PersistenceMode, vol.BoundBucket); err != nil {
 		return
 	}
 	mp.Lock()
@@ -901,7 +901,8 @@ func (c *Cluster) doCreateMetaPartition(host string, mp *MetaPartition, storeMod
 	return
 }
 
-func (c *Cluster) doCreateMetaRecorder(addr string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
+func (c *Cluster) doCreateMetaRecorder(addr string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32,
+	bucketInfo *proto.BoundBucketInfo) (err error) {
 	if err = c.syncCreateMetaRecorderToMetaNode(addr, mp); err != nil {
 		return
 	}
@@ -913,7 +914,8 @@ func (c *Cluster) doCreateMetaRecorder(addr string, mp *MetaPartition, storeMode
 	return
 }
 
-func (c *Cluster) doDeleteMetaPartition(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
+func (c *Cluster) doDeleteMetaPartition(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32,
+	bucketInfo *proto.BoundBucketInfo) (err error) {
 	var mr *MetaReplica
 	mr, err = mp.getMetaReplica(host)
 	if err != nil {
@@ -926,7 +928,8 @@ func (c *Cluster) doDeleteMetaPartition(host string, mp *MetaPartition, storeMod
 	return
 }
 
-func (c *Cluster) doDeleteMetaRecorder(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
+func (c *Cluster) doDeleteMetaRecorder(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32,
+	bucketInfo *proto.BoundBucketInfo) (err error) {
 	var mr *MetaRecorder
 	mr, err = mp.getMetaRecorder(host)
 	if err != nil {
@@ -6483,5 +6486,69 @@ func (c *Cluster) setMqProducerState(state bool) (err error) {
 		err = proto.ErrPersistenceByRaft
 		return
 	}
+	return
+}
+
+func (c *Cluster) syncBoundS3BucketToMetaNode(mp *MetaPartition, bucketInfo *proto.BoundBucketInfo) (err error) {
+	var task *proto.AdminTask
+	var leaderMetaNode *MetaNode
+	task, err = mp.buildBoundS3BucketTask(bucketInfo)
+	if err != nil {
+		return
+	}
+	leaderMetaNode, err = c.metaNode(task.OperatorAddr)
+	if err != nil {
+		return
+	}
+	if _, err = leaderMetaNode.Sender.syncSendAdminTask(task); err != nil {
+		return
+	}
+	return
+}
+
+func (c *Cluster) boundS3BucketForVol(volName string, bucketInfo *proto.BoundBucketInfo) (err error) {
+	var vol *Vol
+	var wg sync.WaitGroup
+	var errCh chan error
+	vol, err = c.getVol(volName)
+	if err != nil {
+		return
+	}
+
+	errCh = make(chan error, len(vol.MetaPartitions))
+	for _, mp := range vol.MetaPartitions {
+		wg.Add(1)
+		go func(mp *MetaPartition) {
+			defer wg.Done()
+			if errTmp := c.syncBoundS3BucketToMetaNode(mp, bucketInfo); errTmp != nil {
+				log.LogErrorf("send bound s3 bucket failed, volName: %s, bucketInfo: %v, partitionID: %v, err: %v",
+					volName, bucketInfo, mp.PartitionID, err)
+				errCh <- errTmp
+			}
+		}(mp)
+	}
+	wg.Wait()
+
+	select {
+	case err = <- errCh:
+		return
+	default:
+	}
+
+	vol.Lock()
+	defer vol.Unlock()
+	oldBoundBucketInfo := vol.BoundBucket
+	if proto.IsSameBucket(oldBoundBucketInfo, bucketInfo) {
+		return
+	}
+
+	vol.BoundBucket = bucketInfo
+	if err = c.syncUpdateVol(vol); err != nil {
+		vol.BoundBucket = oldBoundBucketInfo
+		log.LogErrorf("sync update vol[%v] err[%v]", volName, err)
+		err = proto.ErrPersistenceByRaft
+		return err
+	}
+	log.LogInfof("[bondS3BucketForVol] bound bucketInfo %v for volume %v success", bucketInfo, volName)
 	return
 }

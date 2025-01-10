@@ -268,6 +268,9 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetVolDisableStat).
 		HandlerFunc(m.setVolDisableState)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.AdminBoundS3Bucket).
+		HandlerFunc(m.boundS3Bucket)
 
 	// node task response APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).

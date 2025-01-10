@@ -512,7 +512,6 @@ func (eh *ExtentHandler) appendExtentKey(ctx context.Context) (err error) {
 		ExtentId:     eh.key.ExtentId,
 		ExtentOffset: eh.key.ExtentOffset,
 		Size:         eh.key.Size,
-		CRC:          eh.key.CRC,
 	}
 	dirty := eh.dirty
 	eh.ekMutex.Unlock()

@@ -2701,3 +2701,43 @@ func (m *metadataManager) opMetaBatchInodeGetPb(conn net.Conn, p *Packet,
 		"body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }
+
+func (m *metadataManager) opBoundS3Bucket(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := new(proto.BoundS3BucketToMetaNodeRequest)
+	adminTask := &proto.AdminTask{
+		Request: req,
+	}
+	decode := json.NewDecoder(bytes.NewBuffer(p.Data))
+	decode.UseNumber()
+	if err = decode.Decode(adminTask); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+
+	partition, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, partition, p, req) {
+		return
+	}
+	log.LogInfof("[opBoundS3Bucket] [remoteAddr=%s]accept a from"+
+		" master message: %v", remoteAddr, adminTask)
+	mp := partition.(*metaPartition)
+	if err = mp.BoundBucket(p.Ctx(), req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	p.ResultCode = proto.OpOk
+	m.respondToClient(conn, p)
+	log.LogInfof("%s [opBoundS3Bucket] req:%v; resp: %v", remoteAddr,
+		req, adminTask)
+	return
+}

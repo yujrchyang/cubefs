@@ -143,6 +143,7 @@ const (
 	OpAddVirtualMetaPartition          uint8 = 0x5A //添加虚拟mp的逻辑发生变化，防止master升级后使用旧的op code给metanode发送添加虚拟mp的请求
 	OpMetaGetExtentsNoModifyAccessTime uint8 = 0x5B
 	OpResetMetaRecorderRaftMember      uint8 = 0x5C
+	OpBoundS3Bucket                    uint8 = 0x5D
 
 	// Operations client-->datanode
 	OpRandomWriteV3     uint8 = 0x50

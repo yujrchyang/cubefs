@@ -17,11 +17,10 @@ package master
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
-	"sync/atomic"
-
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/log"
+	"strings"
+	"sync/atomic"
 )
 
 func (c *Cluster) updateVolInfoResponseCache() (body []byte, err error) {
@@ -48,6 +47,7 @@ func (c *Cluster) updateVolInfoResponseCache() (body []byte, err error) {
 		volInfo.ReqRecordsReservedTime = vol.reqRecordReservedTime
 		volInfo.ReqRecordMaxCount = vol.reqRecordMaxCount
 		volInfo.PersistenceMode = vol.PersistenceMode
+		volInfo.VolID = vol.ID
 		volsInfo = append(volsInfo, volInfo)
 	}
 	reply := newSuccessHTTPReply(volsInfo)

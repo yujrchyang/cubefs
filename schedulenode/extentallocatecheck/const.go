@@ -1,4 +1,4 @@
-package extentdoubleallocatecheck
+package extentallocatecheck
 
 import (
 	"github.com/cubefs/cubefs/storage"
@@ -17,7 +17,7 @@ const (
 )
 
 var (
-	parallelMpCnt = atomic.NewInt32(defaultParallelMPCount)
+	parallelMpCnt    = atomic.NewInt32(defaultParallelMPCount)
 	parallelInodeCnt = atomic.NewInt32(DefaultInodeConcurrency)
 )
 

@@ -1,4 +1,4 @@
-package extentdoubleallocatecheck
+package extentallocatecheck
 
 import (
 	"bufio"
@@ -9,7 +9,6 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/storage"
 	"github.com/cubefs/cubefs/util/bitset"
-	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/log"
 	"io"
@@ -22,9 +21,7 @@ import (
 	"time"
 )
 
-var gConnPool = connpool.NewConnectPool()
-
-type ExtentDoubleAllocateCheckTask struct {
+type ExtentAllocateCheckTask struct {
 	*proto.Task
 	mpParaCnt                 int
 	doubleAllocateExtentsMap  map[uint64]*bitset.ByteSliceBitSet
@@ -36,8 +33,8 @@ type ExtentDoubleAllocateCheckTask struct {
 	checkByMetaDumpFile       bool
 }
 
-func NewExtentDoubleAllocateCheckTask(task *proto.Task, mc *master.MasterClient, exportDir string) *ExtentDoubleAllocateCheckTask {
-	t := new(ExtentDoubleAllocateCheckTask)
+func NewExtentDoubleAllocateCheckTask(task *proto.Task, mc *master.MasterClient, exportDir string) *ExtentAllocateCheckTask {
+	t := new(ExtentAllocateCheckTask)
 	t.Task = task
 	t.masterClient = mc
 	t.exportDir = exportDir
@@ -81,7 +78,7 @@ func walkRawFile(fp *os.File, f func(data []byte) error) (err error) {
 	return
 }
 
-func (t *ExtentDoubleAllocateCheckTask) parseExtents(extentInfoCh chan *ExtentInfo) (err error) {
+func (t *ExtentAllocateCheckTask) parseExtents(extentInfoCh chan *ExtentInfo) (err error) {
 	var childFilesInfo []fs.FileInfo
 	childFilesInfo, err = ioutil.ReadDir(t.inodeExtentInfoDir)
 	var errCh = make(chan error, len(childFilesInfo))
@@ -101,7 +98,7 @@ func (t *ExtentDoubleAllocateCheckTask) parseExtents(extentInfoCh chan *ExtentIn
 			}
 			defer fp.Close()
 			tmpErr = walkRawFile(fp, func(data []byte) error {
-				inodeExtents := &struct{
+				inodeExtents := &struct {
 					InodeID uint64            `json:"ino"`
 					Extents []proto.ExtentKey `json:"eks"`
 				}{}
@@ -126,15 +123,15 @@ func (t *ExtentDoubleAllocateCheckTask) parseExtents(extentInfoCh chan *ExtentIn
 		}(childFile.Name())
 	}
 	wg.Wait()
-	select{
-	case err = <- errCh:
+	select {
+	case err = <-errCh:
 		log.LogErrorf("parse extent info file error: %v", err)
 	default:
 	}
 	return
 }
 
-func (t *ExtentDoubleAllocateCheckTask) getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh chan *ExtentInfo) (err error) {
+func (t *ExtentAllocateCheckTask) getExtentsFromMetaPartition(mpId uint64, leaderAddr string, ExtentInfoCh chan *ExtentInfo) (err error) {
 	var resp *proto.MpAllInodesId
 	var retryCnt = 5
 	var filePath = path.Join(t.inodeExtentInfoDir, fmt.Sprintf("%v", mpId))
@@ -162,7 +159,7 @@ func (t *ExtentDoubleAllocateCheckTask) getExtentsFromMetaPartition(mpId uint64,
 		if err == nil {
 			break
 		}
-		time.Sleep(time.Second*5)
+		time.Sleep(time.Second * 5)
 		retryCnt--
 	}
 	if err != nil {
@@ -189,12 +186,12 @@ func (t *ExtentDoubleAllocateCheckTask) getExtentsFromMetaPartition(mpId uint64,
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	inodeConcurrency := parallelInodeCnt.Load()
-	for i := int32(0); i < inodeConcurrency ; i++ {
+	for i := int32(0); i < inodeConcurrency; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for {
-				inodeID, ok := <- inodeIDCh
+				inodeID, ok := <-inodeIDCh
 				if !ok {
 					break
 				}
@@ -211,12 +208,12 @@ func (t *ExtentDoubleAllocateCheckTask) getExtentsFromMetaPartition(mpId uint64,
 					if errInfo == nil {
 						break
 					}
-					time.Sleep(time.Second*5)
+					time.Sleep(time.Second * 5)
 					retryCount--
 				}
 				if errInfo != nil {
 					errorCh <- errInfo
-					log.LogErrorf("action[getExtentsFromMetaPartition] get cluster[%s] mp[%v] extent " +
+					log.LogErrorf("action[getExtentsFromMetaPartition] get cluster[%s] mp[%v] extent "+
 						"key by inode id[%v] failed: %v", t.Cluster, mpId, inodeID, errInfo)
 					continue
 				}
@@ -272,12 +269,12 @@ func (t *ExtentDoubleAllocateCheckTask) getExtentsFromMetaPartition(mpId uint64,
 	return
 }
 
-func (t *ExtentDoubleAllocateCheckTask) RunOnce() {
-	log.LogInfof("ExtentDoubleAllocateCheckTask RunOnce %s %s start check", t.Cluster, t.VolName)
+func (t *ExtentAllocateCheckTask) RunOnce() {
+	log.LogInfof("ExtentAllocateCheckTask RunOnce %s %s start check", t.Cluster, t.VolName)
 	t.inodeExtentInfoDir = path.Join(t.exportDir, "inode_extents_info")
 	err := os.MkdirAll(t.inodeExtentInfoDir, 0666)
 	if err != nil {
-		log.LogErrorf("ExtentDoubleAllocateCheckTask RunOnce, mkdir path %s failed: %v", t.inodeExtentInfoDir, err)
+		log.LogErrorf("ExtentAllocateCheckTask RunOnce, mkdir path %s failed: %v", t.inodeExtentInfoDir, err)
 		return
 	}
 	defer func() {
@@ -285,11 +282,11 @@ func (t *ExtentDoubleAllocateCheckTask) RunOnce() {
 	}()
 	err = t.checkDoubleAllocateExtents()
 	if err != nil {
-		log.LogErrorf("ExtentDoubleAllocateCheckTask RunOnce, %s %s check double allocate extents failed: %v", t.Cluster, t.VolName, err)
+		log.LogErrorf("ExtentAllocateCheckTask RunOnce, %s %s check double allocate extents failed: %v", t.Cluster, t.VolName, err)
 		return
 	}
 	if len(t.doubleAllocateExtentsMap) == 0 {
-		log.LogInfof("ExtentDoubleAllocateCheckTask Runonce %s %s check finish, not exist double allocate extents", t.Cluster, t.VolName)
+		log.LogInfof("ExtentAllocateCheckTask Runonce %s %s check finish, not exist double allocate extents", t.Cluster, t.VolName)
 		return
 	}
 	t.doubleAllocateExtentsInfo = make(map[string][]uint64, 0)
@@ -304,7 +301,7 @@ func (t *ExtentDoubleAllocateCheckTask) RunOnce() {
 		if len(extentIDs) == 0 {
 			continue
 		}
-		log.LogCriticalf("ExtentDoubleAllocateCheckTask Runonce cluster(%s) vol(%s) dataPartition(%v) doubleAllocateExtents(%v)",
+		log.LogCriticalf("ExtentAllocateCheckTask Runonce cluster(%s) vol(%s) dataPartition(%v) doubleAllocateExtents(%v)",
 			t.Cluster, t.VolName, dpID, extentIDs)
 	}
 	//extent search
@@ -314,7 +311,7 @@ func (t *ExtentDoubleAllocateCheckTask) RunOnce() {
 	go func() {
 		defer wg.Done()
 		for {
-			extentInfo, ok := <- extentInfoCh
+			extentInfo, ok := <-extentInfoCh
 			if !ok || extentInfo == nil {
 				break
 			}
@@ -327,20 +324,20 @@ func (t *ExtentDoubleAllocateCheckTask) RunOnce() {
 	}()
 
 	if err = t.parseExtents(extentInfoCh); err != nil {
-		log.LogErrorf("ExtentDoubleAllocateCheckTask RunOnce cluster(%s) vol(%s) parse inode extents failed: %v",
+		log.LogErrorf("ExtentAllocateCheckTask RunOnce cluster(%s) vol(%s) parse inode extents failed: %v",
 			t.Cluster, t.VolName, err)
 	}
 	close(extentInfoCh)
 	wg.Wait()
-	log.LogInfof("ExtentDoubleAllocateCheckTask RunOnce %s %s check finish", t.Cluster, t.VolName)
+	log.LogInfof("ExtentAllocateCheckTask RunOnce %s %s check finish", t.Cluster, t.VolName)
 }
 
-func (t *ExtentDoubleAllocateCheckTask) checkDoubleAllocateExtents() (err error) {
+func (t *ExtentAllocateCheckTask) checkDoubleAllocateExtents() (err error) {
 	t.metaExtentsMap = make(map[uint64]*bitset.ByteSliceBitSet, 0)
 	var mps []*proto.MetaPartitionView
 	mps, err = t.masterClient.ClientAPI().GetMetaPartitions(t.VolName)
 	if err != nil {
-		log.LogErrorf("action[getExtentsByMPs] get cluster[%s] volume[%s] meta partitions " +
+		log.LogErrorf("action[getExtentsByMPs] get cluster[%s] volume[%s] meta partitions "+
 			"failed: %v", t.Cluster, t.VolName, err)
 		return
 	}
@@ -366,11 +363,11 @@ func (t *ExtentDoubleAllocateCheckTask) checkDoubleAllocateExtents() (err error)
 			}
 
 			if _, ok := t.metaExtentsMap[e.DataPartitionID]; !ok {
-				t.metaExtentsMap[e.DataPartitionID] = bitset.NewByteSliceBitSetWithCap(storage.MaxExtentCount*3)
+				t.metaExtentsMap[e.DataPartitionID] = bitset.NewByteSliceBitSetWithCap(storage.MaxExtentCount * 3)
 			}
 			if t.metaExtentsMap[e.DataPartitionID].Get(int(e.ExtentID)) {
 				if _, ok := t.doubleAllocateExtentsMap[e.DataPartitionID]; !ok {
-					t.doubleAllocateExtentsMap[e.DataPartitionID] = bitset.NewByteSliceBitSetWithCap(storage.MaxExtentCount*3)
+					t.doubleAllocateExtentsMap[e.DataPartitionID] = bitset.NewByteSliceBitSetWithCap(storage.MaxExtentCount * 3)
 				}
 				t.doubleAllocateExtentsMap[e.DataPartitionID].Set(int(e.ExtentID))
 			} else {
@@ -389,12 +386,12 @@ func (t *ExtentDoubleAllocateCheckTask) checkDoubleAllocateExtents() (err error)
 
 	var wg sync.WaitGroup
 	mpConcurrency := parallelMpCnt.Load()
-	for index := int32(0) ; index < mpConcurrency; index++ {
+	for index := int32(0); index < mpConcurrency; index++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for {
-				mpID, ok := <- mpIDCh
+				mpID, ok := <-mpIDCh
 				if !ok {
 					break
 				}
@@ -409,7 +406,7 @@ func (t *ExtentDoubleAllocateCheckTask) checkDoubleAllocateExtents() (err error)
 				}
 				var (
 					maxInodeCount uint64 = 0
-					leaderAddr = ""
+					leaderAddr           = ""
 				)
 
 				for _, replica := range metaPartitionInfo.Replicas {
@@ -421,7 +418,7 @@ func (t *ExtentDoubleAllocateCheckTask) checkDoubleAllocateExtents() (err error)
 
 				if errorInfo := t.getExtentsFromMetaPartition(mpID, leaderAddr, extCh); errorInfo != nil {
 					errorCh <- errorInfo
-					log.LogErrorf("action[getExtentsByMPs] get cluster[%s] volume [%s] extent id list " +
+					log.LogErrorf("action[getExtentsByMPs] get cluster[%s] volume [%s] extent id list "+
 						"from mp[%v] failed: %v", t.Cluster, t.VolName, mpID, errorInfo)
 					continue
 				}
@@ -433,7 +430,7 @@ func (t *ExtentDoubleAllocateCheckTask) checkDoubleAllocateExtents() (err error)
 	resultWaitGroup.Wait()
 
 	select {
-	case e := <- errorCh:
+	case e := <-errorCh:
 		//meta info must be complete
 		log.LogErrorf("get extent id list from meta partition failed:%v", e)
 		err = errors.NewErrorf("get extent id list from meta partition failed:%v", e)
@@ -444,7 +441,7 @@ func (t *ExtentDoubleAllocateCheckTask) checkDoubleAllocateExtents() (err error)
 	return
 }
 
-func (t *ExtentDoubleAllocateCheckTask) formatDoubleAllocateExtents() (emailContent string) {
+func (t *ExtentAllocateCheckTask) formatDoubleAllocateExtents() (emailContent string) {
 	emailContent += fmt.Sprintf("%s %s Extent重复分配检查结果如下:</br>", t.Cluster, t.VolName)
 	for dpid, blockInfo := range t.doubleAllocateExtentsMap {
 		var extentsStr = make([]string, 0, blockInfo.Cap())
@@ -464,7 +461,7 @@ func (t *ExtentDoubleAllocateCheckTask) formatDoubleAllocateExtents() (emailCont
 	for key, inodes := range t.doubleAllocateExtentsInfo {
 		arr := strings.Split(key, "_")
 		if len(arr) != 2 {
-			log.LogErrorf("ExtentDoubleAllocateCheckTask Runonce cluster(%s) vol(%s) extentInfo(%s) inodes(%v)",
+			log.LogErrorf("ExtentAllocateCheckTask Runonce cluster(%s) vol(%s) extentInfo(%s) inodes(%v)",
 				t.Cluster, t.VolName, key, inodes)
 			continue
 		}
@@ -473,7 +470,7 @@ func (t *ExtentDoubleAllocateCheckTask) formatDoubleAllocateExtents() (emailCont
 			inodesStr = append(inodesStr, fmt.Sprintf("%v", inode))
 		}
 		emailContent += fmt.Sprintf("DataPartitionID: %v, ExtentID: %s, OwnerInodes: %s </br>", arr[0], arr[1], strings.Join(inodesStr, ","))
-		log.LogCriticalf("ExtentDoubleAllocateCheckTask Runonce cluster(%s) vol(%s) dataPartition(%v) extentID(%v) ownerInodes(%v)",
+		log.LogCriticalf("ExtentAllocateCheckTask Runonce cluster(%s) vol(%s) dataPartition(%v) extentID(%v) ownerInodes(%v)",
 			t.Cluster, t.VolName, arr[0], arr[1], strings.Join(inodesStr, ","))
 	}
 

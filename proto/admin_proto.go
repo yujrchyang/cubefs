@@ -110,6 +110,8 @@ const (
 	AdminCompactVolList                   = "/admin/compactVol/list"
 	AdminCompactVolSet                    = "/admin/compactVol/set"
 
+	AdminBoundS3Bucket                    = "/admin/boundS3Bucket"
+
 	//graphql master api
 	AdminClusterAPI = "/api/cluster"
 	AdminUserAPI    = "/api/user"
@@ -426,15 +428,17 @@ const (
 	MediumHDD     MediumType = 2
 	MediumEC      MediumType = 3
 	MediumSFX     MediumType = 4
+	MediumS3      MediumType = 5
 	MediumSSDName            = "ssd"
 	MediumHDDName            = "hdd"
 	MediumECName             = "ec"
 	MediumSFXName            = "sfx"
+	MediumS3Name             = "s3"
 )
 
 func (m MediumType) Valid() bool {
 	switch m {
-	case MediumSSD, MediumHDD, MediumEC, MediumSFX:
+	case MediumSSD, MediumHDD, MediumEC, MediumSFX, MediumS3:
 		return true
 	default:
 	}
@@ -470,6 +474,8 @@ func StrToMediumType(str string) (mType MediumType, err error) {
 		mType = MediumEC
 	case MediumSFXName:
 		mType = MediumSFX
+	case MediumS3Name:
+		mType = MediumS3
 	default:
 		err = fmt.Errorf("invalid medium type: %v", str)
 	}
@@ -486,6 +492,8 @@ func (m MediumType) String() string {
 		return MediumECName
 	case MediumSFX:
 		return MediumSFXName
+	case MediumS3:
+		return MediumS3Name
 	default:
 		return "unknown"
 	}
@@ -1327,6 +1335,7 @@ type SimpleVolView struct {
 	CreateTime            string
 	EnableToken           bool
 	ForceROW              bool
+	ForceROWModifyTime    int64
 	EnableWriteCache      bool
 	CrossRegionHAType     CrossRegionHAType
 	PersistenceMode       PersistenceMode
@@ -1414,6 +1423,7 @@ type SimpleVolView struct {
 	MetaOut                      bool
 	MpFollowerRead               bool
 	MpZones                      string
+	BoundBucket                  *BoundBucketInfo
 }
 
 // MasterAPIAccessResp defines the response for getting meta partition
@@ -1424,6 +1434,7 @@ type MasterAPIAccessResp struct {
 
 type VolInfo struct {
 	Name                          string
+	VolID                         uint64
 	Owner                         string
 	CreateTime                    int64
 	Status                        uint8
@@ -1776,6 +1787,35 @@ type FlashNodeHeartbeatResponse struct {
 	Result   string `json:"r"`
 	Version  string `json:"v"`
 	ZoneName string `json:"z"`
+}
+
+type BoundS3BucketToMetaNodeRequest struct {
+	PartitionID uint64           `json:"pid"`
+	VolName     string           `json:"vol_name"`
+	BucketInfo  *BoundBucketInfo `json:"bucket_info"`
+}
+
+func IsSameBucket(oldBucketInfo, newBucketInfo *BoundBucketInfo) bool {
+	if oldBucketInfo == nil {
+		return false
+	}
+	if oldBucketInfo.BucketName == newBucketInfo.BucketName && oldBucketInfo.Region == newBucketInfo.Region &&
+		oldBucketInfo.EndPoint == newBucketInfo.EndPoint && oldBucketInfo.AccessKey == newBucketInfo.AccessKey &&
+		oldBucketInfo.SecretAccessKey == newBucketInfo.SecretAccessKey {
+		return true
+	}
+	return false
+}
+
+func IsSameS3Config(oldBucketInfo, newBucketInfo *BoundBucketInfo) bool {
+	if oldBucketInfo == nil || newBucketInfo == nil {
+		return false
+	}
+	if oldBucketInfo.Region == newBucketInfo.Region && oldBucketInfo.EndPoint == newBucketInfo.EndPoint &&
+		oldBucketInfo.AccessKey == newBucketInfo.AccessKey && oldBucketInfo.SecretAccessKey == newBucketInfo.SecretAccessKey {
+		return true
+	}
+	return false
 }
 
 type ClientClusterConf struct {

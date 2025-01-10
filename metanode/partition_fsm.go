@@ -394,6 +394,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		mp.fsmCorrectInodesAndDelInodesTotalSize(req)
+	case opFSMBoundS3Bucket:
+		var bucketInfo = &proto.BoundBucketInfo{}
+		if err = json.Unmarshal(msg.V, bucketInfo); err != nil {
+			return
+		}
+		resp, _ = mp.fsmBoundS3Bucket(bucketInfo)
 	}
 
 	return

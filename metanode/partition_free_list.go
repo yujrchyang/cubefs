@@ -17,6 +17,7 @@ package metanode
 import (
 	"context"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/s3"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/topology"
@@ -167,9 +168,11 @@ func (mp *metaPartition) deleteWorker() {
 }
 
 // delete Extents by Partition,and find all successDelete inode
-func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, partitionDeleteExtents map[uint64][]*proto.MetaDelExtentKey,
+func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context,
+	partitionCubeFSTypeDeleteExtents, partitionS3TypeDeleteExtents map[uint64][]*proto.MetaDelExtentKey,
 	allInodes []*Inode, truncateCount int) (shouldCommit []*Inode) {
-	occurErrors := make(map[uint64]error)
+	cubeFSTypeExtentsDeleteOccurErrors := make(map[uint64]error)
+	s3TypeExtentsDeleteOccurErrors := make(map[uint64]error)
 	shouldCommit = make([]*Inode, 0, DeleteBatchCount())
 	var (
 		wg   sync.WaitGroup
@@ -177,7 +180,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 	)
 
 	//wait all Partition do BatchDeleteExtents fininsh
-	for partitionID, extents := range partitionDeleteExtents {
+	for partitionID, extents := range partitionCubeFSTypeDeleteExtents {
 		wg.Add(1)
 		go func(partitionID uint64, extents []*proto.MetaDelExtentKey) {
 			start := 0
@@ -189,7 +192,7 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 				mp.deleteEKWithRateLimit(end-start)
 				perr := mp.doBatchDeleteExtentsByPartition(ctx, partitionID, extents[start:end])
 				lock.Lock()
-				occurErrors[partitionID] = perr
+				cubeFSTypeExtentsDeleteOccurErrors[partitionID] = perr
 				lock.Unlock()
 				if perr != nil {
 					break
@@ -202,14 +205,46 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context, part
 			wg.Done()
 		}(partitionID, extents)
 	}
+
+	for partitionID, extents := range partitionS3TypeDeleteExtents {
+		wg.Add(1)
+		go func(partitionID uint64, extents []*proto.MetaDelExtentKey) {
+			for _, ek := range extents {
+				if proto.ExtentType(ek.CRC) != proto.S3Extent {
+					continue
+				}
+				perr := mp.doDeleteS3Object(context.Background(), ek)
+				lock.Lock()
+				s3TypeExtentsDeleteOccurErrors[partitionID] = perr
+				lock.Unlock()
+				if perr != nil {
+					break
+				}
+			}
+			wg.Done()
+		}(partitionID, extents)
+	}
 	wg.Wait()
 
-	for dpID, perr := range occurErrors {
+	for dpID, perr := range cubeFSTypeExtentsDeleteOccurErrors {
 		if perr == nil {
 			continue
 		}
 
-		errorEKs, _ := partitionDeleteExtents[dpID]
+		errorEKs, _ := partitionCubeFSTypeDeleteExtents[dpID]
+		for _, ek := range errorEKs {
+			mp.freeLaterInodes[ek.InodeIDInner] = 0
+			log.LogWarnf("deleteInode metaPartition(%v) Inode(%v) ek(%v) delete error(%v)",mp.config.PartitionId,
+				ek.InodeIDInner, ek, perr)
+		}
+	}
+
+	for dpID, perr := range s3TypeExtentsDeleteOccurErrors {
+		if perr == nil {
+			continue
+		}
+
+		errorEKs, _ := partitionS3TypeDeleteExtents[dpID]
 		for _, ek := range errorEKs {
 			mp.freeLaterInodes[ek.InodeIDInner] = 0
 			log.LogWarnf("deleteInode metaPartition(%v) Inode(%v) ek(%v) delete error(%v)",mp.config.PartitionId,
@@ -316,9 +351,8 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 	}()
 	truncateEKCount := mp.GetTruncateEKCountEveryTime()
 	shouldCommit := make([]*Inode, 0, DeleteBatchCount())
-	//shouldRePushToFreeList := make([]*Inode, 0)
-	allDeleteExtents := make(map[string]uint64)
-	deleteExtentsByPartition := make(map[uint64][]*proto.MetaDelExtentKey)
+	cubeFSTypeDeleteExtentsByPartition := make(map[uint64][]*proto.MetaDelExtentKey)
+	s3TypeDeleteExtentsByPartition := make(map[uint64][]*proto.MetaDelExtentKey)
 	allInodes := make([]*Inode, 0)
 	for _, ino := range inoSlice {
 		if _, ok := mp.freeLaterInodes[ino]; ok {
@@ -358,25 +392,38 @@ func (mp *metaPartition) deleteMarkedInodes(ctx context.Context, inoSlice []uint
 		mp.recordInodeDeleteEkInfo(inodeVal, truncateIndexOffset)
 		inodeVal.Extents.RangeWithIndexOffset(truncateIndexOffset, func(ek proto.ExtentKey) bool {
 			ext := &ek
-			_, ok := allDeleteExtents[ext.GetExtentKey()]
-			if !ok {
-				allDeleteExtents[ek.GetExtentKey()] = ino
+			switch proto.ExtentType(ext.CRC) {
+			case proto.CubeFSExtent:
+				exts, ok := cubeFSTypeDeleteExtentsByPartition[ek.PartitionId]
+				if !ok {
+					exts = make([]*proto.MetaDelExtentKey, 0)
+				}
+				exts = append(exts, &proto.MetaDelExtentKey{
+					ExtentKey:    ek,
+					InodeId:      inodeID,
+					InodeIDInner: inodeVal.Inode,
+				})
+				cubeFSTypeDeleteExtentsByPartition[ext.PartitionId] = exts
+			case proto.S3Extent:
+				exts, ok := s3TypeDeleteExtentsByPartition[ek.PartitionId]
+				if !ok {
+					exts = make([]*proto.MetaDelExtentKey, 0)
+				}
+				exts = append(exts, &proto.MetaDelExtentKey{
+					ExtentKey:    ek,
+					InodeId:      inodeVal.Inode,
+					InodeIDInner: inodeVal.Inode,
+				})
+				s3TypeDeleteExtentsByPartition[ext.PartitionId] = exts
+			default:
+				log.LogErrorf("inode(%v) extent(%v) with error extent type", inodeVal.Inode, ext.String())
 			}
-			exts, ok := deleteExtentsByPartition[ek.PartitionId]
-			if !ok {
-				exts = make([]*proto.MetaDelExtentKey, 0)
-			}
-			exts = append(exts, &proto.MetaDelExtentKey{
-				ExtentKey:    ek,
-				InodeId:      inodeID,
-				InodeIDInner: inodeVal.Inode,
-			})
-			deleteExtentsByPartition[ext.PartitionId] = exts
 			return true
 		})
 		allInodes = append(allInodes, inodeVal)
 	}
-	shouldCommit = mp.batchDeleteExtentsByPartition(ctx, deleteExtentsByPartition, allInodes, truncateEKCount)
+	shouldCommit = mp.batchDeleteExtentsByPartition(ctx, cubeFSTypeDeleteExtentsByPartition, s3TypeDeleteExtentsByPartition,
+		allInodes, truncateEKCount)
 	bufSlice := make([]byte, 0, 8*len(shouldCommit))
 	for _, inode := range shouldCommit {
 		bufSlice = append(bufSlice, inode.MarshalKey()...)
@@ -563,6 +610,40 @@ func (mp *metaPartition) doBatchTrashExtents(ctx context.Context, dp *topology.D
 		}
 		err = errors.NewErrorf("[deleteMarkedInodes] %s response: %s", p.GetUniqueLogId(),
 			p.GetResultMsg())
+	}
+        return
+}
+
+func (mp *metaPartition) doDeleteS3Object(ctx context.Context, ext *proto.MetaDelExtentKey) (err error) {
+	if mp.config.BoundBucketInfo == nil {
+		//todo: alarm
+		err = fmt.Errorf("related bucket not exsit, partitionID: %v", mp.config.PartitionId)
+		log.LogErrorf(err.Error())
+		return
+	}
+
+	bucketName := mp.config.BoundBucketInfo.BucketName
+	if bucketName == "" {
+		//todo: alarm
+		err = fmt.Errorf("related bucket not exsit, partitionID: %v", mp.config.PartitionId)
+		log.LogErrorf(err.Error())
+		return
+	}
+	if mp.s3Client == nil {
+		mp.s3Client = s3.NewS3Client(mp.config.BoundBucketInfo.Region, mp.config.BoundBucketInfo.EndPoint,
+			mp.config.BoundBucketInfo.AccessKey, mp.config.BoundBucketInfo.SecretAccessKey, false)
+	}
+
+	if mp.config.VolID == 0 {
+		err = fmt.Errorf("vol id is 0, partitionID: %v, volumeName: %s", mp.config.PartitionId, mp.config.VolName)
+		return
+	}
+
+	key := proto.GenS3Key(mp.manager.metaNode.clusterId, mp.config.VolName, ext.InodeId, ext.PartitionId, ext.ExtentId)
+	err = mp.s3Client.DeleteObject(context.Background(), bucketName, key)
+	if err != nil {
+		log.LogErrorf("delete object failed, bucket: %s, key: %s, err: %v", bucketName, key, err)
+		return
 	}
 	return
 }

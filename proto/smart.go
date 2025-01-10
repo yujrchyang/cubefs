@@ -41,6 +41,7 @@ type SmartVolume struct {
 	HddDirs           string
 	SsdDirs           string
 	MigrationBack     int8
+	BoundBucket       *BoundBucketInfo
 }
 
 type ActionMetricsTaskInfo struct {

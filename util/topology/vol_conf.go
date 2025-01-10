@@ -8,6 +8,7 @@ import (
 
 type VolumeConfig struct {
 	sync.RWMutex
+	volID                             uint64
 	trashDay                          int32
 	childFileMaxCnt                   uint32
 	trashCleanInterval                uint64
@@ -130,6 +131,13 @@ func (conf *VolumeConfig) GetPersistenceMode() proto.PersistenceMode {
 	return conf.persistenceMode
 }
 
+func (conf *VolumeConfig) GetVolumeID() uint64 {
+	conf.RLock()
+	defer conf.RUnlock()
+
+	return conf.volID
+}
+
 func (conf *VolumeConfig) update(newConf *VolumeConfig) {
 	conf.Lock()
 	defer conf.Unlock()
@@ -149,4 +157,5 @@ func (conf *VolumeConfig) update(newConf *VolumeConfig) {
 	conf.reqRecordsMaxCount = newConf.reqRecordsMaxCount
 	conf.reqRecordsReservedTime = newConf.reqRecordsReservedTime
 	conf.persistenceMode = newConf.persistenceMode
+	conf.volID = newConf.volID
 }

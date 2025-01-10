@@ -19,6 +19,8 @@ import (
 	"container/list"
 	"context"
 	"encoding/binary"
+	"fmt"
+	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/unit"
 	"go.uber.org/atomic"
 	"io/fs"
@@ -470,10 +472,21 @@ func (mp *metaPartition) cleanExpiredExtents(retryList *list.List) (delCursor ui
 
 		if needDel {
 			mp.deleteEKWithRateLimit(1)
-			if err = mp.doDeleteMarkedInodes(context.Background(), ek); err != nil {
+			switch proto.ExtentType(ek.CRC) {
+			case proto.CubeFSExtent:
+				err = mp.doDeleteMarkedInodes(context.Background(), ek)
+			case proto.S3Extent:
+				err = mp.doDeleteS3Object(context.Background(), ek)
+			default:
+				exporter.WarningAppendKey("UnexpectEKType", fmt.Sprintf("partitionID: %v, ek: %v", mp.config.PartitionId, ek.String()))
 				retryList.PushBack(ek)
-				log.LogWarnf("[cleanExpiredExtents] partitionId=%d, %s",
-					mp.config.PartitionId, err.Error())
+				log.LogErrorf("unexpect ek type, partitionID: %v, ek: %v", mp.config.PartitionId, ek.String())
+				return true, nil
+			}
+			if err != nil {
+				retryList.PushBack(ek)
+				log.LogWarnf("[cleanExpiredExtents] partitionId=%d, ek: %v, err: %s",
+					mp.config.PartitionId, ek.String(), err.Error())
 			}
 			mp.recordDeleteEkInfo(ino, ek)
 		}

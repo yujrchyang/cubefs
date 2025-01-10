@@ -162,6 +162,7 @@ const (
 	AdminAddMetaRecorderUmpKey                  = "metaRecorder_add"
 	AdminDeleteMetaRecorderUmpKey               = "metaRecorder_delete"
 	AdminSetMqProducerStateUmpKey               = "admin_setMqProducerState"
+	AdminBoundS3BucketUmpKey                    = "bound_S3_Bucket"
 
 	// task running time ump key
 	CheckVolStatus                     = "task_check_vol_status"

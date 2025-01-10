@@ -452,6 +452,7 @@ func (f *TopologyManager) updateVolumeConf() (err error) {
 			bitmapSnapFrozenHour:              volConf.BitMapSnapFrozenHour,
 			enableCheckDeleteEK:               volConf.EnableCheckDeleteEK,
 			persistenceMode:                   volConf.PersistenceMode,
+			volID:                             volConf.VolID,
 		})
 		log.LogDebugf("updateVolConf: vol: %v, remaining days: %v, childFileMaxCount: %v, trashCleanInterval: %v, "+
 			"enableBitMapAllocator: %v, trashCleanMaxDurationEachTime: %v, cleanTrashItemMaxCountEachTime: %v,"+

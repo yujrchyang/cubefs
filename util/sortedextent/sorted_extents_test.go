@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"math/rand"
 	"reflect"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -174,6 +175,50 @@ func TestAppend06(t *testing.T) {
 	t.Logf("%v\n", se.Size())
 }
 
+func TestAppend07(t *testing.T) {
+	ctx := context.Background()
+	se := NewSortedExtents()
+	fileOffset := uint64(0)
+	ek := proto.ExtentKey{
+		FileOffset:   fileOffset,
+		PartitionId:  10,
+		ExtentId:     1000,
+		ExtentOffset: 0,
+		Size:         512*1024,
+		CRC:          uint32(proto.S3Extent),
+	}
+	delExtents := se.Append(ctx, ek, 1)
+	assert.Equal(t, 0, len(delExtents))
+
+	fileOffset += uint64(ek.Size)
+	ek = proto.ExtentKey{
+		FileOffset:   fileOffset,
+		PartitionId:  10,
+		ExtentId:     1,
+		ExtentOffset: 512*1024+5*1024*1024,
+		Size:         512*1024,
+		CRC:          uint32(proto.CubeFSExtent),
+	}
+	delExtents = se.Append(ctx, ek, 1)
+	assert.Equal(t, 0, len(delExtents))
+
+	fileOffset += uint64(ek.Size)
+	ek = proto.ExtentKey{
+		FileOffset:   fileOffset,
+		PartitionId:  11,
+		ExtentId:     1000,
+		ExtentOffset: 0,
+		Size:         5*1024*1024,
+		CRC:          uint32(proto.CubeFSExtent),
+	}
+	delExtents = se.Append(ctx, ek, 1)
+	assert.Equal(t, 0, len(delExtents))
+
+	fileSize := fileOffset + uint64(ek.Size)
+	assert.Equal(t, 3, se.Len())
+	assert.Equal(t, fileSize, se.Size())
+}
+
 func TestTruncate01(t *testing.T) {
 	ctx := context.Background()
 	se := NewSortedExtents()
@@ -227,6 +272,26 @@ func TestTruncate03(t *testing.T) {
 		return
 	}
 	t.Logf("after  truncate eks len: %v, del len:%d, cost:%v", se.Len(), len(delExtents), cost)
+}
+
+func TestTruncate04(t *testing.T) {
+	se := NewSortedExtents()
+	var ekCount = 100
+	var perEKSize = 128
+	for i := 0; i < ekCount; i++ {
+		var extentType proto.ExtentType
+		if i%3 == 0 {
+			extentType = proto.S3Extent
+		}
+		se.eks = append(se.eks, proto.ExtentKey{FileOffset: uint64(i * perEKSize), Size: uint32(perEKSize), PartitionId: uint64(i + 1), ExtentId: uint64(i + 1), CRC: uint32(extentType)})
+	}
+
+	assert.Equal(t, se.Size(), uint64(ekCount*perEKSize))
+	assert.Equal(t, ekCount, se.Len())
+
+	delExtents := se.Truncate(uint64(63*perEKSize) + 64, 1)
+	assert.Equal(t, 36, len(delExtents))
+	assert.Equal(t, uint64(63*perEKSize+64), se.Size())
 }
 
 // Scenario:
@@ -796,6 +861,121 @@ func TestSortedExtents_Insert07(t *testing.T) {
 		if !reflect.DeepEqual(delEks[i].ExtentKey, expectedDelEks[i]) {
 			t.Fatalf("deleted ek[%v] mismatch: expect %v, actual %v", i, expectedDelEks[i], delEks[i])
 		}
+	}
+}
+
+func TestSortedExtents_Insert08(t *testing.T) {
+	// Samples
+	var (
+		order = []proto.ExtentKey{
+			{FileOffset: 100, PartitionId: 2, ExtentId: 1, ExtentOffset: 0, Size: 100, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 300, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 20, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 200, PartitionId: 3, ExtentId: 1, ExtentOffset: 0, Size: 100, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 100, PartitionId: 4, ExtentId: 2, ExtentOffset: 0, Size: 20, CRC: uint32(proto.S3Extent)},
+			{FileOffset: 200, PartitionId: 5, ExtentId: 1, ExtentOffset: 0, Size: 40, CRC: uint32(proto.S3Extent)},
+			{FileOffset: 320, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 100, CRC: uint32(proto.S3Extent)},
+		}
+	)
+	// Expected
+	var (
+		expectedEks = []proto.ExtentKey{
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 100, PartitionId: 4, ExtentId: 2, ExtentOffset: 0, Size: 20, CRC: uint32(proto.S3Extent)},
+			{FileOffset: 120, PartitionId: 2, ExtentId: 1, ExtentOffset: 20, Size: 80},
+			{FileOffset: 200, PartitionId: 5, ExtentId: 1, ExtentOffset: 0, Size: 40, CRC: uint32(proto.S3Extent)},
+			{FileOffset: 240, PartitionId: 3, ExtentId: 1, ExtentOffset: 40, Size: 60},
+			{FileOffset: 300, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 20},
+			{FileOffset: 320, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 100, CRC: uint32(proto.S3Extent)},
+		}
+		expectedDelEks []proto.ExtentKey
+	)
+
+	ctx := context.Background()
+	se := NewSortedExtents()
+
+	delEks := make([]proto.MetaDelExtentKey, 0)
+	for _, ek := range order {
+		delEks = append(delEks, se.Insert(ctx, ek, 1)...)
+	}
+
+	// Validate result
+	if len(se.eks) != len(expectedEks) {
+		t.Fatalf("number of ek mismatch: expect %v, actual %v", len(expectedEks), len(se.eks))
+	}
+	for i := 0; i < len(expectedEks); i++ {
+		if !reflect.DeepEqual(se.eks[i], expectedEks[i]) {
+			t.Fatalf("ek[%v] mismatch: expect %v, actual %v", i, expectedEks[i], se.eks[i])
+		}
+	}
+
+	if len(delEks) != len(expectedDelEks) {
+		t.Fatalf("number of delete extents mismatch: expect %v, actual %v", len(expectedDelEks), len(delEks))
+	}
+}
+
+func TestSortedExtents_Insert09(t *testing.T) {
+	// Samples
+	var (
+		order = []proto.ExtentKey{
+			{FileOffset: 100, PartitionId: 2, ExtentId: 1, ExtentOffset: 0, Size: 100, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 300, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 20, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 200, PartitionId: 3, ExtentId: 1, ExtentOffset: 0, Size: 100, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 100, PartitionId: 4, ExtentId: 2, ExtentOffset: 0, Size: 120, CRC: uint32(proto.S3Extent)},
+		}
+	)
+	// Expected
+	var (
+		expectedEks = []proto.ExtentKey{
+			{FileOffset: 0, PartitionId: 1, ExtentId: 1, ExtentOffset: 0, Size: 100},
+			{FileOffset: 100, PartitionId: 4, ExtentId: 2, ExtentOffset: 0, Size: 120, CRC: uint32(proto.S3Extent)},
+			{FileOffset: 220, PartitionId: 3, ExtentId: 1, ExtentOffset: 20, Size: 80},
+			{FileOffset: 300, PartitionId: 4, ExtentId: 1, ExtentOffset: 0, Size: 20},
+		}
+		expectedDelEks = []proto.ExtentKey{
+			{PartitionId: 2, ExtentId: 1, ExtentOffset: 0, Size: 100, CRC: uint32(proto.CubeFSExtent)},
+		}
+	)
+
+	ctx := context.Background()
+	se := NewSortedExtents()
+
+	delEks := make([]proto.MetaDelExtentKey, 0)
+	for _, ek := range order {
+		delEks = append(delEks, se.Insert(ctx, ek, 1)...)
+	}
+
+	// Validate result
+	if len(se.eks) != len(expectedEks) {
+		t.Fatalf("number of ek mismatch: expect %v, actual %v", len(expectedEks), len(se.eks))
+	}
+	for i := 0; i < len(expectedEks); i++ {
+		if !reflect.DeepEqual(se.eks[i], expectedEks[i]) {
+			t.Fatalf("ek[%v] mismatch: expect %v, actual %v", i, expectedEks[i], se.eks[i])
+		}
+	}
+
+	if len(delEks) != len(expectedDelEks) {
+		t.Fatalf("number of delete extents mismatch: expect %v, actual %v", len(expectedDelEks), len(delEks))
+	}
+	sort.Slice(expectedDelEks, func(i, j int) bool {
+		return expectedDelEks[i].PartitionId > expectedDelEks[j].PartitionId ||
+			(expectedDelEks[i].PartitionId == expectedDelEks[j].PartitionId && expectedDelEks[i].ExtentId > expectedDelEks[j].ExtentId) ||
+			(expectedDelEks[i].PartitionId == expectedDelEks[j].PartitionId && expectedDelEks[i].ExtentId == expectedDelEks[j].ExtentId &&
+				expectedDelEks[i].ExtentOffset > expectedDelEks[j].ExtentOffset)
+	})
+	sort.Slice(delEks, func(i, j int) bool {
+		return delEks[i].PartitionId > delEks[j].PartitionId ||
+			(delEks[i].PartitionId == delEks[j].PartitionId && delEks[i].ExtentId > delEks[j].ExtentId) ||
+			(delEks[i].PartitionId == delEks[j].PartitionId && delEks[i].ExtentId == delEks[j].ExtentId &&
+				delEks[i].ExtentOffset > delEks[j].ExtentOffset)
+	})
+	for index := 0; index < len(expectedDelEks); index++ {
+		assert.Equal(t, expectedDelEks[index].PartitionId, delEks[index].PartitionId)
+		assert.Equal(t, expectedDelEks[index].ExtentId, delEks[index].ExtentId)
+		assert.Equal(t, expectedDelEks[index].ExtentOffset, delEks[index].ExtentOffset)
+		assert.Equal(t, expectedDelEks[index].Size, delEks[index].Size)
 	}
 }
 
@@ -1632,4 +1812,32 @@ func BenchmarkSortedExtents_Range(b *testing.B) {
 			return true
 		})
 	}
+}
+
+func TestSortedExtents_HasExtent(t *testing.T) {
+	se := NewSortedExtents()
+
+	ek := proto.ExtentKey{
+		FileOffset:   0,
+		PartitionId:  10,
+		ExtentId:     1000,
+		ExtentOffset: 0,
+		Size:         512*1024,
+		CRC:          uint32(proto.S3Extent),
+	}
+	se.Append(context.Background(), ek, 1)
+
+	has, _ := se.HasExtent(proto.ExtentKey{
+		PartitionId:  10,
+		ExtentId:     1000,
+		CRC:          uint32(proto.S3Extent),
+	})
+	assert.Equal(t, true, has)
+
+	has, _ = se.HasExtent(proto.ExtentKey{
+		PartitionId:  10,
+		ExtentId:     1000,
+		CRC:          uint32(proto.CubeFSExtent),
+	})
+	assert.Equal(t, false, has)
 }

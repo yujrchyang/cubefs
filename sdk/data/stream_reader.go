@@ -213,8 +213,8 @@ func (s *Streamer) read(ctx context.Context, data []byte, offset uint64, size in
 	}
 
 	var read int
-	if read, err = s.readFromDataNode(ctx, requests, offset, uint64(size)); err != nil {
-		log.LogWarnf("Stream readFromDataNode failed: ctx(%v) ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) err(%v)", proto.GetContextReq(ctx), s.inode, offset, size, requests, err)
+	if read, err = s.readFromStorageNode(ctx, requests, offset, uint64(size)); err != nil {
+		log.LogWarnf("Stream readFromStorageNode failed: ctx(%v) ino(%v) userExpectOffset(%v) userExpectSize(%v) requests(%v) err(%v)", proto.GetContextReq(ctx), s.inode, offset, size, requests, err)
 	} else {
 		total += read
 		err = ioErr
@@ -250,33 +250,25 @@ func (s *Streamer) readHoles(requests []*ExtentRequest, fileSize uint64) (read i
 	return
 }
 
-func (s *Streamer) readFromDataNode(ctx context.Context, requests []*ExtentRequest, offset, size uint64) (read int, err error) {
+func (s *Streamer) readFromStorageNode(ctx context.Context, requests []*ExtentRequest, offset, size uint64) (read int, err error) {
 	var tp = exporter.NewVolumeTPUs("dataRead", s.client.dataWrapper.volName)
 	defer func() {
 		tp.Set(err)
 	}()
 
-	var reader *ExtentReader
 	for _, req := range requests {
 		if req.ExtentKey == nil || req.ExtentKey.PartitionId == 0 {
 			continue
 		}
-		reader, err = s.GetExtentReader(req.ExtentKey)
-		if err != nil {
-			break
-		}
 		var readBytes int
-		var sc *StreamConn
-		sc, readBytes, err = reader.Read(ctx, req)
-		if err == nil {
-			s.UpdateRead(sc.currAddr, uint64(readBytes))
-		}
-		if log.IsDebugEnabled() {
-			log.LogDebugf("Stream readFromDataNode: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
+		if req.ExtentKey.IsS3Extent() {
+			readBytes, err = s.readFromS3(ctx, req)
+		} else {
+			readBytes, err = s.readFromDataNode(ctx, req, offset, size)
 		}
 		read += readBytes
 		if err != nil || readBytes < req.Size {
-			log.LogWarnf("Stream readFromDataNode: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
+			log.LogWarnf("Stream readFromStorageNode: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
 			break
 		}
 	}
@@ -327,6 +319,43 @@ func (s *Streamer) updateExtentCacheByReadOffset(ctx context.Context, readMaxOff
 
 func (s *Streamer) RefCount() int {
 	return s.refcnt
+}
+
+func (s *Streamer) readFromDataNode(ctx context.Context, req *ExtentRequest, offset, size uint64) (readBytes int, err error) {
+	var reader *ExtentReader
+	reader, err = s.GetExtentReader(req.ExtentKey)
+	if err != nil {
+		return
+	}
+	var sc *StreamConn
+	sc, readBytes, err = reader.Read(ctx, req)
+	if err == nil {
+		s.UpdateRead(sc.currAddr, uint64(readBytes))
+	}
+	if log.IsDebugEnabled() {
+		log.LogDebugf("Stream readFromDataNode: ino(%v) userExpectOffset(%v) userExpectSize(%v) req(%v) readBytes(%v) err(%v)", s.inode, offset, size, req, readBytes, err)
+	}
+	return
+}
+
+func (s *Streamer) readFromS3(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
+	s3Key := proto.GenS3Key(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId)
+	s3Offset := req.FileOffset - req.ExtentKey.FileOffset + req.ExtentKey.ExtentOffset
+	s3Client := s.client.dataWrapper.externalS3Client
+	bucketName := s.client.dataWrapper.externalS3BucketName.ToString()
+	if s3Client == nil || bucketName == "" {
+		// todo 重新拉取一下重试？
+		err = fmt.Errorf("s3 client or bucket not init")
+		return
+	}
+	if readBytes, err = s3Client.GetObject(ctx, bucketName, s3Key, s3Offset, uint64(req.Size), req.Data); err != nil {
+		return
+	}
+	if readBytes < req.Size {
+		err = fmt.Errorf("read S3 EOF")
+		return
+	}
+	return
 }
 
 func (dp *DataPartition) chooseMaxAppliedDp(ctx context.Context, pid uint64, hosts []string) (targetHosts []string, isErr bool) {

@@ -191,6 +191,8 @@ const (
 	opFSMSyncBitmapAllocator
 
 	opFSMCorrectInodesAndDelInodesTotalSize
+
+	opFSMBoundS3Bucket
 )
 
 var (

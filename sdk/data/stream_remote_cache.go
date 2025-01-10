@@ -130,6 +130,9 @@ func (s *Streamer) getDataSource(start, size, fixedFileOffset uint64, isRead boo
 		if eReq.ExtentKey == nil {
 			continue
 		}
+		if !eReq.ExtentKey.IsCubeFSExtent() {
+			return nil, fmt.Errorf("find external extent key(%v)", eReq.ExtentKey)
+		}
 		if eReq.ExtentKey.PartitionId == 0 {
 			if eReq.ExtentKey.FileOffset+uint64(eReq.ExtentKey.Size) > start && eReq.ExtentKey.FileOffset < start+size {
 				err := fmt.Errorf("temporary ek, isRead[%v] start(%v) size(%v) eReq(%v) fixedOff(%v)", isRead, start, size, eReq, fixedFileOffset)

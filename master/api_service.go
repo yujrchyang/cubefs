@@ -2312,6 +2312,7 @@ func newSimpleView(vol *Vol) *proto.SimpleVolView {
 		MpFollowerRead:           vol.MpFollowerRead,
 		MpZones:                  vol.MpZones,
 		PersistenceMode:          vol.PersistenceMode,
+		BoundBucket:              vol.BoundBucket,
 	}
 }
 
@@ -6165,6 +6166,7 @@ func (m *Server) listVols(w http.ResponseWriter, r *http.Request) {
 				volInfo.ReqRecordMaxCount = vol.reqRecordMaxCount
 				volInfo.ReqRecordsReservedTime = vol.reqRecordReservedTime
 				volInfo.PersistenceMode = vol.PersistenceMode
+				volInfo.VolID = vol.ID
 				volsInfo = append(volsInfo, volInfo)
 			}
 		}
@@ -7664,6 +7666,67 @@ func (m *Server) setMetadataMqProducerState(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set MqProducerState to %v successfully", status)))
+}
+
+
+func (m *Server) boundS3Bucket(w http.ResponseWriter, r *http.Request) {
+	var (
+		volName    string
+		bucketInfo *proto.BoundBucketInfo
+		err        error
+	)
+	metrics := exporter.NewModuleTP(proto.AdminBoundS3BucketUmpKey)
+	defer func() { metrics.Set(err) }()
+	volName, bucketInfo, err = parseBondBucketRequest(r)
+	if err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if _, err = m.cluster.getVol(volName); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeVolNotExists, Msg: err.Error()})
+		return
+	}
+
+	if err = m.cluster.boundS3BucketForVol(volName, bucketInfo); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply("bound s3 bucket success"))
+}
+
+func parseBondBucketRequest(r *http.Request) (volName string, bucketInfo *proto.BoundBucketInfo, err error) {
+	if err = r.ParseForm(); err != nil {
+		return
+	}
+	if volName = r.FormValue(nameKey); volName == "" {
+		err = keyNotFound(nameKey)
+		return
+	}
+
+	bucketInfo = &proto.BoundBucketInfo{}
+	if bucketInfo.AccessKey = r.FormValue(akKey); bucketInfo.AccessKey == "" {
+		err = keyNotFound(akKey)
+		return
+	}
+	if bucketInfo.SecretAccessKey = r.FormValue(skKey); bucketInfo.SecretAccessKey == "" {
+		err = keyNotFound(skKey)
+		return
+	}
+	if bucketInfo.Region = r.FormValue(regionKey); bucketInfo.Region == "" {
+		err = keyNotFound(regionKey)
+		return
+	}
+
+	if bucketInfo.EndPoint = r.FormValue(endPointKey); bucketInfo.EndPoint == "" {
+		err = keyNotFound(endPointKey)
+		return
+	}
+
+	if bucketInfo.BucketName = r.FormValue(bucketNameKey); bucketInfo.BucketName == "" {
+		err = keyNotFound(bucketNameKey)
+		return
+	}
+	return
 }
 
 func parseRequestToSetVolDisableState(r *http.Request) (volName, authKey, disableState string, err error) {

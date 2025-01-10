@@ -43,6 +43,28 @@ var (
 	DelEkSrcTypeFromFileMigMerge = 5
 )
 
+type ExtentType int
+
+const (
+	CubeFSExtent ExtentType = iota //default
+	S3Extent
+)
+
+func (t ExtentType) String() string {
+	switch t {
+	case CubeFSExtent:
+		return "CubeFSType"
+	case S3Extent:
+		return "S3"
+	default:
+		return "Unknown"
+	}
+}
+
+func GenS3Key(cluster, volume string, inodeId, partitionId, extentId uint64) string {
+	return fmt.Sprintf("/cubefs_%v/%v/%v/%v/%v", cluster, volume, inodeId, partitionId, extentId)
+}
+
 // ExtentKey defines the extent key struct.
 type ExtentKey struct {
 	FileOffset   uint64
@@ -50,7 +72,7 @@ type ExtentKey struct {
 	ExtentId     uint64
 	ExtentOffset uint64
 	Size         uint32
-	CRC          uint32
+	CRC          uint32 //used as a type distinction in metanode; 0:default cubefs, 1:S3
 }
 
 // MarkDelExtentKey defines the extent key struct.
@@ -63,8 +85,8 @@ type MetaDelExtentKey struct {
 }
 
 func (k *MetaDelExtentKey) String() string {
-	return fmt.Sprintf("MetaDelExtentKey{FileOffset(%v),Partition(%v),ExtentID(%v),ExtentOffset(%v),Size(%v),CRC(%v),Ino(%d),Src(%d),DelTime(%v)}",
-		k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, k.CRC, k.InodeId, k.SrcType, time.Unix(k.TimeStamp, 0).Format(TimeFormat2))
+	return fmt.Sprintf("MetaDelExtentKey{FileOffset(%v),Partition(%v),ExtentID(%v),ExtentOffset(%v),Size(%v),Type(%v),Ino(%d),Src(%d),DelTime(%v)}",
+		k.FileOffset, k.PartitionId, k.ExtentId, k.ExtentOffset, k.Size, ExtentType(k.CRC).String(), k.InodeId, k.SrcType, time.Unix(k.TimeStamp, 0).Format(TimeFormat2))
 }
 
 func (k *MetaDelExtentKey) MarshDelEkValue(buf []byte) {
@@ -132,7 +154,8 @@ func (k *MetaDelExtentKey) MarshalDeleteEKRecord(data []byte) {
 // Less defines the less comparator.
 func (k *MetaDelExtentKey) Less(than btree.Item) bool {
 	that := than.(*MetaDelExtentKey)
-	if k.PartitionId < that.PartitionId || (k.PartitionId == that.PartitionId && k.ExtentId < that.ExtentId) {
+	if k.PartitionId < that.PartitionId || (k.PartitionId == that.PartitionId && k.ExtentId < that.ExtentId) ||
+		(k.PartitionId == that.PartitionId && k.ExtentId == that.ExtentId && k.CRC < k.CRC){
 		return true
 	}
 	return false
@@ -357,6 +380,20 @@ func (k *ExtentKey) Equal(k1 *ExtentKey) bool {
 		k.ExtentOffset == k1.ExtentOffset &&
 		k.Size == k1.Size &&
 		k.CRC == k1.CRC
+}
+
+func (k *ExtentKey) IsCubeFSExtent() bool {
+	if ExtentType(k.CRC) == CubeFSExtent {
+		return true
+	}
+	return false
+}
+
+func (k *ExtentKey) IsS3Extent() bool {
+	if ExtentType(k.CRC) == S3Extent {
+		return true
+	}
+	return false
 }
 
 // InodeExtentKey 继承自ExtentKey, 扩展了ExtentKey对应的Inode信息

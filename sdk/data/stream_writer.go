@@ -473,7 +473,7 @@ func (s *Streamer) doOverWriteOrROW(ctx context.Context, req *ExtentRequest, dir
 		if s.client.dataWrapper.VolNotExists() {
 			return 0, false, proto.ErrVolNotExists
 		}
-		if enableOverwrite && req.ExtentKey != nil {
+		if enableOverwrite && req.ExtentKey != nil && req.ExtentKey.IsCubeFSExtent() {
 			if writeSize, err = s.doOverwrite(ctx, req, direct); err == nil {
 				break
 			}
@@ -1099,6 +1099,7 @@ func (s *Streamer) usePreExtentHandler(offset uint64, size int) bool {
 		preEk.ExtentId == 0 ||
 		s.dirtylist.Len() != 0 ||
 		proto.IsTinyExtent(preEk.ExtentId) ||
+		!preEk.IsCubeFSExtent() ||
 		preEk.FileOffset+uint64(preEk.Size) != uint64(offset) ||
 		int(preEk.Size)+int(preEk.ExtentOffset)+size > s.extentSize {
 		return false

@@ -305,6 +305,9 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 				mp.config.TrashCleanInterval = conf.GetTrashCleanInterval()
 				mp.config.EnableRemoveDupReq = conf.GetEnableRemoveDupReqFlag()
 
+				if mp.config.VolID == 0  {
+					mp.config.VolID = conf.GetVolumeID()
+				}
 				mp.updateMetaPartitionInodeAllocatorState(conf.GetEnableBitMapFlag())
 
 				// 对集群级别和Volume级别PersistenceMode设置进行合并， 优先使用集群级别的设置

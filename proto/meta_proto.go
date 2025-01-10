@@ -103,6 +103,7 @@ type CreateMetaPartitionRequest struct {
 	CreationType int
 
 	PersistenceMode PersistenceMode
+	BoundBucket     *BoundBucketInfo
 }
 
 // CreateMetaPartitionResponse defines the response to the request of creating a meta partition.

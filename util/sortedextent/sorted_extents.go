@@ -299,6 +299,7 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey, ino uin
 				ExtentId:     cur.ExtentId,
 				ExtentOffset: cur.ExtentOffset,
 				Size:         uint32(ek.FileOffset - cur.FileOffset),
+				CRC:          cur.CRC,
 			}
 		}
 		if ek.FileOffset+uint64(ek.Size) < cur.FileOffset+uint64(cur.Size) {
@@ -308,6 +309,7 @@ func (se *SortedExtents) Insert(ctx context.Context, ek proto.ExtentKey, ino uin
 				ExtentId:     cur.ExtentId,
 				ExtentOffset: cur.ExtentOffset + ek.FileOffset - cur.FileOffset + uint64(ek.Size),
 				Size:         cur.Size - uint32(ek.FileOffset-cur.FileOffset+uint64(ek.Size)),
+				CRC:          cur.CRC,
 			}
 		}
 
@@ -369,6 +371,7 @@ func (se *SortedExtents) insertOrMergeAt(index int, ek proto.ExtentKey) (merged 
 	if index > 0 &&
 		se.eks[index-1].PartitionId == ek.PartitionId &&
 		se.eks[index-1].ExtentId == ek.ExtentId &&
+		se.eks[index-1].CRC == ek.CRC &&
 		se.eks[index-1].FileOffset+uint64(se.eks[index-1].Size) == ek.FileOffset &&
 		se.eks[index-1].ExtentOffset+uint64(se.eks[index-1].Size) == ek.ExtentOffset {
 		se.eks[index-1].Size = se.eks[index-1].Size + ek.Size
@@ -395,6 +398,7 @@ func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
 	if index > 0 && index < len(se.eks) &&
 		se.eks[index-1].PartitionId == se.eks[index].PartitionId &&
 		se.eks[index-1].ExtentId == se.eks[index].ExtentId &&
+		se.eks[index-1].CRC == se.eks[index].CRC &&
 		se.eks[index-1].FileOffset+uint64(se.eks[index-1].Size) == se.eks[index].FileOffset &&
 		se.eks[index-1].ExtentOffset+uint64(se.eks[index-1].Size) == se.eks[index].ExtentOffset {
 		se.eks[index-1].Size = se.eks[index-1].Size + se.eks[index].Size
@@ -418,7 +422,6 @@ func (se *SortedExtents) maybeMergeWithPrev(index int) (merged bool) {
 
 func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey, ino uint64) []proto.MetaDelExtentKey {
 	endOffset := ek.FileOffset + uint64(ek.Size)
-	var deleteExtents []proto.ExtentKey
 
 	se.Lock()
 	defer se.Unlock()
@@ -476,10 +479,8 @@ func (se *SortedExtents) Append(ctx context.Context, ek proto.ExtentKey, ino uin
 	se.eks = append(se.eks, ek)
 	se.eks = append(se.eks, upperExtents...)
 	// check if ek and key are the same extent file with size extented
-	deleteExtents = make([]proto.ExtentKey, 0, len(invalidExtents))
 	for _, key := range invalidExtents {
-		if key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId {
-			deleteExtents = append(deleteExtents, key)
+		if key.CRC != ek.CRC || key.PartitionId != ek.PartitionId || key.ExtentId != ek.ExtentId {
 			set.Put2(&key, ino, uint64(proto.DelEkSrcTypeFromAppend))
 		}
 	}
@@ -622,7 +623,7 @@ func (se *SortedExtents) HasExtent(inEk proto.ExtentKey) (ok bool, ekInfo *proto
 	se.RLock()
 	defer se.RUnlock()
 	for _, ek := range se.eks {
-		if ek.PartitionId == inEk.PartitionId && ek.ExtentId == inEk.ExtentId {
+		if ek.PartitionId == inEk.PartitionId && ek.ExtentId == inEk.ExtentId && ek.CRC == inEk.CRC {
 			ekInfo = &ek
 			ok = true
 			return

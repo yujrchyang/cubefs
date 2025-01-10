@@ -1,4 +1,4 @@
-package extentdoubleallocatecheck
+package extentallocatecheck
 
 import (
 	"encoding/json"
@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-func (w *ExtentDoubleAllocateCheckWorker) registerHandle() {
+func (w *ExtentAllocateChecker) registerHandle() {
 	http.HandleFunc(proto.Version, func(w http.ResponseWriter, r *http.Request) {
 		version := proto.MakeVersion("blck")
 		marshal, _ := json.Marshal(version)
@@ -27,7 +27,7 @@ func (w *ExtentDoubleAllocateCheckWorker) registerHandle() {
 	http.HandleFunc("/updateParams", w.updateParameters)
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) runCheckTask(respWriter http.ResponseWriter, r *http.Request) {
+func (w *ExtentAllocateChecker) runCheckTask(respWriter http.ResponseWriter, r *http.Request) {
 	var err error
 	resp := common.NewAPIResponse(http.StatusOK, "OK")
 	defer func() {
@@ -62,10 +62,10 @@ func (w *ExtentDoubleAllocateCheckWorker) runCheckTask(respWriter http.ResponseW
 
 	go func() {
 		task := &proto.Task{
-			TaskType:      proto.WorkerTypeExtentDoubleAllocateCheck,
-			Cluster:       clusterName,
-			VolName:       volName,
-			WorkerAddr:    w.LocalIp,
+			TaskType:   proto.WorkerTypeExtentDoubleAllocateCheck,
+			Cluster:    clusterName,
+			VolName:    volName,
+			WorkerAddr: w.LocalIp,
 		}
 		exportDir := path.Join(w.exportDir, clusterName, fmt.Sprintf("%s_%s", volName, time.Now().Format(proto.TimeFormat2)))
 		t := NewExtentDoubleAllocateCheckTask(task, masterClient, exportDir)
@@ -79,7 +79,7 @@ func (w *ExtentDoubleAllocateCheckWorker) runCheckTask(respWriter http.ResponseW
 	}()
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) updateParameters(respWriter http.ResponseWriter, r *http.Request) {
+func (w *ExtentAllocateChecker) updateParameters(respWriter http.ResponseWriter, r *http.Request) {
 	resp := common.NewAPIResponse(http.StatusOK, "success")
 	defer func() {
 		data, _ := resp.Marshal()
@@ -115,7 +115,7 @@ func (w *ExtentDoubleAllocateCheckWorker) updateParameters(respWriter http.Respo
 	return
 }
 
-func (w *ExtentDoubleAllocateCheckWorker) getParameters(respWriter http.ResponseWriter, r *http.Request) {
+func (w *ExtentAllocateChecker) getParameters(respWriter http.ResponseWriter, r *http.Request) {
 	resp := common.NewAPIResponse(http.StatusOK, "success")
 	defer func() {
 		data, _ := resp.Marshal()

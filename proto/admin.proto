@@ -153,6 +153,18 @@ message MetaPartitionLayout {
     uint32 PercentOfReplica = 2[(gogoproto.jsontag) = "percent_of_replica"];
 }
 
+message BoundBucketInfo {
+    option (gogoproto.goproto_unkeyed)      = false;
+    option (gogoproto.goproto_unrecognized) = false;
+    option (gogoproto.goproto_sizecache)    = false;
+
+    string EndPoint = 1[(gogoproto.jsontag) = "end_point"];
+    string BucketName = 2[(gogoproto.jsontag) = "bucket_name"];
+    string Region = 3[(gogoproto.jsontag) = "region"];
+    string AccessKey = 4[(gogoproto.jsontag) = "ak"];
+    string SecretAccessKey = 5[(gogoproto.jsontag) = "sk"];
+}
+
 message SimpleVolViewPb {
     uint64                    ID                    = 1;
     string                    Name                  = 2;
@@ -265,6 +277,7 @@ message SimpleVolViewPb {
     string                    MpZones                = 109;
     bool                      MpFollowerRead         = 110;
     int32                     PersistenceMode        = 111;
+    BoundBucketInfo           BoundBucket            = 112;
 }
 
 message NodeStatInfoPb {

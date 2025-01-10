@@ -401,4 +401,9 @@ type MigrationConfig struct {
 	Compact       int8
 	CreateTime    time.Time
 	UpdateTime    time.Time
+	Region        string
+	Endpoint      string
+	AccessKey     string
+	SecretKey     string
+	Bucket        string
 }

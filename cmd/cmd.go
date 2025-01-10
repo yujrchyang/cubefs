@@ -25,7 +25,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/blck"
 	"github.com/cubefs/cubefs/schedulenode/checktool"
 	"github.com/cubefs/cubefs/schedulenode/crcworker"
-	"github.com/cubefs/cubefs/schedulenode/extentdoubleallocatecheck"
+	"github.com/cubefs/cubefs/schedulenode/extentallocatecheck"
 	"github.com/cubefs/cubefs/schedulenode/fsck"
 	"github.com/cubefs/cubefs/schedulenode/mdck"
 	"github.com/cubefs/cubefs/schedulenode/migration"
@@ -250,7 +250,7 @@ func run() error {
 		server = mdck.NewMetaDataCheckWorker()
 		module = proto.ModuleMetaDataCheck
 	case proto.RoleDoubleAllocExtentsCheck:
-		server = extentdoubleallocatecheck.NewExtentDoubleAllocateCheckWorker()
+		server = extentallocatecheck.NewExtentAllocateChecker()
 		module = proto.ModuleDoubleAllocExtentsCheck
 	case proto.RoleDataMig:
 		server = migration.NewDataMigrationServer()

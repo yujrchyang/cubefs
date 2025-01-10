@@ -28,6 +28,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/flash"
 	masterSDK "github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/meta"
+	"github.com/cubefs/cubefs/sdk/s3"
 	"github.com/cubefs/cubefs/sdk/scheduler"
 	"github.com/cubefs/cubefs/util/connpool"
 	"github.com/cubefs/cubefs/util/errors"
@@ -49,6 +50,7 @@ const (
 	VolNotExistClearViewThresholdMin = 0
 	RefreshHostLatencyInterval       = time.Hour
 	defaultTwoZoneHTypePingRule      = "400"
+	externalS3MaxAttempts			 = 100
 )
 
 type hostStatus struct {
@@ -131,6 +133,9 @@ type Wrapper struct {
 	twoZoneHATypePingRule   string //赋值前检查高可用类型， 非跨两机房高可用，不动
 	twoZoneHATypeRankedPing [][]time.Duration
 	MpFollowerRead          bool
+	externalS3Config 		*proto.BoundBucketInfo
+	externalS3BucketName	proto.AtomicString
+	externalS3Client 		*s3.S3Client
 }
 
 type DataState struct {
@@ -425,6 +430,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
 	_ = w.updateReadAheadRemoteConfig(view.ReadAheadMemMB, view.ReadAheadWindowMB)
 	w.MpFollowerRead = view.MpFollowerRead
+	w.updateExternalS3Client(view.BoundBucket)
 
 	log.LogInfof("getSimpleVolView: get volume simple info: ID(%v) name(%v) owner(%v) status(%v) capacity(%v) "+
 		"metaReplicas(%v) dataReplicas(%v) mpCnt(%v) dpCnt(%v) followerRead(%v) forceROW(%v) enableWriteCache(%v) createTime(%v) dpSelectorName(%v) "+
@@ -601,6 +607,7 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	w.updateDpMetricsReportConfig(view.DpMetricsReportConfig)
 	w.updateDpFollowerReadDelayConfig(&view.DpFolReadDelayConfig)
 	w.updateReadAheadRemoteConfig(view.ReadAheadMemMB, view.ReadAheadWindowMB)
+	w.updateExternalS3Client(view.BoundBucket)
 	if w.dpLowestDelayHostWeight != view.FolReadHostWeight {
 		log.LogInfof("updateSimpleVolView: update FolReadHostWeight from old(%v) to new(%v)", w.dpLowestDelayHostWeight, view.FolReadHostWeight)
 		w.dpLowestDelayHostWeight = view.FolReadHostWeight
@@ -1265,6 +1272,38 @@ func (w *Wrapper) SetRetryTimeSec(newWriteRetrySec, newReadRetrySec int64) {
 	if oldReadRetryTimeSec != newReadRetrySec {
 		atomic.StoreInt64(&w.readRetryTimeSec, newReadRetrySec)
 		log.LogInfof("change readRetryTimeSec from (%v)s to (%v)s", oldReadRetryTimeSec, newReadRetrySec)
+	}
+}
+
+func (w *Wrapper) updateExternalS3Client(bucketInfo *proto.BoundBucketInfo) {
+	if bucketInfo == nil {
+		return
+	}
+	if bucketInfo.GetRegion() == "" || bucketInfo.GetEndPoint() == "" ||
+		bucketInfo.GetAccessKey() == "" || bucketInfo.GetSecretAccessKey() == "" {
+		log.LogWarnf("invalid bucket info: %v", bucketInfo)
+		return
+	}
+	if w.externalS3Client == nil {
+		w.externalS3BucketName = proto.NewAtomicString(bucketInfo.BucketName)
+		w.externalS3Config = bucketInfo
+		w.externalS3Client = s3.NewS3ClientWithRetry(bucketInfo.GetRegion(), bucketInfo.GetEndPoint(),
+			bucketInfo.GetAccessKey(), bucketInfo.GetSecretAccessKey(), false, externalS3MaxAttempts, s3.RetryModeStandard)
+		log.LogInfof("init external s3 client: %v", bucketInfo)
+		return
+	}
+	oldBucketName := w.externalS3BucketName.ToString()
+	if oldBucketName != bucketInfo.BucketName {
+		w.externalS3BucketName = proto.NewAtomicString(bucketInfo.BucketName)
+		log.LogInfof("update external bucket name from (%v) to new (%v)", oldBucketName, bucketInfo.BucketName)
+	}
+	if !proto.IsSameS3Config(w.externalS3Config, bucketInfo) {
+		w.externalS3Config = bucketInfo
+		newS3Client := s3.NewS3ClientWithRetry(bucketInfo.GetRegion(), bucketInfo.GetEndPoint(),
+			bucketInfo.GetAccessKey(), bucketInfo.GetSecretAccessKey(), false, externalS3MaxAttempts, s3.RetryModeStandard)
+		w.externalS3Client = newS3Client
+		log.LogInfof("update external s3 client: %v", bucketInfo)
+		// todo 如果更新时候正赶上读取？看看返回什么错误码重试下？
 	}
 }
 

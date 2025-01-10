@@ -162,6 +162,11 @@ const (
 	readAheadWindowKey                  = "readAheadWindowMB"
 	clientWriteRetryTimeKey				= "writeRetryTimeSec"
 	clientReadRetryTimeKey				= "readRetryTimeSec"
+
+	skKey         = "sk"
+	regionKey     = "region"
+	endPointKey   = "endPoint"
+	bucketNameKey = "bucketName"
 )
 
 const (
