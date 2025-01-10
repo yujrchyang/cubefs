@@ -1328,14 +1328,28 @@ func (c *Cluster) decommissionDataNode(dataNode *DataNode, destZoneName string, 
 		}
 		close(errChannel)
 	}()
+
+	dpChan := make(chan *DataPartition, len(partitions))
 	for _, dp := range partitions {
+		dpChan <- dp
+	}
+	close(dpChan)
+	for i := 0; i < 10*defaultMaxConcurrencyForDecommission; i++ {
 		wg.Add(1)
-		go func(dp *DataPartition) {
+		go func() {
 			defer wg.Done()
-			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, dataNodeOfflineErr, destZoneName, "", strictFlag); err1 != nil {
-				errChannel <- err1
+			for {
+				select {
+				case tmpDp, ok := <-dpChan:
+					if !ok {
+						return
+					}
+					if err1 := c.decommissionDataPartition(dataNode.Addr, tmpDp, getTargetAddressForDataPartitionDecommission, diskOfflineErr, "", "", false); err1 != nil {
+						errChannel <- err1
+					}
+				}
 			}
-		}(dp)
+		}()
 	}
 	wg.Wait()
 	select {
@@ -2214,10 +2228,13 @@ func (c *Cluster) addDataPartitionRaftMember(dp *DataPartition, addPeer proto.Pe
 			dp.ReplicaNum = newReplicaNum
 		}
 	}
+	oldIsRecovered := dp.isRecover
+	dp.isRecover = true
 	if err = dp.update("addDataPartitionRaftMember", dp.VolName, newPeers, newHosts, dp.Learners, c); err != nil {
 		if isReplicaNumChanged {
 			dp.ReplicaNum = oldDPReplicaNum
 		}
+		dp.isRecover = oldIsRecovered
 		return
 	}
 	return
@@ -2729,23 +2746,32 @@ func (c *Cluster) decommissionMetaNode(metaNode *MetaNode, strictMode bool) (err
 		metaNode.ToBeOffline = false
 		close(errChannel)
 	}()
+	mpChan := make(chan *MetaPartition, len(partitions))
 	for _, mp := range partitions {
+		mpChan <- mp
+	}
+	close(mpChan)
+	for i := 0; i < defaultMaxConcurrencyForDecommission; i++ {
 		wg.Add(1)
-		go func(mp *MetaPartition) {
+		go func() {
 			defer wg.Done()
-
-			var err error
-
-			var vol *Vol
-			if vol, err = c.getVol(mp.volName); err != nil {
-				errChannel <- err
-				return
+			for {
+				select {
+				case tmpMp, ok := <-mpChan:
+					if !ok {
+						return
+					}
+					var vol *Vol
+					if vol, err = c.getVol(tmpMp.volName); err != nil {
+						errChannel <- err
+						return
+					}
+					if err1 := c.decommissionMetaPartition(metaNode.Addr, tmpMp, getTargetAddressForMetaPartitionDecommission, "", strictMode, proto.StoreModeDef, vol.PersistenceMode); err1 != nil {
+						errChannel <- err1
+					}
+				}
 			}
-
-			if err = c.decommissionMetaPartition(metaNode.Addr, mp, getTargetAddressForMetaPartitionDecommission, "", strictMode, proto.StoreModeDef, vol.PersistenceMode); err != nil {
-				errChannel <- err
-			}
-		}(mp)
+		}()
 	}
 	wg.Wait()
 	select {
@@ -4003,11 +4029,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 	if val, ok := params[proto.DisableClusterCheckDelEK]; ok {
 		c.cfg.DisableClusterCheckDeleteEK = val.(bool)
 	}
-
-	oldEnableUsedVolLimitInfoRespCache := c.cfg.DisableUsedVolLimitInfoRespCache
-	if val, ok := params[proto.EnableUsedVolLimitInfoRespCacheKey]; ok {
-		c.cfg.DisableUsedVolLimitInfoRespCache = val.(bool)
-	}
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -4059,7 +4080,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.TopologyForceFetchIntervalSec, oldTopologyForceFetchIntervalSec)
 		c.cfg.DataNodeDiskReservedRatio = oldDataNodeDiskReservedRatio
 		c.cfg.DisableClusterCheckDeleteEK = oldDisableClusterCheckDelEK
-		c.cfg.DisableUsedVolLimitInfoRespCache = oldEnableUsedVolLimitInfoRespCache
 		err = proto.ErrPersistenceByRaft
 		return
 	}

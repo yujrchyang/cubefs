@@ -1009,6 +1009,7 @@ func (vol *Vol) checkStatus(c *Cluster) {
 
 	vol.updateViewCache(c, proto.JsonType)
 	vol.clearViewCachePb()
+	vol.clearVolLimitInfoRespCache()
 
 	metaTasks, metaRecorderTasks, dataTasks, ecTasks, hasGeneratedTasks := vol.generateDeleteTasks(c)
 	if !hasGeneratedTasks {

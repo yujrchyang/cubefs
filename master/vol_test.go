@@ -362,9 +362,9 @@ func TestConcurrentReadWriteDataPartitionMap(t *testing.T) {
 	vol := newVol(volID, name, name, "", unit.DefaultDataPartitionSize, 100, defaultReplicaNum,
 		defaultReplicaNum, false, false,
 		false, true, false, false, false, false, createTime, createTime, "", "", "", 0,
-		0,0,0,0.0, 30, 0, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
+		0, 0, 0, 0.0, 30, 0, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0},
-		0, 0, 0, 0, 0, 0)
+		0, 0, 0, 0, 0, 0, proto.PersistenceMode_Nil)
 	// unavailable mp
 	mp1 := newMetaPartition(1, 1, defaultMaxMetaPartitionInodeID, 3, 0, 0, name, volID)
 	vol.addMetaPartition(mp1, server.cluster.Name)

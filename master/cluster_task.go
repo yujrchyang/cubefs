@@ -214,7 +214,6 @@ func (c *Cluster) decommissionMetaReplica(mp *MetaPartition, crossRegionHAType p
 		if err = c.addMetaReplica(mp, addAddr, dstStoreMode, persistenceMode); err != nil {
 			return
 		}
-		mp.IsRecover = true
 	}
 	return
 }
@@ -919,7 +918,10 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string, storeMod
 		newHosts = append(partition.Hosts, addPeer.Addr)
 	}
 	newPeers = append(partition.Peers, addPeer)
+	oldIsRecovered := partition.IsRecover
+	partition.IsRecover = true
 	if err = partition.persistToRocksDB("addMetaReplica", partition.volName, newHosts, newPeers, partition.Learners, partition.Recorders, c); err != nil {
+		partition.IsRecover = oldIsRecovered
 		return
 	}
 	if err = c.createMetaReplica(partition, addPeer, storeMode, persistenceMode); err != nil {

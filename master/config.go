@@ -83,6 +83,7 @@ const (
 	defaultMaxConnsPerHost                           int64   = 10000
 	defaultDelayMinutesReduceReplicaNum              int64   = 15
 	defaultRecorderNum                                       = 0
+	defaultMaxConcurrencyForDecommission                     = 10
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -183,7 +184,6 @@ type clusterConfig struct {
 	delayMinutesReduceReplicaNum        int64
 	MqProducerState                     bool
 	UnrecoverableDuration               int64
-	DisableUsedVolLimitInfoRespCache    bool
 	TwoZoneHATypePingRule               string
 }
 
@@ -226,7 +226,6 @@ func newClusterConfig() (cfg *clusterConfig) {
 	cfg.MaxConnsPerHost = defaultMaxConnsPerHost
 	cfg.delayMinutesReduceReplicaNum = defaultDelayMinutesReduceReplicaNum
 	cfg.UnrecoverableDuration = defaultUnrecoverableDuration
-	cfg.DisableUsedVolLimitInfoRespCache = true
 	cfg.initAPIReqBandwidthRateLimitMap()
 	return
 }

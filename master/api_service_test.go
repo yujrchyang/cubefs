@@ -249,7 +249,7 @@ func createDefaultMasterServerForTest() *Server {
 	vol, err := testServer.cluster.createVol(commonVolName, "cfs", testZone2, "", 3, 3, 3, 0, 3, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, true, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0}, 0,
-		0, false, 0, 0, maxReadAheadMemMB, maxReadAheadWindowMB, false, false)
+		0, false, 0, 0, maxReadAheadMemMB, maxReadAheadWindowMB, false, false, proto.PersistenceMode_Nil)
 	if err != nil {
 		panic(err)
 	}
@@ -266,7 +266,8 @@ func createDefaultMasterServerForTest() *Server {
 	recorderVol, err = testServer.cluster.createVol(recorderVolName, "cfs", zoneName, "", 3, 3, 3, 2, 120, 100, 0, defaultEcDataNum, defaultEcParityNum, defaultEcEnable,
 		false, false, false, false, false, false, false, false, 0, 0, defaultChildFileMaxCount,
 		proto.StoreModeMem, proto.MetaPartitionLayout{0, 0}, []string{}, proto.CompactDefault, proto.DpFollowerReadDelayConfig{}, 0,
-		0, false, 0, 0, 0, 0, false, false)
+		0, false, 0, 0, 0, 0, false, false,
+		proto.PersistenceMode_Nil)
 	if err != nil {
 		panic(fmt.Sprintf("create recorder vol err: %v", err))
 	}

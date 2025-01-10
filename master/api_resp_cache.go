@@ -240,33 +240,37 @@ func (c *Cluster) buildLimitInfo(volName string) (cInfo *proto.LimitInfo) {
 	return
 }
 
-func (c *Cluster) getVolLimitInfoRespCache(name string) (data []byte, err error) {
-	vol, err := c.getVol(name)
-	if err != nil {
-		return nil, proto.ErrLimitInfoIsNotCached
-	}
+func (vol *Vol) getVolLimitInfoRespCache() (data []byte, err error) {
+
 	vol.limitInfoRespCacheMutex.RLock()
 	defer vol.limitInfoRespCacheMutex.RUnlock()
 	return vol.limitInfoRespCache, nil
 }
 
-func (vol *Vol) setVolLimitInfoRespCache(data []byte) {
+func (vol *Vol) clearVolLimitInfoRespCache() {
 	vol.limitInfoRespCacheMutex.Lock()
 	defer vol.limitInfoRespCacheMutex.Unlock()
-	vol.limitInfoRespCache = data
+	vol.limitInfoRespCache = nil
 }
 
-func (c *Cluster) updateVolLimitInfoRespCache(vol *Vol) {
+func (c *Cluster) updateVolLimitInfoRespCache(vol *Vol) ([]byte, error) {
+
 	if !c.mustUsedVolLimitInfoRespCache(vol.Name) {
-		return
+		return nil, nil
+	}
+	vol.limitInfoRespCacheMutex.Lock()
+	defer vol.limitInfoRespCacheMutex.Unlock()
+	if vol.limitInfoRespCache != nil {
+		return vol.limitInfoRespCache, nil
 	}
 	limitInfo := c.buildLimitInfo(vol.Name)
 	reply := newSuccessHTTPReply(limitInfo)
 	data, mErr := json.Marshal(reply)
 	if mErr != nil {
-		return
+		return nil, mErr
 	}
-	vol.setVolLimitInfoRespCache(data)
+	vol.limitInfoRespCache = data
+	return data, nil
 }
 
 func (c *Cluster) mustUsedVolLimitInfoRespCache(volName string) bool {

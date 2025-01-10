@@ -31,7 +31,7 @@ func buildPanicVol() *Vol {
 		"", "", "", 0, 0, 0, 0, 0.0, 30,
 		0, proto.StoreModeMem, proto.VolConvertStInit, proto.MetaPartitionLayout{0, 0},
 		strings.Split(testSmartRules, ","), proto.CompactDefault, proto.DpFollowerReadDelayConfig{false, 0},
-		0, 0, 0, 0, 0, 0)
+		0, 0, 0, 0, 0, 0, proto.PersistenceMode_Nil)
 
 	vol.dataPartitions = nil
 	return vol
@@ -401,9 +401,8 @@ func TestUpdateServerLimitInfoRespCache(t *testing.T) {
 	data, err = c.getServerLimitInfoRespCache(testZone1)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, data)
-	c.doCheckVolStatus()
 	if c.mustUsedVolLimitInfoRespCache(commonVolName) {
-		data, err = c.getVolLimitInfoRespCache(commonVolName)
+		data, err = server.getLimitInfoByVolName(commonVolName)
 		assert.NoError(t, err)
 		assert.NotEmpty(t, data)
 	} else {

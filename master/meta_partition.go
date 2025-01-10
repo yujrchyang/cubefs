@@ -1151,16 +1151,16 @@ func (mp *MetaPartition) getMinusOfDentryCount() (minus float64) {
 func (mp *MetaPartition) getMinusOfApplyID() (minus float64) {
 	mp.RLock()
 	defer mp.RUnlock()
-	if len(mp.LoadResponse) == 0 {
+	if len(mp.Replicas) == 0 {
 		return 1
 	}
 	var sentry float64
-	for index, resp := range mp.LoadResponse {
+	for index, resp := range mp.Replicas {
 		if index == 0 {
-			sentry = float64(resp.ApplyID)
+			sentry = float64(resp.ApplyId)
 			continue
 		}
-		diff := math.Abs(float64(resp.ApplyID) - sentry)
+		diff := math.Abs(float64(resp.ApplyId) - sentry)
 		if diff > minus {
 			minus = diff
 		}

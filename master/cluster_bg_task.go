@@ -160,9 +160,6 @@ func (c *Cluster) doCheckVolStatus() {
 			return
 		}
 		vol.checkStatus(c)
-		if !c.cfg.DisableUsedVolLimitInfoRespCache {
-			c.updateVolLimitInfoRespCache(vol)
-		}
 	}
 }
 

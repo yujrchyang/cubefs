@@ -356,7 +356,15 @@ func (m *Server) getLimitInfoForServer(dataNodeZoneName string) (data []byte, er
 }
 
 func (m *Server) getLimitInfoByVolName(volName string) (data []byte, err error) {
-	return m.cluster.getVolLimitInfoRespCache(volName)
+	vol, err := m.cluster.getVol(volName)
+	if err != nil {
+		return nil, proto.ErrVolNotExists
+	}
+	data, err = vol.getVolLimitInfoRespCache()
+	if err != nil || len(data) == 0 {
+		return m.cluster.updateVolLimitInfoRespCache(vol)
+	}
+	return
 }
 
 func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
@@ -368,11 +376,16 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		err              error
 	)
 	vol := r.FormValue(nameKey)
+	noCacheStr := r.FormValue(forceKey)
+	noCache, _ := strconv.ParseBool(noCacheStr)
+	if noCache {
+		m.getLimitInfoNoCache(w, r, vol)
+		return
+	}
 	if vol == "" || !m.cluster.mustUsedVolLimitInfoRespCache(vol) { // the data/meta node will not report vol name
 		dataNodeZoneName = m.getDataNodeZoneNameOfRemoteAddr(r)
 		data, err = m.getLimitInfoForServer(dataNodeZoneName)
-	}
-	if !m.cluster.cfg.DisableUsedVolLimitInfoRespCache {
+	} else {
 		data, err = m.getLimitInfoByVolName(vol)
 	}
 	if err != nil || len(data) == 0 {
@@ -5460,7 +5473,7 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 	}
 	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey,
-		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey, proto.DisableClusterCheckDelEK, proto.EnableUsedVolLimitInfoRespCacheKey}
+		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey, proto.DisableClusterCheckDelEK}
 	for _, key := range boolKey {
 		if err = parseBoolKey(params, key, r); err != nil {
 			return

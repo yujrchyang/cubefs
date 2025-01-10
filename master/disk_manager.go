@@ -250,14 +250,27 @@ func (c *Cluster) decommissionDisk(dataNode *DataNode, badDiskPath string, badPa
 	defer func() {
 		close(errChannel)
 	}()
+	dpChan := make(chan *DataPartition, len(badPartitions))
 	for _, dp := range badPartitions {
+		dpChan <- dp
+	}
+	close(dpChan)
+	for i := 0; i < 5*defaultMaxConcurrencyForDecommission; i++ {
 		wg.Add(1)
-		go func(dp *DataPartition) {
+		go func() {
 			defer wg.Done()
-			if err1 := c.decommissionDataPartition(dataNode.Addr, dp, getTargetAddressForDataPartitionDecommission, diskOfflineErr, "", "", false); err1 != nil {
-				errChannel <- err1
+			for {
+				select {
+				case tmpDp, ok := <-dpChan:
+					if !ok {
+						return
+					}
+					if err1 := c.decommissionDataPartition(dataNode.Addr, tmpDp, getTargetAddressForDataPartitionDecommission, diskOfflineErr, "", "", false); err1 != nil {
+						errChannel <- err1
+					}
+				}
 			}
-		}(dp)
+		}()
 	}
 	wg.Wait()
 	select {

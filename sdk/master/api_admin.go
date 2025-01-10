@@ -731,6 +731,21 @@ func (api *AdminAPI) GetNodeInfo() (ni *proto.NodeInfo, err error) {
 	return
 }
 
+func (api *AdminAPI) GetLimitInfoWithNoCache(volName string) (info *proto.LimitInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetLimitInfo)
+	request.addParam("name", volName)
+	request.addParam("force", "true")
+	var data []byte
+	if data, _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	info = &proto.LimitInfo{}
+	if err = json.Unmarshal(data, &info); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) CreateMetaPartition(volName string, inodeStart uint64) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateMetaPartition)
 	request.addParam("name", volName)
