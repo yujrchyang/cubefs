@@ -3,11 +3,11 @@ package customizations_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"net/http"
-	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/google/go-cmp/cmp"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/internal/awstesting/unit"
@@ -130,7 +130,7 @@ func TestPutObject_PresignURL(t *testing.T) {
 			input: s3.PutObjectInput{
 				Bucket:        aws.String("mock-bucket"),
 				Key:           aws.String("mockkey"),
-				ContentLength: aws.Int64(100),
+				ContentLength: 100,
 			},
 			expectPresignedURLHost: "https://mock-bucket.s3.us-west-2.amazonaws.com/mockkey?",
 			expectRequestURIQuery: []string{
@@ -273,8 +273,8 @@ func TestPutObject_PresignURL(t *testing.T) {
 				}
 			}
 
-			if e, a := c.expectSignedHeader, req.SignedHeader; len(cmpDiff(e, a)) != 0 {
-				t.Fatalf("expected signed header to be %s, got %s, \n diff : %s", e, a, cmpDiff(e, a))
+			if e, a := c.expectSignedHeader, req.SignedHeader; len(cmp.Diff(e, a)) != 0 {
+				t.Fatalf("expected signed header to be %s, got %s, \n diff : %s", e, a, cmp.Diff(e, a))
 			}
 
 			if e, a := c.expectMethod, req.Method; !strings.EqualFold(e, a) {
@@ -299,7 +299,7 @@ func TestUploadPart_PresignURL(t *testing.T) {
 			input: s3.UploadPartInput{
 				Bucket:     aws.String("mock-bucket"),
 				Key:        aws.String("mockkey"),
-				PartNumber: aws.Int32(1),
+				PartNumber: 1,
 				UploadId:   aws.String("123456"),
 				Body:       strings.NewReader("hello-world"),
 			},
@@ -324,7 +324,7 @@ func TestUploadPart_PresignURL(t *testing.T) {
 			input: s3.UploadPartInput{
 				Bucket:     aws.String("mock-bucket"),
 				Key:        aws.String("mockkey"),
-				PartNumber: aws.Int32(1),
+				PartNumber: 1,
 				UploadId:   aws.String("123456"),
 				Body:       bytes.NewReader([]byte("hello-world")),
 			},
@@ -350,7 +350,7 @@ func TestUploadPart_PresignURL(t *testing.T) {
 			input: s3.UploadPartInput{
 				Bucket:     aws.String("mock-bucket"),
 				Key:        aws.String("mockkey"),
-				PartNumber: aws.Int32(1),
+				PartNumber: 1,
 				UploadId:   aws.String("123456"),
 				Body:       bytes.NewBuffer([]byte(`hello-world`)),
 			},
@@ -375,7 +375,7 @@ func TestUploadPart_PresignURL(t *testing.T) {
 			input: s3.UploadPartInput{
 				Bucket:     aws.String("mock-bucket"),
 				Key:        aws.String("mockkey"),
-				PartNumber: aws.Int32(1),
+				PartNumber: 1,
 				UploadId:   aws.String("123456"),
 				Body:       bytes.NewReader([]byte(``)),
 			},
@@ -398,7 +398,7 @@ func TestUploadPart_PresignURL(t *testing.T) {
 			input: s3.UploadPartInput{
 				Bucket:     aws.String("mock-bucket"),
 				Key:        aws.String("mockkey"),
-				PartNumber: aws.Int32(1),
+				PartNumber: 1,
 				UploadId:   aws.String("123456"),
 			},
 			expectPresignedURLHost: "https://mock-bucket.s3.us-west-2.amazonaws.com/mockkey?",
@@ -459,8 +459,8 @@ func TestUploadPart_PresignURL(t *testing.T) {
 				}
 			}
 
-			if e, a := c.expectSignedHeader, req.SignedHeader; len(cmpDiff(e, a)) != 0 {
-				t.Fatalf("expected signed header to be %s, got %s, \n diff : %s", e, a, cmpDiff(e, a))
+			if e, a := c.expectSignedHeader, req.SignedHeader; len(cmp.Diff(e, a)) != 0 {
+				t.Fatalf("expected signed header to be %s, got %s, \n diff : %s", e, a, cmp.Diff(e, a))
 			}
 
 			if e, a := c.expectMethod, req.Method; !strings.EqualFold(e, a) {
@@ -469,11 +469,4 @@ func TestUploadPart_PresignURL(t *testing.T) {
 
 		})
 	}
-}
-
-func cmpDiff(e, a interface{}) string {
-	if !reflect.DeepEqual(e, a) {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	return ""
 }

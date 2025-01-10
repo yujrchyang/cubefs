@@ -70,10 +70,6 @@
                         "name": "OBSERVABILITY"
                     },
                     {
-                        "value": "REFACTORING",
-                        "name": "REFACTORING"
-                    },
-                    {
                         "value": "SECURITY",
                         "name": "SECURITY"
                     },
@@ -456,6 +452,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -498,8 +495,7 @@
                                     },
                                     "type": "endpoint"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [
@@ -512,6 +508,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -525,6 +522,7 @@
                                             "assign": "PartitionResult"
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -547,6 +545,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -581,6 +580,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -591,16 +591,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -614,12 +612,14 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
                                                         {
                                                             "fn": "booleanEquals",
                                                             "argv": [
+                                                                true,
                                                                 {
                                                                     "fn": "getAttr",
                                                                     "argv": [
@@ -628,11 +628,11 @@
                                                                         },
                                                                         "supportsFIPS"
                                                                     ]
-                                                                },
-                                                                true
+                                                                }
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -643,16 +643,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS is enabled but this partition does not support FIPS",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -666,6 +664,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -685,6 +684,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -695,16 +695,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "DualStack is enabled but this partition does not support DualStack",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [],
@@ -715,11 +713,9 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
@@ -1631,10 +1627,6 @@
                     {
                         "name": "UEFI",
                         "value": "UEFI"
-                    },
-                    {
-                        "name": "USE_SOURCE",
-                        "value": "USE_SOURCE"
                     }
                 ]
             }
@@ -3211,6 +3203,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Request to describe Job log item maximum results.</p>"
                     }
                 },
@@ -3289,6 +3282,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Request to describe job log items by max results.</p>"
                     }
                 },
@@ -3408,6 +3402,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Maximum results to be returned in DescribeLaunchConfigurationTemplates.</p>"
                     }
                 },
@@ -3483,6 +3478,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Request to describe Replication Configuration template by max results.</p>"
                     }
                 },
@@ -3555,6 +3551,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Request to filter Source Servers list by maximum results.</p>"
                     }
                 },
@@ -3692,6 +3689,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Maximum results to be returned in DescribeVcenterClients.</p>",
                         "smithy.api#httpQuery": "maxResults"
                     }
@@ -4811,6 +4809,7 @@
         "com.amazonaws.mgn#Iops": {
             "type": "long",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 100,
                     "max": 64000
@@ -5450,12 +5449,14 @@
                 "iops": {
                     "target": "com.amazonaws.mgn#Iops",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Launch template disk iops configuration.</p>"
                     }
                 },
                 "throughput": {
                     "target": "com.amazonaws.mgn#Throughput",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Launch template disk throughput configuration.</p>"
                     }
                 }
@@ -5802,6 +5803,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Maximum results to return when listing applications.</p>"
                     }
                 },
@@ -5906,6 +5908,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>List Connectors Request max results.</p>"
                     }
                 },
@@ -5999,6 +6002,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>List export errors request max results.</p>"
                     }
                 },
@@ -6071,6 +6075,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>List export request max results.</p>"
                     }
                 },
@@ -6176,6 +6181,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>List import errors request max results.</p>"
                     }
                 },
@@ -6254,6 +6260,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>List imports request max results.</p>"
                     }
                 },
@@ -6340,6 +6347,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>List managed accounts request max results.</p>"
                     }
                 },
@@ -6428,6 +6436,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Maximum amount of items to return when listing source server post migration custom actions.</p>"
                     }
                 },
@@ -6571,6 +6580,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Maximum amount of items to return when listing template post migration custom actions.</p>"
                     }
                 },
@@ -6640,6 +6650,7 @@
                 "maxResults": {
                     "target": "com.amazonaws.mgn#MaxResultsType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Maximum results to return when listing waves.</p>"
                     }
                 },
@@ -6769,6 +6780,7 @@
         "com.amazonaws.mgn#MaxResultsType": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 1000
@@ -6836,6 +6848,7 @@
         "com.amazonaws.mgn#OrderType": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1001,
                     "max": 10000
@@ -7114,6 +7127,7 @@
                 "order": {
                     "target": "com.amazonaws.mgn#OrderType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Source server post migration custom action order.</p>",
                         "smithy.api#required": {}
                     }
@@ -7140,6 +7154,7 @@
                 "timeoutSeconds": {
                     "target": "com.amazonaws.mgn#StrictlyPositiveInteger",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Source server post migration custom action timeout in seconds.</p>"
                     }
                 },
@@ -7239,6 +7254,7 @@
                 "order": {
                     "target": "com.amazonaws.mgn#OrderType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Template post migration custom action order.</p>",
                         "smithy.api#required": {}
                     }
@@ -7265,6 +7281,7 @@
                 "timeoutSeconds": {
                     "target": "com.amazonaws.mgn#StrictlyPositiveInteger",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Template post migration custom action timeout in seconds.</p>"
                     }
                 },
@@ -8085,6 +8102,7 @@
                 "quotaValue": {
                     "target": "com.amazonaws.mgn#StrictlyPositiveInteger",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Exceeded the service quota value.</p>"
                     }
                 }
@@ -8281,6 +8299,7 @@
                 "order": {
                     "target": "com.amazonaws.mgn#OrderType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Source server post migration custom action order.</p>"
                     }
                 },
@@ -8299,6 +8318,7 @@
                 "timeoutSeconds": {
                     "target": "com.amazonaws.mgn#StrictlyPositiveInteger",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Source server post migration custom action timeout in seconds.</p>"
                     }
                 },
@@ -8502,6 +8522,7 @@
                 "timeoutSeconds": {
                     "target": "com.amazonaws.mgn#StrictlyPositiveInteger",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>AWS Systems Manager Document timeout seconds.</p>"
                     }
                 },
@@ -9084,6 +9105,7 @@
         "com.amazonaws.mgn#StrictlyPositiveInteger": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1
                 }
@@ -9235,6 +9257,7 @@
                 "order": {
                     "target": "com.amazonaws.mgn#OrderType",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Template post migration custom action order.</p>"
                     }
                 },
@@ -9253,6 +9276,7 @@
                 "timeoutSeconds": {
                     "target": "com.amazonaws.mgn#StrictlyPositiveInteger",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Template post migration custom action timeout in seconds.</p>"
                     }
                 },
@@ -9433,6 +9457,7 @@
         "com.amazonaws.mgn#Throughput": {
             "type": "long",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 125,
                     "max": 1000
@@ -9740,7 +9765,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Updates multiple LaunchConfigurations by Source Server ID.</p>\n        <note>\n            <p>bootMode valid values are <code>LEGACY_BIOS | UEFI</code>\n            </p>\n         </note>",
+                "smithy.api#documentation": "<p>Updates multiple LaunchConfigurations by Source Server ID.</p>",
                 "smithy.api#http": {
                     "uri": "/UpdateLaunchConfiguration",
                     "method": "POST",

@@ -10,7 +10,6 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"reflect"
 	"strconv"
 	"testing"
 	"time"
@@ -20,6 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/internal/integrationtest"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestInteg_PresignURL(t *testing.T) {
@@ -95,7 +95,7 @@ func TestInteg_PresignURL(t *testing.T) {
 					t.Fatalf("expected %v header to be present in presigned url, got %v", k, presignRequest.SignedHeader)
 				}
 
-				if diff := cmpDiff(v, value); len(diff) != 0 {
+				if diff := cmp.Diff(v, value); len(diff) != 0 {
 					t.Fatalf("expected %v header value to be %v got %v", k, v, value)
 				}
 			}
@@ -192,7 +192,7 @@ func TestInteg_MultipartPresignURL(t *testing.T) {
 			uploadPartInput := &s3.UploadPartInput{
 				Bucket:     &setupMetadata.Buckets.Source.Name,
 				Key:        &key,
-				PartNumber: aws.Int32(1),
+				PartNumber: 1,
 				UploadId:   multipartUpload.UploadId,
 				Body:       c.body,
 			}
@@ -212,7 +212,7 @@ func TestInteg_MultipartPresignURL(t *testing.T) {
 					t.Fatalf("expected %v header to be present in presigned url, got %v", k, presignRequest.SignedHeader)
 				}
 
-				if diff := cmpDiff(v, value); len(diff) != 0 {
+				if diff := cmp.Diff(v, value); len(diff) != 0 {
 					t.Fatalf("expected %v header value to be %v got %v", k, v, value)
 				}
 			}
@@ -295,11 +295,4 @@ func sendHTTPRequest(presignRequest *v4.PresignedHTTPRequest, body io.Reader) (*
 	// Upload the object to S3.
 	resp, err := http.DefaultClient.Do(req)
 	return resp, err
-}
-
-func cmpDiff(e, a interface{}) string {
-	if !reflect.DeepEqual(e, a) {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	return ""
 }

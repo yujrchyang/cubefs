@@ -1346,10 +1346,6 @@ func (nb NameBuilder) BeginsWith(prefix string) ConditionBuilder {
 //	// attribute "InviteList" has the value "Ben"
 //	condition := expression.Contains(expression.Name("InviteList"), "Ben")
 //
-//	// condition represents the boolean condition of whether the item
-//	// attribute "LocationIds" has the value 2
-//	condition := expression.Contains(expression.Name("LocationIds"), 2)
-//
 //	// Used in another Condition Expression
 //	anotherCondition := expression.Not(condition)
 //	// Used to make an Builder
@@ -1360,9 +1356,9 @@ func (nb NameBuilder) BeginsWith(prefix string) ConditionBuilder {
 //	expression.Contains(expression.Name("InviteList"), "Ben")
 //	// Let :ben be an ExpressionAttributeValue representing the value "Ben"
 //	"contains (InviteList, :ben)"
-func Contains(nameBuilder NameBuilder, val interface{}) ConditionBuilder {
+func Contains(nameBuilder NameBuilder, substr string) ConditionBuilder {
 	v := ValueBuilder{
-		value: val,
+		value: substr,
 	}
 	return ConditionBuilder{
 		operandList: []OperandBuilder{nameBuilder, v},
@@ -1381,10 +1377,6 @@ func Contains(nameBuilder NameBuilder, val interface{}) ConditionBuilder {
 //	// attribute "InviteList" has the value "Ben"
 //	condition := expression.Name("InviteList").Contains("Ben")
 //
-//	// condition represents the boolean condition of whether the item
-//	// attribute "LocationIds" has the value 2
-//	condition := expression.Name("LocationIds").Contains(2)
-//
 //	// Used in another Condition Expression
 //	anotherCondition := expression.Not(condition)
 //	// Used to make an Builder
@@ -1395,8 +1387,8 @@ func Contains(nameBuilder NameBuilder, val interface{}) ConditionBuilder {
 //	expression.Name("InviteList").Contains("Ben")
 //	// Let :ben be an ExpressionAttributeValue representing the value "Ben"
 //	"contains (InviteList, :ben)"
-func (nb NameBuilder) Contains(val interface{}) ConditionBuilder {
-	return Contains(nb, val)
+func (nb NameBuilder) Contains(substr string) ConditionBuilder {
+	return Contains(nb, substr)
 }
 
 // buildTree builds a tree structure of exprNodes based on the tree

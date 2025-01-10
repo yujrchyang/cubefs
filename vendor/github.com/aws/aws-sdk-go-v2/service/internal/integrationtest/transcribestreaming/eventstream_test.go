@@ -64,9 +64,7 @@ func TestInteg_StartStreamTranscription(t *testing.T) {
 	ctx, cancelFn := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancelFn()
 
-	client := transcribestreaming.NewFromConfig(cfg, func(o *transcribestreaming.Options) {
-		o.ClientLogMode = aws.LogSigning
-	})
+	client := transcribestreaming.NewFromConfig(cfg)
 	resp, err := client.StartStreamTranscription(ctx, &transcribestreaming.StartStreamTranscriptionInput{
 		LanguageCode:         types.LanguageCode(audioLang),
 		MediaEncoding:        types.MediaEncoding(audioFormat),

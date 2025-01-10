@@ -5,21 +5,20 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
 
 	"github.com/aws/aws-sdk-go-v2/internal/awstesting"
 	"github.com/aws/aws-sdk-go-v2/internal/sdk"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestAddRequestMiddleware(t *testing.T) {
@@ -34,7 +33,6 @@ func TestAddRequestMiddleware(t *testing.T) {
 		"api request": {
 			AddMiddleware: func(stack *middleware.Stack, options Options) error {
 				return addAPIRequestMiddleware(stack, options,
-					"TestRequest",
 					func(interface{}) (string, error) {
 						return "/mockPath", nil
 					},
@@ -55,13 +53,9 @@ func TestAddRequestMiddleware(t *testing.T) {
 				"UserAgent",
 			},
 			ExpectFinalize: []string{
-				"ResolveAuthScheme",
-				"GetIdentity",
-				"ResolveEndpointV2",
 				"Retry",
 				"APITokenProvider",
 				"RetryMetricsHeader",
-				"Signing",
 			},
 			ExpectDeserialize: []string{
 				"APITokenProvider",
@@ -72,7 +66,7 @@ func TestAddRequestMiddleware(t *testing.T) {
 
 		"base request": {
 			AddMiddleware: func(stack *middleware.Stack, options Options) error {
-				return addRequestMiddleware(stack, options, "POST", "TestRequest",
+				return addRequestMiddleware(stack, options, "POST",
 					func(interface{}) (string, error) {
 						return "/mockPath", nil
 					},
@@ -93,12 +87,8 @@ func TestAddRequestMiddleware(t *testing.T) {
 				"UserAgent",
 			},
 			ExpectFinalize: []string{
-				"ResolveAuthScheme",
-				"GetIdentity",
-				"ResolveEndpointV2",
 				"Retry",
 				"RetryMetricsHeader",
-				"Signing",
 			},
 			ExpectDeserialize: []string{
 				"OperationDeserializer",
@@ -117,23 +107,23 @@ func TestAddRequestMiddleware(t *testing.T) {
 				t.Fatalf("expect no error adding middleware, got %v", err)
 			}
 
-			if diff := cmpDiff(c.ExpectInitialize, stack.Initialize.List()); len(diff) != 0 {
+			if diff := cmp.Diff(c.ExpectInitialize, stack.Initialize.List()); len(diff) != 0 {
 				t.Errorf("expect initialize middleware\n%s", diff)
 			}
 
-			if diff := cmpDiff(c.ExpectSerialize, stack.Serialize.List()); len(diff) != 0 {
+			if diff := cmp.Diff(c.ExpectSerialize, stack.Serialize.List()); len(diff) != 0 {
 				t.Errorf("expect serialize middleware\n%s", diff)
 			}
 
-			if diff := cmpDiff(c.ExpectBuild, stack.Build.List()); len(diff) != 0 {
+			if diff := cmp.Diff(c.ExpectBuild, stack.Build.List()); len(diff) != 0 {
 				t.Errorf("expect build middleware\n%s", diff)
 			}
 
-			if diff := cmpDiff(c.ExpectFinalize, stack.Finalize.List()); len(diff) != 0 {
+			if diff := cmp.Diff(c.ExpectFinalize, stack.Finalize.List()); len(diff) != 0 {
 				t.Errorf("expect finalize middleware\n%s", diff)
 			}
 
-			if diff := cmpDiff(c.ExpectDeserialize, stack.Deserialize.List()); len(diff) != 0 {
+			if diff := cmp.Diff(c.ExpectDeserialize, stack.Deserialize.List()); len(diff) != 0 {
 				t.Errorf("expect deserialize middleware\n%s", diff)
 			}
 		})
@@ -211,29 +201,6 @@ func TestOperationTimeoutMiddleware_withCustomDeadline(t *testing.T) {
 			}
 			if e, a := expectDeadline, t; !e.Equal(a) {
 				return out, metadata, fmt.Errorf("expect %v deadline, got %v", e, a)
-			}
-
-			return out, metadata, nil
-		}))
-	if err != nil {
-		t.Fatalf("expect no error, got %v", err)
-	}
-}
-
-func TestOperationTimeoutMiddleware_Disabled(t *testing.T) {
-	m := &operationTimeout{
-		Disabled:       true,
-		DefaultTimeout: time.Nanosecond,
-	}
-
-	_, _, err := m.HandleInitialize(context.Background(), middleware.InitializeInput{},
-		middleware.InitializeHandlerFunc(func(
-			ctx context.Context, input middleware.InitializeInput,
-		) (
-			out middleware.InitializeOutput, metadata middleware.Metadata, err error,
-		) {
-			if err := sdk.SleepWithContext(ctx, time.Second); err != nil {
-				return out, metadata, err
 			}
 
 			return out, metadata, nil
@@ -623,7 +590,6 @@ func TestRequestGetToken(t *testing.T) {
 					func(stack *middleware.Stack, options Options) error {
 						return addAPIRequestMiddleware(stack,
 							client.options.Copy(),
-							"TestRequest",
 							func(interface{}) (string, error) {
 								return "/latest/foo", nil
 							},
@@ -636,7 +602,7 @@ func TestRequestGetToken(t *testing.T) {
 					},
 				)
 			}
-			if diff := cmpDiff(c.ExpectTrace, trace.requests); len(diff) != 0 {
+			if diff := cmp.Diff(c.ExpectTrace, trace.requests); len(diff) != 0 {
 				t.Errorf("expect trace to match\n%s", diff)
 			}
 
@@ -669,11 +635,4 @@ func TestRequestGetToken(t *testing.T) {
 			}
 		})
 	}
-}
-
-func cmpDiff(e, a interface{}) string {
-	if !reflect.DeepEqual(e, a) {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	return ""
 }

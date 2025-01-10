@@ -59,11 +59,14 @@ public class LegacyEndpointContextSetter implements GoIntegration {
 
     @Override
     public void renderPreEndpointResolutionHook(GoSettings settings, GoWriter writer, Model model) {
-        writer.write("""
-                if $T(ctx) {
-                    return next.HandleFinalize(ctx, in)
-                }
-                """, SdkGoTypes.Aws.Middleware.GetRequiresLegacyEndpoints);
+        writer.write(
+                """
+                        if $T(ctx) {
+                            return next.HandleSerialize(ctx, in)
+                        }
+                """,
+                SymbolUtils.createValueSymbolBuilder("GetRequiresLegacyEndpoints", AwsGoDependency.AWS_MIDDLEWARE).build()
+        );
     }
 
     @Override

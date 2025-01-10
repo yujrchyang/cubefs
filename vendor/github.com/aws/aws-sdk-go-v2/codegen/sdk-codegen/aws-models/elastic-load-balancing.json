@@ -476,6 +476,7 @@
                 "InstancePort": {
                     "target": "com.amazonaws.elasticloadbalancing#InstancePort",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The port on which the EC2 instance is listening.</p>"
                     }
                 },
@@ -937,111 +938,6 @@
                         "output": {
                             "DNSName": "my-load-balancer-1234567890.us-west-2.elb.amazonaws.com"
                         }
-                    },
-                    {
-                        "title": "To create an HTTP load balancer in EC2-Classic",
-                        "documentation": "This example creates a load balancer with an HTTP listener in EC2-Classic.",
-                        "input": {
-                            "LoadBalancerName": "my-load-balancer",
-                            "Listeners": [
-                                {
-                                    "Protocol": "HTTP",
-                                    "LoadBalancerPort": 80,
-                                    "InstanceProtocol": "HTTP",
-                                    "InstancePort": 80
-                                }
-                            ],
-                            "AvailabilityZones": [
-                                "us-west-2a"
-                            ]
-                        },
-                        "output": {
-                            "DNSName": "my-load-balancer-123456789.us-west-2.elb.amazonaws.com"
-                        }
-                    },
-                    {
-                        "title": "To create an HTTPS load balancer in a VPC",
-                        "documentation": "This example creates a load balancer with an HTTPS listener in a VPC.",
-                        "input": {
-                            "LoadBalancerName": "my-load-balancer",
-                            "Listeners": [
-                                {
-                                    "Protocol": "HTTP",
-                                    "LoadBalancerPort": 80,
-                                    "InstanceProtocol": "HTTP",
-                                    "InstancePort": 80
-                                },
-                                {
-                                    "Protocol": "HTTPS",
-                                    "LoadBalancerPort": 443,
-                                    "InstanceProtocol": "HTTP",
-                                    "InstancePort": 80,
-                                    "SSLCertificateId": "arn:aws:iam::123456789012:server-certificate/my-server-cert"
-                                }
-                            ],
-                            "Subnets": [
-                                "subnet-15aaab61"
-                            ],
-                            "SecurityGroups": [
-                                "sg-a61988c3"
-                            ]
-                        },
-                        "output": {
-                            "DNSName": "my-load-balancer-1234567890.us-west-2.elb.amazonaws.com"
-                        }
-                    },
-                    {
-                        "title": "To create an HTTPS load balancer in EC2-Classic",
-                        "documentation": "This example creates a load balancer with an HTTPS listener in EC2-Classic.",
-                        "input": {
-                            "LoadBalancerName": "my-load-balancer",
-                            "Listeners": [
-                                {
-                                    "Protocol": "HTTP",
-                                    "LoadBalancerPort": 80,
-                                    "InstanceProtocol": "HTTP",
-                                    "InstancePort": 80
-                                },
-                                {
-                                    "Protocol": "HTTPS",
-                                    "LoadBalancerPort": 443,
-                                    "InstanceProtocol": "HTTP",
-                                    "InstancePort": 80,
-                                    "SSLCertificateId": "arn:aws:iam::123456789012:server-certificate/my-server-cert"
-                                }
-                            ],
-                            "AvailabilityZones": [
-                                "us-west-2a"
-                            ]
-                        },
-                        "output": {
-                            "DNSName": "my-load-balancer-123456789.us-west-2.elb.amazonaws.com"
-                        }
-                    },
-                    {
-                        "title": "To create an internal load balancer",
-                        "documentation": "This example creates an internal load balancer with an HTTP listener in a VPC.",
-                        "input": {
-                            "LoadBalancerName": "my-load-balancer",
-                            "Listeners": [
-                                {
-                                    "Protocol": "HTTP",
-                                    "LoadBalancerPort": 80,
-                                    "InstanceProtocol": "HTTP",
-                                    "InstancePort": 80
-                                }
-                            ],
-                            "Subnets": [
-                                "subnet-15aaab61"
-                            ],
-                            "SecurityGroups": [
-                                "sg-a61988c3"
-                            ],
-                            "Scheme": "internal"
-                        },
-                        "output": {
-                            "DNSName": "internal-my-load-balancer-123456789.us-west-2.elb.amazonaws.com"
-                        }
                     }
                 ]
             }
@@ -1119,22 +1015,6 @@
                                 }
                             ]
                         }
-                    },
-                    {
-                        "title": "To create an HTTPS listener for a load balancer",
-                        "documentation": "This example creates a listener for your load balancer at port 443 using the HTTPS protocol.",
-                        "input": {
-                            "LoadBalancerName": "my-load-balancer",
-                            "Listeners": [
-                                {
-                                    "Protocol": "HTTPS",
-                                    "LoadBalancerPort": 443,
-                                    "InstanceProtocol": "HTTP",
-                                    "InstancePort": 80,
-                                    "SSLCertificateId": "arn:aws:iam::123456789012:server-certificate/my-server-cert"
-                                }
-                            ]
-                        }
                     }
                 ]
             }
@@ -1178,36 +1058,6 @@
                                 {
                                     "AttributeName": "ProxyProtocol",
                                     "AttributeValue": "true"
-                                }
-                            ]
-                        }
-                    },
-                    {
-                        "title": "To create a public key policy",
-                        "documentation": "This example creates a public key policy.",
-                        "input": {
-                            "LoadBalancerName": "my-load-balancer",
-                            "PolicyName": "my-PublicKey-policy",
-                            "PolicyTypeName": "PublicKeyPolicyType",
-                            "PolicyAttributes": [
-                                {
-                                    "AttributeName": "PublicKey",
-                                    "AttributeValue": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwAYUjnfyEyXr1pxjhFWBpMlggUcqoi3kl+dS74kj//c6x7ROtusUaeQCTgIUkayttRDWchuqo1pHC1u+n5xxXnBBe2ejbb2WRsKIQ5rXEeixsjFpFsojpSQKkzhVGI6mJVZBJDVKSHmswnwLBdofLhzvllpovBPTHe+o4haAWvDBALJU0pkSI1FecPHcs2hwxf14zHoXy1e2k36A64nXW43wtfx5qcVSIxtCEOjnYRg7RPvybaGfQ+v6Iaxb/+7J5kEvZhTFQId+bSiJImF1FSUT1W1xwzBZPUbcUkkXDj45vC2s3Z8E+Lk7a3uZhvsQHLZnrfuWjBWGWvZ/MhZYgEXAMPLE"
-                                }
-                            ]
-                        }
-                    },
-                    {
-                        "title": "To create a backend server authentication policy",
-                        "documentation": "This example creates a backend server authentication policy that enables authentication on your backend instance using a public key policy.",
-                        "input": {
-                            "LoadBalancerName": "my-load-balancer",
-                            "PolicyName": "my-authentication-policy",
-                            "PolicyTypeName": "BackendServerAuthenticationPolicyType",
-                            "PolicyAttributes": [
-                                {
-                                    "AttributeName": "PublicKeyPolicyName",
-                                    "AttributeValue": "my-PublicKey-policy"
                                 }
                             ]
                         }
@@ -2152,35 +2002,7 @@
                     "inputToken": "Marker",
                     "outputToken": "NextMarker",
                     "items": "LoadBalancerDescriptions"
-                },
-                "smithy.test#smokeTests": [
-                    {
-                        "id": "DescribeLoadBalancersSuccess",
-                        "params": {},
-                        "vendorParams": {
-                            "region": "us-west-2"
-                        },
-                        "vendorParamsShape": "aws.test#AwsVendorParams",
-                        "expect": {
-                            "success": {}
-                        }
-                    },
-                    {
-                        "id": "DescribeLoadBalancersFailure",
-                        "params": {
-                            "LoadBalancerNames": [
-                                "fake_load_balancer"
-                            ]
-                        },
-                        "vendorParams": {
-                            "region": "us-west-2"
-                        },
-                        "vendorParamsShape": "aws.test#AwsVendorParams",
-                        "expect": {
-                            "failure": {}
-                        }
-                    }
-                ]
+                }
             }
         },
         "com.amazonaws.elasticloadbalancing#DescribeTags": {
@@ -2594,6 +2416,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -2636,8 +2459,7 @@
                                     },
                                     "type": "endpoint"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [
@@ -2650,6 +2472,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -2663,6 +2486,7 @@
                                             "assign": "PartitionResult"
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -2685,6 +2509,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -2719,6 +2544,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -2729,16 +2555,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -2752,12 +2576,14 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
                                                         {
                                                             "fn": "booleanEquals",
                                                             "argv": [
+                                                                true,
                                                                 {
                                                                     "fn": "getAttr",
                                                                     "argv": [
@@ -2766,17 +2592,18 @@
                                                                         },
                                                                         "supportsFIPS"
                                                                     ]
-                                                                },
-                                                                true
+                                                                }
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [
                                                                 {
                                                                     "fn": "stringEquals",
                                                                     "argv": [
+                                                                        "aws-us-gov",
                                                                         {
                                                                             "fn": "getAttr",
                                                                             "argv": [
@@ -2785,8 +2612,7 @@
                                                                                 },
                                                                                 "name"
                                                                             ]
-                                                                        },
-                                                                        "aws-us-gov"
+                                                                        }
                                                                     ]
                                                                 }
                                                             ],
@@ -2806,16 +2632,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS is enabled but this partition does not support FIPS",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -2829,6 +2653,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -2848,6 +2673,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -2858,16 +2684,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "DualStack is enabled but this partition does not support DualStack",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [],
@@ -2878,11 +2702,9 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
@@ -3625,6 +3447,7 @@
                 "Interval": {
                     "target": "com.amazonaws.elasticloadbalancing#HealthCheckInterval",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The approximate interval, in seconds, between health checks of an individual instance.</p>",
                         "smithy.api#required": {}
                     }
@@ -3632,6 +3455,7 @@
                 "Timeout": {
                     "target": "com.amazonaws.elasticloadbalancing#HealthCheckTimeout",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The amount of time, in seconds, during which no response means a failed health check.</p>\n        <p>This value must be less than the <code>Interval</code> value.</p>",
                         "smithy.api#required": {}
                     }
@@ -3639,6 +3463,7 @@
                 "UnhealthyThreshold": {
                     "target": "com.amazonaws.elasticloadbalancing#UnhealthyThreshold",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The number of consecutive health check failures required before moving the instance to the <code>Unhealthy</code> state.</p>",
                         "smithy.api#required": {}
                     }
@@ -3646,6 +3471,7 @@
                 "HealthyThreshold": {
                     "target": "com.amazonaws.elasticloadbalancing#HealthyThreshold",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The number of consecutive health checks successes required before moving the instance to the <code>Healthy</code> state.</p>",
                         "smithy.api#required": {}
                     }
@@ -3658,6 +3484,7 @@
         "com.amazonaws.elasticloadbalancing#HealthCheckInterval": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 5,
                     "max": 300
@@ -3670,6 +3497,7 @@
         "com.amazonaws.elasticloadbalancing#HealthCheckTimeout": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 2,
                     "max": 60
@@ -3679,6 +3507,7 @@
         "com.amazonaws.elasticloadbalancing#HealthyThreshold": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 2,
                     "max": 10
@@ -3714,6 +3543,7 @@
         "com.amazonaws.elasticloadbalancing#InstancePort": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 65535
@@ -3928,6 +3758,7 @@
                 "InstancePort": {
                     "target": "com.amazonaws.elasticloadbalancing#InstancePort",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The port on which the instance is listening.</p>",
                         "smithy.api#required": {}
                     }
@@ -4222,28 +4053,6 @@
                             "LoadBalancerAttributes": {
                                 "CrossZoneLoadBalancing": {
                                     "Enabled": true
-                                }
-                            }
-                        }
-                    },
-                    {
-                        "title": "To enable connection draining",
-                        "documentation": "This example enables connection draining for the specified load balancer.",
-                        "input": {
-                            "LoadBalancerName": "my-load-balancer",
-                            "LoadBalancerAttributes": {
-                                "ConnectionDraining": {
-                                    "Enabled": true,
-                                    "Timeout": 300
-                                }
-                            }
-                        },
-                        "output": {
-                            "LoadBalancerName": "my-load-balancer",
-                            "LoadBalancerAttributes": {
-                                "ConnectionDraining": {
-                                    "Enabled": true,
-                                    "Timeout": 300
                                 }
                             }
                         }
@@ -5219,6 +5028,7 @@
         "com.amazonaws.elasticloadbalancing#UnhealthyThreshold": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 2,
                     "max": 10

@@ -7,8 +7,12 @@ import (
 	"testing"
 	"time"
 
+	smithydocument "github.com/aws/smithy-go/document"
+	"github.com/google/go-cmp/cmp/cmpopts"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodbstreams/types"
+	"github.com/google/go-cmp/cmp"
 )
 
 type testTextMarshaler struct {
@@ -405,7 +409,8 @@ func assertConvertTest(t *testing.T, actual, expected interface{}, err, expected
 	} else if err != nil {
 		t.Fatalf("expect no error, got %v", err)
 	} else {
-		if diff := cmpDiff(ptrToValue(expected), ptrToValue(actual)); len(diff) != 0 {
+		if diff := cmp.Diff(ptrToValue(expected), ptrToValue(actual),
+			cmpopts.IgnoreTypes(smithydocument.NoSerde{})); len(diff) != 0 {
 			t.Errorf("expect match\n%s", diff)
 		}
 	}
@@ -423,4 +428,19 @@ func ptrToValue(in interface{}) interface{} {
 		return ptrToValue(v.Interface())
 	}
 	return v.Interface()
+}
+
+func getIgnoreAVUnexportedOptions() cmp.Options {
+	return cmp.Options{
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberM{}),
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberN{}),
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberNS{}),
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberBOOL{}),
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberB{}),
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberBS{}),
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberL{}),
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberS{}),
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberSS{}),
+		cmpopts.IgnoreUnexported(types.AttributeValueMemberNULL{}),
+	}
 }

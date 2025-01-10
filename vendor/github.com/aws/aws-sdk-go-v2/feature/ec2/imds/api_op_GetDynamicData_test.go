@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestGetDynamicData(t *testing.T) {
@@ -97,7 +99,7 @@ func TestGetDynamicData(t *testing.T) {
 					hex.Dump(e), hex.Dump(a))
 			}
 
-			if diff := cmpDiff(c.ExpectTrace, trace.requests); len(diff) != 0 {
+			if diff := cmp.Diff(c.ExpectTrace, trace.requests); len(diff) != 0 {
 				t.Errorf("expect trace to match\n%s", diff)
 			}
 		})

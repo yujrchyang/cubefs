@@ -5,13 +5,13 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/google/go-cmp/cmp"
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 type readSeeker struct {
@@ -64,11 +64,11 @@ func TestWriteGetObjectResponse(t *testing.T) {
 						t.Errorf("expect no transfer-encoding")
 					}
 
-					if diff := cmpDiff(request.Header.Get(contentLength), fmt.Sprintf("%d", len(expectedInput))); len(diff) > 0 {
+					if diff := cmp.Diff(request.Header.Get(contentLength), fmt.Sprintf("%d", len(expectedInput))); len(diff) > 0 {
 						t.Error(diff)
 					}
 
-					if diff := cmpDiff(request.Header.Get(contentSha256), unsignedPayload); len(diff) > 0 {
+					if diff := cmp.Diff(request.Header.Get(contentSha256), unsignedPayload); len(diff) > 0 {
 						t.Error(diff)
 					}
 
@@ -76,7 +76,7 @@ func TestWriteGetObjectResponse(t *testing.T) {
 					if err != nil {
 						t.Errorf("expect no error, got %v", err)
 					}
-					if diff := cmpDiff(all, expectedInput); len(diff) > 0 {
+					if diff := cmp.Diff(all, expectedInput); len(diff) > 0 {
 						t.Error(diff)
 					}
 					writer.WriteHeader(200)
@@ -97,11 +97,11 @@ func TestWriteGetObjectResponse(t *testing.T) {
 						t.Errorf("expect no transfer-encoding")
 					}
 
-					if diff := cmpDiff(request.Header.Get(contentLength), fmt.Sprintf("%d", len(expectedInput))); len(diff) > 0 {
+					if diff := cmp.Diff(request.Header.Get(contentLength), fmt.Sprintf("%d", len(expectedInput))); len(diff) > 0 {
 						t.Error(diff)
 					}
 
-					if diff := cmpDiff(request.Header.Get(contentSha256), unsignedPayload); len(diff) > 0 {
+					if diff := cmp.Diff(request.Header.Get(contentSha256), unsignedPayload); len(diff) > 0 {
 						t.Error(diff)
 					}
 
@@ -109,7 +109,7 @@ func TestWriteGetObjectResponse(t *testing.T) {
 					if err != nil {
 						t.Errorf("expect no error, got %v", err)
 					}
-					if diff := cmpDiff(all, expectedInput); len(diff) > 0 {
+					if diff := cmp.Diff(all, expectedInput); len(diff) > 0 {
 						t.Error(diff)
 					}
 					writer.WriteHeader(200)
@@ -130,11 +130,11 @@ func TestWriteGetObjectResponse(t *testing.T) {
 						t.Errorf("expect no transfer-encoding")
 					}
 
-					if diff := cmpDiff(request.Header.Get(contentLength), fmt.Sprintf("%d", len(expectedInput))); len(diff) > 0 {
+					if diff := cmp.Diff(request.Header.Get(contentLength), fmt.Sprintf("%d", len(expectedInput))); len(diff) > 0 {
 						t.Error(diff)
 					}
 
-					if diff := cmpDiff(request.Header.Get(contentSha256), unsignedPayload); len(diff) > 0 {
+					if diff := cmp.Diff(request.Header.Get(contentSha256), unsignedPayload); len(diff) > 0 {
 						t.Error(diff)
 					}
 
@@ -142,7 +142,7 @@ func TestWriteGetObjectResponse(t *testing.T) {
 					if err != nil {
 						t.Errorf("expect no error, got %v", err)
 					}
-					if diff := cmpDiff(all, expectedInput); len(diff) > 0 {
+					if diff := cmp.Diff(all, expectedInput); len(diff) > 0 {
 						t.Error(diff)
 					}
 					writer.WriteHeader(200)
@@ -152,7 +152,7 @@ func TestWriteGetObjectResponse(t *testing.T) {
 				RequestRoute:  aws.String("route"),
 				RequestToken:  aws.String("token"),
 				Body:          &readOnlyReader{bytes.NewReader([]byte("test input"))},
-				ContentLength: aws.Int64(10),
+				ContentLength: 10,
 			},
 		},
 		"Content-Length Not Provided": {
@@ -160,15 +160,15 @@ func TestWriteGetObjectResponse(t *testing.T) {
 				return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 					expectedInput := []byte("test input")
 
-					if diff := cmpDiff(request.TransferEncoding, []string{"chunked"}); len(diff) > 0 {
+					if diff := cmp.Diff(request.TransferEncoding, []string{"chunked"}); len(diff) > 0 {
 						t.Error(diff)
 					}
 
-					if diff := cmpDiff(request.Header.Get(contentLength), ""); len(diff) > 0 {
+					if diff := cmp.Diff(request.Header.Get(contentLength), ""); len(diff) > 0 {
 						t.Error(diff)
 					}
 
-					if diff := cmpDiff(request.Header.Get(contentSha256), unsignedPayload); len(diff) > 0 {
+					if diff := cmp.Diff(request.Header.Get(contentSha256), unsignedPayload); len(diff) > 0 {
 						t.Error(diff)
 					}
 
@@ -176,7 +176,7 @@ func TestWriteGetObjectResponse(t *testing.T) {
 					if err != nil {
 						t.Errorf("expect no error, got %v", err)
 					}
-					if diff := cmpDiff(all, expectedInput); len(diff) > 0 {
+					if diff := cmp.Diff(all, expectedInput); len(diff) > 0 {
 						t.Error(diff)
 					}
 					writer.WriteHeader(200)

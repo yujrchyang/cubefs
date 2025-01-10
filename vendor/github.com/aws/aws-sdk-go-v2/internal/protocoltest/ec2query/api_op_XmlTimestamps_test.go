@@ -6,13 +6,17 @@ import (
 	"bytes"
 	"context"
 	"github.com/aws/aws-sdk-go-v2/aws"
+	smithydocument "github.com/aws/smithy-go/document"
 	"github.com/aws/smithy-go/middleware"
 	"github.com/aws/smithy-go/ptr"
 	smithyrand "github.com/aws/smithy-go/rand"
 	smithytesting "github.com/aws/smithy-go/testing"
 	smithytime "github.com/aws/smithy-go/time"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"testing"
 )
@@ -34,7 +38,7 @@ func TestClient_XmlTimestamps_awsEc2queryDeserialize(t *testing.T) {
 			BodyMediaType: "application/xml",
 			Body: []byte(`<XmlTimestampsResponse xmlns="https://example.com/">
 			    <normal>2014-04-29T18:30:38Z</normal>
-			    <requestId>requestid</requestId>
+			    <RequestId>requestid</RequestId>
 			</XmlTimestampsResponse>
 			`),
 			ExpectResult: &XmlTimestampsOutput{
@@ -50,7 +54,7 @@ func TestClient_XmlTimestamps_awsEc2queryDeserialize(t *testing.T) {
 			BodyMediaType: "application/xml",
 			Body: []byte(`<XmlTimestampsResponse xmlns="https://example.com/">
 			    <dateTime>2014-04-29T18:30:38Z</dateTime>
-			    <requestId>requestid</requestId>
+			    <RequestId>requestid</RequestId>
 			</XmlTimestampsResponse>
 			`),
 			ExpectResult: &XmlTimestampsOutput{
@@ -67,7 +71,7 @@ func TestClient_XmlTimestamps_awsEc2queryDeserialize(t *testing.T) {
 			BodyMediaType: "application/xml",
 			Body: []byte(`<XmlTimestampsResponse xmlns="https://example.com/">
 			    <dateTimeOnTarget>2014-04-29T18:30:38Z</dateTimeOnTarget>
-			    <requestId>requestid</requestId>
+			    <RequestId>requestid</RequestId>
 			</XmlTimestampsResponse>
 			`),
 			ExpectResult: &XmlTimestampsOutput{
@@ -83,7 +87,7 @@ func TestClient_XmlTimestamps_awsEc2queryDeserialize(t *testing.T) {
 			BodyMediaType: "application/xml",
 			Body: []byte(`<XmlTimestampsResponse xmlns="https://example.com/">
 			    <epochSeconds>1398796238</epochSeconds>
-			    <requestId>requestid</requestId>
+			    <RequestId>requestid</RequestId>
 			</XmlTimestampsResponse>
 			`),
 			ExpectResult: &XmlTimestampsOutput{
@@ -99,7 +103,7 @@ func TestClient_XmlTimestamps_awsEc2queryDeserialize(t *testing.T) {
 			BodyMediaType: "application/xml",
 			Body: []byte(`<XmlTimestampsResponse xmlns="https://example.com/">
 			    <epochSecondsOnTarget>1398796238</epochSecondsOnTarget>
-			    <requestId>requestid</requestId>
+			    <RequestId>requestid</RequestId>
 			</XmlTimestampsResponse>
 			`),
 			ExpectResult: &XmlTimestampsOutput{
@@ -115,7 +119,7 @@ func TestClient_XmlTimestamps_awsEc2queryDeserialize(t *testing.T) {
 			BodyMediaType: "application/xml",
 			Body: []byte(`<XmlTimestampsResponse xmlns="https://example.com/">
 			    <httpDate>Tue, 29 Apr 2014 18:30:38 GMT</httpDate>
-			    <requestId>requestid</requestId>
+			    <RequestId>requestid</RequestId>
 			</XmlTimestampsResponse>
 			`),
 			ExpectResult: &XmlTimestampsOutput{
@@ -131,7 +135,7 @@ func TestClient_XmlTimestamps_awsEc2queryDeserialize(t *testing.T) {
 			BodyMediaType: "application/xml",
 			Body: []byte(`<XmlTimestampsResponse xmlns="https://example.com/">
 			    <httpDateOnTarget>Tue, 29 Apr 2014 18:30:38 GMT</httpDateOnTarget>
-			    <requestId>requestid</requestId>
+			    <RequestId>requestid</RequestId>
 			</XmlTimestampsResponse>
 			`),
 			ExpectResult: &XmlTimestampsOutput{
@@ -190,7 +194,19 @@ func TestClient_XmlTimestamps_awsEc2queryDeserialize(t *testing.T) {
 			if result == nil {
 				t.Fatalf("expect not nil result")
 			}
-			if err := smithytesting.CompareValues(c.ExpectResult, result); err != nil {
+			opts := cmp.Options{
+				cmpopts.IgnoreUnexported(
+					middleware.Metadata{},
+				),
+				cmp.FilterValues(func(x, y float64) bool {
+					return math.IsNaN(x) && math.IsNaN(y)
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmp.FilterValues(func(x, y float32) bool {
+					return math.IsNaN(float64(x)) && math.IsNaN(float64(y))
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmpopts.IgnoreTypes(smithydocument.NoSerde{}),
+			}
+			if err := smithytesting.CompareValues(c.ExpectResult, result, opts...); err != nil {
 				t.Errorf("expect c.ExpectResult value match:\n%v", err)
 			}
 		})

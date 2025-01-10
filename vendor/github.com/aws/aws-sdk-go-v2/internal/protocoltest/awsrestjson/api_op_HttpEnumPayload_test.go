@@ -8,13 +8,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	protocoltesthttp "github.com/aws/aws-sdk-go-v2/internal/protocoltest"
 	"github.com/aws/aws-sdk-go-v2/internal/protocoltest/awsrestjson/types"
+	smithydocument "github.com/aws/smithy-go/document"
 	"github.com/aws/smithy-go/middleware"
 	smithyprivateprotocol "github.com/aws/smithy-go/private/protocol"
 	smithyrand "github.com/aws/smithy-go/rand"
 	smithytesting "github.com/aws/smithy-go/testing"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/url"
 	"testing"
@@ -35,16 +39,13 @@ func TestClient_HttpEnumPayload_awsRestjson1Serialize(t *testing.T) {
 		BodyMediaType string
 		BodyAssert    func(io.Reader) error
 	}{
-		"RestJsonEnumPayloadRequest": {
+		"EnumPayloadRequest": {
 			Params: &HttpEnumPayloadInput{
 				Payload: types.StringEnum("enumvalue"),
 			},
 			ExpectMethod:  "POST",
 			ExpectURIPath: "/EnumPayload",
 			ExpectQuery:   []smithytesting.QueryItem{},
-			ExpectHeader: http.Header{
-				"Content-Type": []string{"text/plain"},
-			},
 			BodyAssert: func(actual io.Reader) error {
 				return smithytesting.CompareReaderBytes(actual, []byte(`enumvalue`))
 			},
@@ -122,12 +123,9 @@ func TestClient_HttpEnumPayload_awsRestjson1Deserialize(t *testing.T) {
 		Body          []byte
 		ExpectResult  *HttpEnumPayloadOutput
 	}{
-		"RestJsonEnumPayloadResponse": {
+		"EnumPayloadResponse": {
 			StatusCode: 200,
-			Header: http.Header{
-				"Content-Type": []string{"text/plain"},
-			},
-			Body: []byte(`enumvalue`),
+			Body:       []byte(`enumvalue`),
 			ExpectResult: &HttpEnumPayloadOutput{
 				Payload: types.StringEnum("enumvalue"),
 			},
@@ -184,7 +182,19 @@ func TestClient_HttpEnumPayload_awsRestjson1Deserialize(t *testing.T) {
 			if result == nil {
 				t.Fatalf("expect not nil result")
 			}
-			if err := smithytesting.CompareValues(c.ExpectResult, result); err != nil {
+			opts := cmp.Options{
+				cmpopts.IgnoreUnexported(
+					middleware.Metadata{},
+				),
+				cmp.FilterValues(func(x, y float64) bool {
+					return math.IsNaN(x) && math.IsNaN(y)
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmp.FilterValues(func(x, y float32) bool {
+					return math.IsNaN(float64(x)) && math.IsNaN(float64(y))
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmpopts.IgnoreTypes(smithydocument.NoSerde{}),
+			}
+			if err := smithytesting.CompareValues(c.ExpectResult, result, opts...); err != nil {
 				t.Errorf("expect c.ExpectResult value match:\n%v", err)
 			}
 		})

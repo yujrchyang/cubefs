@@ -67,14 +67,6 @@ public class ResolveClientConfigFromSources implements GoIntegration {
                             .build())
                     .build(),
             AddAwsConfigFields.AwsConfigField.builder()
-                    .name("DisableExpressAuth")
-                    .type(getUniversalSymbol("*bool"))
-                    .generatedOnClient(false)
-                    .servicePredicate(ResolveClientConfigFromSources::isS3Service)
-                    .awsResolveFunction(SymbolUtils.createValueSymbolBuilder("resolveDisableExpressAuth")
-                            .build())
-                    .build(),
-            AddAwsConfigFields.AwsConfigField.builder()
                     .name(ENDPOINT_DISCOVERY_OPTION)
                     .type(ENDPOINT_DISCOVERY_OPTION_TYPE)
                     .generatedOnClient(false)
@@ -94,14 +86,6 @@ public class ResolveClientConfigFromSources implements GoIntegration {
                     .type(SymbolUtils.createPointableSymbolBuilder("bool").build())
                     .generatedOnClient(false)
                     .awsResolveFunction(SymbolUtils.createValueSymbolBuilder(USE_FIPS_ENDPOINT_CONFIG_RESOLVER)
-                            .build())
-                    .build(),
-            AddAwsConfigFields.AwsConfigField.builder()
-                    .name("BaseEndpoint")
-                    .type(SymbolUtils.createPointableSymbolBuilder("string").build())
-                    .generatedOnClient(false)
-                    .awsResolveFunction(SymbolUtils.createValueSymbolBuilder(
-                        AwsEndpointResolverInitializerGenerator.RESOLVE_BASE_ENDPOINT)
                             .build())
                     .build()
     );

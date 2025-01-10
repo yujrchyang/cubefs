@@ -2,9 +2,8 @@ package s3
 
 import (
 	"context"
-	"testing"
-
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"testing"
 )
 
 type mockListObjectVersionsClient struct {
@@ -22,14 +21,14 @@ type mockListMultipartUploadsClient struct {
 func (c *mockListObjectVersionsClient) ListObjectVersions(ctx context.Context, input *ListObjectVersionsInput, optFns ...func(*Options)) (*ListObjectVersionsOutput, error) {
 	c.inputs = append(c.inputs, input)
 	requestCnt := len(c.inputs)
-	testCurRequest(len(c.outputs), requestCnt, aws.ToInt32(c.outputs[requestCnt-1].MaxKeys), aws.ToInt32(input.MaxKeys), c.t)
+	testCurRequest(len(c.outputs), requestCnt, c.outputs[requestCnt-1].MaxKeys, input.MaxKeys, c.t)
 	return c.outputs[requestCnt-1], nil
 }
 
 func (c *mockListMultipartUploadsClient) ListMultipartUploads(ctx context.Context, input *ListMultipartUploadsInput, optFns ...func(*Options)) (*ListMultipartUploadsOutput, error) {
 	c.inputs = append(c.inputs, input)
 	requestCnt := len(c.inputs)
-	testCurRequest(len(c.outputs), requestCnt, aws.ToInt32(c.outputs[requestCnt-1].MaxUploads), aws.ToInt32(input.MaxUploads), c.t)
+	testCurRequest(len(c.outputs), requestCnt, c.outputs[requestCnt-1].MaxUploads, input.MaxUploads, c.t)
 	return c.outputs[requestCnt-1], nil
 }
 
@@ -62,20 +61,20 @@ func TestListObjectVersionsPaginator(t *testing.T) {
 				{
 					NextKeyMarker:       aws.String("testKey1"),
 					NextVersionIdMarker: aws.String("testID1"),
-					MaxKeys:             aws.Int32(5),
-					IsTruncated:         aws.Bool(true),
+					MaxKeys:             5,
+					IsTruncated:         true,
 				},
 				{
 					NextKeyMarker:       aws.String("testKey2"),
 					NextVersionIdMarker: aws.String("testID2"),
-					MaxKeys:             aws.Int32(5),
-					IsTruncated:         aws.Bool(true),
+					MaxKeys:             5,
+					IsTruncated:         true,
 				},
 				{
 					NextKeyMarker:       aws.String("testKey3"),
 					NextVersionIdMarker: aws.String("testID3"),
-					MaxKeys:             aws.Int32(5),
-					IsTruncated:         aws.Bool(false),
+					MaxKeys:             5,
+					IsTruncated:         false,
 				},
 			},
 		},
@@ -90,26 +89,26 @@ func TestListObjectVersionsPaginator(t *testing.T) {
 				{
 					NextKeyMarker:       aws.String("testKey1"),
 					NextVersionIdMarker: aws.String("testID1"),
-					MaxKeys:             aws.Int32(10),
-					IsTruncated:         aws.Bool(true),
+					MaxKeys:             10,
+					IsTruncated:         true,
 				},
 				{
 					NextKeyMarker:       aws.String("testKey2"),
 					NextVersionIdMarker: aws.String("testID2"),
-					MaxKeys:             aws.Int32(10),
-					IsTruncated:         aws.Bool(true),
+					MaxKeys:             10,
+					IsTruncated:         true,
 				},
 				{
 					NextKeyMarker:       aws.String("testKey2"),
 					NextVersionIdMarker: aws.String("testID2"),
-					MaxKeys:             aws.Int32(10),
-					IsTruncated:         aws.Bool(true),
+					MaxKeys:             10,
+					IsTruncated:         true,
 				},
 				{
 					NextKeyMarker:       aws.String("testKey3"),
 					NextVersionIdMarker: aws.String("testID3"),
-					MaxKeys:             aws.Int32(10),
-					IsTruncated:         aws.Bool(false),
+					MaxKeys:             10,
+					IsTruncated:         false,
 				},
 			},
 		},
@@ -164,26 +163,26 @@ func TestListMultipartUploadsPaginator(t *testing.T) {
 				{
 					NextKeyMarker:      aws.String("testKey1"),
 					NextUploadIdMarker: aws.String("testID1"),
-					MaxUploads:         aws.Int32(5),
-					IsTruncated:        aws.Bool(true),
+					MaxUploads:         5,
+					IsTruncated:        true,
 				},
 				{
 					NextKeyMarker:      aws.String("testKey2"),
 					NextUploadIdMarker: aws.String("testID2"),
-					MaxUploads:         aws.Int32(5),
-					IsTruncated:        aws.Bool(true),
+					MaxUploads:         5,
+					IsTruncated:        true,
 				},
 				{
 					NextKeyMarker:      aws.String("testKey3"),
 					NextUploadIdMarker: aws.String("testID3"),
-					MaxUploads:         aws.Int32(5),
-					IsTruncated:        aws.Bool(true),
+					MaxUploads:         5,
+					IsTruncated:        true,
 				},
 				{
 					NextKeyMarker:      aws.String("testKey4"),
 					NextUploadIdMarker: aws.String("testID4"),
-					MaxUploads:         aws.Int32(5),
-					IsTruncated:        aws.Bool(false),
+					MaxUploads:         5,
+					IsTruncated:        false,
 				},
 			},
 		},
@@ -198,32 +197,32 @@ func TestListMultipartUploadsPaginator(t *testing.T) {
 				{
 					NextKeyMarker:      aws.String("testKey1"),
 					NextUploadIdMarker: aws.String("testID1"),
-					MaxUploads:         aws.Int32(10),
-					IsTruncated:        aws.Bool(true),
+					MaxUploads:         10,
+					IsTruncated:        true,
 				},
 				{
 					NextKeyMarker:      aws.String("testKey2"),
 					NextUploadIdMarker: aws.String("testID2"),
-					MaxUploads:         aws.Int32(10),
-					IsTruncated:        aws.Bool(true),
+					MaxUploads:         10,
+					IsTruncated:        true,
 				},
 				{
 					NextKeyMarker:      aws.String("testKey2"),
 					NextUploadIdMarker: aws.String("testID2"),
-					MaxUploads:         aws.Int32(10),
-					IsTruncated:        aws.Bool(true),
+					MaxUploads:         10,
+					IsTruncated:        true,
 				},
 				{
 					NextKeyMarker:      aws.String("testKey4"),
 					NextUploadIdMarker: aws.String("testID4"),
-					MaxUploads:         aws.Int32(10),
-					IsTruncated:        aws.Bool(false),
+					MaxUploads:         10,
+					IsTruncated:        false,
 				},
 				{
 					NextKeyMarker:      aws.String("testKey5"),
 					NextUploadIdMarker: aws.String("testID5"),
-					MaxUploads:         aws.Int32(10),
-					IsTruncated:        aws.Bool(false),
+					MaxUploads:         10,
+					IsTruncated:        false,
 				},
 			},
 		},

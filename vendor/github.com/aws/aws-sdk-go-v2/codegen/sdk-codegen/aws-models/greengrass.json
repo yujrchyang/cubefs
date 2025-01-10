@@ -68,7 +68,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ARN of the role you wish to associate with this group. The existence of the role is not validated.",
                         "smithy.api#required": {}
                     }
@@ -123,7 +122,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ARN of the service role you wish to associate with your account.",
                         "smithy.api#required": {}
                     }
@@ -388,7 +386,6 @@
                 "ConnectorArn": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ARN of the connector.",
                         "smithy.api#required": {}
                     }
@@ -396,7 +393,6 @@
                 "Id": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A descriptive or arbitrary ID for the connector. This value must be unique within the connector definition version. Max length is 128 characters with pattern [a-zA-Z0-9:_-]+.",
                         "smithy.api#required": {}
                     }
@@ -432,7 +428,6 @@
                 "CertificateArn": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ARN of the certificate associated with the core.",
                         "smithy.api#required": {}
                     }
@@ -440,7 +435,6 @@
                 "Id": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A descriptive or arbitrary ID for the core. This value must be unique within the core definition version. Max length is 128 characters with pattern ''[a-zA-Z0-9:_-]+''.",
                         "smithy.api#required": {}
                     }
@@ -454,7 +448,6 @@
                 "ThingArn": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ARN of the thing which is the core.",
                         "smithy.api#required": {}
                     }
@@ -896,7 +889,6 @@
                 "DeploymentType": {
                     "target": "com.amazonaws.greengrass#DeploymentType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The type of deployment. When used for ''CreateDeployment'', only ''NewDeployment'' and ''Redeployment'' are valid.",
                         "smithy.api#required": {}
                     }
@@ -1426,7 +1418,6 @@
                 "Name": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The name of the group.",
                         "smithy.api#required": {}
                     }
@@ -2025,14 +2016,12 @@
                 "S3UrlSignerRole": {
                     "target": "com.amazonaws.greengrass#S3UrlSignerRole",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "SoftwareToUpdate": {
                     "target": "com.amazonaws.greengrass#SoftwareToUpdate",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
@@ -2042,21 +2031,18 @@
                 "UpdateTargets": {
                     "target": "com.amazonaws.greengrass#UpdateTargets",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "UpdateTargetsArchitecture": {
                     "target": "com.amazonaws.greengrass#UpdateTargetsArchitecture",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "UpdateTargetsOperatingSystem": {
                     "target": "com.amazonaws.greengrass#UpdateTargetsOperatingSystem",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -2778,7 +2764,6 @@
                 "CertificateArn": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ARN of the certificate associated with the device.",
                         "smithy.api#required": {}
                     }
@@ -2786,7 +2771,6 @@
                 "Id": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A descriptive or arbitrary ID for the device. This value must be unique within the device definition version. Max length is 128 characters with pattern ''[a-zA-Z0-9:_-]+''.",
                         "smithy.api#required": {}
                     }
@@ -2800,7 +2784,6 @@
                 "ThingArn": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The thing ARN of the device.",
                         "smithy.api#required": {}
                     }
@@ -2986,7 +2969,6 @@
                 "Id": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A descriptive or arbitrary ID for the function. This value must be unique within the function definition version. Max length is 128 characters with pattern ''[a-zA-Z0-9:_-]+''.",
                         "smithy.api#required": {}
                     }
@@ -5545,6 +5527,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -5587,8 +5570,7 @@
                                     },
                                     "type": "endpoint"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [
@@ -5601,6 +5583,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -5614,6 +5597,7 @@
                                             "assign": "PartitionResult"
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -5636,6 +5620,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -5670,6 +5655,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -5680,16 +5666,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -5703,12 +5687,14 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
                                                         {
                                                             "fn": "booleanEquals",
                                                             "argv": [
+                                                                true,
                                                                 {
                                                                     "fn": "getAttr",
                                                                     "argv": [
@@ -5717,11 +5703,11 @@
                                                                         },
                                                                         "supportsFIPS"
                                                                     ]
-                                                                },
-                                                                true
+                                                                }
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [
@@ -5770,16 +5756,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS is enabled but this partition does not support FIPS",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -5793,6 +5777,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -5812,6 +5797,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -5822,16 +5808,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "DualStack is enabled but this partition does not support DualStack",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -5896,11 +5880,9 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
@@ -8012,7 +7994,6 @@
                 "Component": {
                     "target": "com.amazonaws.greengrass#LoggerComponent",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The component that will be subject to logging.",
                         "smithy.api#required": {}
                     }
@@ -8020,7 +8001,6 @@
                 "Id": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A descriptive or arbitrary ID for the logger. This value must be unique within the logger definition version. Max length is 128 characters with pattern ''[a-zA-Z0-9:_-]+''.",
                         "smithy.api#required": {}
                     }
@@ -8028,7 +8008,6 @@
                 "Level": {
                     "target": "com.amazonaws.greengrass#LoggerLevel",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The level of the logs.",
                         "smithy.api#required": {}
                     }
@@ -8042,7 +8021,6 @@
                 "Type": {
                     "target": "com.amazonaws.greengrass#LoggerType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The type of log output which will be used.",
                         "smithy.api#required": {}
                     }
@@ -8233,7 +8211,6 @@
                 "Id": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The resource ID, used to refer to a resource in the Lambda function configuration. Max length is 128 characters with pattern ''[a-zA-Z0-9:_-]+''. This must be unique within a Greengrass group.",
                         "smithy.api#required": {}
                     }
@@ -8241,7 +8218,6 @@
                 "Name": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The descriptive resource name, which is displayed on the AWS IoT Greengrass console. Max length 128 characters with pattern ''[a-zA-Z0-9:_-]+''. This must be unique within a Greengrass group.",
                         "smithy.api#required": {}
                     }
@@ -8249,7 +8225,6 @@
                 "ResourceDataContainer": {
                     "target": "com.amazonaws.greengrass#ResourceDataContainer",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A container of data for all resource types.",
                         "smithy.api#required": {}
                     }
@@ -8271,7 +8246,6 @@
                 "ResourceId": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ID of the resource. (This ID is assigned to the resource when you create the resource definiton.)",
                         "smithy.api#required": {}
                     }
@@ -8339,7 +8313,6 @@
                 "GroupOwner": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The group owner of the resource. This is the name of an existing Linux OS group on the system or a GID. The group's permissions are added to the Lambda process.",
                         "smithy.api#required": {}
                     }
@@ -8347,7 +8320,6 @@
                 "GroupPermission": {
                     "target": "com.amazonaws.greengrass#Permission",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The permissions that the group owner has to the resource. Valid values are ''rw'' (read/write) or ''ro'' (read-only).",
                         "smithy.api#required": {}
                     }
@@ -8498,7 +8470,6 @@
                 "ExecutionRoleArn": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ARN of the execution role to associate with the bulk deployment operation. This IAM role must allow the ''greengrass:CreateDeployment'' action for all group versions that are listed in the input file. This IAM role must have access to the S3 bucket containing the input file.",
                         "smithy.api#required": {}
                     }
@@ -8506,7 +8477,6 @@
                 "InputFileUri": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The URI of the input file contained in the S3 bucket. The execution role must have ''getObject'' permissions on this bucket to access the input file. The input file is a JSON-serialized, line delimited file with UTF-8 encoding that provides a list of group and version IDs and the deployment type. This file must be less than 100 MB. Currently, AWS IoT Greengrass supports only ''NewDeployment'' deployment types.",
                         "smithy.api#required": {}
                     }
@@ -8593,7 +8563,6 @@
                 "Id": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A descriptive or arbitrary ID for the subscription. This value must be unique within the subscription definition version. Max length is 128 characters with pattern ''[a-zA-Z0-9:_-]+''.",
                         "smithy.api#required": {}
                     }
@@ -8601,7 +8570,6 @@
                 "Source": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The source of the subscription. Can be a thing ARN, a Lambda function ARN, a connector ARN, 'cloud' (which represents the AWS IoT cloud), or 'GGShadowService'.",
                         "smithy.api#required": {}
                     }
@@ -8609,7 +8577,6 @@
                 "Subject": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The MQTT topic used to route the message.",
                         "smithy.api#required": {}
                     }
@@ -8617,7 +8584,6 @@
                 "Target": {
                     "target": "com.amazonaws.greengrass#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "Where the message is sent to. Can be a thing ARN, a Lambda function ARN, a connector ARN, 'cloud' (which represents the AWS IoT cloud), or 'GGShadowService'.",
                         "smithy.api#required": {}
                     }
@@ -8724,7 +8690,6 @@
                 "Telemetry": {
                     "target": "com.amazonaws.greengrass#Telemetry",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "Configure telemetry to be on or off.",
                         "smithy.api#required": {}
                     }
@@ -8740,7 +8705,6 @@
                 "Telemetry": {
                     "target": "com.amazonaws.greengrass#Telemetry",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "Configure telemetry to be on or off.",
                         "smithy.api#required": {}
                     }
@@ -8786,7 +8750,6 @@
                 "TagKeys": {
                     "target": "com.amazonaws.greengrass#__listOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "An array of tag keys to delete",
                         "smithy.api#httpQuery": "tagKeys",
                         "smithy.api#required": {}

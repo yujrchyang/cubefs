@@ -408,9 +408,10 @@ func (fs *FileService) signURL(ctx context.Context, args struct {
 	}
 
 	sdkConfig := aws.NewConfig()
-	sdkConfig.BaseEndpoint = aws.String(endPoint)
 	sdkConfig.Credentials = aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(userInfo.AccessKey, userInfo.SecretKey, ""))
-	s3Client := s3.NewFromConfig(*sdkConfig)
+	s3Client := s3.NewFromConfig(*sdkConfig, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(endPoint)
+	})
 	presignerClient := s3.NewPresignClient(s3Client)
 	request, err := presignerClient.PresignGetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(args.VolName),

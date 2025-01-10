@@ -1545,9 +1545,6 @@ func (m *awsEc2query_serializeOpXmlTimestamps) HandleSerialize(ctx context.Conte
 	return next.HandleSerialize(ctx, in)
 }
 func awsEc2query_serializeDocumentListWithXmlName(v []string, value query.Value) error {
-	if len(v) == 0 {
-		return nil
-	}
 	array := value.Array("Item")
 
 	for i := range v {
@@ -1596,9 +1593,6 @@ func awsEc2query_serializeDocumentStructArg(v *types.StructArg, value query.Valu
 }
 
 func awsEc2query_serializeDocumentGreetingList(v []types.GreetingStruct, value query.Value) error {
-	if len(v) == 0 {
-		return nil
-	}
 	array := value.Array("Member")
 
 	for i := range v {
@@ -1623,9 +1617,6 @@ func awsEc2query_serializeDocumentGreetingStruct(v *types.GreetingStruct, value 
 }
 
 func awsEc2query_serializeDocumentStringList(v []string, value query.Value) error {
-	if len(v) == 0 {
-		return nil
-	}
 	array := value.Array("Member")
 
 	for i := range v {
@@ -1827,12 +1818,12 @@ func awsEc2query_serializeOpDocumentSimpleInputParamsInput(v *SimpleInputParamsI
 	}
 
 	if v.HasQueryAndXmlName != nil {
-		objectKey := object.Key("HasQueryAndXmlName")
+		objectKey := object.Key("B")
 		objectKey.String(*v.HasQueryAndXmlName)
 	}
 
 	if v.HasQueryName != nil {
-		objectKey := object.Key("HasQueryName")
+		objectKey := object.Key("A")
 		objectKey.String(*v.HasQueryName)
 	}
 
@@ -1842,7 +1833,7 @@ func awsEc2query_serializeOpDocumentSimpleInputParamsInput(v *SimpleInputParamsI
 	}
 
 	if v.UsesXmlName != nil {
-		objectKey := object.Key("UsesXmlName")
+		objectKey := object.Key("C")
 		objectKey.String(*v.UsesXmlName)
 	}
 

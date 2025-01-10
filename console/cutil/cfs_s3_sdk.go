@@ -27,9 +27,10 @@ type ConsoleS3 struct {
 
 func InitConsoleS3(config *S3Config) (*ConsoleS3, error) {
 	sdkConfig := aws.NewConfig()
-	sdkConfig.BaseEndpoint = aws.String(config.EndPoint)
 	sdkConfig.Credentials = aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(config.AccessKey, config.SecretKey, ""))
-	s3Client := s3.NewFromConfig(*sdkConfig)
+	s3Client := s3.NewFromConfig(*sdkConfig, func(o *s3.Options) {
+		o.BaseEndpoint = aws.String(config.EndPoint)
+	})
 	downloader := manager.NewDownloader(s3Client)
 	upload := manager.NewUploader(s3Client, func(u *manager.Uploader) {
 		u.PartSize = 64 * 1024 * 1024 // 64MB per part

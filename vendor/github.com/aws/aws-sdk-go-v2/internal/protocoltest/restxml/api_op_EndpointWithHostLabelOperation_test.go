@@ -55,9 +55,9 @@ func TestClient_EndpointWithHostLabelOperation_awsRestxmlSerialize(t *testing.T)
 			}(),
 			BodyMediaType: "application/xml",
 			BodyAssert: func(actual io.Reader) error {
-				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<EndpointWithHostLabelOperationRequest>
+				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<HostLabelInput>
 			    <label>bar</label>
-			</EndpointWithHostLabelOperationRequest>
+			</HostLabelInput>
 			`))
 			},
 		},

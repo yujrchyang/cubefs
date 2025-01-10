@@ -1,26 +1,34 @@
 {
     "smithy": "2.0",
+    "metadata": {
+        "suppressions": [
+            {
+                "id": "HttpMethodSemantics",
+                "namespace": "*"
+            },
+            {
+                "id": "HttpResponseCodeSemantics",
+                "namespace": "*"
+            },
+            {
+                "id": "PaginatedTrait",
+                "namespace": "*"
+            },
+            {
+                "id": "HttpHeaderTrait",
+                "namespace": "*"
+            },
+            {
+                "id": "HttpUriConflict",
+                "namespace": "*"
+            },
+            {
+                "id": "Service",
+                "namespace": "*"
+            }
+        ]
+    },
     "shapes": {
-        "com.amazonaws.necco.coral#CfnSshPublicKeys": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.transfer#SshPublicKeyBody"
-            },
-            "traits": {
-                "smithy.api#documentation": "This represents the SSH User Public Keys for CloudFormation resource"
-            }
-        },
-        "com.amazonaws.necco.coral#CfnUserProperties": {
-            "type": "structure",
-            "members": {
-                "SshPublicKeys": {
-                    "target": "com.amazonaws.necco.coral#CfnSshPublicKeys"
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "This represents the SSH User Public Keys for CloudFormation resource"
-            }
-        },
         "com.amazonaws.transfer#AccessDeniedException": {
             "type": "structure",
             "members": {
@@ -57,46 +65,6 @@
                 "smithy.api#pattern": "^a-([0-9a-f]{17})$"
             }
         },
-        "com.amazonaws.transfer#AgreementResource": {
-            "type": "resource",
-            "identifiers": {
-                "ServerId": {
-                    "target": "com.amazonaws.transfer#ServerId"
-                },
-                "AgreementId": {
-                    "target": "com.amazonaws.transfer#AgreementId"
-                }
-            },
-            "create": {
-                "target": "com.amazonaws.transfer#CreateAgreement"
-            },
-            "read": {
-                "target": "com.amazonaws.transfer#DescribeAgreement"
-            },
-            "update": {
-                "target": "com.amazonaws.transfer#UpdateAgreement"
-            },
-            "delete": {
-                "target": "com.amazonaws.transfer#DeleteAgreement"
-            },
-            "list": {
-                "target": "com.amazonaws.transfer#ListAgreements"
-            },
-            "traits": {
-                "aws.api#arn": {
-                    "template": "agreement/{ServerId}/{AgreementId}"
-                },
-                "aws.api#taggable": {
-                    "property": "Tags"
-                },
-                "aws.cloudformation#cfnResource": {
-                    "name": "Agreement",
-                    "additionalSchemas": [
-                        "com.amazonaws.transfer#DescribedAgreement"
-                    ]
-                }
-            }
-        },
         "com.amazonaws.transfer#AgreementStatusType": {
             "type": "enum",
             "members": {
@@ -121,7 +89,7 @@
                     "min": 20,
                     "max": 1600
                 },
-                "smithy.api#pattern": "^arn:\\S+$"
+                "smithy.api#pattern": "^arn:"
             }
         },
         "com.amazonaws.transfer#As2ConnectorConfig": {
@@ -154,7 +122,7 @@
                 "EncryptionAlgorithm": {
                     "target": "com.amazonaws.transfer#EncryptionAlg",
                     "traits": {
-                        "smithy.api#documentation": "<p>The algorithm that is used to encrypt the file.</p>\n         <p>Note the following:</p>\n         <ul>\n            <li>\n               <p>Do not use the <code>DES_EDE3_CBC</code> algorithm unless you must support a legacy client that requires it, as it is a weak encryption algorithm.</p>\n            </li>\n            <li>\n               <p>You can only specify <code>NONE</code> if the URL for your connector uses HTTPS. Using HTTPS ensures that\n          no traffic is sent in clear text.</p>\n            </li>\n         </ul>"
+                        "smithy.api#documentation": "<p>The algorithm that is used to encrypt the file.</p>\n         <note>\n            <p>You can only specify <code>NONE</code> if the URL for your connector uses HTTPS. This ensures that\n        no traffic is sent in clear text.</p>\n         </note>"
                     }
                 },
                 "SigningAlgorithm": {
@@ -298,43 +266,6 @@
                 "target": "com.amazonaws.transfer#CertificateId"
             }
         },
-        "com.amazonaws.transfer#CertificateResource": {
-            "type": "resource",
-            "identifiers": {
-                "CertificateId": {
-                    "target": "com.amazonaws.transfer#CertificateId"
-                }
-            },
-            "create": {
-                "target": "com.amazonaws.transfer#ImportCertificate"
-            },
-            "read": {
-                "target": "com.amazonaws.transfer#DescribeCertificate"
-            },
-            "update": {
-                "target": "com.amazonaws.transfer#UpdateCertificate"
-            },
-            "delete": {
-                "target": "com.amazonaws.transfer#DeleteCertificate"
-            },
-            "list": {
-                "target": "com.amazonaws.transfer#ListCertificates"
-            },
-            "traits": {
-                "aws.api#arn": {
-                    "template": "certificate/{CertificateId}"
-                },
-                "aws.api#taggable": {
-                    "property": "Tags"
-                },
-                "aws.cloudformation#cfnResource": {
-                    "name": "Certificate",
-                    "additionalSchemas": [
-                        "com.amazonaws.transfer#DescribedCertificate"
-                    ]
-                }
-            }
-        },
         "com.amazonaws.transfer#CertificateStatusType": {
             "type": "enum",
             "members": {
@@ -389,12 +320,6 @@
                     "traits": {
                         "smithy.api#enumValue": "ENCRYPTION"
                     }
-                },
-                "TLS": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "TLS"
-                    }
                 }
             }
         },
@@ -439,53 +364,6 @@
                     "max": 19
                 },
                 "smithy.api#pattern": "^c-([0-9a-f]{17})$"
-            }
-        },
-        "com.amazonaws.transfer#ConnectorResource": {
-            "type": "resource",
-            "identifiers": {
-                "ConnectorId": {
-                    "target": "com.amazonaws.transfer#ConnectorId"
-                }
-            },
-            "create": {
-                "target": "com.amazonaws.transfer#CreateConnector"
-            },
-            "read": {
-                "target": "com.amazonaws.transfer#DescribeConnector"
-            },
-            "update": {
-                "target": "com.amazonaws.transfer#UpdateConnector"
-            },
-            "delete": {
-                "target": "com.amazonaws.transfer#DeleteConnector"
-            },
-            "list": {
-                "target": "com.amazonaws.transfer#ListConnectors"
-            },
-            "traits": {
-                "aws.api#arn": {
-                    "template": "connector/{ConnectorId}"
-                },
-                "aws.api#taggable": {
-                    "property": "Tags"
-                },
-                "aws.cloudformation#cfnResource": {
-                    "name": "Connector",
-                    "additionalSchemas": [
-                        "com.amazonaws.transfer#DescribedConnector"
-                    ]
-                }
-            }
-        },
-        "com.amazonaws.transfer#ConnectorSecurityPolicyName": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 0,
-                    "max": 100
-                },
-                "smithy.api#pattern": "^TransferSFTPConnectorSecurityPolicy-[A-Za-z0-9-]+$"
             }
         },
         "com.amazonaws.transfer#CopyStepDetails": {
@@ -555,7 +433,7 @@
                 "HomeDirectory": {
                     "target": "com.amazonaws.transfer#HomeDirectory",
                     "traits": {
-                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>PATH</code>.</p>\n         </note>"
+                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>LOGICAL</code>.</p>\n         </note>"
                     }
                 },
                 "HomeDirectoryType": {
@@ -656,12 +534,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:TagResource",
-                        "iam:PassRole"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Creates an agreement. An agreement is a bilateral trading partner agreement, or partnership,\n      between an Transfer Family server and an AS2 process. The agreement defines the file and message\n      transfer relationship between the server and the AS2 process. To define an agreement, Transfer Family\n      combines a server, local profile, partner profile, certificate, and other\n      attributes.</p>\n         <p>The partner is identified with the <code>PartnerProfileId</code>, and the AS2 process is identified with the <code>LocalProfileId</code>.</p>"
             }
         },
@@ -770,13 +642,7 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:TagResource",
-                        "iam:PassRole"
-                    ]
-                },
-                "smithy.api#documentation": "<p>Creates the connector, which captures the parameters for a connection for the\n      AS2 or SFTP protocol. For AS2, the connector is required for sending files to an externally hosted AS2 server. For SFTP, the connector is required when sending files to an SFTP server or receiving files from an SFTP server.\n      For more details about connectors, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/configure-as2-connector.html\">Configure AS2 connectors</a> and <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/configure-sftp-connector.html\">Create SFTP connectors</a>.</p>\n         <note>\n            <p>You must specify exactly one configuration object: either for AS2 (<code>As2Config</code>) or SFTP (<code>SftpConfig</code>).</p>\n         </note>"
+                "smithy.api#documentation": "<p>Creates the connector, which captures the parameters for a connection for the\n      AS2 or SFTP protocol. For AS2, the connector is required for sending files to an externally hosted AS2 server. For SFTP, the connector is required when sending files to an SFTP server or receiving files from an SFTP server.\n      For more details about connectors, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/create-b2b-server.html#configure-as2-connector\">Create AS2 connectors</a> and <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/configure-sftp-connector.html\">Create SFTP connectors</a>.</p>\n         <note>\n            <p>You must specify exactly one configuration object: either for AS2 (<code>As2Config</code>) or SFTP (<code>SftpConfig</code>).</p>\n         </note>"
             }
         },
         "com.amazonaws.transfer#CreateConnectorRequest": {
@@ -818,12 +684,6 @@
                     "target": "com.amazonaws.transfer#SftpConnectorConfig",
                     "traits": {
                         "smithy.api#documentation": "<p>A structure that contains the parameters for an SFTP connector object.</p>"
-                    }
-                },
-                "SecurityPolicyName": {
-                    "target": "com.amazonaws.transfer#ConnectorSecurityPolicyName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the name of the security policy for the connector.</p>"
                     }
                 }
             },
@@ -872,11 +732,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:TagResource"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Creates the local or partner profile to use for AS2 transfers.</p>"
             }
         },
@@ -961,33 +816,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "apigateway:GET",
-                        "ds:AuthorizeApplication",
-                        "ds:DescribeDirectories",
-                        "ec2:AssociateAddress",
-                        "ec2:CreateVpcEndpoint",
-                        "ec2:DescribeAddresses",
-                        "ec2:DescribeNetworkInterfaces",
-                        "ec2:DescribeVpcEndpoints",
-                        "iam:PassRole",
-                        "transfer:CreateServer",
-                        "transfer:DescribeServer",
-                        "transfer:StartServer",
-                        "transfer:StopServer",
-                        "transfer:UpdateServer",
-                        "transfer:TagResource",
-                        "logs:CreateLogDelivery",
-                        "logs:GetLogDelivery",
-                        "logs:UpdateLogDelivery",
-                        "logs:DeleteLogDelivery",
-                        "logs:ListLogDeliveries",
-                        "logs:PutResourcePolicy",
-                        "logs:DescribeResourcePolicies",
-                        "logs:DescribeLogGroups"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Instantiates an auto-scaling virtual server based on the selected file transfer protocol\n      in Amazon Web Services. When you make updates to your file transfer protocol-enabled server or when you work\n      with users, use the service-generated <code>ServerId</code> property that is assigned to the\n      newly created server.</p>"
             }
         },
@@ -1021,7 +849,6 @@
                 "HostKey": {
                     "target": "com.amazonaws.transfer#HostKey",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The RSA, ECDSA, or ED25519 private key to use for your SFTP-enabled server. You can add multiple host keys, in case you want\n     to rotate keys, or have a set of active keys that use different algorithms.</p>\n         <p>Use the following command to generate an RSA 2048 bit key with no passphrase:</p>\n         <p>\n            <code>ssh-keygen -t rsa -b 2048 -N \"\" -m PEM -f my-new-server-key</code>.</p>\n         <p>Use a minimum value of 2048 for the <code>-b</code> option. You can create a stronger key by using 3072 or 4096.</p>\n         <p>Use the following command to generate an ECDSA 256 bit key with no passphrase:</p>\n         <p>\n            <code>ssh-keygen -t ecdsa -b 256 -N \"\" -m PEM -f my-new-server-key</code>.</p>\n         <p>Valid values for the <code>-b</code> option for ECDSA are 256, 384, and 521.</p>\n         <p>Use the following command to generate an ED25519 key with no passphrase:</p>\n         <p>\n            <code>ssh-keygen -t ed25519 -N \"\" -f my-new-server-key</code>.</p>\n         <p>For all of these commands, you can replace <i>my-new-server-key</i> with a string of your choice.</p>\n         <important>\n            <p>If you aren't planning to migrate existing users from an existing SFTP-enabled\n        server to a new server, don't update the host key. Accidentally changing a\n        server's host key can be disruptive.</p>\n         </important>\n         <p>For more information, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/edit-server-config.html#configuring-servers-change-host-key\">Manage host keys for your SFTP-enabled server</a> in the <i>Transfer Family User Guide</i>.</p>"
                     }
                 },
@@ -1038,7 +865,7 @@
                     }
                 },
                 "LoggingRole": {
-                    "target": "com.amazonaws.transfer#NullableRole",
+                    "target": "com.amazonaws.transfer#Role",
                     "traits": {
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM) role that allows a server to turn\n      on Amazon CloudWatch logging for Amazon S3 or Amazon EFSevents. When set, you can view user activity in\n      your CloudWatch logs.</p>"
                     }
@@ -1070,7 +897,7 @@
                 "SecurityPolicyName": {
                     "target": "com.amazonaws.transfer#SecurityPolicyName",
                     "traits": {
-                        "smithy.api#documentation": "<p>Specifies the name of the security policy for the server.</p>"
+                        "smithy.api#documentation": "<p>Specifies the name of the security policy that is attached to the server.</p>"
                     }
                 },
                 "Tags": {
@@ -1089,12 +916,6 @@
                     "target": "com.amazonaws.transfer#StructuredLogDestinations",
                     "traits": {
                         "smithy.api#documentation": "<p>Specifies the log groups to which your server logs are sent.</p>\n         <p>To specify a log group, you must provide the ARN for an existing log group. In this case, the format of the log group is as follows:</p>\n         <p>\n            <code>arn:aws:logs:region-name:amazon-account-id:log-group:log-group-name:*</code>\n         </p>\n         <p>For example, <code>arn:aws:logs:us-east-1:111122223333:log-group:mytestgroup:*</code>\n         </p>\n         <p>If you have previously specified a log group for a server, you can clear it, and in effect turn off structured logging, by providing an empty\n        value for this parameter in an <code>update-server</code> call. For example:</p>\n         <p>\n            <code>update-server --server-id s-1234567890abcdef0 --structured-log-destinations</code>\n         </p>"
-                    }
-                },
-                "S3StorageOptions": {
-                    "target": "com.amazonaws.transfer#S3StorageOptions",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies whether or not performance for your Amazon S3 directories is optimized. This is disabled by default.</p>\n         <p>By default, home directory mappings have a <code>TYPE</code> of <code>DIRECTORY</code>. If you enable this option, you would then need to explicitly set the <code>HomeDirectoryMapEntry</code>\n            <code>Type</code> to <code>FILE</code> if you want a mapping to have a file target.</p>"
                     }
                 }
             },
@@ -1143,17 +964,7 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "iam:PassRole",
-                        "transfer:CreateUser",
-                        "transfer:DescribeUser",
-                        "transfer:ImportSshPublicKey",
-                        "transfer:TagResource"
-                    ]
-                },
-                "smithy.api#documentation": "<p>Creates a user and associates them with an existing file transfer protocol-enabled server.\n      You can only create and associate users with servers that have the\n        <code>IdentityProviderType</code> set to <code>SERVICE_MANAGED</code>. Using parameters for\n        <code>CreateUser</code>, you can specify the user name, set the home directory, store the\n      user's public key, and assign the user's Identity and Access Management (IAM)\n      role. You can also optionally add a session policy, and assign metadata with tags that can\n      be used to group and search for users.</p>",
-                "smithy.api#idempotent": {}
+                "smithy.api#documentation": "<p>Creates a user and associates them with an existing file transfer protocol-enabled server.\n      You can only create and associate users with servers that have the\n        <code>IdentityProviderType</code> set to <code>SERVICE_MANAGED</code>. Using parameters for\n        <code>CreateUser</code>, you can specify the user name, set the home directory, store the\n      user's public key, and assign the user's Identity and Access Management (IAM)\n      role. You can also optionally add a session policy, and assign metadata with tags that can\n      be used to group and search for users.</p>"
             }
         },
         "com.amazonaws.transfer#CreateUserRequest": {
@@ -1162,7 +973,7 @@
                 "HomeDirectory": {
                     "target": "com.amazonaws.transfer#HomeDirectory",
                     "traits": {
-                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>PATH</code>.</p>\n         </note>"
+                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>LOGICAL</code>.</p>\n         </note>"
                     }
                 },
                 "HomeDirectoryType": {
@@ -1206,8 +1017,7 @@
                 "SshPublicKeyBody": {
                     "target": "com.amazonaws.transfer#SshPublicKeyBody",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
-                        "smithy.api#documentation": "<p>The public portion of the Secure Shell (SSH) key used to authenticate the user to the\n      server.</p>\n         <p>The three standard SSH public key format elements are <code>&lt;key type&gt;</code>,\n        <code>&lt;body base64&gt;</code>, and  an optional <code>&lt;comment&gt;</code>, with spaces\n      between each element.</p>\n         <p>Transfer Family accepts RSA, ECDSA, and ED25519 keys.</p>\n         <ul>\n            <li>\n               <p>For RSA keys, the key type  is <code>ssh-rsa</code>.</p>\n            </li>\n            <li>\n               <p>For ED25519 keys, the key type is <code>ssh-ed25519</code>.</p>\n            </li>\n            <li>\n               <p>For ECDSA keys, the key type is either <code>ecdsa-sha2-nistp256</code>,\n            <code>ecdsa-sha2-nistp384</code>, or <code>ecdsa-sha2-nistp521</code>, depending on the\n          size of the key you generated.</p>\n            </li>\n         </ul>"
+                        "smithy.api#documentation": "<p>The public portion of the Secure Shell (SSH) key used to authenticate the user to the\n      server.</p>\n         <p>The three standard SSH public key format elements are <code><key type></code>,\n        <code><body base64></code>, and  an optional <code><comment></code>, with spaces\n      between each element.</p>\n         <p>Transfer Family accepts RSA, ECDSA, and ED25519 keys.</p>\n         <ul>\n            <li>\n               <p>For RSA keys, the key type  is <code>ssh-rsa</code>.</p>\n            </li>\n            <li>\n               <p>For ED25519 keys, the key type is <code>ssh-ed25519</code>.</p>\n            </li>\n            <li>\n               <p>For ECDSA keys, the key type is either <code>ecdsa-sha2-nistp256</code>,\n            <code>ecdsa-sha2-nistp384</code>, or <code>ecdsa-sha2-nistp521</code>, depending on the\n          size of the key you generated.</p>\n            </li>\n         </ul>"
                     }
                 },
                 "Tags": {
@@ -1279,11 +1089,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:TagResource"
-                    ]
-                },
                 "smithy.api#documentation": "<p>\n      Allows you to create a workflow with specified steps and step details the workflow invokes after file transfer completes.\n      After creating a workflow, you can associate the workflow created with any transfer servers by specifying the <code>workflow-details</code> field in <code>CreateServer</code> and <code>UpdateServer</code> operations.\n    </p>"
             }
         },
@@ -1517,8 +1322,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Delete the agreement that's specified in the provided <code>AgreementId</code>.</p>",
-                "smithy.api#idempotent": {}
+                "smithy.api#documentation": "<p>Delete the agreement that's specified in the provided <code>AgreementId</code>.</p>"
             }
         },
         "com.amazonaws.transfer#DeleteAgreementRequest": {
@@ -1566,8 +1370,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Deletes the certificate that's specified in the <code>CertificateId</code>\n      parameter.</p>",
-                "smithy.api#idempotent": {}
+                "smithy.api#documentation": "<p>Deletes the certificate that's specified in the <code>CertificateId</code>\n      parameter.</p>"
             }
         },
         "com.amazonaws.transfer#DeleteCertificateRequest": {
@@ -1608,8 +1411,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Deletes the connector that's specified in the provided <code>ConnectorId</code>.</p>",
-                "smithy.api#idempotent": {}
+                "smithy.api#documentation": "<p>Deletes the connector that's specified in the provided <code>ConnectorId</code>.</p>"
             }
         },
         "com.amazonaws.transfer#DeleteConnectorRequest": {
@@ -1701,8 +1503,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Deletes the profile that's specified in the <code>ProfileId</code> parameter.</p>",
-                "smithy.api#idempotent": {}
+                "smithy.api#documentation": "<p>Deletes the profile that's specified in the <code>ProfileId</code> parameter.</p>"
             }
         },
         "com.amazonaws.transfer#DeleteProfileRequest": {
@@ -1746,23 +1547,7 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "ds:DescribeDirectories",
-                        "ds:UnauthorizeApplication",
-                        "ec2:DeleteVpcEndpoints",
-                        "ec2:DescribeAddresses",
-                        "ec2:DescribeNetworkInterfaces",
-                        "ec2:DescribeVpcEndpoints",
-                        "ec2:DisassociateAddress",
-                        "logs:GetLogDelivery",
-                        "logs:DeleteLogDelivery",
-                        "logs:ListLogDeliveries",
-                        "transfer:DeleteServer"
-                    ]
-                },
-                "smithy.api#documentation": "<p>Deletes the file transfer protocol-enabled server that you specify.</p>\n         <p>No response returns from this operation.</p>",
-                "smithy.api#idempotent": {}
+                "smithy.api#documentation": "<p>Deletes the file transfer protocol-enabled server that you specify.</p>\n         <p>No response returns from this operation.</p>"
             }
         },
         "com.amazonaws.transfer#DeleteServerRequest": {
@@ -1881,13 +1666,7 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:DeleteUser"
-                    ]
-                },
-                "smithy.api#documentation": "<p>Deletes the user belonging to a file transfer protocol-enabled server you specify.</p>\n         <p>No response returns from this operation.</p>\n         <note>\n            <p>When you delete a user from a server, the user's information is lost.</p>\n         </note>",
-                "smithy.api#idempotent": {}
+                "smithy.api#documentation": "<p>Deletes the user belonging to a file transfer protocol-enabled server you specify.</p>\n         <p>No response returns from this operation.</p>\n         <note>\n            <p>When you delete a user from a server, the user's information is lost.</p>\n         </note>"
             }
         },
         "com.amazonaws.transfer#DeleteUserRequest": {
@@ -1938,8 +1717,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Deletes the specified workflow.</p>",
-                "smithy.api#idempotent": {}
+                "smithy.api#documentation": "<p>Deletes the specified workflow.</p>"
             }
         },
         "com.amazonaws.transfer#DeleteWorkflowRequest": {
@@ -1980,8 +1758,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Describes the access that is assigned to the specific file transfer protocol-enabled\n      server, as identified by its <code>ServerId</code> property and its\n      <code>ExternalId</code>.</p>\n         <p>The response from this call returns the properties of the access that is associated with\n      the <code>ServerId</code> value that was specified.</p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Describes the access that is assigned to the specific file transfer protocol-enabled\n      server, as identified by its <code>ServerId</code> property and its\n      <code>ExternalId</code>.</p>\n         <p>The response from this call returns the properties of the access that is associated with\n      the <code>ServerId</code> value that was specified.</p>"
             }
         },
         "com.amazonaws.transfer#DescribeAccessRequest": {
@@ -2051,8 +1828,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Describes the agreement that's identified by the <code>AgreementId</code>.</p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Describes the agreement that's identified by the <code>AgreementId</code>.</p>"
             }
         },
         "com.amazonaws.transfer#DescribeAgreementRequest": {
@@ -2083,7 +1859,6 @@
                 "Agreement": {
                     "target": "com.amazonaws.transfer#DescribedAgreement",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The details for the specified agreement, returned as a <code>DescribedAgreement</code>\n      object.</p>",
                         "smithy.api#required": {}
                     }
@@ -2116,8 +1891,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Describes the certificate that's identified by the <code>CertificateId</code>.</p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Describes the certificate that's identified by the <code>CertificateId</code>.</p>"
             }
         },
         "com.amazonaws.transfer#DescribeCertificateRequest": {
@@ -2141,7 +1915,6 @@
                 "Certificate": {
                     "target": "com.amazonaws.transfer#DescribedCertificate",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The details for the specified certificate, returned as an object.</p>",
                         "smithy.api#required": {}
                     }
@@ -2174,8 +1947,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Describes the connector that's identified by the <code>ConnectorId.</code>\n         </p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Describes the connector that's identified by the <code>ConnectorId.</code>\n         </p>"
             }
         },
         "com.amazonaws.transfer#DescribeConnectorRequest": {
@@ -2199,7 +1971,6 @@
                 "Connector": {
                     "target": "com.amazonaws.transfer#DescribedConnector",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The structure that contains the details of the connector.</p>",
                         "smithy.api#required": {}
                     }
@@ -2232,8 +2003,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>You can use <code>DescribeExecution</code> to check the details of the execution of the specified workflow.</p>\n         <note>\n            <p>This API call only returns details for in-progress workflows.</p>\n            <p>\n        If you provide an ID for an execution that is not in progress, or if the execution doesn't match the specified workflow ID, you receive a\n        <code>ResourceNotFound</code> exception.</p>\n         </note>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>You can use <code>DescribeExecution</code> to check the details of the execution of the specified workflow.</p>\n         <note>\n            <p>This API call only returns details for in-progress workflows.</p>\n            <p>\n        If you provide an ID for an execution that is not in progress, or if the execution doesn't match the specified workflow ID, you receive a\n        <code>ResourceNotFound</code> exception.</p>\n         </note>"
             }
         },
         "com.amazonaws.transfer#DescribeExecutionRequest": {
@@ -2303,8 +2073,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Returns the details of the host key that's specified by the <code>HostKeyId</code> and <code>ServerId</code>.</p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Returns the details of the host key that's specified by the <code>HostKeyId</code> and <code>ServerId</code>.</p>"
             }
         },
         "com.amazonaws.transfer#DescribeHostKeyRequest": {
@@ -2367,8 +2136,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Returns the details of the profile that's specified by the <code>ProfileId</code>.</p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Returns the details of the profile that's specified by the <code>ProfileId</code>.</p>"
             }
         },
         "com.amazonaws.transfer#DescribeProfileRequest": {
@@ -2392,7 +2160,6 @@
                 "Profile": {
                     "target": "com.amazonaws.transfer#DescribedProfile",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The details of the specified profile, returned as an object.</p>",
                         "smithy.api#required": {}
                     }
@@ -2425,8 +2192,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Describes the security policy that is attached to your server or SFTP connector. The response contains a description of the security policy's properties. For more\n      information about security policies, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/security-policies.html\">Working with security\n        policies for servers</a> or <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/security-policies-connectors.html\">Working with security\n          policies for SFTP connectors</a>.</p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Describes the security policy that is attached to your file transfer protocol-enabled\n      server. The response contains a description of the security policy's properties. For more\n      information about security policies, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/security-policies.html\">Working with security\n        policies</a>.</p>"
             }
         },
         "com.amazonaws.transfer#DescribeSecurityPolicyRequest": {
@@ -2435,7 +2201,7 @@
                 "SecurityPolicyName": {
                     "target": "com.amazonaws.transfer#SecurityPolicyName",
                     "traits": {
-                        "smithy.api#documentation": "<p>Specify the text name of the security policy for which you want the details.</p>",
+                        "smithy.api#documentation": "<p>Specifies the name of the security policy that is attached to the server.</p>",
                         "smithy.api#required": {}
                     }
                 }
@@ -2482,14 +2248,7 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "ec2:DescribeVpcEndpoints",
-                        "transfer:DescribeServer"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Describes a file transfer protocol-enabled server that you specify by passing the\n        <code>ServerId</code> parameter.</p>\n         <p>The response contains a description of a server's properties. When you set\n        <code>EndpointType</code> to VPC, the response will contain the\n      <code>EndpointDetails</code>.</p>",
-                "smithy.api#readonly": {},
                 "smithy.waiters#waitable": {
                     "ServerOffline": {
                         "acceptors": [
@@ -2514,7 +2273,6 @@
                                 }
                             }
                         ],
-                        "maxDelay": 3600,
                         "minDelay": 30
                     },
                     "ServerOnline": {
@@ -2540,7 +2298,6 @@
                                 }
                             }
                         ],
-                        "maxDelay": 3600,
                         "minDelay": 30
                     }
                 }
@@ -2567,7 +2324,6 @@
                 "Server": {
                     "target": "com.amazonaws.transfer#DescribedServer",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>An array containing the properties of a server with the <code>ServerID</code> you\n      specified.</p>",
                         "smithy.api#required": {}
                     }
@@ -2600,13 +2356,7 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:DescribeUser"
-                    ]
-                },
-                "smithy.api#documentation": "<p>Describes the user assigned to the specific file transfer protocol-enabled server, as\n      identified by its <code>ServerId</code> property.</p>\n         <p>The response from this call returns the properties of the user associated with the\n        <code>ServerId</code> value that was specified.</p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Describes the user assigned to the specific file transfer protocol-enabled server, as\n      identified by its <code>ServerId</code> property.</p>\n         <p>The response from this call returns the properties of the user associated with the\n        <code>ServerId</code> value that was specified.</p>"
             }
         },
         "com.amazonaws.transfer#DescribeUserRequest": {
@@ -2644,7 +2394,6 @@
                 "User": {
                     "target": "com.amazonaws.transfer#DescribedUser",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>An array containing the properties of the Transfer Family user for the <code>ServerID</code> value\n      that you specified.</p>",
                         "smithy.api#required": {}
                     }
@@ -2677,8 +2426,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Describes the specified workflow.</p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Describes the specified workflow.</p>"
             }
         },
         "com.amazonaws.transfer#DescribeWorkflowRequest": {
@@ -2702,7 +2450,6 @@
                 "Workflow": {
                     "target": "com.amazonaws.transfer#DescribedWorkflow",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The structure that contains the details of the workflow.</p>",
                         "smithy.api#required": {}
                     }
@@ -2718,7 +2465,7 @@
                 "HomeDirectory": {
                     "target": "com.amazonaws.transfer#HomeDirectory",
                     "traits": {
-                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>PATH</code>.</p>\n         </note>"
+                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>LOGICAL</code>.</p>\n         </note>"
                     }
                 },
                 "HomeDirectoryMappings": {
@@ -2765,7 +2512,6 @@
                 "Arn": {
                     "target": "com.amazonaws.transfer#Arn",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "read",
                         "smithy.api#documentation": "<p>The unique Amazon Resource Name (ARN) for the agreement.</p>",
                         "smithy.api#required": {}
                     }
@@ -2835,7 +2581,6 @@
                 "Arn": {
                     "target": "com.amazonaws.transfer#Arn",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "read",
                         "smithy.api#documentation": "<p>The unique Amazon Resource Name (ARN) for the certificate.</p>",
                         "smithy.api#required": {}
                     }
@@ -2849,7 +2594,7 @@
                 "Usage": {
                     "target": "com.amazonaws.transfer#CertificateUsageType",
                     "traits": {
-                        "smithy.api#documentation": "<p>Specifies how this certificate is used. It can be used in the following ways:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>SIGNING</code>: For signing AS2 messages</p>\n            </li>\n            <li>\n               <p>\n                  <code>ENCRYPTION</code>: For encrypting AS2 messages</p>\n            </li>\n            <li>\n               <p>\n                  <code>TLS</code>: For securing AS2 communications sent over HTTPS</p>\n            </li>\n         </ul>"
+                        "smithy.api#documentation": "<p>Specifies whether this certificate is used for signing or encryption.</p>"
                     }
                 },
                 "Status": {
@@ -2973,18 +2718,6 @@
                     "target": "com.amazonaws.transfer#SftpConnectorConfig",
                     "traits": {
                         "smithy.api#documentation": "<p>A structure that contains the parameters for an SFTP connector object.</p>"
-                    }
-                },
-                "ServiceManagedEgressIpAddresses": {
-                    "target": "com.amazonaws.transfer#ServiceManagedEgressIpAddresses",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The list of egress IP addresses of this connector. These IP addresses are assigned automatically when you create the connector.</p>"
-                    }
-                },
-                "SecurityPolicyName": {
-                    "target": "com.amazonaws.transfer#ConnectorSecurityPolicyName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The text name of the security policy for the specified connector.</p>"
                     }
                 }
             },
@@ -3147,61 +2880,43 @@
                 "Fips": {
                     "target": "com.amazonaws.transfer#Fips",
                     "traits": {
-                        "smithy.api#documentation": "<p>Specifies whether this policy enables Federal Information Processing Standards (FIPS).\n      This parameter applies to both server and connector security policies.</p>"
+                        "smithy.api#documentation": "<p>Specifies whether this policy enables Federal Information Processing Standards\n      (FIPS).</p>"
                     }
                 },
                 "SecurityPolicyName": {
                     "target": "com.amazonaws.transfer#SecurityPolicyName",
                     "traits": {
-                        "smithy.api#documentation": "<p>The text name of the specified security policy.</p>",
+                        "smithy.api#documentation": "<p>Specifies the name of the security policy that is attached to the server.</p>",
                         "smithy.api#required": {}
                     }
                 },
                 "SshCiphers": {
                     "target": "com.amazonaws.transfer#SecurityPolicyOptions",
                     "traits": {
-                        "smithy.api#documentation": "<p>Lists the enabled Secure Shell (SSH) cipher encryption algorithms in the security policy\n      that is attached to the server or connector. This parameter applies to both server and\n      connector security policies.</p>"
+                        "smithy.api#documentation": "<p>Specifies the enabled Secure Shell (SSH) cipher encryption algorithms in the security\n      policy that is attached to the server.</p>"
                     }
                 },
                 "SshKexs": {
                     "target": "com.amazonaws.transfer#SecurityPolicyOptions",
                     "traits": {
-                        "smithy.api#documentation": "<p>Lists the enabled SSH key exchange (KEX) encryption algorithms in the security policy that\n      is attached to the server or connector. This parameter applies to both server and connector\n      security policies.</p>"
+                        "smithy.api#documentation": "<p>Specifies the enabled SSH key exchange (KEX) encryption algorithms in the security policy\n      that is attached to the server.</p>"
                     }
                 },
                 "SshMacs": {
                     "target": "com.amazonaws.transfer#SecurityPolicyOptions",
                     "traits": {
-                        "smithy.api#documentation": "<p>Lists the enabled SSH message authentication code (MAC) encryption algorithms in the\n      security policy that is attached to the server or connector. This parameter applies to both\n      server and connector security policies.</p>"
+                        "smithy.api#documentation": "<p>Specifies the enabled SSH message authentication code (MAC) encryption algorithms in the\n      security policy that is attached to the server.</p>"
                     }
                 },
                 "TlsCiphers": {
                     "target": "com.amazonaws.transfer#SecurityPolicyOptions",
                     "traits": {
-                        "smithy.api#documentation": "<p>Lists the enabled Transport Layer Security (TLS) cipher encryption algorithms in the\n      security policy that is attached to the server.</p>\n         <note>\n            <p>This parameter only applies to security policies for servers.</p>\n         </note>"
-                    }
-                },
-                "SshHostKeyAlgorithms": {
-                    "target": "com.amazonaws.transfer#SecurityPolicyOptions",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Lists the host key algorithms for the security policy.</p>\n         <note>\n            <p>This parameter only applies to security policies for connectors.</p>\n         </note>"
-                    }
-                },
-                "Type": {
-                    "target": "com.amazonaws.transfer#SecurityPolicyResourceType",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The resource type to which the security policy applies, either server or connector.</p>"
-                    }
-                },
-                "Protocols": {
-                    "target": "com.amazonaws.transfer#SecurityPolicyProtocols",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Lists the file transfer protocols that the security policy applies to.</p>"
+                        "smithy.api#documentation": "<p>Specifies the enabled Transport Layer Security (TLS) cipher encryption algorithms in the\n      security policy that is attached to the server.</p>"
                     }
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>Describes the properties of a security policy that you specify. For more information\n      about security policies, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/security-policies.html\">Working with security\n        policies for servers</a> or <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/security-policies-connectors.html\">Working with security\n          policies for SFTP connectors</a>.</p>"
+                "smithy.api#documentation": "<p>Describes the properties of a security policy that was specified. For more information\n      about security policies, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/security-policies.html\">Working with security\n        policies</a>.</p>"
             }
         },
         "com.amazonaws.transfer#DescribedServer": {
@@ -3210,8 +2925,6 @@
                 "Arn": {
                     "target": "com.amazonaws.transfer#Arn",
                     "traits": {
-                        "aws.cloudformation#cfnAdditionalIdentifier": {},
-                        "aws.cloudformation#cfnMutability": "read",
                         "smithy.api#documentation": "<p>Specifies the unique Amazon Resource Name (ARN) of the server.</p>",
                         "smithy.api#required": {}
                     }
@@ -3219,49 +2932,42 @@
                 "Certificate": {
                     "target": "com.amazonaws.transfer#Certificate",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies the ARN of the Amazon Web ServicesCertificate Manager (ACM) certificate. Required when\n        <code>Protocols</code> is set to <code>FTPS</code>.</p>"
                     }
                 },
                 "ProtocolDetails": {
                     "target": "com.amazonaws.transfer#ProtocolDetails",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>The protocol settings that are configured for your server.</p>\n         <ul>\n            <li>\n               <p>\n          To indicate passive mode (for FTP and FTPS protocols), use the <code>PassiveIp</code> parameter.\n          Enter a single dotted-quad IPv4 address, such as the external IP address of a firewall, router, or load balancer.\n        </p>\n            </li>\n            <li>\n               <p>To ignore the error that is generated when the client attempts to use the <code>SETSTAT</code> command on a file that you are \n        uploading to an Amazon S3 bucket, use the <code>SetStatOption</code> parameter. To have the Transfer Family server ignore the \n        <code>SETSTAT</code> command and upload files without needing to make any changes to your SFTP client, set the value to \n        <code>ENABLE_NO_OP</code>. If you set the <code>SetStatOption</code> parameter to <code>ENABLE_NO_OP</code>, Transfer Family \n        generates a log entry to Amazon CloudWatch Logs, so that you can determine when the client is making a <code>SETSTAT</code> \n        call.</p>\n            </li>\n            <li>\n               <p>To determine whether your Transfer Family server resumes recent, negotiated sessions through a unique session ID, use the \n        <code>TlsSessionResumptionMode</code> parameter.</p>\n            </li>\n            <li>\n               <p>\n                  <code>As2Transports</code> indicates the transport method for the AS2 messages. Currently, only HTTP is supported.</p>\n            </li>\n         </ul>"
                     }
                 },
                 "Domain": {
                     "target": "com.amazonaws.transfer#Domain",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "create-and-read",
-                        "smithy.api#documentation": "<p>Specifies the domain of the storage system that is used for file transfers. There are two domains\n      available: Amazon Simple Storage Service (Amazon S3) and Amazon Elastic File System (Amazon EFS). The\n      default value is S3.</p>"
+                        "smithy.api#documentation": "<p>Specifies the domain of the storage system that is used for file transfers.</p>"
                     }
                 },
                 "EndpointDetails": {
                     "target": "com.amazonaws.transfer#EndpointDetails",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>The virtual private cloud (VPC) endpoint settings that are configured for your server.\n      When you host your endpoint within your VPC, you can make your endpoint accessible only to resources\n      within your VPC, or you can attach Elastic IP addresses and make your endpoint accessible to clients over\n      the internet. Your VPC's default security groups are automatically assigned to your\n      endpoint.</p>"
                     }
                 },
                 "EndpointType": {
                     "target": "com.amazonaws.transfer#EndpointType",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Defines the type of endpoint that your server is connected to. If your server is connected\n      to a VPC endpoint, your server isn't accessible over the public internet.</p>"
                     }
                 },
                 "HostKeyFingerprint": {
                     "target": "com.amazonaws.transfer#HostKeyFingerprint",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>Specifies the Base64-encoded SHA256 fingerprint of the server's host key. This value\n      is equivalent to the output of the <code>ssh-keygen -l -f my-new-server-key</code>\n      command.</p>"
                     }
                 },
                 "IdentityProviderDetails": {
                     "target": "com.amazonaws.transfer#IdentityProviderDetails",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies information to call a customer-supplied authentication API. This field is not\n      populated when the <code>IdentityProviderType</code> of a server is\n      <code>AWS_DIRECTORY_SERVICE</code> or <code>SERVICE_MANAGED</code>.</p>"
                     }
                 },
@@ -3272,38 +2978,33 @@
                     }
                 },
                 "LoggingRole": {
-                    "target": "com.amazonaws.transfer#NullableRole",
+                    "target": "com.amazonaws.transfer#Role",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM) role that allows a server to turn\n      on Amazon CloudWatch logging for Amazon S3 or Amazon EFSevents. When set, you can view user activity in\n      your CloudWatch logs.</p>"
                     }
                 },
                 "PostAuthenticationLoginBanner": {
                     "target": "com.amazonaws.transfer#PostAuthenticationLoginBanner",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies a string to display when users connect to a server. This string is displayed after the user authenticates.</p>\n         <note>\n            <p>The SFTP protocol does not support post-authentication display banners.</p>\n         </note>"
                     }
                 },
                 "PreAuthenticationLoginBanner": {
                     "target": "com.amazonaws.transfer#PreAuthenticationLoginBanner",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies a string to display when users connect to a server. This string is displayed before the user authenticates.\n    For example, the following banner displays details about using the system:</p>\n         <p>\n            <code>This system is for the use of authorized users only. Individuals using this computer system without authority,\n    or in excess of their authority, are subject to having all of their activities on this system monitored and recorded by\n    system personnel.</code>\n         </p>"
                     }
                 },
                 "Protocols": {
                     "target": "com.amazonaws.transfer#Protocols",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies the file transfer protocol or protocols over which your file transfer protocol\n      client can connect to your server's endpoint. The available protocols are:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>SFTP</code> (Secure Shell (SSH) File Transfer Protocol): File transfer over\n          SSH</p>\n            </li>\n            <li>\n               <p>\n                  <code>FTPS</code> (File Transfer Protocol Secure): File transfer with TLS\n          encryption</p>\n            </li>\n            <li>\n               <p>\n                  <code>FTP</code> (File Transfer Protocol): Unencrypted file transfer</p>\n            </li>\n            <li>\n               <p>\n                  <code>AS2</code> (Applicability Statement 2): used for transporting structured business-to-business data</p>\n            </li>\n         </ul>\n         <note>\n            <ul>\n               <li>\n                  <p>If you select <code>FTPS</code>, you must choose a certificate stored in Certificate Manager (ACM) \n            which is used to identify your server when clients connect to it over\n            FTPS.</p>\n               </li>\n               <li>\n                  <p>If <code>Protocol</code> includes either <code>FTP</code> or <code>FTPS</code>, then the\n            <code>EndpointType</code> must be <code>VPC</code> and the\n            <code>IdentityProviderType</code> must be either <code>AWS_DIRECTORY_SERVICE</code>, <code>AWS_LAMBDA</code>, or <code>API_GATEWAY</code>.</p>\n               </li>\n               <li>\n                  <p>If <code>Protocol</code> includes <code>FTP</code>, then\n          <code>AddressAllocationIds</code> cannot be associated.</p>\n               </li>\n               <li>\n                  <p>If <code>Protocol</code> is set only to <code>SFTP</code>, the <code>EndpointType</code>\n            can be set to <code>PUBLIC</code> and the <code>IdentityProviderType</code> can be set any of the supported identity types: \n            <code>SERVICE_MANAGED</code>, <code>AWS_DIRECTORY_SERVICE</code>, <code>AWS_LAMBDA</code>, or <code>API_GATEWAY</code>.</p>\n               </li>\n               <li>\n                  <p>If <code>Protocol</code> includes <code>AS2</code>, then the\n              <code>EndpointType</code> must be <code>VPC</code>, and domain must be Amazon S3.</p>\n               </li>\n            </ul>\n         </note>"
                     }
                 },
                 "SecurityPolicyName": {
                     "target": "com.amazonaws.transfer#SecurityPolicyName",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
-                        "smithy.api#documentation": "<p>Specifies the name of the security policy for the server.</p>"
+                        "smithy.api#documentation": "<p>Specifies the name of the security policy that is attached to the server.</p>"
                     }
                 },
                 "ServerId": {
@@ -3315,50 +3016,31 @@
                 "State": {
                     "target": "com.amazonaws.transfer#State",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The condition of the server that was described. A value of\n        <code>ONLINE</code> indicates that the server can accept jobs and transfer files. A\n        <code>State</code> value of <code>OFFLINE</code> means that the server cannot perform file\n      transfer operations.</p>\n         <p>The states of <code>STARTING</code> and <code>STOPPING</code> indicate that the server is\n      in an intermediate state, either not fully able to respond, or not fully offline. The values\n      of <code>START_FAILED</code> or <code>STOP_FAILED</code> can indicate an error\n      condition.</p>"
                     }
                 },
                 "Tags": {
                     "target": "com.amazonaws.transfer#Tags",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies the key-value pairs that you can use to search for and group servers that were\n      assigned to the server that was described.</p>"
                     }
                 },
                 "UserCount": {
                     "target": "com.amazonaws.transfer#UserCount",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>Specifies the number of users that are assigned to a server you specified with the\n        <code>ServerId</code>.</p>"
                     }
                 },
                 "WorkflowDetails": {
                     "target": "com.amazonaws.transfer#WorkflowDetails",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies the workflow ID for the workflow to assign and the execution role that's used for executing the workflow.</p>\n         <p>In addition to a workflow to execute when a file is uploaded completely, <code>WorkflowDetails</code> can also contain a\n    workflow ID (and execution role) for a workflow to execute on partial upload. A partial upload occurs when the server session disconnects\n    while the file is still being uploaded.</p>"
                     }
                 },
                 "StructuredLogDestinations": {
                     "target": "com.amazonaws.transfer#StructuredLogDestinations",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies the log groups to which your server logs are sent.</p>\n         <p>To specify a log group, you must provide the ARN for an existing log group. In this case, the format of the log group is as follows:</p>\n         <p>\n            <code>arn:aws:logs:region-name:amazon-account-id:log-group:log-group-name:*</code>\n         </p>\n         <p>For example, <code>arn:aws:logs:us-east-1:111122223333:log-group:mytestgroup:*</code>\n         </p>\n         <p>If you have previously specified a log group for a server, you can clear it, and in effect turn off structured logging, by providing an empty\n        value for this parameter in an <code>update-server</code> call. For example:</p>\n         <p>\n            <code>update-server --server-id s-1234567890abcdef0 --structured-log-destinations</code>\n         </p>"
-                    }
-                },
-                "S3StorageOptions": {
-                    "target": "com.amazonaws.transfer#S3StorageOptions",
-                    "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
-                        "smithy.api#documentation": "<p>Specifies whether or not performance for your Amazon S3 directories is optimized. This is disabled by default.</p>\n         <p>By default, home directory mappings have a <code>TYPE</code> of <code>DIRECTORY</code>. If you enable this option, you would then need to explicitly set the <code>HomeDirectoryMapEntry</code>\n            <code>Type</code> to <code>FILE</code> if you want a mapping to have a file target.</p>"
-                    }
-                },
-                "As2ServiceManagedEgressIpAddresses": {
-                    "target": "com.amazonaws.transfer#ServiceManagedEgressIpAddresses",
-                    "traits": {
-                        "aws.cloudformation#cfnMutability": "read",
-                        "smithy.api#documentation": "<p>The list of egress IP addresses of this server. These IP addresses are only relevant\n    for servers that use the AS2 protocol. They are used for sending asynchronous MDNs.</p>\n         <p>These IP addresses are assigned automatically when you create an AS2 server. Additionally,\n    if you update an existing server and add the AS2 protocol, static IP addresses are assigned as well.</p>"
                     }
                 }
             },
@@ -3372,8 +3054,6 @@
                 "Arn": {
                     "target": "com.amazonaws.transfer#Arn",
                     "traits": {
-                        "aws.cloudformation#cfnAdditionalIdentifier": {},
-                        "aws.cloudformation#cfnMutability": "read",
                         "smithy.api#documentation": "<p>Specifies the unique Amazon Resource Name (ARN) for the user that was requested to be\n      described.</p>",
                         "smithy.api#required": {}
                     }
@@ -3381,56 +3061,48 @@
                 "HomeDirectory": {
                     "target": "com.amazonaws.transfer#HomeDirectory",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
-                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>PATH</code>.</p>\n         </note>"
+                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>LOGICAL</code>.</p>\n         </note>"
                     }
                 },
                 "HomeDirectoryMappings": {
                     "target": "com.amazonaws.transfer#HomeDirectoryMappings",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Logical directory mappings that specify what Amazon S3 or Amazon EFS paths and keys should\n      be visible to your user and how you want to make them visible. You must specify the\n        <code>Entry</code> and <code>Target</code> pair, where <code>Entry</code> shows how the path\n      is made visible and <code>Target</code> is the actual Amazon S3 or Amazon EFS path. If you\n      only specify a target, it is displayed as is. You also must ensure that your Identity and Access Management (IAM) \n      role provides access to paths in <code>Target</code>. This value\n      can be set only when <code>HomeDirectoryType</code> is set to\n      <i>LOGICAL</i>.</p>\n         <p>In most cases, you can use this value instead of the session policy to lock your user\n      down to the designated home directory (\"<code>chroot</code>\"). To do this, you can set\n        <code>Entry</code> to '/' and set <code>Target</code> to the HomeDirectory\n      parameter value.</p>"
                     }
                 },
                 "HomeDirectoryType": {
                     "target": "com.amazonaws.transfer#HomeDirectoryType",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>The type of landing directory (folder) that you want your users' home directory to be when they log in to the server.\n    If you set it to <code>PATH</code>, the user will see the absolute Amazon S3 bucket or Amazon EFS path as is in their file transfer \n    protocol clients. If you set it to <code>LOGICAL</code>, you need to provide mappings in the <code>HomeDirectoryMappings</code> for \n    how you want to make Amazon S3 or Amazon EFS paths visible to your users.</p>\n         <note>\n            <p>If <code>HomeDirectoryType</code> is <code>LOGICAL</code>, you must provide mappings,\n            using the <code>HomeDirectoryMappings</code> parameter. If, on the other hand,\n               <code>HomeDirectoryType</code> is <code>PATH</code>, you provide an absolute path\n            using the <code>HomeDirectory</code> parameter. You cannot have both\n               <code>HomeDirectory</code> and <code>HomeDirectoryMappings</code> in your\n            template.</p>\n         </note>"
                     }
                 },
                 "Policy": {
                     "target": "com.amazonaws.transfer#Policy",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>A session policy for your user so that you can use the same Identity and Access Management (IAM) role across multiple users. This policy scopes down a user's\n     access to portions of their Amazon S3 bucket. Variables that you can use inside this policy include <code>${Transfer:UserName}</code>,\n     <code>${Transfer:HomeDirectory}</code>, and <code>${Transfer:HomeBucket}</code>.</p>"
                     }
                 },
                 "PosixProfile": {
                     "target": "com.amazonaws.transfer#PosixProfile",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies the full POSIX identity, including user ID (<code>Uid</code>), group ID\n        (<code>Gid</code>), and any secondary groups IDs (<code>SecondaryGids</code>), that controls\n      your users' access to your Amazon Elastic File System (Amazon EFS) file systems. The POSIX\n      permissions that are set on files and directories in your file system determine the level of\n      access your users get when transferring files into and out of your Amazon EFS file\n      systems.</p>"
                     }
                 },
                 "Role": {
                     "target": "com.amazonaws.transfer#Role",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the Identity and Access Management (IAM) role that controls your users' access to your Amazon S3 \n      bucket or Amazon EFS file system. The policies attached to this role determine the level of access that you want to provide your users \n      when transferring files into and out of your Amazon S3 bucket or Amazon EFS file system. The IAM role should also contain a trust \n      relationship that allows the server to access your resources when servicing your users' transfer requests.</p>"
                     }
                 },
                 "SshPublicKeys": {
                     "target": "com.amazonaws.transfer#SshPublicKeys",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>Specifies the public key portion of the Secure Shell (SSH) keys stored for the described\n      user.</p>"
                     }
                 },
                 "Tags": {
                     "target": "com.amazonaws.transfer#Tags",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "full",
                         "smithy.api#documentation": "<p>Specifies the key-value pairs for the user requested. Tag can be used to search for and\n      group users for a variety of purposes.</p>"
                     }
                 },
@@ -3451,7 +3123,6 @@
                 "Arn": {
                     "target": "com.amazonaws.transfer#Arn",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "read",
                         "smithy.api#documentation": "<p>Specifies the unique Amazon Resource Name (ARN) for the workflow.</p>",
                         "smithy.api#required": {}
                     }
@@ -3509,26 +3180,6 @@
                     "max": 12
                 },
                 "smithy.api#pattern": "^d-[0-9a-f]{10}$"
-            }
-        },
-        "com.amazonaws.transfer#DirectoryListingOptimization": {
-            "type": "enum",
-            "members": {
-                "ENABLED": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "ENABLED"
-                    }
-                },
-                "DISABLED": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "DISABLED"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "Indicates whether optimization to directory listing on S3 servers is used. Disabled by default for compatibility."
             }
         },
         "com.amazonaws.transfer#Domain": {
@@ -3609,12 +3260,6 @@
                         "smithy.api#enumValue": "AES256_CBC"
                     }
                 },
-                "DES_EDE3_CBC": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "DES_EDE3_CBC"
-                    }
-                },
                 "NONE": {
                     "target": "smithy.api#Unit",
                     "traits": {
@@ -3640,7 +3285,7 @@
                 "AddressAllocationIds": {
                     "target": "com.amazonaws.transfer#AddressAllocationIds",
                     "traits": {
-                        "smithy.api#documentation": "<p>A list of address allocation IDs that are required to attach an Elastic IP address to your\n      server's endpoint.</p>\n         <p>An address allocation ID corresponds to the allocation ID of an Elastic IP address. This\n      value can be retrieved from the <code>allocationId</code> field from the Amazon EC2\n      <a href=\"https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_Address.html\">Address</a>\n      data type. One way to retrieve this value is by calling the EC2 <a href=\"https://docs.aws.amazon.com/AWSEC2/latest/APIReference/API_DescribeAddresses.html\">DescribeAddresses</a> API.</p>\n         <p>This parameter is optional. Set this parameter if you want to make your VPC endpoint\n      public-facing. For details, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/create-server-in-vpc.html#create-internet-facing-endpoint\">Create an internet-facing endpoint for your server</a>.</p>\n         <note>\n            <p>This property can only be set as follows:</p>\n            <ul>\n               <li>\n                  <p>\n                     <code>EndpointType</code> must be set to\n            <code>VPC</code>\n                  </p>\n               </li>\n               <li>\n                  <p>The Transfer Family server must be offline.</p>\n               </li>\n               <li>\n                  <p>You cannot set this parameter for Transfer Family servers that use the FTP protocol.</p>\n               </li>\n               <li>\n                  <p>The server must already have <code>SubnetIds</code> populated (<code>SubnetIds</code> and <code>AddressAllocationIds</code> cannot be updated simultaneously).</p>\n               </li>\n               <li>\n                  <p>\n                     <code>AddressAllocationIds</code> can't contain duplicates, and must be equal in length to <code>SubnetIds</code>. For example,\n          if you have three subnet IDs, you must also specify three address allocation IDs.</p>\n               </li>\n               <li>\n                  <p>Call the <code>UpdateServer</code> API to set or change this parameter.</p>\n               </li>\n            </ul>\n         </note>"
+                        "smithy.api#documentation": "<p>A list of address allocation IDs that are required to attach an Elastic IP address to your\n      server's endpoint.</p>\n         <note>\n            <p>This property can only be set when <code>EndpointType</code> is set to <code>VPC</code>\n        and it is only valid in the <code>UpdateServer</code> API.</p>\n         </note>"
                     }
                 },
                 "SubnetIds": {
@@ -3942,7 +3587,7 @@
                     "min": 0,
                     "max": 1024
                 },
-                "smithy.api#pattern": "^(|/.*)$"
+                "smithy.api#pattern": "^$|/"
             }
         },
         "com.amazonaws.transfer#HomeDirectoryMapEntry": {
@@ -3958,14 +3603,8 @@
                 "Target": {
                     "target": "com.amazonaws.transfer#MapTarget",
                     "traits": {
-                        "smithy.api#documentation": "<p>Represents the map target that is used in a <code>HomeDirectoryMapEntry</code>.</p>",
+                        "smithy.api#documentation": "<p>Represents the map target that is used in a <code>HomeDirectorymapEntry</code>.</p>",
                         "smithy.api#required": {}
-                    }
-                },
-                "Type": {
-                    "target": "com.amazonaws.transfer#MapType",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the type of mapping. Set the type to <code>FILE</code> if you want the mapping to point to a file, or <code>DIRECTORY</code> for the directory to point to a directory.</p>\n         <note>\n            <p>By default, home directory mappings have a <code>Type</code> of <code>DIRECTORY</code> when you create a Transfer Family server. You would need to explicitly\n        set <code>Type</code> to <code>FILE</code> if you want a mapping to have a file\n        target.</p>\n         </note>"
                     }
                 }
             },
@@ -3981,7 +3620,7 @@
             "traits": {
                 "smithy.api#length": {
                     "min": 1,
-                    "max": 50000
+                    "max": 50
                 }
             }
         },
@@ -4056,7 +3695,7 @@
                 "DirectoryId": {
                     "target": "com.amazonaws.transfer#DirectoryId",
                     "traits": {
-                        "smithy.api#documentation": "<p>The identifier of the Directory Service directory that you want to use as your identity provider.</p>"
+                        "smithy.api#documentation": "<p>The identifier of the Directory Service directory that you want to stop sharing.</p>"
                     }
                 },
                 "Function": {
@@ -4131,11 +3770,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:TagResource"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Imports the signing and encryption certificates that you need to create local (AS2)\n      profiles and partner\n      profiles.</p>"
             }
         },
@@ -4145,7 +3779,7 @@
                 "Usage": {
                     "target": "com.amazonaws.transfer#CertificateUsageType",
                     "traits": {
-                        "smithy.api#documentation": "<p>Specifies how this certificate is used. It can be used in the following ways:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>SIGNING</code>: For signing AS2 messages</p>\n            </li>\n            <li>\n               <p>\n                  <code>ENCRYPTION</code>: For encrypting AS2 messages</p>\n            </li>\n            <li>\n               <p>\n                  <code>TLS</code>: For securing AS2 communications sent over HTTPS</p>\n            </li>\n         </ul>",
+                        "smithy.api#documentation": "<p>Specifies whether this certificate is used for signing or encryption.</p>",
                         "smithy.api#required": {}
                     }
                 },
@@ -4491,8 +4125,7 @@
                     "outputToken": "NextToken",
                     "items": "Accesses",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListAccessesRequest": {
@@ -4582,8 +4215,7 @@
                     "outputToken": "NextToken",
                     "items": "Agreements",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListAgreementsRequest": {
@@ -4666,8 +4298,7 @@
                     "outputToken": "NextToken",
                     "items": "Certificates",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListCertificatesRequest": {
@@ -4743,8 +4374,7 @@
                     "outputToken": "NextToken",
                     "items": "Connectors",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListConnectorsRequest": {
@@ -4820,8 +4450,7 @@
                     "outputToken": "NextToken",
                     "items": "Executions",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListExecutionsRequest": {
@@ -4905,8 +4534,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Returns a list of host keys for the server that's specified by the <code>ServerId</code>\n      parameter.</p>",
-                "smithy.api#readonly": {}
+                "smithy.api#documentation": "<p>Returns a list of host keys for the server that's specified by the <code>ServerId</code>\n      parameter.</p>"
             }
         },
         "com.amazonaws.transfer#ListHostKeysRequest": {
@@ -4996,8 +4624,7 @@
                     "outputToken": "NextToken",
                     "items": "Profiles",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListProfilesRequest": {
@@ -5070,14 +4697,13 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Lists the security policies that are attached to your servers and SFTP connectors. For more information\n      about security policies, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/security-policies.html\">Working with security\n        policies for servers</a> or <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/security-policies-connectors.html\">Working with security\n          policies for SFTP connectors</a>.</p>",
+                "smithy.api#documentation": "<p>Lists the security policies that are attached to your file transfer protocol-enabled\n      servers.</p>",
                 "smithy.api#paginated": {
                     "inputToken": "NextToken",
                     "outputToken": "NextToken",
                     "items": "SecurityPolicyNames",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListSecurityPoliciesRequest": {
@@ -5144,19 +4770,13 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:ListServers"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Lists the file transfer protocol-enabled servers that are associated with your Amazon Web Services\n      account.</p>",
                 "smithy.api#paginated": {
                     "inputToken": "NextToken",
                     "outputToken": "NextToken",
                     "items": "Servers",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListServersRequest": {
@@ -5229,8 +4849,7 @@
                     "outputToken": "NextToken",
                     "items": "Tags",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListTagsForResourceRequest": {
@@ -5312,19 +4931,13 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:ListUsers"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Lists the users for a file transfer protocol-enabled server that you specify by passing\n      the <code>ServerId</code> parameter.</p>",
                 "smithy.api#paginated": {
                     "inputToken": "NextToken",
                     "outputToken": "NextToken",
                     "items": "Users",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListUsersRequest": {
@@ -5411,8 +5024,7 @@
                     "outputToken": "NextToken",
                     "items": "Workflows",
                     "pageSize": "MaxResults"
-                },
-                "smithy.api#readonly": {}
+                }
             }
         },
         "com.amazonaws.transfer#ListWorkflowsRequest": {
@@ -5462,7 +5074,7 @@
                 "HomeDirectory": {
                     "target": "com.amazonaws.transfer#HomeDirectory",
                     "traits": {
-                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>PATH</code>.</p>\n         </note>"
+                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>LOGICAL</code>.</p>\n         </note>"
                     }
                 },
                 "HomeDirectoryType": {
@@ -5568,7 +5180,7 @@
                 "Usage": {
                     "target": "com.amazonaws.transfer#CertificateUsageType",
                     "traits": {
-                        "smithy.api#documentation": "<p>Specifies how this certificate is used. It can be used in the following ways:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>SIGNING</code>: For signing AS2 messages</p>\n            </li>\n            <li>\n               <p>\n                  <code>ENCRYPTION</code>: For encrypting AS2 messages</p>\n            </li>\n            <li>\n               <p>\n                  <code>TLS</code>: For securing AS2 communications sent over HTTPS</p>\n            </li>\n         </ul>"
+                        "smithy.api#documentation": "<p>Specifies whether this certificate is used for signing or encryption.</p>"
                     }
                 },
                 "Status": {
@@ -5784,7 +5396,7 @@
                 "Domain": {
                     "target": "com.amazonaws.transfer#Domain",
                     "traits": {
-                        "smithy.api#documentation": "<p>Specifies the domain of the storage system that is used for file transfers. There are two domains\n      available: Amazon Simple Storage Service (Amazon S3) and Amazon Elastic File System (Amazon EFS). The\n      default value is S3.</p>"
+                        "smithy.api#documentation": "<p>Specifies the domain of the storage system that is used for file transfers.</p>"
                     }
                 },
                 "IdentityProviderType": {
@@ -5847,7 +5459,7 @@
                 "HomeDirectory": {
                     "target": "com.amazonaws.transfer#HomeDirectory",
                     "traits": {
-                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>PATH</code>.</p>\n         </note>"
+                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>LOGICAL</code>.</p>\n         </note>"
                     }
                 },
                 "HomeDirectoryType": {
@@ -5917,16 +5529,6 @@
                 "target": "com.amazonaws.transfer#ListedWorkflow"
             }
         },
-        "com.amazonaws.transfer#ListingId": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 1,
-                    "max": 512
-                },
-                "smithy.api#pattern": "^[0-9a-zA-Z./-]+$"
-            }
-        },
         "com.amazonaws.transfer#LogGroupName": {
             "type": "string",
             "traits": {
@@ -5964,7 +5566,7 @@
                     "min": 0,
                     "max": 1024
                 },
-                "smithy.api#pattern": "^/.*$"
+                "smithy.api#pattern": "^/"
             }
         },
         "com.amazonaws.transfer#MapTarget": {
@@ -5974,33 +5576,7 @@
                     "min": 0,
                     "max": 1024
                 },
-                "smithy.api#pattern": "^/.*$"
-            }
-        },
-        "com.amazonaws.transfer#MapType": {
-            "type": "enum",
-            "members": {
-                "FILE": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "FILE"
-                    }
-                },
-                "DIRECTORY": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "DIRECTORY"
-                    }
-                }
-            }
-        },
-        "com.amazonaws.transfer#MaxItems": {
-            "type": "integer",
-            "traits": {
-                "smithy.api#range": {
-                    "min": 1,
-                    "max": 10000
-                }
+                "smithy.api#pattern": "^/"
             }
         },
         "com.amazonaws.transfer#MaxResults": {
@@ -6099,7 +5675,7 @@
                     "min": 0,
                     "max": 2048
                 },
-                "smithy.api#pattern": "^(|arn:.*role/\\S+)$"
+                "smithy.api#pattern": "^$|arn:.*role/"
             }
         },
         "com.amazonaws.transfer#OnPartialUploadWorkflowDetails": {
@@ -6124,16 +5700,6 @@
                     "min": 0,
                     "max": 1
                 }
-            }
-        },
-        "com.amazonaws.transfer#OutputFileName": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 26,
-                    "max": 537
-                },
-                "smithy.api#pattern": "^c-([0-9a-f]{17})-[0-9a-zA-Z./-]+.json$"
             }
         },
         "com.amazonaws.transfer#OverwriteExisting": {
@@ -6247,43 +5813,6 @@
                     "max": 19
                 },
                 "smithy.api#pattern": "^p-([0-9a-f]{17})$"
-            }
-        },
-        "com.amazonaws.transfer#ProfileResource": {
-            "type": "resource",
-            "identifiers": {
-                "ProfileId": {
-                    "target": "com.amazonaws.transfer#ProfileId"
-                }
-            },
-            "create": {
-                "target": "com.amazonaws.transfer#CreateProfile"
-            },
-            "read": {
-                "target": "com.amazonaws.transfer#DescribeProfile"
-            },
-            "update": {
-                "target": "com.amazonaws.transfer#UpdateProfile"
-            },
-            "delete": {
-                "target": "com.amazonaws.transfer#DeleteProfile"
-            },
-            "list": {
-                "target": "com.amazonaws.transfer#ListProfiles"
-            },
-            "traits": {
-                "aws.api#arn": {
-                    "template": "profile/{ProfileId}"
-                },
-                "aws.api#taggable": {
-                    "property": "Tags"
-                },
-                "aws.cloudformation#cfnResource": {
-                    "name": "Profile",
-                    "additionalSchemas": [
-                        "com.amazonaws.transfer#DescribedProfile"
-                    ]
-                }
             }
         },
         "com.amazonaws.transfer#ProfileType": {
@@ -6451,7 +5980,7 @@
                     "min": 20,
                     "max": 2048
                 },
-                "smithy.api#pattern": "^arn:.*role/\\S+$"
+                "smithy.api#pattern": "^arn:.*role/"
             }
         },
         "com.amazonaws.transfer#S3Bucket": {
@@ -6534,20 +6063,6 @@
                     "max": 1024
                 },
                 "smithy.api#pattern": "^[\\P{M}\\p{M}]*$"
-            }
-        },
-        "com.amazonaws.transfer#S3StorageOptions": {
-            "type": "structure",
-            "members": {
-                "DirectoryListingOptimization": {
-                    "target": "com.amazonaws.transfer#DirectoryListingOptimization",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies whether or not performance for your Amazon S3 directories is optimized. This is disabled by default.</p>\n         <p>By default, home directory mappings have a <code>TYPE</code> of <code>DIRECTORY</code>. If you enable this option, you would then need to explicitly set the <code>HomeDirectoryMapEntry</code>\n            <code>Type</code> to <code>FILE</code> if you want a mapping to have a file target.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The Amazon S3 storage options that are configured for your server.</p>"
             }
         },
         "com.amazonaws.transfer#S3Tag": {
@@ -6658,7 +6173,7 @@
                     "min": 0,
                     "max": 100
                 },
-                "smithy.api#pattern": "^Transfer[A-Za-z0-9]*SecurityPolicy-[A-Za-z0-9-]+$"
+                "smithy.api#pattern": "^TransferSecurityPolicy-.+$"
             }
         },
         "com.amazonaws.transfer#SecurityPolicyNames": {
@@ -6680,52 +6195,6 @@
             "type": "list",
             "member": {
                 "target": "com.amazonaws.transfer#SecurityPolicyOption"
-            }
-        },
-        "com.amazonaws.transfer#SecurityPolicyProtocol": {
-            "type": "enum",
-            "members": {
-                "SFTP": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "SFTP"
-                    }
-                },
-                "FTPS": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "FTPS"
-                    }
-                }
-            }
-        },
-        "com.amazonaws.transfer#SecurityPolicyProtocols": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.transfer#SecurityPolicyProtocol"
-            },
-            "traits": {
-                "smithy.api#length": {
-                    "min": 1,
-                    "max": 5
-                }
-            }
-        },
-        "com.amazonaws.transfer#SecurityPolicyResourceType": {
-            "type": "enum",
-            "members": {
-                "SERVER": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "SERVER"
-                    }
-                },
-                "CONNECTOR": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "CONNECTOR"
-                    }
-                }
             }
         },
         "com.amazonaws.transfer#SendWorkflowStepState": {
@@ -6813,60 +6282,8 @@
                 "smithy.api#pattern": "^s-([0-9a-f]{17})$"
             }
         },
-        "com.amazonaws.transfer#ServerResource": {
-            "type": "resource",
-            "identifiers": {
-                "ServerId": {
-                    "target": "com.amazonaws.transfer#ServerId"
-                }
-            },
-            "create": {
-                "target": "com.amazonaws.transfer#CreateServer"
-            },
-            "read": {
-                "target": "com.amazonaws.transfer#DescribeServer"
-            },
-            "update": {
-                "target": "com.amazonaws.transfer#UpdateServer"
-            },
-            "delete": {
-                "target": "com.amazonaws.transfer#DeleteServer"
-            },
-            "list": {
-                "target": "com.amazonaws.transfer#ListServers"
-            },
-            "traits": {
-                "aws.api#arn": {
-                    "template": "server/{ServerId}"
-                },
-                "aws.api#taggable": {
-                    "property": "Tags"
-                },
-                "aws.cloudformation#cfnResource": {
-                    "name": "Server",
-                    "additionalSchemas": [
-                        "com.amazonaws.transfer#DescribedServer"
-                    ]
-                }
-            }
-        },
         "com.amazonaws.transfer#ServiceErrorMessage": {
             "type": "string"
-        },
-        "com.amazonaws.transfer#ServiceManagedEgressIpAddress": {
-            "type": "string",
-            "traits": {
-                "smithy.api#pattern": "^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"
-            }
-        },
-        "com.amazonaws.transfer#ServiceManagedEgressIpAddresses": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.transfer#ServiceManagedEgressIpAddress"
-            },
-            "traits": {
-                "smithy.api#documentation": "The list of egress IP addresses of this server. These IP addresses are only relevant for servers that use the AS2 protocol. They are used for sending asynchronous MDNs. These IP addresses are assigned automatically when you create an AS2 server. Additionally, if you update an existing server and add the AS2 protocol, static IP addresses are assigned as well."
-            }
         },
         "com.amazonaws.transfer#ServiceMetadata": {
             "type": "structure",
@@ -6962,18 +6379,18 @@
                 "UserSecretId": {
                     "target": "com.amazonaws.transfer#SecretId",
                     "traits": {
-                        "smithy.api#documentation": "<p>The identifier for the secret (in Amazon Web Services Secrets Manager) that contains the SFTP user's private key, password, or both. The identifier must be the Amazon Resource Name (ARN) of the secret.</p>"
+                        "smithy.api#documentation": "<p>The identifier for the secret (in Amazon Web Services Secrets Manager) that contains the SFTP user's private key, password, or both. The identifier can be either the Amazon Resource Name (ARN) or the name of the secret.</p>"
                     }
                 },
                 "TrustedHostKeys": {
                     "target": "com.amazonaws.transfer#SftpConnectorTrustedHostKeyList",
                     "traits": {
-                        "smithy.api#documentation": "<p>The public portion of the host key, or keys, that are used to identify the external server to which you are connecting.\n      You can use the <code>ssh-keyscan</code> command against the SFTP server to retrieve the necessary key.</p>\n         <p>The three standard SSH public key format elements are <code>&lt;key type&gt;</code>,\n        <code>&lt;body base64&gt;</code>, and an optional <code>&lt;comment&gt;</code>, with spaces\n      between each element. Specify only the  <code>&lt;key type&gt;</code> and <code>&lt;body\n        base64&gt;</code>: do not enter the <code>&lt;comment&gt;</code> portion of the key.</p>\n         <p>For the trusted host key, Transfer Family accepts RSA and ECDSA keys.</p>\n         <ul>\n            <li>\n               <p>For RSA keys, the <code>&lt;key type&gt;</code> string is <code>ssh-rsa</code>.</p>\n            </li>\n            <li>\n               <p>For ECDSA keys, the <code>&lt;key type&gt;</code> string is either\n            <code>ecdsa-sha2-nistp256</code>, <code>ecdsa-sha2-nistp384</code>, or\n            <code>ecdsa-sha2-nistp521</code>, depending on the size of the key you generated.</p>\n            </li>\n         </ul>\n         <p>Run this command to retrieve the SFTP server host key, where your SFTP server name is <code>ftp.host.com</code>.</p>\n         <p>\n            <code>ssh-keyscan ftp.host.com</code>\n         </p>\n         <p>This prints the public host key to standard output.</p>\n         <p>\n            <code>ftp.host.com ssh-rsa AAAAB3Nza...&lt;long-string-for-public-key</code>\n         </p>\n         <p>Copy and paste this string into the <code>TrustedHostKeys</code> field for the <code>create-connector</code> command or into the <b>Trusted host keys</b> field in the console.</p>"
+                        "smithy.api#documentation": "<p>The public portion of the host key, or keys, that are used to identify the external server to which you are connecting.\n      You can use the <code>ssh-keyscan</code> command against the SFTP server to retrieve the necessary key.</p>\n         <p>The three standard SSH public key format elements are <code><key type></code>,\n        <code><body base64></code>, and an optional <code><comment></code>, with spaces\n      between each element. Specify only the  <code><key type></code> and <code><body\n        base64></code>: do not enter the <code><comment></code> portion of the key.</p>\n         <p>For the trusted host key, Transfer Family accepts RSA and ECDSA keys.</p>\n         <ul>\n            <li>\n               <p>For RSA keys, the <code><key type></code> string is <code>ssh-rsa</code>.</p>\n            </li>\n            <li>\n               <p>For ECDSA keys, the <code><key type></code> string is either\n            <code>ecdsa-sha2-nistp256</code>, <code>ecdsa-sha2-nistp384</code>, or\n            <code>ecdsa-sha2-nistp521</code>, depending on the size of the key you generated.</p>\n            </li>\n         </ul>"
                     }
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>Contains the details for an SFTP connector object. The connector object is used for transferring files to and from a\n      partner's SFTP server.</p>\n         <note>\n            <p>Because the <code>SftpConnectorConfig</code> data type is used for both creating and updating SFTP connectors, its parameters,\n        <code>TrustedHostKeys</code> and <code>UserSecretId</code> are marked as not required. This is a bit misleading, as they are not required when\n      you are updating an existing SFTP connector, but <i>are required</i> when you are creating a new SFTP connector.</p>\n         </note>"
+                "smithy.api#documentation": "<p>Contains the details for an SFTP connector object. The connector object is used for transferring files to and from a\n      partner's SFTP server.</p>"
             }
         },
         "com.amazonaws.transfer#SftpConnectorTrustedHostKey": {
@@ -7087,8 +6504,7 @@
                 "smithy.api#length": {
                     "min": 0,
                     "max": 2048
-                },
-                "smithy.api#pattern": "^\\s*(ssh|ecdsa)-[a-z0-9-]+[ \\t]+(([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{1,3})?(={0,3})?)(\\s*|[ \\t]+[\\S \\t]*\\s*)$"
+                }
             }
         },
         "com.amazonaws.transfer#SshPublicKeyCount": {
@@ -7114,92 +6530,6 @@
                     "min": 0,
                     "max": 5
                 }
-            }
-        },
-        "com.amazonaws.transfer#StartDirectoryListing": {
-            "type": "operation",
-            "input": {
-                "target": "com.amazonaws.transfer#StartDirectoryListingRequest"
-            },
-            "output": {
-                "target": "com.amazonaws.transfer#StartDirectoryListingResponse"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.transfer#InternalServiceError"
-                },
-                {
-                    "target": "com.amazonaws.transfer#InvalidRequestException"
-                },
-                {
-                    "target": "com.amazonaws.transfer#ResourceNotFoundException"
-                },
-                {
-                    "target": "com.amazonaws.transfer#ServiceUnavailableException"
-                },
-                {
-                    "target": "com.amazonaws.transfer#ThrottlingException"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Retrieves a list of the contents of a directory from a remote SFTP server. You specify the\n      connector ID, the output path, and the remote directory path. You can also specify the\n      optional <code>MaxItems</code> value to control the maximum number of items that are listed\n      from the remote directory. This API returns a list of all files and directories in the remote\n      directory (up to the maximum value), but does not return files or folders in sub-directories.\n      That is, it only returns a list of files and directories one-level deep.</p>\n         <p>After you receive the listing file, you can provide the files that you want to transfer to\n      the <code>RetrieveFilePaths</code> parameter of the <code>StartFileTransfer</code> API\n      call.</p>\n         <p>The naming convention for the output file is\n          <code>\n               <i>connector-ID</i>-<i>listing-ID</i>.json</code>. The\n      output file contains the following information:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>filePath</code>: the complete path of a remote file, relative to the directory\n          of the listing request for your SFTP connector on the remote server.</p>\n            </li>\n            <li>\n               <p>\n                  <code>modifiedTimestamp</code>: the last time the file was modified, in UTC time\n          format. This field is optional. If the remote file attributes don't contain a timestamp,\n          it is omitted from the file listing.</p>\n            </li>\n            <li>\n               <p>\n                  <code>size</code>: the size of the file, in bytes. This field is optional. If the\n          remote file attributes don't contain a file size, it is omitted from the file\n          listing.</p>\n            </li>\n            <li>\n               <p>\n                  <code>path</code>: the complete path of a remote directory, relative to the directory\n          of the listing request for your SFTP connector on the remote server.</p>\n            </li>\n            <li>\n               <p>\n                  <code>truncated</code>: a flag indicating whether the list output contains all of the\n          items contained in the remote directory or not. If your <code>Truncated</code> output\n          value is true, you can increase the value provided in the optional <code>max-items</code>\n          input attribute to be able to list more items (up to the maximum allowed list size of\n          10,000 items).</p>\n            </li>\n         </ul>"
-            }
-        },
-        "com.amazonaws.transfer#StartDirectoryListingRequest": {
-            "type": "structure",
-            "members": {
-                "ConnectorId": {
-                    "target": "com.amazonaws.transfer#ConnectorId",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The unique identifier for the connector.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "RemoteDirectoryPath": {
-                    "target": "com.amazonaws.transfer#FilePath",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the directory on the remote SFTP server for which you want to list its contents.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "MaxItems": {
-                    "target": "com.amazonaws.transfer#MaxItems",
-                    "traits": {
-                        "smithy.api#documentation": "<p>An optional parameter where you can specify the maximum number of file/directory names to\n      retrieve. The default value is 1,000.</p>"
-                    }
-                },
-                "OutputDirectoryPath": {
-                    "target": "com.amazonaws.transfer#FilePath",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the path (bucket and prefix) in Amazon S3 storage to store the results of the directory listing.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#input": {}
-            }
-        },
-        "com.amazonaws.transfer#StartDirectoryListingResponse": {
-            "type": "structure",
-            "members": {
-                "ListingId": {
-                    "target": "com.amazonaws.transfer#ListingId",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Returns a unique identifier for the directory listing call.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "OutputFileName": {
-                    "target": "com.amazonaws.transfer#OutputFileName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Returns the file name where the results are stored. This is a combination of the connector ID and the listing ID: <code>&lt;connector-id&gt;-&lt;listing-id&gt;.json</code>.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#output": {}
             }
         },
         "com.amazonaws.transfer#StartFileTransfer": {
@@ -7228,7 +6558,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Begins a file transfer between local Amazon Web Services storage and a remote AS2 or SFTP server.</p>\n         <ul>\n            <li>\n               <p>For an AS2 connector, you specify the <code>ConnectorId</code> and one or more <code>SendFilePaths</code> to identify the files\n          you want to transfer.</p>\n            </li>\n            <li>\n               <p>For an SFTP connector, the file transfer can be either outbound or inbound. In both\n          cases, you specify the <code>ConnectorId</code>. Depending on the direction of the transfer,\n          you also specify the following items:</p>\n               <ul>\n                  <li>\n                     <p>If you are transferring file from a partner's SFTP server to Amazon Web Services\n              storage, you specify one or more <code>RetrieveFilePaths</code> to identify the files\n              you want to transfer, and a <code>LocalDirectoryPath</code> to specify the destination\n              folder.</p>\n                  </li>\n                  <li>\n                     <p>If you are transferring file to a partner's SFTP server from Amazon Web Services\n              storage, you specify one or more <code>SendFilePaths</code> to identify the files you\n              want to transfer, and a <code>RemoteDirectoryPath</code> to specify the destination\n              folder.</p>\n                  </li>\n               </ul>\n            </li>\n         </ul>"
+                "smithy.api#documentation": "<p>Begins a file transfer between local Amazon Web Services storage and a remote AS2 or SFTP server.</p>\n         <ul>\n            <li>\n               <p>For an AS2 connector, you specify the <code>ConnectorId</code> and one or more <code>SendFilePaths</code> to identify the files\n          you want to transfer.</p>\n            </li>\n            <li>\n               <p>For an SFTP connector, the file transfer can be either outbound or inbound. In both\n          cases, you specify the <code>ConnectorId</code>. Depending on the direction of the transfer,\n          you also specify the following items:</p>\n               <ul>\n                  <li>\n                     <p>If you are transferring file from a partner's SFTP server to Amazon Web Services\n              storage, you specify one or more <code>RetreiveFilePaths</code> to identify the files\n              you want to transfer, and a <code>LocalDirectoryPath</code> to specify the destination\n              folder.</p>\n                  </li>\n                  <li>\n                     <p>If you are transferring file to a partner's SFTP server from Amazon Web Services\n              storage, you specify one or more <code>SendFilePaths</code> to identify the files you\n              want to transfer, and a <code>RemoteDirectoryPath</code> to specify the destination\n              folder.</p>\n                  </li>\n               </ul>\n            </li>\n         </ul>"
             }
         },
         "com.amazonaws.transfer#StartFileTransferRequest": {
@@ -7819,16 +7149,64 @@
                     "target": "com.amazonaws.transfer#CreateAccess"
                 },
                 {
+                    "target": "com.amazonaws.transfer#CreateAgreement"
+                },
+                {
+                    "target": "com.amazonaws.transfer#CreateConnector"
+                },
+                {
+                    "target": "com.amazonaws.transfer#CreateProfile"
+                },
+                {
+                    "target": "com.amazonaws.transfer#CreateServer"
+                },
+                {
+                    "target": "com.amazonaws.transfer#CreateUser"
+                },
+                {
+                    "target": "com.amazonaws.transfer#CreateWorkflow"
+                },
+                {
                     "target": "com.amazonaws.transfer#DeleteAccess"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DeleteAgreement"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DeleteCertificate"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DeleteConnector"
                 },
                 {
                     "target": "com.amazonaws.transfer#DeleteHostKey"
                 },
                 {
+                    "target": "com.amazonaws.transfer#DeleteProfile"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DeleteServer"
+                },
+                {
                     "target": "com.amazonaws.transfer#DeleteSshPublicKey"
                 },
                 {
+                    "target": "com.amazonaws.transfer#DeleteUser"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DeleteWorkflow"
+                },
+                {
                     "target": "com.amazonaws.transfer#DescribeAccess"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DescribeAgreement"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DescribeCertificate"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DescribeConnector"
                 },
                 {
                     "target": "com.amazonaws.transfer#DescribeExecution"
@@ -7837,7 +7215,22 @@
                     "target": "com.amazonaws.transfer#DescribeHostKey"
                 },
                 {
+                    "target": "com.amazonaws.transfer#DescribeProfile"
+                },
+                {
                     "target": "com.amazonaws.transfer#DescribeSecurityPolicy"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DescribeServer"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DescribeUser"
+                },
+                {
+                    "target": "com.amazonaws.transfer#DescribeWorkflow"
+                },
+                {
+                    "target": "com.amazonaws.transfer#ImportCertificate"
                 },
                 {
                     "target": "com.amazonaws.transfer#ImportHostKey"
@@ -7849,22 +7242,40 @@
                     "target": "com.amazonaws.transfer#ListAccesses"
                 },
                 {
+                    "target": "com.amazonaws.transfer#ListAgreements"
+                },
+                {
+                    "target": "com.amazonaws.transfer#ListCertificates"
+                },
+                {
+                    "target": "com.amazonaws.transfer#ListConnectors"
+                },
+                {
                     "target": "com.amazonaws.transfer#ListExecutions"
                 },
                 {
                     "target": "com.amazonaws.transfer#ListHostKeys"
                 },
                 {
+                    "target": "com.amazonaws.transfer#ListProfiles"
+                },
+                {
                     "target": "com.amazonaws.transfer#ListSecurityPolicies"
+                },
+                {
+                    "target": "com.amazonaws.transfer#ListServers"
                 },
                 {
                     "target": "com.amazonaws.transfer#ListTagsForResource"
                 },
                 {
-                    "target": "com.amazonaws.transfer#SendWorkflowStepState"
+                    "target": "com.amazonaws.transfer#ListUsers"
                 },
                 {
-                    "target": "com.amazonaws.transfer#StartDirectoryListing"
+                    "target": "com.amazonaws.transfer#ListWorkflows"
+                },
+                {
+                    "target": "com.amazonaws.transfer#SendWorkflowStepState"
                 },
                 {
                     "target": "com.amazonaws.transfer#StartFileTransfer"
@@ -7891,30 +7302,25 @@
                     "target": "com.amazonaws.transfer#UpdateAccess"
                 },
                 {
+                    "target": "com.amazonaws.transfer#UpdateAgreement"
+                },
+                {
+                    "target": "com.amazonaws.transfer#UpdateCertificate"
+                },
+                {
+                    "target": "com.amazonaws.transfer#UpdateConnector"
+                },
+                {
                     "target": "com.amazonaws.transfer#UpdateHostKey"
-                }
-            ],
-            "resources": [
-                {
-                    "target": "com.amazonaws.transfer#AgreementResource"
                 },
                 {
-                    "target": "com.amazonaws.transfer#CertificateResource"
+                    "target": "com.amazonaws.transfer#UpdateProfile"
                 },
                 {
-                    "target": "com.amazonaws.transfer#ConnectorResource"
+                    "target": "com.amazonaws.transfer#UpdateServer"
                 },
                 {
-                    "target": "com.amazonaws.transfer#ProfileResource"
-                },
-                {
-                    "target": "com.amazonaws.transfer#ServerResource"
-                },
-                {
-                    "target": "com.amazonaws.transfer#UserResource"
-                },
-                {
-                    "target": "com.amazonaws.transfer#WorkflowResource"
+                    "target": "com.amazonaws.transfer#UpdateUser"
                 }
             ],
             "traits": {
@@ -7925,7 +7331,6 @@
                     "cloudTrailEventSource": "transfer.amazonaws.com",
                     "endpointPrefix": "transfer"
                 },
-                "aws.api#tagEnabled": {},
                 "aws.auth#sigv4": {
                     "name": "transfer"
                 },
@@ -7974,6 +7379,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -8016,8 +7422,7 @@
                                     },
                                     "type": "endpoint"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [
@@ -8030,6 +7435,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -8043,6 +7449,7 @@
                                             "assign": "PartitionResult"
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -8065,6 +7472,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -8099,6 +7507,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -8109,16 +7518,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -8132,12 +7539,14 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
                                                         {
                                                             "fn": "booleanEquals",
                                                             "argv": [
+                                                                true,
                                                                 {
                                                                     "fn": "getAttr",
                                                                     "argv": [
@@ -8146,11 +7555,11 @@
                                                                         },
                                                                         "supportsFIPS"
                                                                     ]
-                                                                },
-                                                                true
+                                                                }
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -8161,16 +7570,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS is enabled but this partition does not support FIPS",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -8184,6 +7591,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -8203,6 +7611,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -8213,16 +7622,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "DualStack is enabled but this partition does not support DualStack",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [],
@@ -8233,11 +7640,9 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
@@ -8999,7 +8404,7 @@
                 "HomeDirectory": {
                     "target": "com.amazonaws.transfer#HomeDirectory",
                     "traits": {
-                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>PATH</code>.</p>\n         </note>"
+                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>LOGICAL</code>.</p>\n         </note>"
                     }
                 },
                 "HomeDirectoryType": {
@@ -9099,13 +8504,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:TagResource",
-                        "transfer:UnTagResource",
-                        "iam:PassRole"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Updates some of the parameters for an existing agreement. Provide the\n        <code>AgreementId</code> and the <code>ServerId</code> for the agreement that you want to\n      update, along with the new values for the parameters to update.</p>"
             }
         },
@@ -9208,12 +8606,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:TagResource",
-                        "transfer:UnTagResource"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Updates the active and inactive dates for a certificate.</p>"
             }
         },
@@ -9294,13 +8686,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:TagResource",
-                        "transfer:UnTagResource",
-                        "iam:PassRole"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Updates some of the parameters for an existing connector. Provide the\n        <code>ConnectorId</code> for the connector that you want to update, along with the new\n      values for the parameters to update.</p>"
             }
         },
@@ -9342,12 +8727,6 @@
                     "target": "com.amazonaws.transfer#SftpConnectorConfig",
                     "traits": {
                         "smithy.api#documentation": "<p>A structure that contains the parameters for an SFTP connector object.</p>"
-                    }
-                },
-                "SecurityPolicyName": {
-                    "target": "com.amazonaws.transfer#ConnectorSecurityPolicyName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the name of the security policy for the connector.</p>"
                     }
                 }
             },
@@ -9476,12 +8855,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "transfer:TagResource",
-                        "transfer:UnTagResource"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Updates some of the parameters for an existing profile. Provide the <code>ProfileId</code>\n      for the profile that you want to update, along with the new values for the parameters to\n      update.</p>"
             }
         },
@@ -9556,34 +8929,6 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "apigateway:GET",
-                        "ec2:AssociateAddress",
-                        "ec2:DisassociateAddress",
-                        "ec2:CreateVpcEndpoint",
-                        "ec2:DeleteVpcEndpoints",
-                        "ec2:DescribeAddresses",
-                        "ec2:DescribeNetworkInterfaces",
-                        "ec2:DescribeVpcEndpoints",
-                        "ec2:ModifyVpcEndpoint",
-                        "iam:PassRole",
-                        "transfer:DescribeServer",
-                        "transfer:StartServer",
-                        "transfer:StopServer",
-                        "transfer:UpdateServer",
-                        "transfer:TagResource",
-                        "transfer:UnTagResource",
-                        "logs:CreateLogDelivery",
-                        "logs:GetLogDelivery",
-                        "logs:UpdateLogDelivery",
-                        "logs:DeleteLogDelivery",
-                        "logs:ListLogDeliveries",
-                        "logs:PutResourcePolicy",
-                        "logs:DescribeResourcePolicies",
-                        "logs:DescribeLogGroups"
-                    ]
-                },
                 "smithy.api#documentation": "<p>Updates the file transfer protocol-enabled server's properties after that server has\n      been created.</p>\n         <p>The <code>UpdateServer</code> call returns the <code>ServerId</code> of the server you\n      updated.</p>"
             }
         },
@@ -9617,7 +8962,6 @@
                 "HostKey": {
                     "target": "com.amazonaws.transfer#HostKey",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The RSA, ECDSA, or ED25519 private key to use for your SFTP-enabled server. You can add multiple host keys, in case you want\n     to rotate keys, or have a set of active keys that use different algorithms.</p>\n         <p>Use the following command to generate an RSA 2048 bit key with no passphrase:</p>\n         <p>\n            <code>ssh-keygen -t rsa -b 2048 -N \"\" -m PEM -f my-new-server-key</code>.</p>\n         <p>Use a minimum value of 2048 for the <code>-b</code> option. You can create a stronger key by using 3072 or 4096.</p>\n         <p>Use the following command to generate an ECDSA 256 bit key with no passphrase:</p>\n         <p>\n            <code>ssh-keygen -t ecdsa -b 256 -N \"\" -m PEM -f my-new-server-key</code>.</p>\n         <p>Valid values for the <code>-b</code> option for ECDSA are 256, 384, and 521.</p>\n         <p>Use the following command to generate an ED25519 key with no passphrase:</p>\n         <p>\n            <code>ssh-keygen -t ed25519 -N \"\" -f my-new-server-key</code>.</p>\n         <p>For all of these commands, you can replace <i>my-new-server-key</i> with a string of your choice.</p>\n         <important>\n            <p>If you aren't planning to migrate existing users from an existing SFTP-enabled\n        server to a new server, don't update the host key. Accidentally changing a\n        server's host key can be disruptive.</p>\n         </important>\n         <p>For more information, see <a href=\"https://docs.aws.amazon.com/transfer/latest/userguide/edit-server-config.html#configuring-servers-change-host-key\">Manage host keys for your SFTP-enabled server</a> in the <i>Transfer Family User Guide</i>.</p>"
                     }
                 },
@@ -9654,7 +8998,7 @@
                 "SecurityPolicyName": {
                     "target": "com.amazonaws.transfer#SecurityPolicyName",
                     "traits": {
-                        "smithy.api#documentation": "<p>Specifies the name of the security policy for the server.</p>"
+                        "smithy.api#documentation": "<p>Specifies the name of the security policy that is attached to the server.</p>"
                     }
                 },
                 "ServerId": {
@@ -9674,12 +9018,6 @@
                     "target": "com.amazonaws.transfer#StructuredLogDestinations",
                     "traits": {
                         "smithy.api#documentation": "<p>Specifies the log groups to which your server logs are sent.</p>\n         <p>To specify a log group, you must provide the ARN for an existing log group. In this case, the format of the log group is as follows:</p>\n         <p>\n            <code>arn:aws:logs:region-name:amazon-account-id:log-group:log-group-name:*</code>\n         </p>\n         <p>For example, <code>arn:aws:logs:us-east-1:111122223333:log-group:mytestgroup:*</code>\n         </p>\n         <p>If you have previously specified a log group for a server, you can clear it, and in effect turn off structured logging, by providing an empty\n        value for this parameter in an <code>update-server</code> call. For example:</p>\n         <p>\n            <code>update-server --server-id s-1234567890abcdef0 --structured-log-destinations</code>\n         </p>"
-                    }
-                },
-                "S3StorageOptions": {
-                    "target": "com.amazonaws.transfer#S3StorageOptions",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies whether or not performance for your Amazon S3 directories is optimized. This is disabled by default.</p>\n         <p>By default, home directory mappings have a <code>TYPE</code> of <code>DIRECTORY</code>. If you enable this option, you would then need to explicitly set the <code>HomeDirectoryMapEntry</code>\n            <code>Type</code> to <code>FILE</code> if you want a mapping to have a file target.</p>"
                     }
                 }
             },
@@ -9728,17 +9066,7 @@
                 }
             ],
             "traits": {
-                "aws.iam#iamAction": {
-                    "requiredActions": [
-                        "iam:PassRole",
-                        "transfer:DeleteSshPublicKey",
-                        "transfer:DescribeUser",
-                        "transfer:ImportSshPublicKey",
-                        "transfer:TagResource",
-                        "transfer:UnTagResource"
-                    ]
-                },
-                "smithy.api#documentation": "<p>Assigns new properties to a user. Parameters you pass modify any or all of the following:\n      the home directory, role, and policy for the <code>UserName</code> and <code>ServerId</code>\n      you specify.</p>\n         <p>The response returns the <code>ServerId</code> and the <code>UserName</code> for the\n      updated user.</p>\n         <p>In the console, you can select <i>Restricted</i> when you create or update a\n      user. This  ensures that the user can't access anything outside of their home directory. The\n      programmatic way to configure this behavior is to update the user. Set their\n        <code>HomeDirectoryType</code> to <code>LOGICAL</code>, and specify\n        <code>HomeDirectoryMappings</code> with <code>Entry</code> as root (<code>/</code>) and\n        <code>Target</code> as their home directory.</p>\n         <p>For example, if the user's home directory is <code>/test/admin-user</code>, the following\n      command updates the user so that their configuration in the console shows the\n        <i>Restricted</i> flag as selected.</p>\n         <p>\n            <code> aws transfer update-user --server-id &lt;server-id&gt; --user-name admin-user --home-directory-type LOGICAL --home-directory-mappings \"[{\\\"Entry\\\":\\\"/\\\", \\\"Target\\\":\\\"/test/admin-user\\\"}]\"</code>\n         </p>"
+                "smithy.api#documentation": "<p>Assigns new properties to a user. Parameters you pass modify any or all of the following:\n      the home directory, role, and policy for the <code>UserName</code> and <code>ServerId</code>\n      you specify.</p>\n         <p>The response returns the <code>ServerId</code> and the <code>UserName</code> for the\n      updated user.</p>"
             }
         },
         "com.amazonaws.transfer#UpdateUserRequest": {
@@ -9747,7 +9075,7 @@
                 "HomeDirectory": {
                     "target": "com.amazonaws.transfer#HomeDirectory",
                     "traits": {
-                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>PATH</code>.</p>\n         </note>"
+                        "smithy.api#documentation": "<p>The landing directory (folder) for a user when they log in to the server using the client.</p>\n         <p>A <code>HomeDirectory</code> example is <code>/bucket_name/home/mydirectory</code>.</p>\n         <note>\n            <p>The <code>HomeDirectory</code> parameter is only used if <code>HomeDirectoryType</code> is set to <code>LOGICAL</code>.</p>\n         </note>"
                     }
                 },
                 "HomeDirectoryType": {
@@ -9882,48 +9210,6 @@
                 "smithy.api#sensitive": {}
             }
         },
-        "com.amazonaws.transfer#UserResource": {
-            "type": "resource",
-            "identifiers": {
-                "ServerId": {
-                    "target": "com.amazonaws.transfer#ServerId"
-                },
-                "UserName": {
-                    "target": "com.amazonaws.transfer#UserName"
-                }
-            },
-            "put": {
-                "target": "com.amazonaws.transfer#CreateUser"
-            },
-            "read": {
-                "target": "com.amazonaws.transfer#DescribeUser"
-            },
-            "update": {
-                "target": "com.amazonaws.transfer#UpdateUser"
-            },
-            "delete": {
-                "target": "com.amazonaws.transfer#DeleteUser"
-            },
-            "list": {
-                "target": "com.amazonaws.transfer#ListUsers"
-            },
-            "traits": {
-                "aws.api#arn": {
-                    "template": "user/{ServerId}/{UserName}"
-                },
-                "aws.api#taggable": {
-                    "property": "Tags"
-                },
-                "aws.cloudformation#cfnResource": {
-                    "name": "User",
-                    "additionalSchemas": [
-                        "com.amazonaws.transfer#DescribedUser",
-                        "com.amazonaws.necco.coral#CfnUserProperties"
-                    ]
-                },
-                "smithy.api#noReplace": {}
-            }
-        },
         "com.amazonaws.transfer#VpcEndpointId": {
             "type": "string",
             "traits": {
@@ -9997,40 +9283,6 @@
                     "max": 19
                 },
                 "smithy.api#pattern": "^w-([a-z0-9]{17})$"
-            }
-        },
-        "com.amazonaws.transfer#WorkflowResource": {
-            "type": "resource",
-            "identifiers": {
-                "WorkflowId": {
-                    "target": "com.amazonaws.transfer#WorkflowId"
-                }
-            },
-            "create": {
-                "target": "com.amazonaws.transfer#CreateWorkflow"
-            },
-            "read": {
-                "target": "com.amazonaws.transfer#DescribeWorkflow"
-            },
-            "delete": {
-                "target": "com.amazonaws.transfer#DeleteWorkflow"
-            },
-            "list": {
-                "target": "com.amazonaws.transfer#ListWorkflows"
-            },
-            "traits": {
-                "aws.api#arn": {
-                    "template": "workflow/{WorkflowId}"
-                },
-                "aws.api#taggable": {
-                    "property": "Tags"
-                },
-                "aws.cloudformation#cfnResource": {
-                    "name": "Workflow",
-                    "additionalSchemas": [
-                        "com.amazonaws.transfer#DescribedWorkflow"
-                    ]
-                }
             }
         },
         "com.amazonaws.transfer#WorkflowStep": {

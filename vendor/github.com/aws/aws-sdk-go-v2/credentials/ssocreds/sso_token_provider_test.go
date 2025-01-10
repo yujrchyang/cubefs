@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +17,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/internal/sdk"
 	"github.com/aws/aws-sdk-go-v2/service/ssooidc"
 	smithybearer "github.com/aws/smithy-go/auth/bearer"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestSSOTokenProvider(t *testing.T) {
@@ -109,7 +110,7 @@ func TestSSOTokenProvider(t *testing.T) {
 					},
 				}
 
-				if diff := cmpDiffToken(expect, actual); diff != "" {
+				if diff := cmp.Diff(expect, actual, tokenCmpOptions...); diff != "" {
 					return fmt.Errorf("expect token file match\n%s", diff)
 				}
 				return nil
@@ -159,7 +160,7 @@ func TestSSOTokenProvider(t *testing.T) {
 					},
 				}
 
-				if diff := cmpDiff(expect, actual); diff != "" {
+				if diff := cmp.Diff(expect, actual, tokenCmpOptions...); diff != "" {
 					return fmt.Errorf("expect token file match\n%s", diff)
 				}
 				return nil
@@ -195,7 +196,7 @@ func TestSSOTokenProvider(t *testing.T) {
 				t.Fatalf("expect no error, got %v", err)
 			}
 
-			if diff := cmpDiff(c.expectToken, token); diff != "" {
+			if diff := cmp.Diff(c.expectToken, token, tokenCmpOptions...); diff != "" {
 				t.Errorf("expect token match\n%s", diff)
 			}
 
@@ -219,33 +220,13 @@ func (c *mockCreateTokenAPIClient) CreateToken(
 	*ssooidc.CreateTokenOutput, error,
 ) {
 	if c.expectInput != nil {
-		if diff := cmpDiff(c.expectInput, input); diff != "" {
+		opts := cmp.Options{
+			cmpopts.IgnoreUnexported(ssooidc.CreateTokenInput{}),
+		}
+		if diff := cmp.Diff(c.expectInput, input, opts...); diff != "" {
 			return nil, fmt.Errorf("expect input match\n%s", diff)
 		}
 	}
 
 	return c.output, c.err
-}
-
-func cmpDiff(e, a interface{}) string {
-	if !reflect.DeepEqual(e, a) {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	return ""
-}
-
-func cmpDiffToken(e token, a token) string {
-	if !reflect.DeepEqual(e.UnknownFields, a.UnknownFields) {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	// treats token times as the same if they are the same in UTC
-	if time.Time(*e.ExpiresAt).UTC() != time.Time(*a.ExpiresAt).UTC() {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	eTokenKnownFields := e.tokenKnownFields
-	eTokenKnownFields.ExpiresAt = a.tokenKnownFields.ExpiresAt
-	if !reflect.DeepEqual(eTokenKnownFields, a.tokenKnownFields) {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	return ""
 }

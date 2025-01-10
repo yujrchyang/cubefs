@@ -20,6 +20,7 @@ import software.amazon.smithy.model.shapes.OperationShape;
 import software.amazon.smithy.model.shapes.ServiceShape;
 import software.amazon.smithy.model.shapes.ShapeId;
 import software.amazon.smithy.model.shapes.ToShapeId;
+import software.amazon.smithy.model.traits.Trait;
 import software.amazon.smithy.utils.ListUtils;
 
 public final class RegisterServiceMetadataMiddleware implements GoIntegration {
@@ -54,6 +55,12 @@ public final class RegisterServiceMetadataMiddleware implements GoIntegration {
                             builder.append(" return &$T{\n");
                             builder.append("Region: region,\n");
                             builder.append("ServiceID: ServiceID,\n");
+
+                            Map<ShapeId, Trait> authSchemes = serviceIndex.getEffectiveAuthSchemes(service, operationShape);
+                            if (authSchemes.containsKey(SigV4Trait.ID)) {
+                                SigV4Trait trait = (SigV4Trait) authSchemes.get(SigV4Trait.ID);
+                                builder.append(String.format("SigningName: \"%s\",\n", trait.getName()));
+                            }
                             builder.append(String.format("OperationName: \"%s\",\n",
                                     operationShape.getId().getName(service)));
                             builder.append("}");

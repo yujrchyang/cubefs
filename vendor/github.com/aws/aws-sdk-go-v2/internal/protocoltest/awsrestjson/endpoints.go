@@ -8,14 +8,11 @@ import (
 	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsmiddleware "github.com/aws/aws-sdk-go-v2/aws/middleware"
-	internalConfig "github.com/aws/aws-sdk-go-v2/internal/configsources"
-	"github.com/aws/aws-sdk-go-v2/internal/endpoints"
 	internalendpoints "github.com/aws/aws-sdk-go-v2/internal/protocoltest/awsrestjson/internal/endpoints"
 	smithyendpoints "github.com/aws/smithy-go/endpoints"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 	"net/url"
-	"os"
 	"strings"
 )
 
@@ -194,45 +191,9 @@ func resolveEndpointResolverV2(options *Options) {
 	}
 }
 
-func resolveBaseEndpoint(cfg aws.Config, o *Options) {
-	if cfg.BaseEndpoint != nil {
-		o.BaseEndpoint = cfg.BaseEndpoint
-	}
-
-	_, g := os.LookupEnv("AWS_ENDPOINT_URL")
-	_, s := os.LookupEnv("AWS_ENDPOINT_URL_REST_JSON_PROTOCOL")
-
-	if g && !s {
-		return
-	}
-
-	value, found, err := internalConfig.ResolveServiceBaseEndpoint(context.Background(), "Rest Json Protocol", cfg.ConfigSources)
-	if found && err == nil {
-		o.BaseEndpoint = &value
-	}
-}
-
-func bindRegion(region string) *string {
-	if region == "" {
-		return nil
-	}
-	return aws.String(endpoints.MapFIPSRegion(region))
-}
-
 // EndpointParameters provides the parameters that influence how endpoints are
 // resolved.
 type EndpointParameters struct {
-}
-
-type stringSlice []string
-
-func (s stringSlice) Get(i int) *string {
-	if i < 0 || i >= len(s) {
-		return nil
-	}
-
-	v := s[i]
-	return &v
 }
 
 // EndpointResolverV2 provides the interface for resolving service endpoints.
@@ -259,18 +220,4 @@ func (r *resolver) ResolveEndpoint(
 	endpoint smithyendpoints.Endpoint, err error,
 ) {
 	return endpoint, fmt.Errorf("no endpoint rules defined")
-}
-
-type resolveEndpointV2Middleware struct {
-	options Options
-}
-
-func (*resolveEndpointV2Middleware) ID() string {
-	return "ResolveEndpointV2"
-}
-
-func (m *resolveEndpointV2Middleware) HandleFinalize(ctx context.Context, in middleware.FinalizeInput, next middleware.FinalizeHandler) (
-	out middleware.FinalizeOutput, metadata middleware.Metadata, err error,
-) {
-	return next.HandleFinalize(ctx, in)
 }

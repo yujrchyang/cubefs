@@ -24,6 +24,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/internal/sdk"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/google/go-cmp/cmp"
 )
 
 // getReaderLength discards the bytes from reader and returns the length
@@ -49,7 +50,7 @@ func TestUploadOrderMulti(t *testing.T) {
 		t.Errorf("Expected no error but received %v", err)
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart",
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart",
 		"UploadPart", "CompleteMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(err)
 	}
@@ -88,7 +89,7 @@ func TestUploadOrderMulti(t *testing.T) {
 		num := parts[i].PartNumber
 		etag := aws.ToString(parts[i].ETag)
 
-		if int32(i+1) != aws.ToInt32(num) {
+		if int32(i+1) != num {
 			t.Errorf("expect %d, got %d", i+1, num)
 		}
 
@@ -163,7 +164,7 @@ func TestUploadIncreasePartSize(t *testing.T) {
 		t.Errorf("expect %d, got %d", manager.DefaultDownloadPartSize, mgr.PartSize)
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart", "CompleteMultipartUpload"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart", "CompleteMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 
@@ -216,7 +217,7 @@ func TestUploadOrderSingle(t *testing.T) {
 		t.Errorf("expect no error but received %v", err)
 	}
 
-	if diff := cmpDiff([]string{"PutObject"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"PutObject"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 
@@ -265,7 +266,7 @@ func TestUploadOrderSingleFailure(t *testing.T) {
 		t.Error("expect error, got nil")
 	}
 
-	if diff := cmpDiff([]string{"PutObject"}, *ops); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"PutObject"}, *ops); len(diff) > 0 {
 		t.Error(diff)
 	}
 
@@ -287,7 +288,7 @@ func TestUploadOrderZero(t *testing.T) {
 		t.Errorf("expect no error, got %v", err)
 	}
 
-	if diff := cmpDiff([]string{"PutObject"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"PutObject"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 
@@ -327,7 +328,7 @@ func TestUploadOrderMultiFailure(t *testing.T) {
 		t.Error("expect error, got nil")
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart", "AbortMultipartUpload"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart", "AbortMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 }
@@ -352,7 +353,7 @@ func TestUploadOrderMultiFailureOnComplete(t *testing.T) {
 		t.Error("expect error, got nil")
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart", "UploadPart",
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart", "UploadPart",
 		"CompleteMultipartUpload", "AbortMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
@@ -376,7 +377,7 @@ func TestUploadOrderMultiFailureOnCreate(t *testing.T) {
 		t.Error("expect error, got nil")
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"CreateMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 }
@@ -405,7 +406,7 @@ func TestUploadOrderMultiFailureLeaveParts(t *testing.T) {
 		t.Error("expect error, got nil")
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart"}, *invocations); len(diff) > 0 {
 		t.Error(err)
 	}
 }
@@ -439,7 +440,7 @@ func TestUploadOrderReadFail1(t *testing.T) {
 		t.Errorf("expect %v, got %v", e, a)
 	}
 
-	if diff := cmpDiff([]string(nil), *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string(nil), *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 }
@@ -462,7 +463,7 @@ func TestUploadOrderReadFail2(t *testing.T) {
 		t.Errorf("expect %v, got %q", e, a)
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "AbortMultipartUpload"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "AbortMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 }
@@ -502,7 +503,7 @@ func TestUploadOrderMultiBufferedReader(t *testing.T) {
 		t.Errorf("expect no error, got %v", err)
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart",
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart",
 		"UploadPart", "CompleteMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
@@ -516,7 +517,7 @@ func TestUploadOrderMultiBufferedReader(t *testing.T) {
 		return parts[i] < parts[j]
 	})
 
-	if diff := cmpDiff([]int64{1024 * 1024 * 2, 1024 * 1024 * 5, 1024 * 1024 * 5}, parts); len(diff) > 0 {
+	if diff := cmp.Diff([]int64{1024 * 1024 * 2, 1024 * 1024 * 5, 1024 * 1024 * 5}, parts); len(diff) > 0 {
 		t.Error(diff)
 	}
 }
@@ -533,7 +534,7 @@ func TestUploadOrderMultiBufferedReaderPartial(t *testing.T) {
 		t.Errorf("expect no error, got %v", err)
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart",
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart",
 		"UploadPart", "CompleteMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
@@ -547,7 +548,7 @@ func TestUploadOrderMultiBufferedReaderPartial(t *testing.T) {
 		return parts[i] < parts[j]
 	})
 
-	if diff := cmpDiff([]int64{1024 * 1024 * 2, 1024 * 1024 * 5, 1024 * 1024 * 5}, parts); len(diff) > 0 {
+	if diff := cmp.Diff([]int64{1024 * 1024 * 2, 1024 * 1024 * 5, 1024 * 1024 * 5}, parts); len(diff) > 0 {
 		t.Error(diff)
 	}
 }
@@ -567,7 +568,7 @@ func TestUploadOrderMultiBufferedReaderEOF(t *testing.T) {
 		t.Errorf("expect no error, got %v", err)
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart", "CompleteMultipartUpload"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "UploadPart", "UploadPart", "CompleteMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 
@@ -580,7 +581,7 @@ func TestUploadOrderMultiBufferedReaderEOF(t *testing.T) {
 		return parts[i] < parts[j]
 	})
 
-	if diff := cmpDiff([]int64{1024 * 1024 * 5, 1024 * 1024 * 5}, parts); len(diff) > 0 {
+	if diff := cmp.Diff([]int64{1024 * 1024 * 5, 1024 * 1024 * 5}, parts); len(diff) > 0 {
 		t.Error(diff)
 	}
 }
@@ -604,7 +605,7 @@ func TestUploadOrderMultiBufferedReaderExceedTotalParts(t *testing.T) {
 		t.Errorf("expect nil, got %v", resp)
 	}
 
-	if diff := cmpDiff([]string{"CreateMultipartUpload", "AbortMultipartUpload"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"CreateMultipartUpload", "AbortMultipartUpload"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 
@@ -626,7 +627,7 @@ func TestUploadOrderSingleBufferedReader(t *testing.T) {
 		t.Errorf("expect no error, got %v", err)
 	}
 
-	if diff := cmpDiff([]string{"PutObject"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"PutObject"}, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 
@@ -652,7 +653,7 @@ func TestUploadZeroLenObject(t *testing.T) {
 	if err != nil {
 		t.Errorf("expect no error but received %v", err)
 	}
-	if diff := cmpDiff([]string{"PutObject"}, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff([]string{"PutObject"}, *invocations); len(diff) > 0 {
 		t.Errorf("expect request to have been made, but was not, %v", diff)
 	}
 
@@ -795,7 +796,7 @@ func TestUploadMaxPartsEOF(t *testing.T) {
 		"UploadPart",
 		"CompleteMultipartUpload",
 	}
-	if diff := cmpDiff(expectOps, *invocations); len(diff) > 0 {
+	if diff := cmp.Diff(expectOps, *invocations); len(diff) > 0 {
 		t.Error(diff)
 	}
 }
@@ -1201,10 +1202,3 @@ const completeUploadResp = `<CompleteMultipartUploadResponse>
 </CompleteMultipartUploadResponse>`
 
 const abortUploadResp = `<AbortMultipartUploadResponse></AbortMultipartUploadResponse>`
-
-func cmpDiff(e, a interface{}) string {
-	if !reflect.DeepEqual(e, a) {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	return ""
-}

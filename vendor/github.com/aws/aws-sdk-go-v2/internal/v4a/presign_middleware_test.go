@@ -14,6 +14,7 @@ import (
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
 )
 
 type httpPresignerFunc func(
@@ -144,7 +145,7 @@ func TestPresignHTTPRequestMiddleware(t *testing.T) {
 					}
 
 					expectCreds, _ := tt.Creds.RetrievePrivateKey(context.Background())
-					if diff := cmpDiff(expectCreds, credentials); len(diff) > 0 {
+					if diff := cmp.Diff(expectCreds, credentials); len(diff) > 0 {
 						t.Error(diff)
 					}
 					if e, a := tt.PayloadHash, payloadHash; e != a {
@@ -153,7 +154,7 @@ func TestPresignHTTPRequestMiddleware(t *testing.T) {
 					if e, a := signingName, service; e != a {
 						t.Errorf("expected %v, got %v", e, a)
 					}
-					if diff := cmpDiff([]string{signingRegion}, regionSet); len(diff) > 0 {
+					if diff := cmp.Diff([]string{signingRegion}, regionSet); len(diff) > 0 {
 						t.Error(diff)
 					}
 
@@ -200,7 +201,7 @@ func TestPresignHTTPRequestMiddleware(t *testing.T) {
 				t.Fatalf("expect no error, got %v", err)
 			}
 
-			if diff := cmpDiff(tt.ExpectResult, result.Result); len(diff) != 0 {
+			if diff := cmp.Diff(tt.ExpectResult, result.Result); len(diff) != 0 {
 				t.Errorf("expect result match\n%v", diff)
 			}
 

@@ -16,6 +16,7 @@ import (
 	"github.com/aws/smithy-go/logging"
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestValidateOutputPayloadChecksum(t *testing.T) {
@@ -242,7 +243,7 @@ func TestValidateOutputPayloadChecksum(t *testing.T) {
 				t.Errorf("expected %q logged in:\n%s", e, a)
 			}
 
-			if diff := cmpDiff(string(c.expectPayload), string(actualPayload)); diff != "" {
+			if diff := cmp.Diff(string(c.expectPayload), string(actualPayload)); diff != "" {
 				t.Errorf("expect payload match:\n%s", diff)
 			}
 
@@ -254,7 +255,7 @@ func TestValidateOutputPayloadChecksum(t *testing.T) {
 			if ok != c.expectHaveAlgorithmsUsed {
 				t.Errorf("expect metadata to contain algorithms used, %t", c.expectHaveAlgorithmsUsed)
 			}
-			if diff := cmpDiff(c.expectAlgorithmsUsed, values); diff != "" {
+			if diff := cmp.Diff(c.expectAlgorithmsUsed, values); diff != "" {
 				t.Errorf("expect algorithms used to match\n%s", diff)
 			}
 		})

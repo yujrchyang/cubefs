@@ -35,7 +35,6 @@
                 "ClientId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Client ID that you received from Amazon to send messages by using ADM.</p>",
                         "smithy.api#required": {}
                     }
@@ -43,7 +42,6 @@
                 "ClientSecret": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Client Secret that you received from Amazon to send messages by using ADM.</p>",
                         "smithy.api#required": {}
                     }
@@ -113,7 +111,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the ADM channel, this value is ADM.</p>",
                         "smithy.api#required": {}
                     }
@@ -355,7 +352,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the APNs channel, this value is APNS.</p>",
                         "smithy.api#required": {}
                     }
@@ -659,7 +655,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the APNs sandbox channel, this value is APNS_SANDBOX.</p>",
                         "smithy.api#required": {}
                     }
@@ -797,7 +792,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the APNs VoIP channel, this value is APNS_VOIP.</p>",
                         "smithy.api#required": {}
                     }
@@ -935,7 +929,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the APNs VoIP sandbox channel, this value is APNS_VOIP_SANDBOX.</p>",
                         "smithy.api#required": {}
                     }
@@ -980,7 +973,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfActivityResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each activity that was performed by the campaign.</p>",
                         "smithy.api#required": {}
                     }
@@ -1076,7 +1068,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the campaign applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -1084,7 +1075,6 @@
                 "CampaignId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the campaign that the activity applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -1098,7 +1088,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the activity.</p>",
                         "smithy.api#required": {}
                     }
@@ -1303,7 +1292,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -1311,7 +1299,6 @@
                 "EndTime": {
                     "target": "com.amazonaws.pinpoint#__timestampIso8601",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The last date and time of the date range that was used to filter the query results, in extended ISO 8601 format. The date range is inclusive.</p>",
                         "smithy.api#required": {}
                     }
@@ -1319,7 +1306,6 @@
                 "KpiName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the metric, also referred to as a <i>key performance indicator (KPI)</i>, that the data was retrieved for. This value describes the associated metric and consists of two or more terms, which are comprised of lowercase alphanumeric characters, separated by a hyphen. For a list of possible values, see the <a href=\"https://docs.aws.amazon.com/pinpoint/latest/developerguide/analytics-standard-metrics.html\">Amazon Pinpoint Developer Guide</a>.</p>",
                         "smithy.api#required": {}
                     }
@@ -1327,7 +1313,6 @@
                 "KpiResult": {
                     "target": "com.amazonaws.pinpoint#BaseKpiResult",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of objects that contains the results of the query. Each object contains the value for the metric and metadata about that value.</p>",
                         "smithy.api#required": {}
                     }
@@ -1341,7 +1326,6 @@
                 "StartTime": {
                     "target": "com.amazonaws.pinpoint#__timestampIso8601",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The first date and time of the date range that was used to filter the query results, in extended ISO 8601 format. The date range is inclusive.</p>",
                         "smithy.api#required": {}
                     }
@@ -1357,7 +1341,6 @@
                 "Arn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the application.</p>",
                         "smithy.api#required": {}
                     }
@@ -1365,7 +1348,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application. This identifier is displayed as the <b>Project ID</b> on the Amazon Pinpoint console.</p>",
                         "smithy.api#required": {}
                     }
@@ -1373,7 +1355,6 @@
                 "Name": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The display name of the application. This name is displayed as the <b>Project name</b> on the Amazon Pinpoint console.</p>",
                         "smithy.api#required": {}
                     }
@@ -1428,7 +1409,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application. This identifier is displayed as the <b>Project ID</b> on the Amazon Pinpoint console.</p>",
                         "smithy.api#required": {}
                     }
@@ -1500,7 +1480,6 @@
                 "Values": {
                     "target": "com.amazonaws.pinpoint#ListOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The criteria values to use for the segment dimension. Depending on the value of the AttributeType property, endpoints are included or excluded from the segment if their attribute values match the criteria values.</p>",
                         "smithy.api#required": {}
                     }
@@ -1563,7 +1542,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application.</p>",
                         "smithy.api#required": {}
                     }
@@ -1571,7 +1549,6 @@
                 "AttributeType": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of attribute or attributes that were removed from the endpoints. Valid values are:</p> <ul><li><p>endpoint-custom-attributes - Custom attributes that describe endpoints.</p></li> <li><p>endpoint-metric-attributes - Custom metrics that your app reports to Amazon Pinpoint for endpoints.</p></li> <li><p>endpoint-user-attributes - Custom attributes that describe users.</p></li></ul>",
                         "smithy.api#required": {}
                     }
@@ -1615,7 +1592,6 @@
                 "ApiKey": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The API key that you received from the Baidu Cloud Push service to communicate with the service.</p>",
                         "smithy.api#required": {}
                     }
@@ -1629,7 +1605,6 @@
                 "SecretKey": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The secret key that you received from the Baidu Cloud Push service to communicate with the service.</p>",
                         "smithy.api#required": {}
                     }
@@ -1657,7 +1632,6 @@
                 "Credential": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The API key that you received from the Baidu Cloud Push service to communicate with the service.</p>",
                         "smithy.api#required": {}
                     }
@@ -1701,7 +1675,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the Baidu channel, this value is BAIDU.</p>",
                         "smithy.api#required": {}
                     }
@@ -1815,7 +1788,6 @@
                 "Rows": {
                     "target": "com.amazonaws.pinpoint#ListOfResultRow",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of objects that provides the results of a query that retrieved the data for a standard metric that applies to an application, campaign, or journey.</p>",
                         "smithy.api#required": {}
                     }
@@ -1868,7 +1840,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -1876,7 +1847,6 @@
                 "CampaignId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the campaign that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -1884,7 +1854,6 @@
                 "EndTime": {
                     "target": "com.amazonaws.pinpoint#__timestampIso8601",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The last date and time of the date range that was used to filter the query results, in extended ISO 8601 format. The date range is inclusive.</p>",
                         "smithy.api#required": {}
                     }
@@ -1892,7 +1861,6 @@
                 "KpiName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the metric, also referred to as a <i>key performance indicator (KPI)</i>, that the data was retrieved for. This value describes the associated metric and consists of two or more terms, which are comprised of lowercase alphanumeric characters, separated by a hyphen. For a list of possible values, see the <a href=\"https://docs.aws.amazon.com/pinpoint/latest/developerguide/analytics-standard-metrics.html\">Amazon Pinpoint Developer Guide</a>.</p>",
                         "smithy.api#required": {}
                     }
@@ -1900,7 +1868,6 @@
                 "KpiResult": {
                     "target": "com.amazonaws.pinpoint#BaseKpiResult",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of objects that contains the results of the query. Each object contains the value for the metric and metadata about that value.</p>",
                         "smithy.api#required": {}
                     }
@@ -1914,7 +1881,6 @@
                 "StartTime": {
                     "target": "com.amazonaws.pinpoint#__timestampIso8601",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The first date and time of the date range that was used to filter the query results, in extended ISO 8601 format. The date range is inclusive.</p>",
                         "smithy.api#required": {}
                     }
@@ -1937,12 +1903,6 @@
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
                         "smithy.api#documentation": "<p>The verified email address to send the email from. The default address is the FromAddress specified for the email channel for the application.</p>"
-                    }
-                },
-                "Headers": {
-                    "target": "com.amazonaws.pinpoint#ListOfMessageHeader",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The list of <a href=\"https://docs.aws.amazon.com/pinpoint/latest/apireference/apps-application-id-campaigns-campaign-id.html#apps-application-id-campaigns-campaign-id-model-messageheader\">MessageHeaders</a> for the email. You can have up to 15 MessageHeaders for each email.</p>"
                     }
                 },
                 "HtmlBody": {
@@ -1968,7 +1928,6 @@
                 "Dimensions": {
                     "target": "com.amazonaws.pinpoint#EventDimensions",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The dimension settings of the event filter for the campaign.</p>",
                         "smithy.api#required": {}
                     }
@@ -1976,7 +1935,6 @@
                 "FilterType": {
                     "target": "com.amazonaws.pinpoint#FilterType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of event that causes the campaign to be sent. Valid values are: SYSTEM, sends the campaign when a system event occurs; and, ENDPOINT, sends the campaign when an endpoint event (<link  linkend=\"apps-application-id-events\">Events</link> resource) occurs.</p>",
                         "smithy.api#required": {}
                     }
@@ -2062,7 +2020,7 @@
                 "MessagesPerSecond": {
                     "target": "com.amazonaws.pinpoint#__integer",
                     "traits": {
-                        "smithy.api#documentation": "<p>The maximum number of messages that a campaign can send each second. For an application, this value specifies the default limit for the number of messages that campaigns can send each second. The minimum value is 1. The maximum value is 20,000.</p>"
+                        "smithy.api#documentation": "<p>The maximum number of messages that a campaign can send each second. For an application, this value specifies the default limit for the number of messages that campaigns can send each second. The minimum value is 50. The maximum value is 20,000.</p>"
                     }
                 },
                 "Total": {
@@ -2094,7 +2052,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the campaign applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -2102,7 +2059,6 @@
                 "Arn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the campaign.</p>",
                         "smithy.api#required": {}
                     }
@@ -2110,7 +2066,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the campaign was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -2148,7 +2103,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the campaign.</p>",
                         "smithy.api#required": {}
                     }
@@ -2162,7 +2116,6 @@
                 "LastModifiedDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the campaign was last modified.</p>",
                         "smithy.api#required": {}
                     }
@@ -2194,7 +2147,6 @@
                 "SegmentId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the segment that's associated with the campaign.</p>",
                         "smithy.api#required": {}
                     }
@@ -2202,7 +2154,6 @@
                 "SegmentVersion": {
                     "target": "com.amazonaws.pinpoint#__integer",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The version number of the segment that's associated with the campaign.</p>",
                         "smithy.api#required": {}
                     }
@@ -2366,7 +2317,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfCampaignResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each campaign that's associated with the application.</p>",
                         "smithy.api#required": {}
                     }
@@ -2533,7 +2483,6 @@
                 "Channels": {
                     "target": "com.amazonaws.pinpoint#MapOfChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A map that contains a multipart response for each channel. For each item in this object, the ChannelType is the key and the Channel is the value.</p>",
                         "smithy.api#required": {}
                     }
@@ -2738,7 +2687,6 @@
                 "CreateApplicationRequest": {
                     "target": "com.amazonaws.pinpoint#CreateApplicationRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -2754,7 +2702,6 @@
                 "ApplicationResponse": {
                     "target": "com.amazonaws.pinpoint#ApplicationResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -2770,7 +2717,6 @@
                 "Name": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The display name of the application. This name is displayed as the <b>Project name</b> on the Amazon Pinpoint console.</p>",
                         "smithy.api#required": {}
                     }
@@ -2841,7 +2787,6 @@
                 "WriteCampaignRequest": {
                     "target": "com.amazonaws.pinpoint#WriteCampaignRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -2857,7 +2802,6 @@
                 "CampaignResponse": {
                     "target": "com.amazonaws.pinpoint#CampaignResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -2907,7 +2851,6 @@
                 "EmailTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#EmailTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -2931,7 +2874,6 @@
                 "CreateTemplateMessageBody": {
                     "target": "com.amazonaws.pinpoint#CreateTemplateMessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -2995,7 +2937,6 @@
                 "ExportJobRequest": {
                     "target": "com.amazonaws.pinpoint#ExportJobRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3011,7 +2952,6 @@
                 "ExportJobResponse": {
                     "target": "com.amazonaws.pinpoint#ExportJobResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3075,7 +3015,6 @@
                 "ImportJobRequest": {
                     "target": "com.amazonaws.pinpoint#ImportJobRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3091,7 +3030,6 @@
                 "ImportJobResponse": {
                     "target": "com.amazonaws.pinpoint#ImportJobResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3141,7 +3079,6 @@
                 "InAppTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#InAppTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3165,7 +3102,6 @@
                 "TemplateCreateMessageBody": {
                     "target": "com.amazonaws.pinpoint#TemplateCreateMessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3229,7 +3165,6 @@
                 "WriteJourneyRequest": {
                     "target": "com.amazonaws.pinpoint#WriteJourneyRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3245,7 +3180,6 @@
                 "JourneyResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3295,7 +3229,6 @@
                 "PushNotificationTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#PushNotificationTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3319,7 +3252,6 @@
                 "CreateTemplateMessageBody": {
                     "target": "com.amazonaws.pinpoint#CreateTemplateMessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3375,7 +3307,6 @@
                 "CreateRecommenderConfiguration": {
                     "target": "com.amazonaws.pinpoint#CreateRecommenderConfigurationShape",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3391,7 +3322,6 @@
                 "RecommenderConfigurationResponse": {
                     "target": "com.amazonaws.pinpoint#RecommenderConfigurationResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3431,7 +3361,6 @@
                 "RecommendationProviderRoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management (IAM) role that authorizes Amazon Pinpoint to retrieve recommendation data from the recommender model.</p>",
                         "smithy.api#required": {}
                     }
@@ -3439,7 +3368,6 @@
                 "RecommendationProviderUri": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the recommender model to retrieve recommendation data from. This value must match the ARN of an Amazon Personalize campaign.</p>",
                         "smithy.api#required": {}
                     }
@@ -3521,7 +3449,6 @@
                 "WriteSegmentRequest": {
                     "target": "com.amazonaws.pinpoint#WriteSegmentRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3537,7 +3464,6 @@
                 "SegmentResponse": {
                     "target": "com.amazonaws.pinpoint#SegmentResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3587,7 +3513,6 @@
                 "SMSTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#SMSTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3611,7 +3536,6 @@
                 "CreateTemplateMessageBody": {
                     "target": "com.amazonaws.pinpoint#CreateTemplateMessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3695,7 +3619,6 @@
                 "VoiceTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#VoiceTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3711,7 +3634,6 @@
                 "CreateTemplateMessageBody": {
                     "target": "com.amazonaws.pinpoint#CreateTemplateMessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -3727,7 +3649,6 @@
                 "DeliveryUri": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The destination to send the campaign or treatment to. This value can be one of the following:</p> <ul><li><p>The name or Amazon Resource Name (ARN) of an AWS Lambda function to invoke to handle delivery of the campaign or treatment.</p></li> <li><p>The URL for a web application or service that supports HTTPS and can receive the message. The URL has to be a full URL, including the HTTPS protocol.</p></li></ul>",
                         "smithy.api#required": {}
                     }
@@ -3852,7 +3773,6 @@
                 "ButtonAction": {
                     "target": "com.amazonaws.pinpoint#ButtonAction",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Action triggered by the button.</p>",
                         "smithy.api#required": {}
                     }
@@ -3866,7 +3786,6 @@
                 "Text": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Button text.</p>",
                         "smithy.api#required": {}
                     }
@@ -4052,7 +3971,6 @@
                 "ADMChannelResponse": {
                     "target": "com.amazonaws.pinpoint#ADMChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4124,7 +4042,6 @@
                 "APNSChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4196,7 +4113,6 @@
                 "APNSSandboxChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSSandboxChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4268,7 +4184,6 @@
                 "APNSVoipChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSVoipChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4340,7 +4255,6 @@
                 "APNSVoipSandboxChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSVoipSandboxChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4412,7 +4326,6 @@
                 "ApplicationResponse": {
                     "target": "com.amazonaws.pinpoint#ApplicationResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4484,7 +4397,6 @@
                 "BaiduChannelResponse": {
                     "target": "com.amazonaws.pinpoint#BaiduChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4564,7 +4476,6 @@
                 "CampaignResponse": {
                     "target": "com.amazonaws.pinpoint#CampaignResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4636,7 +4547,6 @@
                 "EmailChannelResponse": {
                     "target": "com.amazonaws.pinpoint#EmailChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4715,7 +4625,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4779,7 +4688,7 @@
                 "EndpointId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#documentation": "<p>The case insensitive unique identifier for the endpoint. The identifier can't contain <code>$</code>, <code>{</code> or <code>}</code>.</p>",
+                        "smithy.api#documentation": "<p>The unique identifier for the endpoint.</p>",
                         "smithy.api#httpLabel": {},
                         "smithy.api#required": {}
                     }
@@ -4795,7 +4704,6 @@
                 "EndpointResponse": {
                     "target": "com.amazonaws.pinpoint#EndpointResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4867,7 +4775,6 @@
                 "EventStream": {
                     "target": "com.amazonaws.pinpoint#EventStream",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -4939,7 +4846,6 @@
                 "GCMChannelResponse": {
                     "target": "com.amazonaws.pinpoint#GCMChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5018,7 +4924,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5098,7 +5003,6 @@
                 "JourneyResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5177,7 +5081,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5249,7 +5152,6 @@
                 "RecommenderConfigurationResponse": {
                     "target": "com.amazonaws.pinpoint#RecommenderConfigurationResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5329,7 +5231,6 @@
                 "SegmentResponse": {
                     "target": "com.amazonaws.pinpoint#SegmentResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5401,7 +5302,6 @@
                 "SMSChannelResponse": {
                     "target": "com.amazonaws.pinpoint#SMSChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5480,7 +5380,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5560,7 +5459,6 @@
                 "EndpointsResponse": {
                     "target": "com.amazonaws.pinpoint#EndpointsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5632,7 +5530,6 @@
                 "VoiceChannelResponse": {
                     "target": "com.amazonaws.pinpoint#VoiceChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5711,7 +5608,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -5894,7 +5790,6 @@
                 "FromAddress": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The verified email address that you want to send email from when you send email through the channel.</p>",
                         "smithy.api#required": {}
                     }
@@ -5902,7 +5797,6 @@
                 "Identity": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the identity, verified with Amazon Simple Email Service (Amazon SES), that you want to use when you send email through the channel.</p>",
                         "smithy.api#required": {}
                     }
@@ -5911,12 +5805,6 @@
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
                         "smithy.api#documentation": "<p>The ARN of the AWS Identity and Access Management (IAM) role that you want Amazon Pinpoint to use when it submits email-related event data for the channel.</p>"
-                    }
-                },
-                "OrchestrationSendingRoleArn": {
-                    "target": "com.amazonaws.pinpoint#__string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The ARN of an IAM role for Amazon Pinpoint to use to send email from your campaigns or journeys through Amazon SES.</p>"
                     }
                 }
             },
@@ -6002,7 +5890,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the email channel, this value is EMAIL.</p>",
                         "smithy.api#required": {}
                     }
@@ -6011,12 +5898,6 @@
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
                         "smithy.api#documentation": "<p>The ARN of the AWS Identity and Access Management (IAM) role that Amazon Pinpoint uses to submit email-related event data for the channel.</p>"
-                    }
-                },
-                "OrchestrationSendingRoleArn": {
-                    "target": "com.amazonaws.pinpoint#__string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The ARN of an IAM role for Amazon Pinpoint to use to send email from your campaigns or journeys through Amazon SES.</p>"
                     }
                 },
                 "Version": {
@@ -6139,12 +6020,6 @@
                         "smithy.api#documentation": "<p>The subject line, or title, to use in email messages that are based on the message template.</p>"
                     }
                 },
-                "Headers": {
-                    "target": "com.amazonaws.pinpoint#ListOfMessageHeader",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The list of <a href=\"https://docs.aws.amazon.com/pinpoint/latest/apireference/templates-template-name-email.html#templates-template-name-email-model-messageheader\">MessageHeaders</a> for the email. You can have up to 15 Headers.</p>"
-                    }
-                },
                 "tags": {
                     "target": "com.amazonaws.pinpoint#MapOf__string",
                     "traits": {
@@ -6181,7 +6056,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -6201,7 +6075,6 @@
                 "LastModifiedDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was last modified.</p>",
                         "smithy.api#required": {}
                     }
@@ -6216,12 +6089,6 @@
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
                         "smithy.api#documentation": "<p>The subject line, or title, that's used in email messages that are based on the message template.</p>"
-                    }
-                },
-                "Headers": {
-                    "target": "com.amazonaws.pinpoint#ListOfMessageHeader",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The list of <a href=\"https://docs.aws.amazon.com/pinpoint/latest/apireference/templates-template-name-email.html#templates-template-name-email-model-messageheader\">MessageHeaders</a> for the email. You can have up to 15 Headers.</p>"
                     }
                 },
                 "tags": {
@@ -6240,7 +6107,6 @@
                 "TemplateName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the message template.</p>",
                         "smithy.api#required": {}
                     }
@@ -6248,7 +6114,6 @@
                 "TemplateType": {
                     "target": "com.amazonaws.pinpoint#TemplateType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of channel that the message template is designed for. For an email template, this value is EMAIL.</p>",
                         "smithy.api#required": {}
                     }
@@ -6356,7 +6221,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfEndpointBatchItem",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array that defines the endpoints to create or update and, for each endpoint, the property values to set or change. An array can contain a maximum of 100 items.</p>",
                         "smithy.api#required": {}
                     }
@@ -6498,8 +6362,7 @@
                 "DeliveryStatus": {
                     "target": "com.amazonaws.pinpoint#DeliveryStatus",
                     "traits": {
-                        "smithy.api#clientOptional": {},
-                        "smithy.api#documentation": "<p>The delivery status of the message. Possible values are:</p> <ul> <li><p>DUPLICATE - The endpoint address is a duplicate of another endpoint address. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>OPT_OUT - The user who's associated with the endpoint has opted out of receiving messages from you. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>PERMANENT_FAILURE - An error occurred when delivering the message to the endpoint. Amazon Pinpoint won't attempt to send the message again.</p></li>    <li><p>SUCCESSFUL - The message was successfully delivered to the endpoint.</p></li> <li><p>TEMPORARY_FAILURE - A temporary error occurred. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>THROTTLED - Amazon Pinpoint throttled the operation to send the message to the endpoint.</p></li> <li><p>UNKNOWN_FAILURE - An unknown error occurred.</p></li></ul>",
+                        "smithy.api#documentation": "<p>The delivery status of the message. Possible values are:</p> <ul> <li><p>DUPLICATE - The endpoint address is a duplicate of another endpoint address. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>OPT_OUT - The user who's associated with the endpoint has opted out of receiving messages from you. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>PERMANENT_FAILURE - An error occurred when delivering the message to the endpoint. Amazon Pinpoint won't attempt to send the message again.</p></li>    <li><p>SUCCESSFUL - The message was successfully delivered to the endpoint.</p></li> <li><p>TEMPORARY_FAILURE - A temporary error occurred. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>THROTTLED - Amazon Pinpoint throttled the operation to send the message to the endpoint.</p></li> <li><p>TIMEOUT - The message couldn't be sent within the timeout period.</p></li> <li><p>UNKNOWN_FAILURE - An unknown error occurred.</p></li></ul>",
                         "smithy.api#required": {}
                     }
                 },
@@ -6512,7 +6375,6 @@
                 "StatusCode": {
                     "target": "com.amazonaws.pinpoint#__integer",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The downstream service status code for delivering the message.</p>",
                         "smithy.api#required": {}
                     }
@@ -6770,7 +6632,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfEndpointResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each endpoint that's associated with the user ID.</p>",
                         "smithy.api#required": {}
                     }
@@ -6816,7 +6677,6 @@
                 "EventType": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the event.</p>",
                         "smithy.api#required": {}
                     }
@@ -6842,7 +6702,6 @@
                 "Timestamp": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date and time, in ISO 8601 format, when the event occurred.</p>",
                         "smithy.api#required": {}
                     }
@@ -6904,7 +6763,6 @@
                 "Dimensions": {
                     "target": "com.amazonaws.pinpoint#EventDimensions",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The dimensions for the event filter to use for the campaign or the journey activity.</p>",
                         "smithy.api#required": {}
                     }
@@ -6912,7 +6770,6 @@
                 "FilterType": {
                     "target": "com.amazonaws.pinpoint#FilterType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of event that causes the campaign to be sent or the journey activity to be performed. Valid values are: SYSTEM, sends the campaign or performs the activity when a system event occurs; and, ENDPOINT, sends the campaign or performs the activity when an endpoint event (<link  linkend=\"apps-application-id-events\">Events resource</link>) occurs.</p>",
                         "smithy.api#required": {}
                     }
@@ -6962,7 +6819,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application to publish event data for.</p>",
                         "smithy.api#required": {}
                     }
@@ -6970,7 +6826,6 @@
                 "DestinationStreamArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the Amazon Kinesis data stream or Amazon Kinesis Data Firehose delivery stream to publish event data to.</p> <p>For a Kinesis data stream, the ARN format is: arn:aws:kinesis:<replaceable>region</replaceable>:<replaceable>account-id</replaceable>:stream/<replaceable>stream_name</replaceable>\n               </p> <p>For a Kinesis Data Firehose delivery stream, the ARN format is: arn:aws:firehose:<replaceable>region</replaceable>:<replaceable>account-id</replaceable>:deliverystream/<replaceable>stream_name</replaceable>\n               </p>",
                         "smithy.api#required": {}
                     }
@@ -6996,7 +6851,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The AWS Identity and Access Management (IAM) role that authorizes Amazon Pinpoint to publish event data to the stream in your AWS account.</p>",
                         "smithy.api#required": {}
                     }
@@ -7012,7 +6866,6 @@
                 "Endpoint": {
                     "target": "com.amazonaws.pinpoint#PublicEndpoint",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A set of properties and attributes that are associated with the endpoint.</p>",
                         "smithy.api#required": {}
                     }
@@ -7020,7 +6873,6 @@
                 "Events": {
                     "target": "com.amazonaws.pinpoint#MapOfEvent",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A set of properties that are associated with the event.</p>",
                         "smithy.api#required": {}
                     }
@@ -7036,7 +6888,6 @@
                 "BatchItem": {
                     "target": "com.amazonaws.pinpoint#MapOfEventsBatch",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The batch of events to process. For each item in a batch, the endpoint ID acts as a key that has an EventsBatch object as its value.</p>",
                         "smithy.api#required": {}
                     }
@@ -7066,7 +6917,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management (IAM) role that authorizes Amazon Pinpoint to access the Amazon S3 location where you want to export endpoint definitions to.</p>",
                         "smithy.api#required": {}
                     }
@@ -7074,7 +6924,6 @@
                 "S3UrlPrefix": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The URL of the location in an Amazon Simple Storage Service (Amazon S3) bucket where you want to export endpoint definitions to. This location is typically a folder that contains multiple files. The URL should be in the following format: s3://<replaceable>bucket-name</replaceable>/<replaceable>folder-name</replaceable>/.</p>",
                         "smithy.api#required": {}
                     }
@@ -7102,7 +6951,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management (IAM) role that authorized Amazon Pinpoint to access the Amazon S3 location where the endpoint definitions were exported to.</p>",
                         "smithy.api#required": {}
                     }
@@ -7110,7 +6958,6 @@
                 "S3UrlPrefix": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The URL of the location in an Amazon Simple Storage Service (Amazon S3) bucket where the endpoint definitions were exported to. This location is typically a folder that contains multiple files. The URL should be in the following format: s3://<replaceable>bucket-name</replaceable>/<replaceable>folder-name</replaceable>/.</p>",
                         "smithy.api#required": {}
                     }
@@ -7138,7 +6985,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that's associated with the export job.</p>",
                         "smithy.api#required": {}
                     }
@@ -7158,7 +7004,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the export job was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -7166,7 +7011,6 @@
                 "Definition": {
                     "target": "com.amazonaws.pinpoint#ExportJobResource",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The resource settings that apply to the export job.</p>",
                         "smithy.api#required": {}
                     }
@@ -7186,7 +7030,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the export job.</p>",
                         "smithy.api#required": {}
                     }
@@ -7194,7 +7037,6 @@
                 "JobStatus": {
                     "target": "com.amazonaws.pinpoint#JobStatus",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The status of the export job. The job status is FAILED if Amazon Pinpoint wasn't able to process one or more pieces in the job.</p>",
                         "smithy.api#required": {}
                     }
@@ -7220,7 +7062,6 @@
                 "Type": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The job type. This value is EXPORT for export jobs.</p>",
                         "smithy.api#required": {}
                     }
@@ -7236,7 +7077,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfExportJobResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each export job that's associated with the application (Export Jobs resource) or segment (Segment Export Jobs resource).</p>",
                         "smithy.api#required": {}
                     }
@@ -7459,7 +7299,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the GCM channel, this value is GCM.</p>",
                         "smithy.api#required": {}
                     }
@@ -7597,7 +7436,6 @@
                 "Latitude": {
                     "target": "com.amazonaws.pinpoint#__double",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The latitude coordinate of the location.</p>",
                         "smithy.api#required": {}
                     }
@@ -7605,7 +7443,6 @@
                 "Longitude": {
                     "target": "com.amazonaws.pinpoint#__double",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The longitude coordinate of the location.</p>",
                         "smithy.api#required": {}
                     }
@@ -7621,7 +7458,6 @@
                 "Coordinates": {
                     "target": "com.amazonaws.pinpoint#GPSCoordinates",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The GPS coordinates to measure distance from.</p>",
                         "smithy.api#required": {}
                     }
@@ -7699,7 +7535,6 @@
                 "ADMChannelResponse": {
                     "target": "com.amazonaws.pinpoint#ADMChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -7771,7 +7606,6 @@
                 "APNSChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -7843,7 +7677,6 @@
                 "APNSSandboxChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSSandboxChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -7915,7 +7748,6 @@
                 "APNSVoipChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSVoipChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -7987,7 +7819,6 @@
                 "APNSVoipSandboxChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSVoipSandboxChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8034,22 +7865,7 @@
                     "method": "GET",
                     "uri": "/v1/apps/{ApplicationId}",
                     "code": 200
-                },
-                "smithy.test#smokeTests": [
-                    {
-                        "id": "GetAppFailure",
-                        "params": {
-                            "ApplicationId": "InvalidApplicationId"
-                        },
-                        "vendorParams": {
-                            "region": "us-west-2"
-                        },
-                        "vendorParamsShape": "aws.test#AwsVendorParams",
-                        "expect": {
-                            "failure": {}
-                        }
-                    }
-                ]
+                }
             }
         },
         "com.amazonaws.pinpoint#GetAppRequest": {
@@ -8074,7 +7890,6 @@
                 "ApplicationResponse": {
                     "target": "com.amazonaws.pinpoint#ApplicationResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8182,7 +7997,6 @@
                 "ApplicationDateRangeKpiResponse": {
                     "target": "com.amazonaws.pinpoint#ApplicationDateRangeKpiResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8254,7 +8068,6 @@
                 "ApplicationSettingsResource": {
                     "target": "com.amazonaws.pinpoint#ApplicationSettingsResource",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8301,20 +8114,7 @@
                     "method": "GET",
                     "uri": "/v1/apps",
                     "code": 200
-                },
-                "smithy.test#smokeTests": [
-                    {
-                        "id": "GetAppsSuccess",
-                        "params": {},
-                        "vendorParams": {
-                            "region": "us-west-2"
-                        },
-                        "vendorParamsShape": "aws.test#AwsVendorParams",
-                        "expect": {
-                            "success": {}
-                        }
-                    }
-                ]
+                }
             }
         },
         "com.amazonaws.pinpoint#GetAppsRequest": {
@@ -8345,7 +8145,6 @@
                 "ApplicationsResponse": {
                     "target": "com.amazonaws.pinpoint#ApplicationsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8417,7 +8216,6 @@
                 "BaiduChannelResponse": {
                     "target": "com.amazonaws.pinpoint#BaiduChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8551,7 +8349,6 @@
                 "ActivitiesResponse": {
                     "target": "com.amazonaws.pinpoint#ActivitiesResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8667,7 +8464,6 @@
                 "CampaignDateRangeKpiResponse": {
                     "target": "com.amazonaws.pinpoint#CampaignDateRangeKpiResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8707,7 +8503,6 @@
                 "CampaignResponse": {
                     "target": "com.amazonaws.pinpoint#CampaignResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8795,7 +8590,6 @@
                 "CampaignResponse": {
                     "target": "com.amazonaws.pinpoint#CampaignResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8889,7 +8683,6 @@
                 "CampaignsResponse": {
                     "target": "com.amazonaws.pinpoint#CampaignsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -8975,7 +8768,6 @@
                 "CampaignsResponse": {
                     "target": "com.amazonaws.pinpoint#CampaignsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9047,7 +8839,6 @@
                 "ChannelsResponse": {
                     "target": "com.amazonaws.pinpoint#ChannelsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9119,7 +8910,6 @@
                 "EmailChannelResponse": {
                     "target": "com.amazonaws.pinpoint#EmailChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9198,7 +8988,6 @@
                 "EmailTemplateResponse": {
                     "target": "com.amazonaws.pinpoint#EmailTemplateResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9262,7 +9051,7 @@
                 "EndpointId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#documentation": "<p>The case insensitive unique identifier for the endpoint. The identifier can't contain <code>$</code>, <code>{</code> or <code>}</code>.</p>",
+                        "smithy.api#documentation": "<p>The unique identifier for the endpoint.</p>",
                         "smithy.api#httpLabel": {},
                         "smithy.api#required": {}
                     }
@@ -9278,7 +9067,6 @@
                 "EndpointResponse": {
                     "target": "com.amazonaws.pinpoint#EndpointResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9350,7 +9138,6 @@
                 "EventStream": {
                     "target": "com.amazonaws.pinpoint#EventStream",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9430,7 +9217,6 @@
                 "ExportJobResponse": {
                     "target": "com.amazonaws.pinpoint#ExportJobResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9516,7 +9302,6 @@
                 "ExportJobsResponse": {
                     "target": "com.amazonaws.pinpoint#ExportJobsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9588,7 +9373,6 @@
                 "GCMChannelResponse": {
                     "target": "com.amazonaws.pinpoint#GCMChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9668,7 +9452,6 @@
                 "ImportJobResponse": {
                     "target": "com.amazonaws.pinpoint#ImportJobResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9754,7 +9537,6 @@
                 "ImportJobsResponse": {
                     "target": "com.amazonaws.pinpoint#ImportJobsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9834,7 +9616,6 @@
                 "InAppMessagesResponse": {
                     "target": "com.amazonaws.pinpoint#InAppMessagesResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -9913,7 +9694,6 @@
                 "InAppTemplateResponse": {
                     "target": "com.amazonaws.pinpoint#InAppTemplateResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10069,7 +9849,6 @@
                 "JourneyDateRangeKpiResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyDateRangeKpiResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10171,7 +9950,6 @@
                 "JourneyExecutionActivityMetricsResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyExecutionActivityMetricsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10265,7 +10043,6 @@
                 "JourneyExecutionMetricsResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyExecutionMetricsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10305,7 +10082,6 @@
                 "JourneyResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10440,7 +10216,6 @@
                 "JourneyRunExecutionActivityMetricsResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyRunExecutionActivityMetricsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10566,7 +10341,6 @@
                 "JourneyRunExecutionMetricsResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyRunExecutionMetricsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10688,7 +10462,6 @@
                 "JourneyRunsResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyRunsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10767,7 +10540,6 @@
                 "PushNotificationTemplateResponse": {
                     "target": "com.amazonaws.pinpoint#PushNotificationTemplateResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10839,7 +10611,6 @@
                 "RecommenderConfigurationResponse": {
                     "target": "com.amazonaws.pinpoint#RecommenderConfigurationResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -10917,7 +10688,6 @@
                 "ListRecommenderConfigurationsResponse": {
                     "target": "com.amazonaws.pinpoint#ListRecommenderConfigurationsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11051,7 +10821,6 @@
                 "ExportJobsResponse": {
                     "target": "com.amazonaws.pinpoint#ExportJobsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11145,7 +10914,6 @@
                 "ImportJobsResponse": {
                     "target": "com.amazonaws.pinpoint#ImportJobsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11185,7 +10953,6 @@
                 "SegmentResponse": {
                     "target": "com.amazonaws.pinpoint#SegmentResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11273,7 +11040,6 @@
                 "SegmentResponse": {
                     "target": "com.amazonaws.pinpoint#SegmentResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11367,7 +11133,6 @@
                 "SegmentsResponse": {
                     "target": "com.amazonaws.pinpoint#SegmentsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11453,7 +11218,6 @@
                 "SegmentsResponse": {
                     "target": "com.amazonaws.pinpoint#SegmentsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11525,7 +11289,6 @@
                 "SMSChannelResponse": {
                     "target": "com.amazonaws.pinpoint#SMSChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11604,7 +11367,6 @@
                 "SMSTemplateResponse": {
                     "target": "com.amazonaws.pinpoint#SMSTemplateResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11684,7 +11446,6 @@
                 "EndpointsResponse": {
                     "target": "com.amazonaws.pinpoint#EndpointsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11756,7 +11517,6 @@
                 "VoiceChannelResponse": {
                     "target": "com.amazonaws.pinpoint#VoiceChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11835,7 +11595,6 @@
                 "VoiceTemplateResponse": {
                     "target": "com.amazonaws.pinpoint#VoiceTemplateResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -11857,7 +11616,6 @@
                 "Percentage": {
                     "target": "com.amazonaws.pinpoint#__integer",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The percentage of participants who shouldn't continue the journey.</p> <p>To determine which participants are held out, Amazon Pinpoint applies a probability-based algorithm to the percentage that you specify. Therefore, the actual percentage of participants who are held out may not be equal to the percentage that you specify.</p>",
                         "smithy.api#required": {}
                     }
@@ -11885,7 +11643,6 @@
                 "Format": {
                     "target": "com.amazonaws.pinpoint#Format",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The format of the files that contain the endpoint definitions to import. Valid values are: CSV, for comma-separated values format; and, JSON, for newline-delimited JSON format. If the Amazon S3 location stores multiple files that use different formats, Amazon Pinpoint imports data only from the files that use the specified format.</p>",
                         "smithy.api#required": {}
                     }
@@ -11899,7 +11656,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management (IAM) role that authorizes Amazon Pinpoint to access the Amazon S3 location to import endpoint definitions from.</p>",
                         "smithy.api#required": {}
                     }
@@ -11907,7 +11663,6 @@
                 "S3Url": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The URL of the Amazon Simple Storage Service (Amazon S3) bucket that contains the endpoint definitions to import. This location can be a folder or a single file. If the location is a folder, Amazon Pinpoint imports endpoint definitions from the files in this location, including any subfolders that the folder contains.</p> <p>The URL should be in the following format: s3://<replaceable>bucket-name</replaceable>/<replaceable>folder-name</replaceable>/<replaceable>file-name</replaceable>. The location can end with the key for an individual object or a prefix that qualifies multiple objects.</p>",
                         "smithy.api#required": {}
                     }
@@ -11947,7 +11702,6 @@
                 "Format": {
                     "target": "com.amazonaws.pinpoint#Format",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The format of the files that contain the endpoint definitions to import. Valid values are: CSV, for comma-separated values format; and, JSON, for newline-delimited JSON format.</p> <p>If the files are stored in an Amazon S3 location and that location contains multiple files that use different formats, Amazon Pinpoint imports data only from the files that use the specified format.</p>",
                         "smithy.api#required": {}
                     }
@@ -11961,7 +11715,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management (IAM) role that authorizes Amazon Pinpoint to access the Amazon S3 location to import endpoint definitions from.</p>",
                         "smithy.api#required": {}
                     }
@@ -11969,7 +11722,6 @@
                 "S3Url": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The URL of the Amazon Simple Storage Service (Amazon S3) bucket that contains the endpoint definitions to import. This location can be a folder or a single file. If the location is a folder, Amazon Pinpoint imports endpoint definitions from the files in this location, including any subfolders that the folder contains.</p> <p>The URL should be in the following format: s3://<replaceable>bucket-name</replaceable>/<replaceable>folder-name</replaceable>/<replaceable>file-name</replaceable>. The location can end with the key for an individual object or a prefix that qualifies multiple objects.</p>",
                         "smithy.api#required": {}
                     }
@@ -11997,7 +11749,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that's associated with the import job.</p>",
                         "smithy.api#required": {}
                     }
@@ -12017,7 +11768,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the import job was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -12025,7 +11775,6 @@
                 "Definition": {
                     "target": "com.amazonaws.pinpoint#ImportJobResource",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The resource settings that apply to the import job.</p>",
                         "smithy.api#required": {}
                     }
@@ -12045,7 +11794,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the import job.</p>",
                         "smithy.api#required": {}
                     }
@@ -12053,7 +11801,6 @@
                 "JobStatus": {
                     "target": "com.amazonaws.pinpoint#JobStatus",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The status of the import job. The job status is FAILED if Amazon Pinpoint wasn't able to process one or more pieces in the job.</p>",
                         "smithy.api#required": {}
                     }
@@ -12079,7 +11826,6 @@
                 "Type": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The job type. This value is IMPORT for import jobs.</p>",
                         "smithy.api#required": {}
                     }
@@ -12095,7 +11841,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfImportJobResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each import job that's associated with the application (Import Jobs resource) or segment (Segment Import Jobs resource).</p>",
                         "smithy.api#required": {}
                     }
@@ -12169,7 +11914,6 @@
                 "Alignment": {
                     "target": "com.amazonaws.pinpoint#Alignment",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The alignment of the text. Valid values: LEFT, CENTER, RIGHT.</p>",
                         "smithy.api#required": {}
                     }
@@ -12177,7 +11921,6 @@
                 "Body": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Message Body.</p>",
                         "smithy.api#required": {}
                     }
@@ -12185,7 +11928,6 @@
                 "TextColor": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The text color.</p>",
                         "smithy.api#required": {}
                     }
@@ -12333,7 +12075,6 @@
                 "Alignment": {
                     "target": "com.amazonaws.pinpoint#Alignment",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The alignment of the text. Valid values: LEFT, CENTER, RIGHT.</p>",
                         "smithy.api#required": {}
                     }
@@ -12341,7 +12082,6 @@
                 "Header": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Message Header.</p>",
                         "smithy.api#required": {}
                     }
@@ -12349,7 +12089,6 @@
                 "TextColor": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The text color.</p>",
                         "smithy.api#required": {}
                     }
@@ -12430,7 +12169,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The creation date of the template.</p>",
                         "smithy.api#required": {}
                     }
@@ -12444,7 +12182,6 @@
                 "LastModifiedDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The last modified date of the template.</p>",
                         "smithy.api#required": {}
                     }
@@ -12471,7 +12208,6 @@
                 "TemplateName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the template.</p>",
                         "smithy.api#required": {}
                     }
@@ -12479,7 +12215,6 @@
                 "TemplateType": {
                     "target": "com.amazonaws.pinpoint#TemplateType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of the template.</p>",
                         "smithy.api#required": {}
                     }
@@ -12659,7 +12394,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -12667,7 +12401,6 @@
                 "EndTime": {
                     "target": "com.amazonaws.pinpoint#__timestampIso8601",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The last date and time of the date range that was used to filter the query results, in extended ISO 8601 format. The date range is inclusive.</p>",
                         "smithy.api#required": {}
                     }
@@ -12675,7 +12408,6 @@
                 "JourneyId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the journey that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -12683,7 +12415,6 @@
                 "KpiName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the metric, also referred to as a <i>key performance indicator (KPI)</i>, that the data was retrieved for. This value describes the associated metric and consists of two or more terms, which are comprised of lowercase alphanumeric characters, separated by a hyphen. For a list of possible values, see the <a href=\"https://docs.aws.amazon.com/pinpoint/latest/developerguide/analytics-standard-metrics.html\">Amazon Pinpoint Developer Guide</a>.</p>",
                         "smithy.api#required": {}
                     }
@@ -12691,7 +12422,6 @@
                 "KpiResult": {
                     "target": "com.amazonaws.pinpoint#BaseKpiResult",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of objects that contains the results of the query. Each object contains the value for the metric and metadata about that value.</p>",
                         "smithy.api#required": {}
                     }
@@ -12705,7 +12435,6 @@
                 "StartTime": {
                     "target": "com.amazonaws.pinpoint#__timestampIso8601",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The first date and time of the date range that was used to filter the query results, in extended ISO 8601 format. The date range is inclusive.</p>",
                         "smithy.api#required": {}
                     }
@@ -12735,7 +12464,6 @@
                 "ActivityType": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of activity that the metric applies to. Possible values are:</p> <ul><li><p>CONDITIONAL_SPLIT – For a yes/no split activity, which is an activity that sends participants down one of two paths in a journey.</p></li> <li><p>HOLDOUT – For a holdout activity, which is an activity that stops a journey for a specified percentage of participants.</p></li> <li><p>MESSAGE – For an email activity, which is an activity that sends an email message to participants.</p></li> <li><p>MULTI_CONDITIONAL_SPLIT – For a multivariate split activity, which is an activity that sends participants down one of as many as five paths in a journey.</p></li> <li><p>RANDOM_SPLIT – For a random split activity, which is an activity that sends specified percentages of participants down one of as many as five paths in a journey.</p></li> <li><p>WAIT – For a wait activity, which is an activity that waits for a certain amount of time or until a specific date and time before moving participants to the next activity in a journey.</p></li></ul>",
                         "smithy.api#required": {}
                     }
@@ -12743,7 +12471,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -12751,7 +12478,6 @@
                 "JourneyActivityId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the activity that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -12759,7 +12485,6 @@
                 "JourneyId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the journey that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -12767,7 +12492,6 @@
                 "LastEvaluatedTime": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date and time, in ISO 8601 format, when Amazon Pinpoint last evaluated the execution status of the activity and updated the data for the metric.</p>",
                         "smithy.api#required": {}
                     }
@@ -12775,7 +12499,6 @@
                 "Metrics": {
                     "target": "com.amazonaws.pinpoint#MapOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A JSON object that contains the results of the query. The results vary depending on the type of activity (ActivityType). For information about the structure and contents of the results, see the <a href=\"https://docs.aws.amazon.com/pinpoint/latest/developerguide/analytics-standard-metrics.html\">Amazon Pinpoint Developer Guide</a>.</p>",
                         "smithy.api#required": {}
                     }
@@ -12791,7 +12514,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -12799,7 +12521,6 @@
                 "JourneyId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the journey that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -12807,7 +12528,6 @@
                 "LastEvaluatedTime": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date and time, in ISO 8601 format, when Amazon Pinpoint last evaluated the journey and updated the data for the metric.</p>",
                         "smithy.api#required": {}
                     }
@@ -12815,7 +12535,6 @@
                 "Metrics": {
                     "target": "com.amazonaws.pinpoint#MapOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A JSON object that contains the results of the query. For information about the structure and contents of the results, see the <a href=\"https://docs.aws.amazon.com//pinpoint/latest/developerguide/analytics-standard-metrics.html\">Amazon Pinpoint Developer Guide</a>.</p>",
                         "smithy.api#required": {}
                     }
@@ -12895,7 +12614,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the journey applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -12909,7 +12627,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the journey.</p>",
                         "smithy.api#required": {}
                     }
@@ -12935,7 +12652,6 @@
                 "Name": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the journey.</p>",
                         "smithy.api#required": {}
                     }
@@ -13036,7 +12752,6 @@
                 "ActivityType": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of activity that the metric applies to. Possible values are:</p> <ul><li><p>CONDITIONAL_SPLIT – For a yes/no split activity, which is an activity that sends participants down one of two paths in a journey.</p></li> <li><p>HOLDOUT – For a holdout activity, which is an activity that stops a journey for a specified percentage of participants.</p></li> <li><p>MESSAGE – For an email activity, which is an activity that sends an email message to participants.</p></li> <li><p>MULTI_CONDITIONAL_SPLIT – For a multivariate split activity, which is an activity that sends participants down one of as many as five paths in a journey.</p></li> <li><p>RANDOM_SPLIT – For a random split activity, which is an activity that sends specified percentages of participants down one of as many as five paths in a journey.</p></li> <li><p>WAIT – For a wait activity, which is an activity that waits for a certain amount of time or until a specific date and time before moving participants to the next activity in a journey.</p></li></ul>",
                         "smithy.api#required": {}
                     }
@@ -13044,7 +12759,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -13052,7 +12766,6 @@
                 "JourneyActivityId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the activity that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -13060,7 +12773,6 @@
                 "JourneyId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the journey that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -13068,7 +12780,6 @@
                 "LastEvaluatedTime": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date and time, in ISO 8601 format, when Amazon Pinpoint last evaluated the execution status of the activity for this journey run and updated the data for the metric.</p>",
                         "smithy.api#required": {}
                     }
@@ -13076,7 +12787,6 @@
                 "Metrics": {
                     "target": "com.amazonaws.pinpoint#MapOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A JSON object that contains the results of the query. For information about the structure and contents of the results, see see <a href=\"https://docs.aws.amazon.com//pinpoint/latest/developerguide/analytics-standard-metrics.html\">Standard Amazon Pinpoint analytics metrics</a> in the <i>Amazon Pinpoint Developer Guide</i>.</p>",
                         "smithy.api#required": {}
                     }
@@ -13084,7 +12794,6 @@
                 "RunId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the journey run that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -13100,7 +12809,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -13108,7 +12816,6 @@
                 "JourneyId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the journey that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -13116,7 +12823,6 @@
                 "LastEvaluatedTime": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date and time, in ISO 8601 format, when Amazon Pinpoint last evaluated the journey run and updated the data for the metric.</p>",
                         "smithy.api#required": {}
                     }
@@ -13124,7 +12830,6 @@
                 "Metrics": {
                     "target": "com.amazonaws.pinpoint#MapOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A JSON object that contains the results of the query. For information about the structure and contents of the results, see the <a href=\"https://docs.aws.amazon.com//pinpoint/latest/developerguide/analytics-standard-metrics.html\">Standard Amazon Pinpoint analytics metrics</a> in the <i>Amazon Pinpoint Developer Guide</i>.</p>",
                         "smithy.api#required": {}
                     }
@@ -13132,7 +12837,6 @@
                 "RunId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the journey run that the metric applies to.</p>",
                         "smithy.api#required": {}
                     }
@@ -13148,7 +12852,6 @@
                 "CreationTime": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The time when the journey run was created or scheduled, in ISO 8601 format.</p>",
                         "smithy.api#required": {}
                     }
@@ -13156,7 +12859,6 @@
                 "LastUpdateTime": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The last time the journey run was updated, in ISO 8601 format..</p>",
                         "smithy.api#required": {}
                     }
@@ -13164,7 +12866,6 @@
                 "RunId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the run.</p>",
                         "smithy.api#required": {}
                     }
@@ -13172,7 +12873,6 @@
                 "Status": {
                     "target": "com.amazonaws.pinpoint#JourneyRunStatus",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The current status of the journey run.</p>",
                         "smithy.api#required": {}
                     }
@@ -13217,7 +12917,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfJourneyRunResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each run of the journey</p>",
                         "smithy.api#required": {}
                     }
@@ -13337,7 +13036,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfJourneyResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each journey that's associated with the application.</p>",
                         "smithy.api#required": {}
                     }
@@ -13470,7 +13168,6 @@
                 "JourneysResponse": {
                     "target": "com.amazonaws.pinpoint#JourneysResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -13553,12 +13250,6 @@
             "type": "list",
             "member": {
                 "target": "com.amazonaws.pinpoint#JourneyRunResponse"
-            }
-        },
-        "com.amazonaws.pinpoint#ListOfMessageHeader": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.pinpoint#MessageHeader"
             }
         },
         "com.amazonaws.pinpoint#ListOfMultiConditionalBranch": {
@@ -13678,7 +13369,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfRecommenderConfigurationResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each recommender model configuration that's associated with your Amazon Pinpoint account.</p>",
                         "smithy.api#required": {}
                     }
@@ -13733,7 +13423,6 @@
                 "TagsModel": {
                     "target": "com.amazonaws.pinpoint#TagsModel",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -13828,7 +13517,6 @@
                 "TemplateVersionsResponse": {
                     "target": "com.amazonaws.pinpoint#TemplateVersionsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -13914,7 +13602,6 @@
                 "TemplatesResponse": {
                     "target": "com.amazonaws.pinpoint#TemplatesResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -14254,26 +13941,6 @@
                 "smithy.api#documentation": "<p>Specifies the message configuration settings for a campaign.</p>"
             }
         },
-        "com.amazonaws.pinpoint#MessageHeader": {
-            "type": "structure",
-            "members": {
-                "Name": {
-                    "target": "com.amazonaws.pinpoint#__string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the message header. The header name can contain up to 126 characters.</p>"
-                    }
-                },
-                "Value": {
-                    "target": "com.amazonaws.pinpoint#__string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The value of the message header. The header value can contain up to 870 characters, including the length of any rendered attributes. For example if you add the {CreationDate} attribute, it renders as YYYY-MM-DDTHH:MM:SS.SSSZ and is 24 characters in length.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Contains the name and value pair of an email header to add to your email. You can have up to 15 MessageHeaders. A header can contain information such as the sender, receiver, route, or timestamp.</p>"
-            }
-        },
         "com.amazonaws.pinpoint#MessageRequest": {
             "type": "structure",
             "members": {
@@ -14298,7 +13965,6 @@
                 "MessageConfiguration": {
                     "target": "com.amazonaws.pinpoint#DirectMessageConfiguration",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The settings and content for the default message and any default messages that you defined for specific channels.</p>",
                         "smithy.api#required": {}
                     }
@@ -14326,7 +13992,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that was used to send the message.</p>",
                         "smithy.api#required": {}
                     }
@@ -14360,8 +14025,7 @@
                 "DeliveryStatus": {
                     "target": "com.amazonaws.pinpoint#DeliveryStatus",
                     "traits": {
-                        "smithy.api#clientOptional": {},
-                        "smithy.api#documentation": "<p>The delivery status of the message. Possible values are:</p> <ul> <li><p>DUPLICATE - The endpoint address is a duplicate of another endpoint address. Amazon Pinpoint won't attempt to send the message again.</p></li>   <li><p>OPT_OUT - The user who's associated with the endpoint address has opted out of receiving messages from you. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>PERMANENT_FAILURE - An error occurred when delivering the message to the endpoint address. Amazon Pinpoint won't attempt to send the message again.</p></li>   <li><p>SUCCESSFUL - The message was successfully delivered to the endpoint address.</p></li> <li><p>TEMPORARY_FAILURE - A temporary error occurred. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>THROTTLED - Amazon Pinpoint throttled the operation to send the message to the endpoint address.</p></li> <li><p>UNKNOWN_FAILURE - An unknown error occurred.</p></li></ul>",
+                        "smithy.api#documentation": "<p>The delivery status of the message. Possible values are:</p> <ul> <li><p>DUPLICATE - The endpoint address is a duplicate of another endpoint address. Amazon Pinpoint won't attempt to send the message again.</p></li>   <li><p>OPT_OUT - The user who's associated with the endpoint address has opted out of receiving messages from you. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>PERMANENT_FAILURE - An error occurred when delivering the message to the endpoint address. Amazon Pinpoint won't attempt to send the message again.</p></li>   <li><p>SUCCESSFUL - The message was successfully delivered to the endpoint address.</p></li> <li><p>TEMPORARY_FAILURE - A temporary error occurred. Amazon Pinpoint won't attempt to send the message again.</p></li> <li><p>THROTTLED - Amazon Pinpoint throttled the operation to send the message to the endpoint address.</p></li> <li><p>TIMEOUT - The message couldn't be sent within the timeout period.</p></li> <li><p>UNKNOWN_FAILURE - An unknown error occurred.</p></li></ul>",
                         "smithy.api#required": {}
                     }
                 },
@@ -14374,7 +14038,6 @@
                 "StatusCode": {
                     "target": "com.amazonaws.pinpoint#__integer",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The downstream service status code for delivering the message.</p>",
                         "smithy.api#required": {}
                     }
@@ -14441,7 +14104,6 @@
                 "ComparisonOperator": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The operator to use when comparing metric values. Valid values are: GREATER_THAN, LESS_THAN, GREATER_THAN_OR_EQUAL, LESS_THAN_OR_EQUAL, and EQUAL.</p>",
                         "smithy.api#required": {}
                     }
@@ -14449,7 +14111,6 @@
                 "Value": {
                     "target": "com.amazonaws.pinpoint#__double",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The value to compare.</p>",
                         "smithy.api#required": {}
                     }
@@ -14737,7 +14398,6 @@
                 "ButtonAction": {
                     "target": "com.amazonaws.pinpoint#ButtonAction",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Action triggered by the button.</p>",
                         "smithy.api#required": {}
                     }
@@ -14821,7 +14481,6 @@
                 "NumberValidateRequest": {
                     "target": "com.amazonaws.pinpoint#NumberValidateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -14837,7 +14496,6 @@
                 "NumberValidateResponse": {
                     "target": "com.amazonaws.pinpoint#NumberValidateResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -15230,9 +14888,6 @@
                     "name": "mobiletargeting"
                 },
                 "aws.protocols#restJson1": {},
-                "smithy.api#auth": [
-                    "aws.auth#sigv4"
-                ],
                 "smithy.api#documentation": "<p>Doc Engage API - Amazon Pinpoint API</p>",
                 "smithy.api#title": "Amazon Pinpoint",
                 "smithy.rules#endpointRuleSet": {
@@ -15277,6 +14932,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -15319,8 +14975,7 @@
                                     },
                                     "type": "endpoint"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [
@@ -15333,6 +14988,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -15346,6 +15002,7 @@
                                             "assign": "PartitionResult"
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -15368,6 +15025,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -15402,6 +15060,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -15412,16 +15071,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -15435,12 +15092,14 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
                                                         {
                                                             "fn": "booleanEquals",
                                                             "argv": [
+                                                                true,
                                                                 {
                                                                     "fn": "getAttr",
                                                                     "argv": [
@@ -15449,11 +15108,11 @@
                                                                         },
                                                                         "supportsFIPS"
                                                                     ]
-                                                                },
-                                                                true
+                                                                }
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -15464,16 +15123,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS is enabled but this partition does not support FIPS",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -15487,6 +15144,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -15506,6 +15164,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -15516,16 +15175,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "DualStack is enabled but this partition does not support DualStack",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -15643,11 +15300,9 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
@@ -16340,7 +15995,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -16366,7 +16020,6 @@
                 "LastModifiedDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was last modified.</p>",
                         "smithy.api#required": {}
                     }
@@ -16393,7 +16046,6 @@
                 "TemplateName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the message template.</p>",
                         "smithy.api#required": {}
                     }
@@ -16401,7 +16053,6 @@
                 "TemplateType": {
                     "target": "com.amazonaws.pinpoint#TemplateType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of channel that the message template is designed for. For a push notification template, this value is PUSH.</p>",
                         "smithy.api#required": {}
                     }
@@ -16471,7 +16122,6 @@
                 "WriteEventStream": {
                     "target": "com.amazonaws.pinpoint#WriteEventStream",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -16487,7 +16137,6 @@
                 "EventStream": {
                     "target": "com.amazonaws.pinpoint#EventStream",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -16551,7 +16200,6 @@
                 "EventsRequest": {
                     "target": "com.amazonaws.pinpoint#EventsRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -16567,7 +16215,6 @@
                 "EventsResponse": {
                     "target": "com.amazonaws.pinpoint#EventsResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -16651,7 +16298,6 @@
                 "Duration": {
                     "target": "com.amazonaws.pinpoint#Duration",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The duration to use when determining whether an endpoint is active or inactive.</p>",
                         "smithy.api#required": {}
                     }
@@ -16659,7 +16305,6 @@
                 "RecencyType": {
                     "target": "com.amazonaws.pinpoint#RecencyType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of recency dimension to use for the segment. Valid values are: ACTIVE, endpoints that were active within the specified duration are included in the segment; and, INACTIVE, endpoints that weren't active within the specified duration are included in the segment.</p>",
                         "smithy.api#required": {}
                     }
@@ -16698,7 +16343,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in extended ISO 8601 format, when the configuration was created for the recommender model.</p>",
                         "smithy.api#required": {}
                     }
@@ -16712,7 +16356,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the recommender model configuration.</p>",
                         "smithy.api#required": {}
                     }
@@ -16720,7 +16363,6 @@
                 "LastModifiedDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in extended ISO 8601 format, when the configuration for the recommender model was last modified.</p>",
                         "smithy.api#required": {}
                     }
@@ -16740,7 +16382,6 @@
                 "RecommendationProviderRoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management (IAM) role that authorizes Amazon Pinpoint to retrieve recommendation data from the recommender model.</p>",
                         "smithy.api#required": {}
                     }
@@ -16748,7 +16389,6 @@
                 "RecommendationProviderUri": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the recommender model that Amazon Pinpoint retrieves the recommendation data from. This value is the ARN of an Amazon Personalize campaign.</p>",
                         "smithy.api#required": {}
                     }
@@ -16838,7 +16478,6 @@
                 "UpdateAttributesRequest": {
                     "target": "com.amazonaws.pinpoint#UpdateAttributesRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -16854,7 +16493,6 @@
                 "AttributesResource": {
                     "target": "com.amazonaws.pinpoint#AttributesResource",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -16870,7 +16508,6 @@
                 "GroupedBys": {
                     "target": "com.amazonaws.pinpoint#ListOfResultRowValue",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of objects that defines the field and field values that were used to group data in a result set that contains multiple results. This value is null if the data in a result set isn’t grouped.</p>",
                         "smithy.api#required": {}
                     }
@@ -16878,7 +16515,6 @@
                 "Values": {
                     "target": "com.amazonaws.pinpoint#ListOfResultRowValue",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of objects that provides pre-aggregated values for a standard metric that applies to an application, campaign, or journey.</p>",
                         "smithy.api#required": {}
                     }
@@ -16894,7 +16530,6 @@
                 "Key": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The friendly name of the metric whose value is specified by the Value property.</p>",
                         "smithy.api#required": {}
                     }
@@ -16902,7 +16537,6 @@
                 "Type": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The data type of the value specified by the Value property.</p>",
                         "smithy.api#required": {}
                     }
@@ -16910,7 +16544,6 @@
                 "Value": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>In a Values object, the value for the metric that the query retrieved data for. In a GroupedBys object, the value for the field that was used to group data in a result set that contains multiple results (Values objects).</p>",
                         "smithy.api#required": {}
                     }
@@ -17000,7 +16633,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the SMS channel, this value is SMS.</p>",
                         "smithy.api#required": {}
                     }
@@ -17191,7 +16823,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -17205,7 +16836,6 @@
                 "LastModifiedDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was last modified.</p>",
                         "smithy.api#required": {}
                     }
@@ -17232,7 +16862,6 @@
                 "TemplateName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the message template.</p>",
                         "smithy.api#required": {}
                     }
@@ -17240,7 +16869,6 @@
                 "TemplateType": {
                     "target": "com.amazonaws.pinpoint#TemplateType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of channel that the message template is designed for. For an SMS template, this value is SMS.</p>",
                         "smithy.api#required": {}
                     }
@@ -17292,7 +16920,6 @@
                 "StartTime": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The scheduled time when the campaign began or will begin. Valid values are: IMMEDIATE, to start the campaign immediately; or, a specific time in ISO 8601 format.</p>",
                         "smithy.api#required": {}
                     }
@@ -17328,7 +16955,6 @@
                 "SegmentId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the segment to associate with the activity.</p>",
                         "smithy.api#required": {}
                     }
@@ -17490,7 +17116,6 @@
                 "ExternalId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>(Deprecated) Your AWS account ID, which you assigned to an external ID key in an IAM trust policy. Amazon Pinpoint previously used this value to assume an IAM role when importing endpoint definitions, but we removed this requirement. We don't recommend use of external IDs for IAM roles that are assumed by Amazon Pinpoint.</p>",
                         "smithy.api#required": {}
                     }
@@ -17498,7 +17123,6 @@
                 "Format": {
                     "target": "com.amazonaws.pinpoint#Format",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The format of the files that were imported to create the segment. Valid values are: CSV, for comma-separated values format; and, JSON, for newline-delimited JSON format.</p>",
                         "smithy.api#required": {}
                     }
@@ -17506,7 +17130,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management (IAM) role that authorized Amazon Pinpoint to access the Amazon S3 location to import endpoint definitions from.</p>",
                         "smithy.api#required": {}
                     }
@@ -17514,7 +17137,6 @@
                 "S3Url": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The URL of the Amazon Simple Storage Service (Amazon S3) bucket that the endpoint definitions were imported from to create the segment.</p>",
                         "smithy.api#required": {}
                     }
@@ -17522,7 +17144,6 @@
                 "Size": {
                     "target": "com.amazonaws.pinpoint#__integer",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The number of endpoint definitions that were imported successfully to create the segment.</p>",
                         "smithy.api#required": {}
                     }
@@ -17558,7 +17179,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the segment.</p>",
                         "smithy.api#required": {}
                     }
@@ -17580,7 +17200,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that the segment is associated with.</p>",
                         "smithy.api#required": {}
                     }
@@ -17588,7 +17207,6 @@
                 "Arn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the segment.</p>",
                         "smithy.api#required": {}
                     }
@@ -17596,7 +17214,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date and time when the segment was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -17610,7 +17227,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the segment.</p>",
                         "smithy.api#required": {}
                     }
@@ -17642,7 +17258,6 @@
                 "SegmentType": {
                     "target": "com.amazonaws.pinpoint#SegmentType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The segment type. Valid values are:</p> <ul><li><p>DIMENSIONAL - A dynamic segment, which is a segment that uses selection criteria that you specify and is based on endpoint data that's reported by your app. Dynamic segments can change over time.</p></li> <li><p>IMPORT - A static segment, which is a segment that uses selection criteria that you specify and is based on endpoint definitions that you import from a file. Imported segments are static; they don't change over time.</p></li></ul>",
                         "smithy.api#required": {}
                     }
@@ -17688,7 +17303,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfSegmentResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each segment that's associated with the application (Segments resource) or each version of a segment that's associated with the application (Segment Versions resource).</p>",
                         "smithy.api#required": {}
                     }
@@ -17758,7 +17372,6 @@
                 "MessageRequest": {
                     "target": "com.amazonaws.pinpoint#MessageRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -17774,7 +17387,6 @@
                 "MessageResponse": {
                     "target": "com.amazonaws.pinpoint#MessageResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -17838,7 +17450,6 @@
                 "SendOTPMessageRequestParameters": {
                     "target": "com.amazonaws.pinpoint#SendOTPMessageRequestParameters",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -17860,7 +17471,6 @@
                 "BrandName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The brand name that will be substituted into the OTP message body. Should be owned by calling AWS account.</p>",
                         "smithy.api#required": {}
                     }
@@ -17868,7 +17478,6 @@
                 "Channel": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Channel type for the OTP message. Supported values: [SMS].</p>",
                         "smithy.api#required": {}
                     }
@@ -17882,7 +17491,6 @@
                 "DestinationIdentity": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The destination identity to send OTP to.</p>",
                         "smithy.api#required": {}
                     }
@@ -17902,7 +17510,6 @@
                 "OriginationIdentity": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The origination identity used to send OTP from.</p>",
                         "smithy.api#required": {}
                     }
@@ -17910,7 +17517,6 @@
                 "ReferenceId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Developer-specified reference identifier. Required to match during OTP verification.</p>",
                         "smithy.api#required": {}
                     }
@@ -17938,7 +17544,6 @@
                 "MessageResponse": {
                     "target": "com.amazonaws.pinpoint#MessageResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -17960,7 +17565,6 @@
                 "MessageConfiguration": {
                     "target": "com.amazonaws.pinpoint#DirectMessageConfiguration",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The settings and content for the default message and any default messages that you defined for specific channels.</p>",
                         "smithy.api#required": {}
                     }
@@ -17980,7 +17584,6 @@
                 "Users": {
                     "target": "com.amazonaws.pinpoint#MapOfEndpointSendConfiguration",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A map that associates user IDs with <a href=\"https://docs.aws.amazon.com/pinpoint/latest/apireference/apps-application-id-messages.html#apps-application-id-messages-model-endpointsendconfiguration\">EndpointSendConfiguration</a> objects. You can use an <a href=\"https://docs.aws.amazon.com/pinpoint/latest/apireference/apps-application-id-messages.html#apps-application-id-messages-model-endpointsendconfiguration\">EndpointSendConfiguration</a> object to tailor the message for a user by specifying settings such as content overrides and message variables.</p>",
                         "smithy.api#required": {}
                     }
@@ -17996,7 +17599,6 @@
                 "ApplicationId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the application that was used to send the message.</p>",
                         "smithy.api#required": {}
                     }
@@ -18072,7 +17674,6 @@
                 "SendUsersMessageRequest": {
                     "target": "com.amazonaws.pinpoint#SendUsersMessageRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -18088,7 +17689,6 @@
                 "SendUsersMessageResponse": {
                     "target": "com.amazonaws.pinpoint#SendUsersMessageResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -18110,7 +17710,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the session.</p>",
                         "smithy.api#required": {}
                     }
@@ -18118,7 +17717,6 @@
                 "StartTimestamp": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date and time when the session began.</p>",
                         "smithy.api#required": {}
                     }
@@ -18146,7 +17744,6 @@
                 "Values": {
                     "target": "com.amazonaws.pinpoint#ListOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The criteria values to use for the segment dimension. Depending on the value of the DimensionType property, endpoints are included or excluded from the segment if their values match the criteria values.</p>",
                         "smithy.api#required": {}
                     }
@@ -18202,12 +17799,6 @@
                     "target": "com.amazonaws.pinpoint#SimpleEmailPart",
                     "traits": {
                         "smithy.api#documentation": "<p>The body of the email message, in plain text format. We recommend using plain text format for email clients that don't render HTML content and clients that are connected to high-latency networks, such as mobile devices.</p>"
-                    }
-                },
-                "Headers": {
-                    "target": "com.amazonaws.pinpoint#ListOfMessageHeader",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The list of MessageHeaders for the email. You can have up to 15 Headers.</p>"
                     }
                 }
             },
@@ -18353,7 +17944,6 @@
                 "TagsModel": {
                     "target": "com.amazonaws.pinpoint#TagsModel",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -18369,7 +17959,6 @@
                 "tags": {
                     "target": "com.amazonaws.pinpoint#MapOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A string-to-string map of key-value pairs that defines the tags for an application, campaign, message template, or segment. Each of these resources can have a maximum of 50 tags.</p> <p>Each tag consists of a required tag key and an associated tag value. The maximum length of a tag key is 128 characters. The maximum length of a tag value is 256 characters.</p>",
                         "smithy.api#jsonName": "tags",
                         "smithy.api#required": {}
@@ -18490,7 +18079,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -18504,7 +18092,6 @@
                 "LastModifiedDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was last modified.</p>",
                         "smithy.api#required": {}
                     }
@@ -18525,7 +18112,6 @@
                 "TemplateName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the message template.</p>",
                         "smithy.api#required": {}
                     }
@@ -18533,7 +18119,6 @@
                 "TemplateType": {
                     "target": "com.amazonaws.pinpoint#TemplateType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of channel that the message template is designed for. Possible values are: EMAIL, PUSH, SMS, INAPP, and VOICE.</p>",
                         "smithy.api#required": {}
                     }
@@ -18590,7 +18175,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the version of the message template was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -18604,7 +18188,6 @@
                 "LastModifiedDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the version of the message template was last modified.</p>",
                         "smithy.api#required": {}
                     }
@@ -18618,7 +18201,6 @@
                 "TemplateName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the message template.</p>",
                         "smithy.api#required": {}
                     }
@@ -18626,7 +18208,6 @@
                 "TemplateType": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of channel that the message template is designed for. Possible values are: EMAIL, PUSH, SMS, INAPP, and VOICE.</p>",
                         "smithy.api#required": {}
                     }
@@ -18648,7 +18229,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfTemplateVersionResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each version of the message template.</p>",
                         "smithy.api#required": {}
                     }
@@ -18682,7 +18262,6 @@
                 "Item": {
                     "target": "com.amazonaws.pinpoint#ListOfTemplateResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>An array of responses, one for each message template that's associated with your Amazon Pinpoint account and meets any filter criteria that you specified in the request.</p>",
                         "smithy.api#required": {}
                     }
@@ -18732,7 +18311,6 @@
                 "Id": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The unique identifier for the treatment.</p>",
                         "smithy.api#required": {}
                     }
@@ -18752,7 +18330,6 @@
                 "SizePercent": {
                     "target": "com.amazonaws.pinpoint#__integer",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The allocated percentage of users (segment members) that the treatment is sent to.</p>",
                         "smithy.api#required": {}
                     }
@@ -18840,7 +18417,6 @@
                 "TagKeys": {
                     "target": "com.amazonaws.pinpoint#ListOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The key of the tag to remove from the resource. To remove multiple tags, append the tagKeys parameter and argument for each additional tag to remove, separated by an ampersand (&amp;).</p>",
                         "smithy.api#httpQuery": "tagKeys",
                         "smithy.api#required": {}
@@ -18897,7 +18473,6 @@
                 "ADMChannelRequest": {
                     "target": "com.amazonaws.pinpoint#ADMChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -18921,7 +18496,6 @@
                 "ADMChannelResponse": {
                     "target": "com.amazonaws.pinpoint#ADMChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -18977,7 +18551,6 @@
                 "APNSChannelRequest": {
                     "target": "com.amazonaws.pinpoint#APNSChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19001,7 +18574,6 @@
                 "APNSChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19057,7 +18629,6 @@
                 "APNSSandboxChannelRequest": {
                     "target": "com.amazonaws.pinpoint#APNSSandboxChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19081,7 +18652,6 @@
                 "APNSSandboxChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSSandboxChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19137,7 +18707,6 @@
                 "APNSVoipChannelRequest": {
                     "target": "com.amazonaws.pinpoint#APNSVoipChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19161,7 +18730,6 @@
                 "APNSVoipChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSVoipChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19217,7 +18785,6 @@
                 "APNSVoipSandboxChannelRequest": {
                     "target": "com.amazonaws.pinpoint#APNSVoipSandboxChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19241,7 +18808,6 @@
                 "APNSVoipSandboxChannelResponse": {
                     "target": "com.amazonaws.pinpoint#APNSVoipSandboxChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19305,7 +18871,6 @@
                 "WriteApplicationSettingsRequest": {
                     "target": "com.amazonaws.pinpoint#WriteApplicationSettingsRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19321,7 +18886,6 @@
                 "ApplicationSettingsResource": {
                     "target": "com.amazonaws.pinpoint#ApplicationSettingsResource",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19399,7 +18963,6 @@
                 "BaiduChannelRequest": {
                     "target": "com.amazonaws.pinpoint#BaiduChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19415,7 +18978,6 @@
                 "BaiduChannelResponse": {
                     "target": "com.amazonaws.pinpoint#BaiduChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19487,7 +19049,6 @@
                 "WriteCampaignRequest": {
                     "target": "com.amazonaws.pinpoint#WriteCampaignRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19503,7 +19064,6 @@
                 "CampaignResponse": {
                     "target": "com.amazonaws.pinpoint#CampaignResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19567,7 +19127,6 @@
                 "EmailChannelRequest": {
                     "target": "com.amazonaws.pinpoint#EmailChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19583,7 +19142,6 @@
                 "EmailChannelResponse": {
                     "target": "com.amazonaws.pinpoint#EmailChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19646,7 +19204,6 @@
                 "EmailTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#EmailTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19677,7 +19234,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19741,7 +19297,7 @@
                 "EndpointId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#documentation": "<p>The case insensitive unique identifier for the endpoint. The identifier can't contain <code>$</code>, <code>{</code> or <code>}</code>.</p>",
+                        "smithy.api#documentation": "<p>The unique identifier for the endpoint.</p>",
                         "smithy.api#httpLabel": {},
                         "smithy.api#required": {}
                     }
@@ -19749,7 +19305,6 @@
                 "EndpointRequest": {
                     "target": "com.amazonaws.pinpoint#EndpointRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19765,7 +19320,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19829,7 +19383,6 @@
                 "EndpointBatchRequest": {
                     "target": "com.amazonaws.pinpoint#EndpointBatchRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19845,7 +19398,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19909,7 +19461,6 @@
                 "GCMChannelRequest": {
                     "target": "com.amazonaws.pinpoint#GCMChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19925,7 +19476,6 @@
                 "GCMChannelResponse": {
                     "target": "com.amazonaws.pinpoint#GCMChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -19988,7 +19538,6 @@
                 "InAppTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#InAppTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20019,7 +19568,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20094,7 +19642,6 @@
                 "WriteJourneyRequest": {
                     "target": "com.amazonaws.pinpoint#WriteJourneyRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20110,7 +19657,6 @@
                 "JourneyResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20182,7 +19728,6 @@
                 "JourneyStateRequest": {
                     "target": "com.amazonaws.pinpoint#JourneyStateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20198,7 +19743,6 @@
                 "JourneyResponse": {
                     "target": "com.amazonaws.pinpoint#JourneyResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20261,7 +19805,6 @@
                 "PushNotificationTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#PushNotificationTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20292,7 +19835,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20356,7 +19898,6 @@
                 "UpdateRecommenderConfiguration": {
                     "target": "com.amazonaws.pinpoint#UpdateRecommenderConfigurationShape",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20372,7 +19913,6 @@
                 "RecommenderConfigurationResponse": {
                     "target": "com.amazonaws.pinpoint#RecommenderConfigurationResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20412,7 +19952,6 @@
                 "RecommendationProviderRoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the AWS Identity and Access Management (IAM) role that authorizes Amazon Pinpoint to retrieve recommendation data from the recommender model.</p>",
                         "smithy.api#required": {}
                     }
@@ -20420,7 +19959,6 @@
                 "RecommendationProviderUri": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the recommender model to retrieve recommendation data from. This value must match the ARN of an Amazon Personalize campaign.</p>",
                         "smithy.api#required": {}
                     }
@@ -20510,7 +20048,6 @@
                 "WriteSegmentRequest": {
                     "target": "com.amazonaws.pinpoint#WriteSegmentRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20526,7 +20063,6 @@
                 "SegmentResponse": {
                     "target": "com.amazonaws.pinpoint#SegmentResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20590,7 +20126,6 @@
                 "SMSChannelRequest": {
                     "target": "com.amazonaws.pinpoint#SMSChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20606,7 +20141,6 @@
                 "SMSChannelResponse": {
                     "target": "com.amazonaws.pinpoint#SMSChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20669,7 +20203,6 @@
                 "SMSTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#SMSTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20700,7 +20233,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20756,7 +20288,6 @@
                 "TemplateActiveVersionRequest": {
                     "target": "com.amazonaws.pinpoint#TemplateActiveVersionRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20789,7 +20320,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20853,7 +20383,6 @@
                 "VoiceChannelRequest": {
                     "target": "com.amazonaws.pinpoint#VoiceChannelRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20869,7 +20398,6 @@
                 "VoiceChannelResponse": {
                     "target": "com.amazonaws.pinpoint#VoiceChannelResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20947,7 +20475,6 @@
                 "VoiceTemplateRequest": {
                     "target": "com.amazonaws.pinpoint#VoiceTemplateRequest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -20963,7 +20490,6 @@
                 "MessageBody": {
                     "target": "com.amazonaws.pinpoint#MessageBody",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -21041,7 +20567,6 @@
                 "VerifyOTPMessageRequestParameters": {
                     "target": "com.amazonaws.pinpoint#VerifyOTPMessageRequestParameters",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -21057,7 +20582,6 @@
                 "DestinationIdentity": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The destination identity to send OTP to.</p>",
                         "smithy.api#required": {}
                     }
@@ -21065,7 +20589,6 @@
                 "Otp": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The OTP the end user provided for verification.</p>",
                         "smithy.api#required": {}
                     }
@@ -21073,7 +20596,6 @@
                 "ReferenceId": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The reference identifier provided when the OTP was previously sent.</p>",
                         "smithy.api#required": {}
                     }
@@ -21089,7 +20611,6 @@
                 "VerificationResponse": {
                     "target": "com.amazonaws.pinpoint#VerificationResponse",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpPayload": {},
                         "smithy.api#required": {}
                     }
@@ -21167,7 +20688,6 @@
                 "Platform": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of messaging or notification platform for the channel. For the voice channel, this value is VOICE.</p>",
                         "smithy.api#required": {}
                     }
@@ -21284,7 +20804,6 @@
                 "CreationDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was created.</p>",
                         "smithy.api#required": {}
                     }
@@ -21304,7 +20823,6 @@
                 "LastModifiedDate": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The date, in ISO 8601 format, when the message template was last modified.</p>",
                         "smithy.api#required": {}
                     }
@@ -21325,7 +20843,6 @@
                 "TemplateName": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the message template.</p>",
                         "smithy.api#required": {}
                     }
@@ -21333,7 +20850,6 @@
                 "TemplateType": {
                     "target": "com.amazonaws.pinpoint#TemplateType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The type of channel that the message template is designed for. For a voice template, this value is VOICE.</p>",
                         "smithy.api#required": {}
                     }
@@ -21553,7 +21069,6 @@
                 "DestinationStreamArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the Amazon Kinesis data stream or Amazon Kinesis Data Firehose delivery stream that you want to publish event data to.</p> <p>For a Kinesis data stream, the ARN format is: arn:aws:kinesis:<replaceable>region</replaceable>:<replaceable>account-id</replaceable>:stream/<replaceable>stream_name</replaceable>\n               </p> <p>For a Kinesis Data Firehose delivery stream, the ARN format is: arn:aws:firehose:<replaceable>region</replaceable>:<replaceable>account-id</replaceable>:deliverystream/<replaceable>stream_name</replaceable>\n               </p>",
                         "smithy.api#required": {}
                     }
@@ -21561,7 +21076,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The AWS Identity and Access Management (IAM) role that authorizes Amazon Pinpoint to publish event data to the stream in your AWS account.</p>",
                         "smithy.api#required": {}
                     }
@@ -21607,7 +21121,6 @@
                 "Name": {
                     "target": "com.amazonaws.pinpoint#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The name of the journey. A journey name can contain a maximum of 150 characters. The characters can be alphanumeric characters or symbols, such as underscores (_) or hyphens (-). A journey name can't contain any spaces.</p>",
                         "smithy.api#required": {}
                     }
@@ -21752,7 +21265,6 @@
                 "SizePercent": {
                     "target": "com.amazonaws.pinpoint#__integer",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The allocated percentage of users (segment members) to send the treatment to.</p>",
                         "smithy.api#required": {}
                     }

@@ -35,7 +35,6 @@ plugins {
 
 dependencies {
 	implementation("software.amazon.smithy:smithy-cli:$smithyVersion")
-    implementation("software.amazon.smithy:smithy-protocol-tests:$smithyVersion")
     implementation("software.amazon.smithy:smithy-aws-protocol-tests:$smithyVersion")
     implementation(project(":smithy-aws-go-codegen"))
 }

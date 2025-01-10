@@ -38,7 +38,7 @@ import software.amazon.smithy.utils.SetUtils;
 /**
  * Utility methods for generating AWS protocols.
  */
-public final class AwsProtocolUtils {
+final class AwsProtocolUtils {
     private AwsProtocolUtils() {
     }
 
@@ -47,7 +47,7 @@ public final class AwsProtocolUtils {
      *
      * @param context The generation context.
      */
-    public static void generateHttpProtocolTests(GenerationContext context) {
+    static void generateHttpProtocolTests(GenerationContext context) {
         Set<HttpProtocolUnitTestGenerator.ConfigValue> configValues = new TreeSet<>(SetUtils.of(
                 HttpProtocolUnitTestGenerator.ConfigValue.builder()
                         .name(AddAwsConfigFields.REGION_CONFIG_NAME)
@@ -107,83 +107,56 @@ public final class AwsProtocolUtils {
 
         // skip request compression tests, not yet implemented in the SDK
         Set<HttpProtocolUnitTestGenerator.SkipTest> inputSkipTests = new TreeSet<>(SetUtils.of(
-                // CBOR default value serialization (SHOULD)
                 HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("smithy.protocoltests.rpcv2Cbor#RpcV2Protocol"))
-                        .operation(ShapeId.from("smithy.protocoltests.rpcv2Cbor#OperationWithDefaults"))
-                        .addTestName("RpcV2CborClientPopulatesDefaultValuesInInput")
-                        .addTestName("RpcV2CborClientSkipsTopLevelDefaultValuesInInput")
-                        .addTestName("RpcV2CborClientUsesExplicitlyProvidedMemberValuesOverDefaults")
-                        .addTestName("RpcV2CborClientUsesExplicitlyProvidedValuesInTopLevel")
-                        .addTestName("RpcV2CborClientIgnoresNonTopLevelDefaultsOnMembersWithClientOptional")
+                        .service(ShapeId.from("aws.protocoltests.json10#JsonRpc10"))
+                        .operation(ShapeId.from("aws.protocoltests.json10#PutWithContentEncoding"))
+                        .addTestName("SDKAppliedContentEncoding_awsJson1_0")
+                        .addTestName("SDKAppendsGzipAndIgnoresHttpProvidedEncoding_awsJson1_0")
                         .build(),
-
+                HttpProtocolUnitTestGenerator.SkipTest.builder()
+                        .service(ShapeId.from("aws.protocoltests.json#JsonProtocol"))
+                        .operation(ShapeId.from("aws.protocoltests.json#PutWithContentEncoding"))
+                        .addTestName("SDKAppliedContentEncoding_awsJson1_1")
+                        .addTestName("SDKAppendsGzipAndIgnoresHttpProvidedEncoding_awsJson1_1")
+                        .build(),
+                HttpProtocolUnitTestGenerator.SkipTest.builder()
+                        .service(ShapeId.from("aws.protocoltests.query#AwsQuery"))
+                        .operation(ShapeId.from("aws.protocoltests.query#PutWithContentEncoding"))
+                        .addTestName("SDKAppliedContentEncoding_awsQuery")
+                        .addTestName("SDKAppendsGzipAndIgnoresHttpProvidedEncoding_awsQuery")
+                        .build(),
+                HttpProtocolUnitTestGenerator.SkipTest.builder()
+                        .service(ShapeId.from("aws.protocoltests.ec2#AwsEc2"))
+                        .operation(ShapeId.from("aws.protocoltests.ec2#PutWithContentEncoding"))
+                        .addTestName("SDKAppliedContentEncoding_ec2Query")
+                        .addTestName("SDKAppendsGzipAndIgnoresHttpProvidedEncoding_ec2Query")
+                        .build(),
+                HttpProtocolUnitTestGenerator.SkipTest.builder()
+                        .service(ShapeId.from("aws.protocoltests.restjson#RestJson"))
+                        .operation(ShapeId.from("aws.protocoltests.restjson#PutWithContentEncoding"))
+                        .addTestName("SDKAppliedContentEncoding_restJson1")
+                        .addTestName("SDKAppendedGzipAfterProvidedEncoding_restJson1")
+                        .build(),
+                HttpProtocolUnitTestGenerator.SkipTest.builder()
+                        .service(ShapeId.from("aws.protocoltests.restxml#RestXml"))
+                        .operation(ShapeId.from("aws.protocoltests.restxml#PutWithContentEncoding"))
+                        .addTestName("SDKAppliedContentEncoding_restXml")
+                        .addTestName("SDKAppendedGzipAfterProvidedEncoding_restXml")
+                        .build(),
                 HttpProtocolUnitTestGenerator.SkipTest.builder()
                         .service(ShapeId.from("aws.protocoltests.restxml#RestXml"))
                         .operation(ShapeId.from("aws.protocoltests.restxml#HttpPayloadWithUnion"))
                         .addTestName("RestXmlHttpPayloadWithUnion")
                         .addTestName("RestXmlHttpPayloadWithUnsetUnion")
-                        .build(),
-
-                // REST-JSON default value serialization
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("aws.protocoltests.restjson#RestJson"))
-                        .operation(ShapeId.from("aws.protocoltests.restjson#OperationWithDefaults"))
-                        .addTestName("RestJsonClientPopulatesDefaultValuesInInput")
-                        .addTestName("RestJsonClientUsesExplicitlyProvidedValuesInTopLevel")
-                        .build(),
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("aws.protocoltests.restjson#RestJson"))
-                        .operation(ShapeId.from("aws.protocoltests.restjson#OperationWithNestedStructure"))
-                        .addTestName("RestJsonClientPopulatesNestedDefaultValuesWhenMissing")
-                        .build(),
-
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("aws.protocoltests.json10#JsonRpc10"))
-                        .operation(ShapeId.from("aws.protocoltests.json10#OperationWithDefaults"))
-                        .addTestName("AwsJson10ClientPopulatesDefaultValuesInInput")
-                        .addTestName("AwsJson10ClientSkipsTopLevelDefaultValuesInInput")
-                        .addTestName("AwsJson10ClientUsesExplicitlyProvidedMemberValuesOverDefaults")
-                        .addTestName("AwsJson10ClientUsesExplicitlyProvidedValuesInTopLevel")
-                        .build(),
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("aws.protocoltests.json10#JsonRpc10"))
-                        .operation(ShapeId.from("aws.protocoltests.json10#OperationWithNestedStructure"))
-                        .addTestName("AwsJson10ClientPopulatesNestedDefaultValuesWhenMissing")
                         .build()
                 ));
 
         Set<HttpProtocolUnitTestGenerator.SkipTest> outputSkipTests = new TreeSet<>(SetUtils.of(
-                // CBOR default value deserialization (SHOULD)
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("smithy.protocoltests.rpcv2Cbor#RpcV2Protocol"))
-                        .operation(ShapeId.from("smithy.protocoltests.rpcv2Cbor#OperationWithDefaults"))
-                        .addTestName("RpcV2CborClientPopulatesDefaultsValuesWhenMissingInResponse")
-                        .addTestName("RpcV2CborClientIgnoresDefaultValuesIfMemberValuesArePresentInResponse")
-                        .build(),
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("smithy.protocoltests.rpcv2Cbor#RpcV2Protocol"))
-                        .operation(ShapeId.from("smithy.protocoltests.rpcv2Cbor#RpcV2CborDenseMaps"))
-                        .addTestName("RpcV2CborDeserializesDenseSetMapAndSkipsNull")
-                        .build(),
-
                 // REST-JSON optional (SHOULD) test cases
                 HttpProtocolUnitTestGenerator.SkipTest.builder()
                         .service(ShapeId.from("aws.protocoltests.restjson#RestJson"))
                         .operation(ShapeId.from("aws.protocoltests.restjson#JsonMaps"))
                         .addTestName("RestJsonDeserializesDenseSetMapAndSkipsNull")
-                        .build(),
-
-                // REST-JSON default value deserialization
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("aws.protocoltests.restjson#RestJson"))
-                        .operation(ShapeId.from("aws.protocoltests.restjson#OperationWithDefaults"))
-                        .addTestName("RestJsonClientPopulatesDefaultsValuesWhenMissingInResponse")
-                        .build(),
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("aws.protocoltests.restjson#RestJson"))
-                        .operation(ShapeId.from("aws.protocoltests.restjson#OperationWithNestedStructure"))
-                        .addTestName("RestJsonClientPopulatesNestedDefaultsWhenMissingInResponseBody")
                         .build(),
 
                 // REST-XML opinionated test - prefix headers as empty vs nil map
@@ -207,23 +180,6 @@ public final class AwsProtocolUtils {
                         .service(ShapeId.from("aws.protocoltests.json#JsonProtocol"))
                         .operation(ShapeId.from("aws.protocoltests.json#JsonUnions"))
                         .addTestName("AwsJson11DeserializeIgnoreType")
-                        .build(),
-
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("aws.protocoltests.json10#JsonRpc10"))
-                        .operation(ShapeId.from("aws.protocoltests.json10#OperationWithDefaults"))
-                        .addTestName("AwsJson10ClientPopulatesDefaultsValuesWhenMissingInResponse")
-                        .addTestName("AwsJson10ClientIgnoresDefaultValuesIfMemberValuesArePresentInResponse")
-                        .build(),
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("aws.protocoltests.json10#JsonRpc10"))
-                        .operation(ShapeId.from("aws.protocoltests.json10#OperationWithNestedStructure"))
-                        .addTestName("AwsJson10ClientPopulatesNestedDefaultsWhenMissingInResponseBody")
-                        .build(),
-                HttpProtocolUnitTestGenerator.SkipTest.builder()
-                        .service(ShapeId.from("aws.protocoltests.json10#JsonRpc10"))
-                        .operation(ShapeId.from("aws.protocoltests.json10#OperationWithRequiredMembers"))
-                        .addTestName("AwsJson10ClientErrorCorrectsWhenServerFailsToSerializeRequiredValues")
                         .build()
         ));
 
@@ -243,6 +199,30 @@ public final class AwsProtocolUtils {
                         .settings(context.getSettings())
                         .addClientConfigValues(configValues)
         ).generateProtocolTests();
+    }
+
+    public static void writeJsonErrorMessageCodeDeserializer(GenerationContext context) {
+        GoWriter writer = context.getWriter().get();
+        // The error code could be in the headers, even though for this protocol it should be in the body.
+        writer.write("headerCode := response.Header.Get(\"X-Amzn-ErrorType\")");
+        writer.write("if len(headerCode) != 0 { errorCode = restjson.SanitizeErrorCode(headerCode) }");
+        writer.write("");
+
+        initializeJsonDecoder(writer, "errorBody");
+        writer.addUseImports(AwsGoDependency.AWS_REST_JSON_PROTOCOL);
+        // This will check various body locations for the error code and error message
+        writer.write("jsonCode, message, err := restjson.GetErrorInfo(decoder)");
+        handleDecodeError(writer);
+
+        writer.addUseImports(SmithyGoDependency.IO);
+        // Reset the body in case it needs to be used for anything else.
+        writer.write("errorBody.Seek(0, io.SeekStart)");
+
+        // Only set the values if something was found so that we keep the default values.
+        // The header version of the error wins out over either of the body fields.
+        writer.write("if len(headerCode) == 0 && len(jsonCode) != 0 { errorCode = restjson.SanitizeErrorCode(jsonCode) }");
+        writer.write("if len(message) != 0 { errorMessage = message }");
+        writer.write("");
     }
 
     public static void initializeJsonDecoder(GoWriter writer, String bodyLocation) {

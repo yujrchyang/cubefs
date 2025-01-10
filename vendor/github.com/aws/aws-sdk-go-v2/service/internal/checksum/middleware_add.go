@@ -2,6 +2,7 @@ package checksum
 
 import (
 	"github.com/aws/smithy-go/middleware"
+	smithyhttp "github.com/aws/smithy-go/transport/http"
 )
 
 // InputMiddlewareOptions provides the options for the request
@@ -80,25 +81,28 @@ func AddInputMiddleware(stack *middleware.Stack, options InputMiddlewareOptions)
 
 	stack.Build.Remove("ContentChecksum")
 
+	// Create the compute checksum middleware that will be added as both a
+	// build and finalize handler.
 	inputChecksum := &computeInputPayloadChecksum{
 		RequireChecksum:                  options.RequireChecksum,
 		EnableTrailingChecksum:           options.EnableTrailingChecksum,
 		EnableComputePayloadHash:         options.EnableComputeSHA256PayloadHash,
 		EnableDecodedContentLengthHeader: options.EnableDecodedContentLengthHeader,
 	}
-	if err := stack.Finalize.Insert(inputChecksum, "ResolveEndpointV2", middleware.After); err != nil {
+
+	// Insert header checksum after ComputeContentLength middleware, must also
+	// be before the computePayloadHash middleware handlers.
+	err = stack.Build.Insert(inputChecksum,
+		(*smithyhttp.ComputeContentLength)(nil).ID(),
+		middleware.After)
+	if err != nil {
 		return err
 	}
 
 	// If trailing checksum is not supported no need for finalize handler to be added.
 	if options.EnableTrailingChecksum {
-		trailerMiddleware := &addInputChecksumTrailer{
-			EnableTrailingChecksum:           inputChecksum.EnableTrailingChecksum,
-			RequireChecksum:                  inputChecksum.RequireChecksum,
-			EnableComputePayloadHash:         inputChecksum.EnableComputePayloadHash,
-			EnableDecodedContentLengthHeader: inputChecksum.EnableDecodedContentLengthHeader,
-		}
-		if err := stack.Finalize.Insert(trailerMiddleware, "Retry", middleware.After); err != nil {
+		err = stack.Finalize.Insert(inputChecksum, "Retry", middleware.After)
+		if err != nil {
 			return err
 		}
 	}
@@ -113,6 +117,7 @@ func RemoveInputMiddleware(stack *middleware.Stack) {
 	stack.Initialize.Remove(id)
 
 	id = (*computeInputPayloadChecksum)(nil).ID()
+	stack.Build.Remove(id)
 	stack.Finalize.Remove(id)
 }
 

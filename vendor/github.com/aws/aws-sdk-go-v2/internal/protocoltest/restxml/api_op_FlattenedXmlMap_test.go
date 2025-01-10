@@ -8,13 +8,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	protocoltesthttp "github.com/aws/aws-sdk-go-v2/internal/protocoltest"
 	"github.com/aws/aws-sdk-go-v2/internal/protocoltest/restxml/types"
+	smithydocument "github.com/aws/smithy-go/document"
 	"github.com/aws/smithy-go/middleware"
 	smithyprivateprotocol "github.com/aws/smithy-go/private/protocol"
 	smithyrand "github.com/aws/smithy-go/rand"
 	smithytesting "github.com/aws/smithy-go/testing"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/url"
 	"testing"
@@ -51,7 +55,7 @@ func TestClient_FlattenedXmlMap_awsRestxmlSerialize(t *testing.T) {
 			},
 			BodyMediaType: "application/xml",
 			BodyAssert: func(actual io.Reader) error {
-				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<FlattenedXmlMapRequest>
+				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<FlattenedXmlMapInputOutput>
 			    <myMap>
 			        <key>foo</key>
 			        <value>Foo</value>
@@ -60,7 +64,7 @@ func TestClient_FlattenedXmlMap_awsRestxmlSerialize(t *testing.T) {
 			        <key>baz</key>
 			        <value>Baz</value>
 			    </myMap>
-			</FlattenedXmlMapRequest>`))
+			</FlattenedXmlMapInputOutput>`))
 			},
 		},
 	}
@@ -143,7 +147,7 @@ func TestClient_FlattenedXmlMap_awsRestxmlDeserialize(t *testing.T) {
 				"Content-Type": []string{"application/xml"},
 			},
 			BodyMediaType: "application/xml",
-			Body: []byte(`<FlattenedXmlMapResponse>
+			Body: []byte(`<FlattenedXmlMapInputOutput>
 			    <myMap>
 			        <key>foo</key>
 			        <value>Foo</value>
@@ -152,7 +156,7 @@ func TestClient_FlattenedXmlMap_awsRestxmlDeserialize(t *testing.T) {
 			        <key>baz</key>
 			        <value>Baz</value>
 			    </myMap>
-			</FlattenedXmlMapResponse>`),
+			</FlattenedXmlMapInputOutput>`),
 			ExpectResult: &FlattenedXmlMapOutput{
 				MyMap: map[string]types.FooEnum{
 					"foo": types.FooEnum("Foo"),
@@ -212,7 +216,19 @@ func TestClient_FlattenedXmlMap_awsRestxmlDeserialize(t *testing.T) {
 			if result == nil {
 				t.Fatalf("expect not nil result")
 			}
-			if err := smithytesting.CompareValues(c.ExpectResult, result); err != nil {
+			opts := cmp.Options{
+				cmpopts.IgnoreUnexported(
+					middleware.Metadata{},
+				),
+				cmp.FilterValues(func(x, y float64) bool {
+					return math.IsNaN(x) && math.IsNaN(y)
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmp.FilterValues(func(x, y float32) bool {
+					return math.IsNaN(float64(x)) && math.IsNaN(float64(y))
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmpopts.IgnoreTypes(smithydocument.NoSerde{}),
+			}
+			if err := smithytesting.CompareValues(c.ExpectResult, result, opts...); err != nil {
 				t.Errorf("expect c.ExpectResult value match:\n%v", err)
 			}
 		})

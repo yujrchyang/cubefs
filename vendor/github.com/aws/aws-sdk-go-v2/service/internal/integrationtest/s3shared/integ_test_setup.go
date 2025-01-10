@@ -6,19 +6,12 @@ package s3shared
 import (
 	"context"
 	"fmt"
-	"strings"
-	"time"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/internal/integrationtest"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3control"
 )
-
-const expressAZID = "usw2-az3"
-
-const expressSuffix = "--usw2-az3--x-s3"
 
 // BucketPrefix is the root prefix of integration test buckets.
 const BucketPrefix = "aws-sdk-go-v2-integration"
@@ -27,16 +20,6 @@ const BucketPrefix = "aws-sdk-go-v2-integration"
 func GenerateBucketName() string {
 	return fmt.Sprintf("%s-%s",
 		BucketPrefix, integrationtest.UniqueID())
-}
-
-// GenerateBucketName returns a unique express-formatted bucket name.
-func GenerateExpressBucketName() string {
-	return fmt.Sprintf(
-		"%s-%s%s",
-		BucketPrefix,
-		integrationtest.UniqueID()[0:8], // express suffix adds length, regain that here
-		expressSuffix,
-	)
 }
 
 // SetupBucket returns a test bucket created for the integration tests.
@@ -71,7 +54,7 @@ pt:
 			goto pt
 		}
 		// fail if not succeed after 10 attempts
-		return fmt.Errorf("failed to determine if a bucket %s exists and you have permission to access it %v", bucketName, err)
+		return fmt.Errorf("failed to determine if a bucket %s exists and you have permission to access it", bucketName)
 	}
 
 	return nil
@@ -84,7 +67,7 @@ func CleanupBucket(ctx context.Context, svc *s3.Client, bucketName string) (err 
 	var errs = make([]error, 0)
 
 	fmt.Println("TearDown: Deleting objects from test bucket,", bucketName)
-	listObjectsResp, err := svc.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
+	listObjectsResp, err := svc.ListObjects(ctx, &s3.ListObjectsInput{
 		Bucket: &bucketName,
 	})
 	if err != nil {
@@ -161,40 +144,5 @@ func CleanupAccessPoint(ctx context.Context, svc *s3control.Client, accountID, a
 	if err != nil {
 		return fmt.Errorf("failed to delete access point: %w", err)
 	}
-	return nil
-}
-
-// SetupExpressBucket returns an express bucket for testing.
-func SetupExpressBucket(ctx context.Context, svc *s3.Client, bucketName string) error {
-	if !strings.HasSuffix(bucketName, expressSuffix) {
-		return fmt.Errorf("bucket name %s is missing required suffix %s", bucketName, expressSuffix)
-	}
-
-	fmt.Println("Setup: Creating test express bucket,", bucketName)
-	_, err := svc.CreateBucket(ctx, &s3.CreateBucketInput{
-		Bucket: &bucketName,
-		CreateBucketConfiguration: &types.CreateBucketConfiguration{
-			Location: &types.LocationInfo{
-				Name: aws.String(expressAZID),
-				Type: types.LocationTypeAvailabilityZone,
-			},
-			Bucket: &types.BucketInfo{
-				DataRedundancy: types.DataRedundancySingleAvailabilityZone,
-				Type:           types.BucketTypeDirectory,
-			},
-		},
-	})
-	if err != nil {
-		return fmt.Errorf("create express bucket %s: %v", bucketName, err)
-	}
-
-	w := s3.NewBucketExistsWaiter(svc)
-	err = w.Wait(ctx, &s3.HeadBucketInput{
-		Bucket: &bucketName,
-	}, 10*time.Second)
-	if err != nil {
-		return fmt.Errorf("wait for express bucket %s: %v", bucketName, err)
-	}
-
 	return nil
 }

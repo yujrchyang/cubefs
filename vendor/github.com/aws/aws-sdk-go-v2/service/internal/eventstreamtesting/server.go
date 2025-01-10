@@ -20,16 +20,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream/eventstreamapi"
 	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	"github.com/aws/aws-sdk-go-v2/credentials"
+	"golang.org/x/net/http2"
 )
 
 const (
 	errClientDisconnected = "client disconnected"
 	errStreamClosed       = "http2: stream closed"
-
-	// x/net had an exported StreamError type that we could assert against,
-	// net/http's h2 implementation internalizes all of its error types but the
-	// Error() text pattern remains identical
-	http2StreamError = "stream error: stream ID"
 )
 
 func setupServer(server *httptest.Server) aws.HTTPClient {
@@ -37,7 +33,11 @@ func setupServer(server *httptest.Server) aws.HTTPClient {
 		InsecureSkipVerify: true,
 	}
 
-	server.Config.TLSConfig.NextProtos = []string{"h2"}
+	if err := http2.ConfigureServer(server.Config, nil); err != nil {
+		panic(err)
+	}
+
+	server.Config.TLSConfig.NextProtos = []string{http2.NextProtoTLS}
 	server.TLS = server.Config.TLSConfig
 
 	server.StartTLS()
@@ -170,7 +170,12 @@ func (s *ServeEventStream) serveBiDirectionalStream(w http.ResponseWriter, r *ht
 }
 
 func isError(err error) bool {
-	for _, s := range []string{errClientDisconnected, errStreamClosed, http2StreamError} {
+	switch err.(type) {
+	case http2.StreamError:
+		return false
+	}
+
+	for _, s := range []string{errClientDisconnected, errStreamClosed} {
 		if strings.Contains(err.Error(), s) {
 			return false
 		}

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"testing"
 	"testing/iotest"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestComputeChecksumReader(t *testing.T) {
@@ -112,7 +114,7 @@ func TestComputeChecksumReader(t *testing.T) {
 				return
 			}
 
-			if diff := cmpDiff(string(c.ExpectRead), string(b)); diff != "" {
+			if diff := cmp.Diff(string(c.ExpectRead), string(b)); diff != "" {
 				t.Errorf("expect read match, got\n%v", diff)
 			}
 
@@ -127,7 +129,7 @@ func TestComputeChecksumReader(t *testing.T) {
 			if err != nil && !strings.Contains(err.Error(), c.ExpectComputeErr) {
 				t.Fatalf("expect error to contain %v, got %v", c.ExpectComputeErr, err)
 			}
-			if diff := cmpDiff(c.ExpectChecksum, v); diff != "" {
+			if diff := cmp.Diff(c.ExpectChecksum, v); diff != "" {
 				t.Errorf("expect checksum match, got\n%v", diff)
 			}
 			if c.ExpectComputeErr != "" {
@@ -227,7 +229,7 @@ func TestValidateChecksumReader(t *testing.T) {
 				t.Fatalf("expected error %v to contain %v", err.Error(), c.expectChecksumErr)
 			}
 
-			if diff := cmpDiff(c.expectedBody, actualResponse); len(diff) != 0 {
+			if diff := cmp.Diff(c.expectedBody, actualResponse); len(diff) != 0 {
 				t.Fatalf("found diff comparing response body  %v", diff)
 			}
 
@@ -405,7 +407,7 @@ func TestFilterSupportedAlgorithms(t *testing.T) {
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			algorithms := FilterSupportedAlgorithms(c.values)
-			if diff := cmpDiff(c.expectAlgorithms, algorithms); diff != "" {
+			if diff := cmp.Diff(c.expectAlgorithms, algorithms); diff != "" {
 				t.Errorf("expect algorithms match\n%s", diff)
 			}
 		})

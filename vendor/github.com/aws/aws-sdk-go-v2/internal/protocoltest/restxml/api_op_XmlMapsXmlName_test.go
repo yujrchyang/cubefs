@@ -8,14 +8,18 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	protocoltesthttp "github.com/aws/aws-sdk-go-v2/internal/protocoltest"
 	"github.com/aws/aws-sdk-go-v2/internal/protocoltest/restxml/types"
+	smithydocument "github.com/aws/smithy-go/document"
 	"github.com/aws/smithy-go/middleware"
 	smithyprivateprotocol "github.com/aws/smithy-go/private/protocol"
 	"github.com/aws/smithy-go/ptr"
 	smithyrand "github.com/aws/smithy-go/rand"
 	smithytesting "github.com/aws/smithy-go/testing"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/url"
 	"testing"
@@ -56,7 +60,7 @@ func TestClient_XmlMapsXmlName_awsRestxmlSerialize(t *testing.T) {
 			},
 			BodyMediaType: "application/xml",
 			BodyAssert: func(actual io.Reader) error {
-				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<XmlMapsXmlNameRequest>
+				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<XmlMapsXmlNameInputOutput>
 			    <myMap>
 			        <entry>
 			            <Attribute>foo</Attribute>
@@ -71,7 +75,7 @@ func TestClient_XmlMapsXmlName_awsRestxmlSerialize(t *testing.T) {
 			            </Setting>
 			        </entry>
 			    </myMap>
-			</XmlMapsXmlNameRequest>
+			</XmlMapsXmlNameInputOutput>
 			`))
 			},
 		},
@@ -155,7 +159,7 @@ func TestClient_XmlMapsXmlName_awsRestxmlDeserialize(t *testing.T) {
 				"Content-Type": []string{"application/xml"},
 			},
 			BodyMediaType: "application/xml",
-			Body: []byte(`<XmlMapsXmlNameResponse>
+			Body: []byte(`<XmlMapsXmlNameInputOutput>
 			    <myMap>
 			        <entry>
 			            <Attribute>foo</Attribute>
@@ -170,7 +174,7 @@ func TestClient_XmlMapsXmlName_awsRestxmlDeserialize(t *testing.T) {
 			            </Setting>
 			        </entry>
 			    </myMap>
-			</XmlMapsXmlNameResponse>
+			</XmlMapsXmlNameInputOutput>
 			`),
 			ExpectResult: &XmlMapsXmlNameOutput{
 				MyMap: map[string]types.GreetingStruct{
@@ -235,7 +239,19 @@ func TestClient_XmlMapsXmlName_awsRestxmlDeserialize(t *testing.T) {
 			if result == nil {
 				t.Fatalf("expect not nil result")
 			}
-			if err := smithytesting.CompareValues(c.ExpectResult, result); err != nil {
+			opts := cmp.Options{
+				cmpopts.IgnoreUnexported(
+					middleware.Metadata{},
+				),
+				cmp.FilterValues(func(x, y float64) bool {
+					return math.IsNaN(x) && math.IsNaN(y)
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmp.FilterValues(func(x, y float32) bool {
+					return math.IsNaN(float64(x)) && math.IsNaN(float64(y))
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmpopts.IgnoreTypes(smithydocument.NoSerde{}),
+			}
+			if err := smithytesting.CompareValues(c.ExpectResult, result, opts...); err != nil {
 				t.Errorf("expect c.ExpectResult value match:\n%v", err)
 			}
 		})

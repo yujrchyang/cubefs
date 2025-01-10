@@ -23,9 +23,6 @@ func (s *mockAssumeRole) AssumeRole(ctx context.Context, params *sts.AssumeRoleI
 	expiry := time.Now().Add(60 * time.Minute)
 
 	return &sts.AssumeRoleOutput{
-		AssumedRoleUser: &types.AssumedRoleUser{
-			Arn: aws.String("arn:aws:sts::131990247566:assumed-role/assume-role-integration-test-role/Name"),
-		},
 		Credentials: &types.Credentials{
 			// Just reflect the role arn to the provider.
 			AccessKeyId:     params.RoleArn,
@@ -56,9 +53,6 @@ func TestAssumeRoleProvider(t *testing.T) {
 	}
 	if e, a := "assumedSessionToken", creds.SessionToken; e != a {
 		t.Errorf("Expect session token to match")
-	}
-	if e, a := "131990247566", creds.AccountID; e != a {
-		t.Error("Expect account id to match")
 	}
 }
 

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"testing/iotest"
+
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestAWSChunkedEncoding(t *testing.T) {
@@ -145,7 +147,7 @@ func TestAWSChunkedEncoding(t *testing.T) {
 			if e, a := c.expectEncodedLength, c.reader.EncodedLength(); e != a {
 				t.Errorf("expect %v encoded length, got %v", e, a)
 			}
-			if diff := cmpDiff(c.expectHTTPHeaders, c.reader.HTTPHeaders()); diff != "" {
+			if diff := cmp.Diff(c.expectHTTPHeaders, c.reader.HTTPHeaders()); diff != "" {
 				t.Errorf("expect HTTP headers match\n%v", diff)
 			}
 
@@ -163,7 +165,7 @@ func TestAWSChunkedEncoding(t *testing.T) {
 				return
 			}
 
-			if diff := cmpDiff(string(c.expectPayload), string(actualPayload)); diff != "" {
+			if diff := cmp.Diff(string(c.expectPayload), string(actualPayload)); diff != "" {
 				t.Errorf("expect payload match\n%v", diff)
 			}
 		})
@@ -240,7 +242,7 @@ func TestUnsignedAWSChunkReader(t *testing.T) {
 				return
 			}
 
-			if diff := cmpDiff(string(c.expectPayload), string(actualPayload)); diff != "" {
+			if diff := cmp.Diff(string(c.expectPayload), string(actualPayload)); diff != "" {
 				t.Errorf("expect payload match\n%v", diff)
 			}
 		})
@@ -381,7 +383,7 @@ func TestBufferedAWSChunkReader(t *testing.T) {
 				return
 			}
 
-			if diff := cmpDiff(string(c.expectPayload), string(actualPayload)); diff != "" {
+			if diff := cmp.Diff(string(c.expectPayload), string(actualPayload)); diff != "" {
 				t.Errorf("expect payload match\n%v", diff)
 			}
 		})
@@ -460,7 +462,7 @@ func TestAwsChunkedTrailerReader(t *testing.T) {
 				return
 			}
 
-			if diff := cmpDiff(string(c.expectPayload), string(actualPayload)); diff != "" {
+			if diff := cmp.Diff(string(c.expectPayload), string(actualPayload)); diff != "" {
 				t.Errorf("expect payload match\n%v", diff)
 			}
 		})

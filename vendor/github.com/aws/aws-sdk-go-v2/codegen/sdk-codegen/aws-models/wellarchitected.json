@@ -35,7 +35,6 @@
                 "Message": {
                     "target": "com.amazonaws.wellarchitected#ExceptionMessage",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -44,99 +43,6 @@
                 "smithy.api#documentation": "<p>User does not have sufficient access to perform this action.</p>",
                 "smithy.api#error": "client",
                 "smithy.api#httpError": 403
-            }
-        },
-        "com.amazonaws.wellarchitected#AccountJiraConfigurationInput": {
-            "type": "structure",
-            "members": {
-                "IssueManagementStatus": {
-                    "target": "com.amazonaws.wellarchitected#AccountJiraIssueManagementStatus",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Jira issue management status.</p>"
-                    }
-                },
-                "IssueManagementType": {
-                    "target": "com.amazonaws.wellarchitected#IssueManagementType",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Jira issue management type.</p>"
-                    }
-                },
-                "JiraProjectKey": {
-                    "target": "com.amazonaws.wellarchitected#JiraProjectKey",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Jira project key to sync workloads to.</p>"
-                    }
-                },
-                "IntegrationStatus": {
-                    "target": "com.amazonaws.wellarchitected#IntegrationStatusInput",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Configuration status of the Jira integration.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Account-level: Input for the Jira configuration.</p>"
-            }
-        },
-        "com.amazonaws.wellarchitected#AccountJiraConfigurationOutput": {
-            "type": "structure",
-            "members": {
-                "IntegrationStatus": {
-                    "target": "com.amazonaws.wellarchitected#IntegrationStatus",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Configuration status of the Jira integration.</p>"
-                    }
-                },
-                "IssueManagementStatus": {
-                    "target": "com.amazonaws.wellarchitected#AccountJiraIssueManagementStatus",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Jira issue management status.</p>"
-                    }
-                },
-                "IssueManagementType": {
-                    "target": "com.amazonaws.wellarchitected#IssueManagementType",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Jira issue management type.</p>"
-                    }
-                },
-                "Subdomain": {
-                    "target": "com.amazonaws.wellarchitected#Subdomain",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Jira subdomain URL.</p>"
-                    }
-                },
-                "JiraProjectKey": {
-                    "target": "com.amazonaws.wellarchitected#JiraProjectKey",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Jira project key to sync workloads to.</p>"
-                    }
-                },
-                "StatusMessage": {
-                    "target": "com.amazonaws.wellarchitected#StatusMessage",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Account-level: Status message on configuration of the Jira integration.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Account-level: Output configuration of the Jira integration.</p>"
-            }
-        },
-        "com.amazonaws.wellarchitected#AccountJiraIssueManagementStatus": {
-            "type": "enum",
-            "members": {
-                "ENABLED": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "ENABLED"
-                    }
-                },
-                "DISABLED": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "DISABLED"
-                    }
-                }
             }
         },
         "com.amazonaws.wellarchitected#AccountSummary": {
@@ -234,7 +140,10 @@
                     }
                 },
                 "IsApplicable": {
-                    "target": "com.amazonaws.wellarchitected#IsApplicable"
+                    "target": "com.amazonaws.wellarchitected#IsApplicable",
+                    "traits": {
+                        "smithy.api#default": false
+                    }
                 },
                 "Risk": {
                     "target": "com.amazonaws.wellarchitected#Risk"
@@ -246,12 +155,6 @@
                     "target": "com.amazonaws.wellarchitected#AnswerReason",
                     "traits": {
                         "smithy.api#documentation": "<p>The reason why the question is not applicable to your workload.</p>"
-                    }
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#JiraConfiguration",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Configuration of the Jira integration.</p>"
                     }
                 }
             },
@@ -328,7 +231,10 @@
                     }
                 },
                 "IsApplicable": {
-                    "target": "com.amazonaws.wellarchitected#IsApplicable"
+                    "target": "com.amazonaws.wellarchitected#IsApplicable",
+                    "traits": {
+                        "smithy.api#default": false
+                    }
                 },
                 "Risk": {
                     "target": "com.amazonaws.wellarchitected#Risk"
@@ -343,12 +249,6 @@
                     "target": "com.amazonaws.wellarchitected#QuestionType",
                     "traits": {
                         "smithy.api#documentation": "<p>The type of the question.</p>"
-                    }
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#JiraConfiguration",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Configuration of the Jira integration.</p>"
                     }
                 }
             },
@@ -416,7 +316,6 @@
                 "LensAliases": {
                     "target": "com.amazonaws.wellarchitected#LensAliases",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -476,7 +375,6 @@
                 "ProfileArns": {
                     "target": "com.amazonaws.wellarchitected#ProfileArns",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The list of profile ARNs to associate with the workload.</p>",
                         "smithy.api#required": {}
                     }
@@ -590,6 +488,7 @@
                 "FlaggedResources": {
                     "target": "com.amazonaws.wellarchitected#FlaggedResources",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Count of flagged resources associated to the check.</p>"
                     }
                 },
@@ -697,6 +596,7 @@
         "com.amazonaws.wellarchitected#CheckStatusCount": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 101
@@ -1037,7 +937,6 @@
                 "Status": {
                     "target": "com.amazonaws.wellarchitected#ChoiceStatus",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The status of a choice.</p>",
                         "smithy.api#required": {}
                     }
@@ -1093,21 +992,18 @@
                 "Message": {
                     "target": "com.amazonaws.wellarchitected#ExceptionMessage",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ResourceId": {
                     "target": "com.amazonaws.wellarchitected#ExceptionResourceId",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ResourceType": {
                     "target": "com.amazonaws.wellarchitected#ExceptionResourceType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -1151,6 +1047,7 @@
                 "LensesAppliedCount": {
                     "target": "com.amazonaws.wellarchitected#LensesAppliedCount",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The total number of lenses applied to the workload.</p>"
                     }
                 }
@@ -1168,6 +1065,7 @@
         "com.amazonaws.wellarchitected#Count": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#documentation": "<p>A non-negative integer that denotes how many.</p>",
                 "smithy.api#range": {
                     "min": 0
@@ -1227,14 +1125,12 @@
                 "SharedWith": {
                     "target": "com.amazonaws.wellarchitected#SharedWith",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -1308,7 +1204,6 @@
                 "LensVersion": {
                     "target": "com.amazonaws.wellarchitected#LensVersion",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The version of the lens being created.</p>",
                         "smithy.api#required": {}
                     }
@@ -1316,13 +1211,13 @@
                 "IsMajorVersion": {
                     "target": "com.amazonaws.wellarchitected#IsMajorVersion",
                     "traits": {
+                        "smithy.api#default": false,
                         "smithy.api#documentation": "<p>Set to true if this new major lens version.</p>"
                     }
                 },
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -1405,14 +1300,12 @@
                 "MilestoneName": {
                     "target": "com.amazonaws.wellarchitected#MilestoneName",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -1430,7 +1323,10 @@
                     "target": "com.amazonaws.wellarchitected#WorkloadId"
                 },
                 "MilestoneNumber": {
-                    "target": "com.amazonaws.wellarchitected#MilestoneNumber"
+                    "target": "com.amazonaws.wellarchitected#MilestoneNumber",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 }
             },
             "traits": {
@@ -1481,7 +1377,6 @@
                 "ProfileName": {
                     "target": "com.amazonaws.wellarchitected#ProfileName",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Name of the profile.</p>",
                         "smithy.api#required": {}
                     }
@@ -1489,7 +1384,6 @@
                 "ProfileDescription": {
                     "target": "com.amazonaws.wellarchitected#ProfileDescription",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The profile description.</p>",
                         "smithy.api#required": {}
                     }
@@ -1497,7 +1391,6 @@
                 "ProfileQuestions": {
                     "target": "com.amazonaws.wellarchitected#ProfileQuestionUpdates",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The profile questions.</p>",
                         "smithy.api#required": {}
                     }
@@ -1505,7 +1398,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -1595,14 +1487,12 @@
                 "SharedWith": {
                     "target": "com.amazonaws.wellarchitected#SharedWith",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -1675,7 +1565,6 @@
                 "TemplateName": {
                     "target": "com.amazonaws.wellarchitected#TemplateName",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Name of the review template.</p>",
                         "smithy.api#required": {}
                     }
@@ -1683,7 +1572,6 @@
                 "Description": {
                     "target": "com.amazonaws.wellarchitected#TemplateDescription",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The review template description.</p>",
                         "smithy.api#required": {}
                     }
@@ -1691,7 +1579,6 @@
                 "Lenses": {
                     "target": "com.amazonaws.wellarchitected#ReviewTemplateLenses",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Lenses applied to the review template.</p>",
                         "smithy.api#required": {}
                     }
@@ -1708,7 +1595,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -1786,14 +1672,12 @@
                 "SharedWith": {
                     "target": "com.amazonaws.wellarchitected#SharedWith",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -1866,21 +1750,18 @@
                 "WorkloadName": {
                     "target": "com.amazonaws.wellarchitected#WorkloadName",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "Description": {
                     "target": "com.amazonaws.wellarchitected#WorkloadDescription",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "Environment": {
                     "target": "com.amazonaws.wellarchitected#WorkloadEnvironment",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
@@ -1911,7 +1792,6 @@
                 "Lenses": {
                     "target": "com.amazonaws.wellarchitected#WorkloadLenses",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
@@ -1921,7 +1801,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -1954,12 +1833,6 @@
                     "target": "com.amazonaws.wellarchitected#ReviewTemplateArns",
                     "traits": {
                         "smithy.api#documentation": "<p>The list of review template ARNs to associate with the workload.</p>"
-                    }
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#WorkloadJiraConfigurationInput",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Jira configuration settings when creating a workload.</p>"
                     }
                 }
             },
@@ -2036,21 +1909,18 @@
                 "SharedWith": {
                     "target": "com.amazonaws.wellarchitected#SharedWith",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "PermissionType": {
                     "target": "com.amazonaws.wellarchitected#PermissionType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -2143,7 +2013,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpQuery": "ClientRequestToken",
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
@@ -2152,7 +2021,6 @@
                 "LensStatus": {
                     "target": "com.amazonaws.wellarchitected#LensStatusType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The status of the lens to be deleted.</p>",
                         "smithy.api#httpQuery": "LensStatus",
                         "smithy.api#required": {}
@@ -2220,7 +2088,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpQuery": "ClientRequestToken",
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
@@ -2282,7 +2149,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpQuery": "ClientRequestToken",
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
@@ -2351,7 +2217,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpQuery": "ClientRequestToken",
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
@@ -2413,7 +2278,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpQuery": "ClientRequestToken",
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
@@ -2482,7 +2346,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpQuery": "ClientRequestToken",
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
@@ -2543,7 +2406,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpQuery": "ClientRequestToken",
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
@@ -2612,7 +2474,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#httpQuery": "ClientRequestToken",
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
@@ -2697,7 +2558,6 @@
                 "LensAliases": {
                     "target": "com.amazonaws.wellarchitected#LensAliases",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -2757,7 +2617,6 @@
                 "ProfileArns": {
                     "target": "com.amazonaws.wellarchitected#ProfileArns",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The list of profile ARNs to disassociate from the workload.</p>",
                         "smithy.api#required": {}
                     }
@@ -2884,6 +2743,7 @@
         "com.amazonaws.wellarchitected#FlaggedResources": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 9999
@@ -2951,6 +2811,7 @@
                 "MilestoneNumber": {
                     "target": "com.amazonaws.wellarchitected#MilestoneNumber",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MilestoneNumber"
                     }
                 }
@@ -2967,7 +2828,10 @@
                     "target": "com.amazonaws.wellarchitected#WorkloadId"
                 },
                 "MilestoneNumber": {
-                    "target": "com.amazonaws.wellarchitected#MilestoneNumber"
+                    "target": "com.amazonaws.wellarchitected#MilestoneNumber",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "LensAlias": {
                     "target": "com.amazonaws.wellarchitected#LensAlias"
@@ -3032,7 +2896,6 @@
                 "Format": {
                     "target": "com.amazonaws.wellarchitected#ReportFormat",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The format of the consolidated report.</p>\n         <p>For <code>PDF</code>, <code>Base64String</code> is returned. For <code>JSON</code>, \n            <code>Metrics</code> is returned.</p>",
                         "smithy.api#httpQuery": "Format",
                         "smithy.api#required": {}
@@ -3041,6 +2904,7 @@
                 "IncludeSharedResources": {
                     "target": "com.amazonaws.wellarchitected#IncludeSharedResources",
                     "traits": {
+                        "smithy.api#default": false,
                         "smithy.api#documentation": "<p>Set to <code>true</code> to have shared resources included in the report.</p>",
                         "smithy.api#httpQuery": "IncludeSharedResources"
                     }
@@ -3054,6 +2918,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#GetConsolidatedReportMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                         "smithy.api#httpQuery": "MaxResults"
                     }
@@ -3066,6 +2931,7 @@
         "com.amazonaws.wellarchitected#GetConsolidatedReportMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 15
@@ -3086,63 +2952,6 @@
                 },
                 "Base64String": {
                     "target": "com.amazonaws.wellarchitected#Base64String"
-                }
-            },
-            "traits": {
-                "smithy.api#output": {}
-            }
-        },
-        "com.amazonaws.wellarchitected#GetGlobalSettings": {
-            "type": "operation",
-            "input": {
-                "target": "smithy.api#Unit"
-            },
-            "output": {
-                "target": "com.amazonaws.wellarchitected#GetGlobalSettingsOutput"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.wellarchitected#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.wellarchitected#InternalServerException"
-                },
-                {
-                    "target": "com.amazonaws.wellarchitected#ThrottlingException"
-                },
-                {
-                    "target": "com.amazonaws.wellarchitected#ValidationException"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Global settings for all workloads.</p>",
-                "smithy.api#http": {
-                    "method": "GET",
-                    "uri": "/global-settings",
-                    "code": 200
-                }
-            }
-        },
-        "com.amazonaws.wellarchitected#GetGlobalSettingsOutput": {
-            "type": "structure",
-            "members": {
-                "OrganizationSharingStatus": {
-                    "target": "com.amazonaws.wellarchitected#OrganizationSharingStatus",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Amazon Web Services Organizations sharing status.</p>"
-                    }
-                },
-                "DiscoveryIntegrationStatus": {
-                    "target": "com.amazonaws.wellarchitected#DiscoveryIntegrationStatus",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Discovery integration status.</p>"
-                    }
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#AccountJiraConfigurationOutput",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Jira configuration status.</p>"
-                    }
                 }
             },
             "traits": {
@@ -3273,6 +3082,7 @@
                 "MilestoneNumber": {
                     "target": "com.amazonaws.wellarchitected#MilestoneNumber",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MilestoneNumber"
                     }
                 }
@@ -3289,7 +3099,10 @@
                     "target": "com.amazonaws.wellarchitected#WorkloadId"
                 },
                 "MilestoneNumber": {
-                    "target": "com.amazonaws.wellarchitected#MilestoneNumber"
+                    "target": "com.amazonaws.wellarchitected#MilestoneNumber",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "LensReview": {
                     "target": "com.amazonaws.wellarchitected#LensReview"
@@ -3354,6 +3167,7 @@
                 "MilestoneNumber": {
                     "target": "com.amazonaws.wellarchitected#MilestoneNumber",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MilestoneNumber"
                     }
                 }
@@ -3370,7 +3184,10 @@
                     "target": "com.amazonaws.wellarchitected#WorkloadId"
                 },
                 "MilestoneNumber": {
-                    "target": "com.amazonaws.wellarchitected#MilestoneNumber"
+                    "target": "com.amazonaws.wellarchitected#MilestoneNumber",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "LensReviewReport": {
                     "target": "com.amazonaws.wellarchitected#LensReviewReport"
@@ -3529,6 +3346,7 @@
                 "MilestoneNumber": {
                     "target": "com.amazonaws.wellarchitected#MilestoneNumber",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpLabel": {},
                         "smithy.api#required": {}
                     }
@@ -4029,7 +3847,6 @@
                 "JSONString": {
                     "target": "com.amazonaws.wellarchitected#LensJSON",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The JSON representation of a lens.</p>",
                         "smithy.api#required": {}
                     }
@@ -4037,7 +3854,6 @@
                 "ClientRequestToken": {
                     "target": "com.amazonaws.wellarchitected#ClientRequestToken",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#idempotencyToken": {},
                         "smithy.api#required": {}
                     }
@@ -4138,12 +3954,6 @@
                     "traits": {
                         "smithy.api#documentation": "<p>The improvement plan details.</p>"
                     }
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#JiraConfiguration",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Configuration of the Jira integration.</p>"
-                    }
                 }
             },
             "traits": {
@@ -4151,45 +3961,9 @@
             }
         },
         "com.amazonaws.wellarchitected#IncludeSharedResources": {
-            "type": "boolean"
-        },
-        "com.amazonaws.wellarchitected#IntegratingService": {
-            "type": "enum",
-            "members": {
-                "JIRA": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "JIRA"
-                    }
-                }
-            }
-        },
-        "com.amazonaws.wellarchitected#IntegrationStatus": {
-            "type": "enum",
-            "members": {
-                "CONFIGURED": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "CONFIGURED"
-                    }
-                },
-                "NOT_CONFIGURED": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "NOT_CONFIGURED"
-                    }
-                }
-            }
-        },
-        "com.amazonaws.wellarchitected#IntegrationStatusInput": {
-            "type": "enum",
-            "members": {
-                "NOT_CONFIGURED": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "NOT_CONFIGURED"
-                    }
-                }
+            "type": "boolean",
+            "traits": {
+                "smithy.api#default": false
             }
         },
         "com.amazonaws.wellarchitected#InternalServerException": {
@@ -4198,7 +3972,6 @@
                 "Message": {
                     "target": "com.amazonaws.wellarchitected#ExceptionMessage",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -4212,80 +3985,20 @@
         "com.amazonaws.wellarchitected#IsApplicable": {
             "type": "boolean",
             "traits": {
+                "smithy.api#default": false,
                 "smithy.api#documentation": "<p>Defines whether this question is applicable to a lens review.</p>"
             }
         },
         "com.amazonaws.wellarchitected#IsMajorVersion": {
-            "type": "boolean"
+            "type": "boolean",
+            "traits": {
+                "smithy.api#default": false
+            }
         },
         "com.amazonaws.wellarchitected#IsReviewOwnerUpdateAcknowledged": {
-            "type": "boolean"
-        },
-        "com.amazonaws.wellarchitected#IssueManagementType": {
-            "type": "enum",
-            "members": {
-                "AUTO": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "AUTO"
-                    }
-                },
-                "MANUAL": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "MANUAL"
-                    }
-                }
-            }
-        },
-        "com.amazonaws.wellarchitected#JiraConfiguration": {
-            "type": "structure",
-            "members": {
-                "JiraIssueUrl": {
-                    "target": "com.amazonaws.wellarchitected#JiraIssueUrl",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The URL of the associated Jira issue.</p>"
-                    }
-                },
-                "LastSyncedTime": {
-                    "target": "com.amazonaws.wellarchitected#Timestamp"
-                }
-            },
+            "type": "boolean",
             "traits": {
-                "smithy.api#documentation": "<p>Configuration of the Jira integration.</p>"
-            }
-        },
-        "com.amazonaws.wellarchitected#JiraIssueUrl": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 1,
-                    "max": 2048
-                }
-            }
-        },
-        "com.amazonaws.wellarchitected#JiraProjectKey": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 1,
-                    "max": 100
-                },
-                "smithy.api#pattern": "^[A-Z][A-Z0-9_]*$"
-            }
-        },
-        "com.amazonaws.wellarchitected#JiraSelectedQuestionConfiguration": {
-            "type": "structure",
-            "members": {
-                "SelectedPillars": {
-                    "target": "com.amazonaws.wellarchitected#SelectedPillars",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Selected pillars in the workload.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Selected questions in the workload.</p>"
+                "smithy.api#default": false
             }
         },
         "com.amazonaws.wellarchitected#Lens": {
@@ -4456,12 +4169,6 @@
                 },
                 "PillarReviewSummaries": {
                     "target": "com.amazonaws.wellarchitected#PillarReviewSummaries"
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#JiraSelectedQuestionConfiguration",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Jira configuration status of the Lens review.</p>"
-                    }
                 },
                 "UpdatedAt": {
                     "target": "com.amazonaws.wellarchitected#Timestamp"
@@ -4790,6 +4497,7 @@
         "com.amazonaws.wellarchitected#LensesAppliedCount": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 0
                 }
@@ -4860,6 +4568,7 @@
                 "MilestoneNumber": {
                     "target": "com.amazonaws.wellarchitected#MilestoneNumber",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MilestoneNumber"
                     }
                 },
@@ -4872,6 +4581,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListAnswersMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                         "smithy.api#httpQuery": "MaxResults"
                     }
@@ -4892,6 +4602,7 @@
         "com.amazonaws.wellarchitected#ListAnswersMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 50
@@ -4905,7 +4616,10 @@
                     "target": "com.amazonaws.wellarchitected#WorkloadId"
                 },
                 "MilestoneNumber": {
-                    "target": "com.amazonaws.wellarchitected#MilestoneNumber"
+                    "target": "com.amazonaws.wellarchitected#MilestoneNumber",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "LensAlias": {
                     "target": "com.amazonaws.wellarchitected#LensAlias"
@@ -4981,12 +4695,14 @@
                     "target": "com.amazonaws.wellarchitected#NextToken"
                 },
                 "MaxResults": {
-                    "target": "com.amazonaws.wellarchitected#MaxResults"
+                    "target": "com.amazonaws.wellarchitected#MaxResults",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "LensArn": {
                     "target": "com.amazonaws.wellarchitected#LensArn",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Well-Architected Lens ARN.</p>",
                         "smithy.api#required": {}
                     }
@@ -4994,21 +4710,18 @@
                 "PillarId": {
                     "target": "com.amazonaws.wellarchitected#PillarId",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "QuestionId": {
                     "target": "com.amazonaws.wellarchitected#QuestionId",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ChoiceId": {
                     "target": "com.amazonaws.wellarchitected#ChoiceId",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -5087,12 +4800,14 @@
                     "target": "com.amazonaws.wellarchitected#NextToken"
                 },
                 "MaxResults": {
-                    "target": "com.amazonaws.wellarchitected#MaxResults"
+                    "target": "com.amazonaws.wellarchitected#MaxResults",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "LensArn": {
                     "target": "com.amazonaws.wellarchitected#LensArn",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>Well-Architected Lens ARN.</p>",
                         "smithy.api#required": {}
                     }
@@ -5100,21 +4815,18 @@
                 "PillarId": {
                     "target": "com.amazonaws.wellarchitected#PillarId",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "QuestionId": {
                     "target": "com.amazonaws.wellarchitected#QuestionId",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ChoiceId": {
                     "target": "com.amazonaws.wellarchitected#ChoiceId",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -5166,7 +4878,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>List the improvements of a particular lens review.</p>",
+                "smithy.api#documentation": "<p>List lens review improvements.</p>",
                 "smithy.api#http": {
                     "method": "GET",
                     "uri": "/workloads/{WorkloadId}/lensReviews/{LensAlias}/improvements",
@@ -5205,6 +4917,7 @@
                 "MilestoneNumber": {
                     "target": "com.amazonaws.wellarchitected#MilestoneNumber",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MilestoneNumber"
                     }
                 },
@@ -5217,6 +4930,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListLensReviewImprovementsMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                         "smithy.api#httpQuery": "MaxResults"
                     }
@@ -5237,6 +4951,7 @@
         "com.amazonaws.wellarchitected#ListLensReviewImprovementsMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 100
@@ -5250,7 +4965,10 @@
                     "target": "com.amazonaws.wellarchitected#WorkloadId"
                 },
                 "MilestoneNumber": {
-                    "target": "com.amazonaws.wellarchitected#MilestoneNumber"
+                    "target": "com.amazonaws.wellarchitected#MilestoneNumber",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "LensAlias": {
                     "target": "com.amazonaws.wellarchitected#LensAlias"
@@ -5325,6 +5043,7 @@
                 "MilestoneNumber": {
                     "target": "com.amazonaws.wellarchitected#MilestoneNumber",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MilestoneNumber"
                     }
                 },
@@ -5337,6 +5056,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#MaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MaxResults"
                     }
                 }
@@ -5353,7 +5073,10 @@
                     "target": "com.amazonaws.wellarchitected#WorkloadId"
                 },
                 "MilestoneNumber": {
-                    "target": "com.amazonaws.wellarchitected#MilestoneNumber"
+                    "target": "com.amazonaws.wellarchitected#MilestoneNumber",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "LensReviewSummaries": {
                     "target": "com.amazonaws.wellarchitected#LensReviewSummaries"
@@ -5432,6 +5155,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListWorkloadSharesMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                         "smithy.api#httpQuery": "MaxResults"
                     }
@@ -5512,6 +5236,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#MaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MaxResults"
                     }
                 },
@@ -5609,7 +5334,10 @@
                     "target": "com.amazonaws.wellarchitected#NextToken"
                 },
                 "MaxResults": {
-                    "target": "com.amazonaws.wellarchitected#MaxResults"
+                    "target": "com.amazonaws.wellarchitected#MaxResults",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 }
             },
             "traits": {
@@ -5683,6 +5411,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListNotificationsMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>"
                     }
                 },
@@ -5700,6 +5429,7 @@
         "com.amazonaws.wellarchitected#ListNotificationsMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 50
@@ -5777,6 +5507,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#MaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MaxResults"
                     }
                 }
@@ -5868,6 +5599,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListProfileSharesMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                         "smithy.api#httpQuery": "MaxResults"
                     }
@@ -5886,6 +5618,7 @@
         "com.amazonaws.wellarchitected#ListProfileSharesMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 50
@@ -5971,6 +5704,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#MaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MaxResults"
                     }
                 }
@@ -6068,6 +5802,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListReviewTemplateAnswersMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                         "smithy.api#httpQuery": "MaxResults"
                     }
@@ -6080,6 +5815,7 @@
         "com.amazonaws.wellarchitected#ListReviewTemplateAnswersMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 50
@@ -6160,6 +5896,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#MaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#httpQuery": "MaxResults"
                     }
                 }
@@ -6253,6 +5990,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListShareInvitationsMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                         "smithy.api#httpQuery": "MaxResults"
                     }
@@ -6280,6 +6018,7 @@
         "com.amazonaws.wellarchitected#ListShareInvitationsMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 50
@@ -6424,6 +6163,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListTemplateSharesMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                         "smithy.api#httpQuery": "MaxResults"
                     }
@@ -6442,6 +6182,7 @@
         "com.amazonaws.wellarchitected#ListTemplateSharesMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 50
@@ -6536,6 +6277,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListWorkloadSharesMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                         "smithy.api#httpQuery": "MaxResults"
                     }
@@ -6555,6 +6297,7 @@
         "com.amazonaws.wellarchitected#ListWorkloadSharesMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 50
@@ -6627,6 +6370,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.wellarchitected#ListWorkloadsMaxResults",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>"
                     }
                 }
@@ -6639,6 +6383,7 @@
         "com.amazonaws.wellarchitected#ListWorkloadsMaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 50
@@ -6663,6 +6408,7 @@
         "com.amazonaws.wellarchitected#MaxResults": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#documentation": "<p>The maximum number of results to return for this request.</p>",
                 "smithy.api#range": {
                     "min": 1,
@@ -6673,6 +6419,7 @@
         "com.amazonaws.wellarchitected#MaxSelectedProfileChoices": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 0
                 }
@@ -6693,7 +6440,10 @@
             "type": "structure",
             "members": {
                 "MilestoneNumber": {
-                    "target": "com.amazonaws.wellarchitected#MilestoneNumber"
+                    "target": "com.amazonaws.wellarchitected#MilestoneNumber",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "MilestoneName": {
                     "target": "com.amazonaws.wellarchitected#MilestoneName"
@@ -6722,6 +6472,7 @@
         "com.amazonaws.wellarchitected#MilestoneNumber": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#documentation": "<p>The milestone number.</p>\n         <p>A workload can have a maximum of 100 milestones.</p>",
                 "smithy.api#range": {
                     "min": 1,
@@ -6742,7 +6493,10 @@
             "type": "structure",
             "members": {
                 "MilestoneNumber": {
-                    "target": "com.amazonaws.wellarchitected#MilestoneNumber"
+                    "target": "com.amazonaws.wellarchitected#MilestoneNumber",
+                    "traits": {
+                        "smithy.api#default": 0
+                    }
                 },
                 "MilestoneName": {
                     "target": "com.amazonaws.wellarchitected#MilestoneName"
@@ -6761,6 +6515,7 @@
         "com.amazonaws.wellarchitected#MinSelectedProfileChoices": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 0
                 }
@@ -7087,7 +6842,8 @@
                 "smithy.api#length": {
                     "min": 3,
                     "max": 100
-                }
+                },
+                "smithy.api#pattern": "^[A-Za-z0-9-_.,:/()@!&?#+'’\\s]+$"
             }
         },
         "com.amazonaws.wellarchitected#ProfileName": {
@@ -7096,7 +6852,8 @@
                 "smithy.api#length": {
                     "min": 3,
                     "max": 100
-                }
+                },
+                "smithy.api#pattern": "^[A-Za-z0-9-_.,:/()@!&?#+'’\\s]+$"
             }
         },
         "com.amazonaws.wellarchitected#ProfileNamePrefix": {
@@ -7105,7 +6862,8 @@
                 "smithy.api#length": {
                     "min": 0,
                     "max": 100
-                }
+                },
+                "smithy.api#pattern": "^[A-Za-z0-9-_.,:/()@!&?#+'’\\s]+$"
             }
         },
         "com.amazonaws.wellarchitected#ProfileNotificationSummaries": {
@@ -7219,12 +6977,14 @@
                 "MinSelectedChoices": {
                     "target": "com.amazonaws.wellarchitected#MinSelectedProfileChoices",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The minimum number of selected choices.</p>"
                     }
                 },
                 "MaxSelectedChoices": {
                     "target": "com.amazonaws.wellarchitected#MaxSelectedProfileChoices",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of selected choices.</p>"
                     }
                 }
@@ -7408,12 +7168,14 @@
                 "MinSelectedChoices": {
                     "target": "com.amazonaws.wellarchitected#MinSelectedProfileChoices",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The minimum number of choices selected.</p>"
                     }
                 },
                 "MaxSelectedChoices": {
                     "target": "com.amazonaws.wellarchitected#MaxSelectedProfileChoices",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>The maximum number of choices selected.</p>"
                     }
                 }
@@ -7619,21 +7381,18 @@
                 "Message": {
                     "target": "com.amazonaws.wellarchitected#ExceptionMessage",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ResourceId": {
                     "target": "com.amazonaws.wellarchitected#ExceptionResourceId",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ResourceType": {
                     "target": "com.amazonaws.wellarchitected#ExceptionResourceType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -7749,7 +7508,10 @@
                     }
                 },
                 "IsApplicable": {
-                    "target": "com.amazonaws.wellarchitected#IsApplicable"
+                    "target": "com.amazonaws.wellarchitected#IsApplicable",
+                    "traits": {
+                        "smithy.api#default": false
+                    }
                 },
                 "AnswerStatus": {
                     "target": "com.amazonaws.wellarchitected#ReviewTemplateAnswerStatus",
@@ -7819,7 +7581,10 @@
                     }
                 },
                 "IsApplicable": {
-                    "target": "com.amazonaws.wellarchitected#IsApplicable"
+                    "target": "com.amazonaws.wellarchitected#IsApplicable",
+                    "traits": {
+                        "smithy.api#default": false
+                    }
                 },
                 "AnswerStatus": {
                     "target": "com.amazonaws.wellarchitected#ReviewTemplateAnswerStatus",
@@ -8088,42 +7853,10 @@
                 "smithy.api#documentation": "<p>List of selected choice IDs in a question answer.</p>\n         <p>The values entered replace the previously selected choices.</p>"
             }
         },
-        "com.amazonaws.wellarchitected#SelectedPillar": {
-            "type": "structure",
-            "members": {
-                "PillarId": {
-                    "target": "com.amazonaws.wellarchitected#PillarId"
-                },
-                "SelectedQuestionIds": {
-                    "target": "com.amazonaws.wellarchitected#SelectedQuestionIds",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Selected question IDs in the selected pillar.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The selected pillar.</p>"
-            }
-        },
-        "com.amazonaws.wellarchitected#SelectedPillars": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.wellarchitected#SelectedPillar"
-            }
-        },
         "com.amazonaws.wellarchitected#SelectedProfileChoiceIds": {
             "type": "list",
             "member": {
                 "target": "com.amazonaws.wellarchitected#ChoiceId"
-            }
-        },
-        "com.amazonaws.wellarchitected#SelectedQuestionId": {
-            "type": "string"
-        },
-        "com.amazonaws.wellarchitected#SelectedQuestionIds": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.wellarchitected#SelectedQuestionId"
             }
         },
         "com.amazonaws.wellarchitected#ServiceCode": {
@@ -8138,7 +7871,6 @@
                 "Message": {
                     "target": "com.amazonaws.wellarchitected#ExceptionMessage",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
@@ -8151,14 +7883,12 @@
                 "QuotaCode": {
                     "target": "com.amazonaws.wellarchitected#QuotaCode",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "ServiceCode": {
                     "target": "com.amazonaws.wellarchitected#ServiceCode",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -8433,15 +8163,6 @@
                 }
             }
         },
-        "com.amazonaws.wellarchitected#Subdomain": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 1,
-                    "max": 100
-                }
-            }
-        },
         "com.amazonaws.wellarchitected#TagKey": {
             "type": "string",
             "traits": {
@@ -8516,7 +8237,6 @@
                 "Tags": {
                     "target": "com.amazonaws.wellarchitected#TagMap",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>The tags for the resource.</p>",
                         "smithy.api#required": {}
                     }
@@ -8623,7 +8343,6 @@
                 "Message": {
                     "target": "com.amazonaws.wellarchitected#ExceptionMessage",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
@@ -8701,7 +8420,6 @@
                 "TagKeys": {
                     "target": "com.amazonaws.wellarchitected#TagKeyList",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "<p>A list of tag keys. Existing tags of the resource \n            whose keys are members of this list are removed from the resource.</p>",
                         "smithy.api#httpQuery": "tagKeys",
                         "smithy.api#required": {}
@@ -8793,7 +8511,10 @@
                     "target": "com.amazonaws.wellarchitected#Notes"
                 },
                 "IsApplicable": {
-                    "target": "com.amazonaws.wellarchitected#IsApplicable"
+                    "target": "com.amazonaws.wellarchitected#IsApplicable",
+                    "traits": {
+                        "smithy.api#default": false
+                    }
                 },
                 "Reason": {
                     "target": "com.amazonaws.wellarchitected#AnswerReason",
@@ -8857,7 +8578,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Update whether the Amazon Web Services account is opted into organization sharing and discovery integration features.</p>",
+                "smithy.api#documentation": "<p>Updates whether the Amazon Web Services account is opted into organization sharing and discovery integration features.</p>",
                 "smithy.api#http": {
                     "method": "PATCH",
                     "uri": "/global-settings",
@@ -8878,80 +8599,6 @@
                     "target": "com.amazonaws.wellarchitected#DiscoveryIntegrationStatus",
                     "traits": {
                         "smithy.api#documentation": "<p>The status of discovery support settings.</p>"
-                    }
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#AccountJiraConfigurationInput",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The status of Jira integration settings.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#input": {}
-            }
-        },
-        "com.amazonaws.wellarchitected#UpdateIntegration": {
-            "type": "operation",
-            "input": {
-                "target": "com.amazonaws.wellarchitected#UpdateIntegrationInput"
-            },
-            "output": {
-                "target": "smithy.api#Unit"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.wellarchitected#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.wellarchitected#ConflictException"
-                },
-                {
-                    "target": "com.amazonaws.wellarchitected#InternalServerException"
-                },
-                {
-                    "target": "com.amazonaws.wellarchitected#ResourceNotFoundException"
-                },
-                {
-                    "target": "com.amazonaws.wellarchitected#ThrottlingException"
-                },
-                {
-                    "target": "com.amazonaws.wellarchitected#ValidationException"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Update integration features.</p>",
-                "smithy.api#http": {
-                    "method": "POST",
-                    "uri": "/workloads/{WorkloadId}/updateIntegration",
-                    "code": 200
-                }
-            }
-        },
-        "com.amazonaws.wellarchitected#UpdateIntegrationInput": {
-            "type": "structure",
-            "members": {
-                "WorkloadId": {
-                    "target": "com.amazonaws.wellarchitected#WorkloadId",
-                    "traits": {
-                        "smithy.api#httpLabel": {},
-                        "smithy.api#required": {}
-                    }
-                },
-                "ClientRequestToken": {
-                    "target": "com.amazonaws.wellarchitected#ClientRequestToken",
-                    "traits": {
-                        "smithy.api#clientOptional": {},
-                        "smithy.api#idempotencyToken": {},
-                        "smithy.api#required": {}
-                    }
-                },
-                "IntegratingService": {
-                    "target": "com.amazonaws.wellarchitected#IntegratingService",
-                    "traits": {
-                        "smithy.api#clientOptional": {},
-                        "smithy.api#documentation": "<p>Which integrated service to update.</p>",
-                        "smithy.api#required": {}
                     }
                 }
             },
@@ -9018,12 +8665,6 @@
                 },
                 "PillarNotes": {
                     "target": "com.amazonaws.wellarchitected#PillarNotes"
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#JiraSelectedQuestionConfiguration",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Configuration of the Jira integration.</p>"
-                    }
                 }
             },
             "traits": {
@@ -9237,7 +8878,10 @@
                     "target": "com.amazonaws.wellarchitected#Notes"
                 },
                 "IsApplicable": {
-                    "target": "com.amazonaws.wellarchitected#IsApplicable"
+                    "target": "com.amazonaws.wellarchitected#IsApplicable",
+                    "traits": {
+                        "smithy.api#default": false
+                    }
                 },
                 "Reason": {
                     "target": "com.amazonaws.wellarchitected#AnswerReason",
@@ -9467,7 +9111,6 @@
                 "ShareInvitationAction": {
                     "target": "com.amazonaws.wellarchitected#ShareInvitationAction",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -9568,6 +9211,7 @@
                 "IsReviewOwnerUpdateAcknowledged": {
                     "target": "com.amazonaws.wellarchitected#IsReviewOwnerUpdateAcknowledged",
                     "traits": {
+                        "smithy.api#default": false,
                         "smithy.api#documentation": "<p>Flag indicating whether the workload owner has acknowledged that the <i>Review\n                owner</i> field is required.</p>\n         <p>If a <b>Review owner</b> is not added to the workload within\n            60 days of acknowledgement, access to the workload is restricted until an owner is\n            added.</p>"
                     }
                 },
@@ -9593,12 +9237,6 @@
                     "target": "com.amazonaws.wellarchitected#WorkloadApplications",
                     "traits": {
                         "smithy.api#documentation": "<p>List of AppRegistry application ARNs to associate to the workload.</p>"
-                    }
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#WorkloadJiraConfigurationInput",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Configuration of the Jira integration.</p>"
                     }
                 }
             },
@@ -9676,7 +9314,6 @@
                 "PermissionType": {
                     "target": "com.amazonaws.wellarchitected#PermissionType",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -9723,9 +9360,6 @@
                     "target": "com.amazonaws.wellarchitected#ResourceNotFoundException"
                 },
                 {
-                    "target": "com.amazonaws.wellarchitected#ServiceQuotaExceededException"
-                },
-                {
                     "target": "com.amazonaws.wellarchitected#ThrottlingException"
                 },
                 {
@@ -9761,7 +9395,6 @@
                 "MilestoneName": {
                     "target": "com.amazonaws.wellarchitected#MilestoneName",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
@@ -9793,9 +9426,6 @@
                 },
                 {
                     "target": "com.amazonaws.wellarchitected#ResourceNotFoundException"
-                },
-                {
-                    "target": "com.amazonaws.wellarchitected#ServiceQuotaExceededException"
                 },
                 {
                     "target": "com.amazonaws.wellarchitected#ThrottlingException"
@@ -9920,7 +9550,6 @@
                 "Message": {
                     "target": "com.amazonaws.wellarchitected#ExceptionMessage",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
@@ -9943,14 +9572,12 @@
                 "Name": {
                     "target": "com.amazonaws.wellarchitected#ValidationExceptionFieldName",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 },
                 "Message": {
                     "target": "com.amazonaws.wellarchitected#ExceptionMessage",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#required": {}
                     }
                 }
@@ -10097,9 +9724,6 @@
                     "target": "com.amazonaws.wellarchitected#GetConsolidatedReport"
                 },
                 {
-                    "target": "com.amazonaws.wellarchitected#GetGlobalSettings"
-                },
-                {
                     "target": "com.amazonaws.wellarchitected#GetLens"
                 },
                 {
@@ -10205,9 +9829,6 @@
                     "target": "com.amazonaws.wellarchitected#UpdateGlobalSettings"
                 },
                 {
-                    "target": "com.amazonaws.wellarchitected#UpdateIntegration"
-                },
-                {
                     "target": "com.amazonaws.wellarchitected#UpdateLensReview"
                 },
                 {
@@ -10297,6 +9918,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -10339,8 +9961,7 @@
                                     },
                                     "type": "endpoint"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [
@@ -10353,6 +9974,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -10366,6 +9988,7 @@
                                             "assign": "PartitionResult"
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -10388,6 +10011,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -10422,6 +10046,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -10432,16 +10057,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -10455,12 +10078,14 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
                                                         {
                                                             "fn": "booleanEquals",
                                                             "argv": [
+                                                                true,
                                                                 {
                                                                     "fn": "getAttr",
                                                                     "argv": [
@@ -10469,11 +10094,11 @@
                                                                         },
                                                                         "supportsFIPS"
                                                                     ]
-                                                                },
-                                                                true
+                                                                }
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -10484,16 +10109,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS is enabled but this partition does not support FIPS",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -10507,6 +10130,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -10526,6 +10150,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -10536,16 +10161,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "DualStack is enabled but this partition does not support DualStack",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [],
@@ -10556,11 +10179,9 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
@@ -11148,6 +10769,7 @@
                 "IsReviewOwnerUpdateAcknowledged": {
                     "target": "com.amazonaws.wellarchitected#IsReviewOwnerUpdateAcknowledged",
                     "traits": {
+                        "smithy.api#default": false,
                         "smithy.api#documentation": "<p>Flag indicating whether the workload owner has acknowledged that the <i>Review\n                owner</i> field is required.</p>\n         <p>If a <b>Review owner</b> is not added to the workload within\n            60 days of acknowledgement, access to the workload is restricted until an owner is\n            added.</p>"
                     }
                 },
@@ -11207,12 +10829,6 @@
                 },
                 "PrioritizedRiskCounts": {
                     "target": "com.amazonaws.wellarchitected#RiskCounts"
-                },
-                "JiraConfiguration": {
-                    "target": "com.amazonaws.wellarchitected#WorkloadJiraConfigurationOutput",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Jira configuration for a specific workload.</p>"
-                    }
                 }
             },
             "traits": {
@@ -11391,87 +11007,6 @@
                     "min": 0,
                     "max": 100
                 }
-            }
-        },
-        "com.amazonaws.wellarchitected#WorkloadIssueManagementStatus": {
-            "type": "enum",
-            "members": {
-                "ENABLED": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "ENABLED"
-                    }
-                },
-                "DISABLED": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "DISABLED"
-                    }
-                },
-                "INHERIT": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "INHERIT"
-                    }
-                }
-            }
-        },
-        "com.amazonaws.wellarchitected#WorkloadJiraConfigurationInput": {
-            "type": "structure",
-            "members": {
-                "IssueManagementStatus": {
-                    "target": "com.amazonaws.wellarchitected#WorkloadIssueManagementStatus",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Workload-level: Jira issue management status.</p>"
-                    }
-                },
-                "IssueManagementType": {
-                    "target": "com.amazonaws.wellarchitected#IssueManagementType",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Workload-level: Jira issue management type.</p>"
-                    }
-                },
-                "JiraProjectKey": {
-                    "target": "com.amazonaws.wellarchitected#JiraProjectKey",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Workload-level: Jira project key to sync workloads to.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Workload-level: Input for the Jira configuration.</p>"
-            }
-        },
-        "com.amazonaws.wellarchitected#WorkloadJiraConfigurationOutput": {
-            "type": "structure",
-            "members": {
-                "IssueManagementStatus": {
-                    "target": "com.amazonaws.wellarchitected#WorkloadIssueManagementStatus",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Workload-level: Jira issue management status.</p>"
-                    }
-                },
-                "IssueManagementType": {
-                    "target": "com.amazonaws.wellarchitected#IssueManagementType",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Workload-level: Jira issue management type.</p>"
-                    }
-                },
-                "JiraProjectKey": {
-                    "target": "com.amazonaws.wellarchitected#JiraProjectKey",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Workload-level: Jira project key to sync workloads to.</p>"
-                    }
-                },
-                "StatusMessage": {
-                    "target": "com.amazonaws.wellarchitected#StatusMessage",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Workload-level: Status message on configuration of the Jira integration.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Workload-level: Output configuration of the Jira integration.</p>"
             }
         },
         "com.amazonaws.wellarchitected#WorkloadLenses": {

@@ -121,7 +121,6 @@
                 "CdnIdentifierSecret": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The Amazon Resource Name (ARN) for the secret in AWS Secrets Manager that is used for CDN authorization.",
                         "smithy.api#jsonName": "cdnIdentifierSecret",
                         "smithy.api#required": {}
@@ -130,7 +129,6 @@
                 "SecretsRoleArn": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The Amazon Resource Name (ARN) for the IAM role that allows MediaPackage to communicate with AWS Secrets Manager.",
                         "smithy.api#jsonName": "secretsRoleArn",
                         "smithy.api#required": {}
@@ -154,7 +152,6 @@
                 "SpekeKeyProvider": {
                     "target": "com.amazonaws.mediapackagevod#SpekeKeyProvider",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#jsonName": "spekeKeyProvider",
                         "smithy.api#required": {}
                     }
@@ -176,7 +173,6 @@
                 "HlsManifests": {
                     "target": "com.amazonaws.mediapackagevod#__listOfHlsManifest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A list of HLS manifest configurations.",
                         "smithy.api#jsonName": "hlsManifests",
                         "smithy.api#required": {}
@@ -358,7 +354,6 @@
                 "Id": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The unique identifier for the Asset.",
                         "smithy.api#jsonName": "id",
                         "smithy.api#required": {}
@@ -367,7 +362,6 @@
                 "PackagingGroupId": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ID of the PackagingGroup for the Asset.",
                         "smithy.api#jsonName": "packagingGroupId",
                         "smithy.api#required": {}
@@ -383,7 +377,6 @@
                 "SourceArn": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "ARN of the source object in S3.",
                         "smithy.api#jsonName": "sourceArn",
                         "smithy.api#required": {}
@@ -392,7 +385,6 @@
                 "SourceRoleArn": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The IAM role ARN used to access the source S3 bucket.",
                         "smithy.api#jsonName": "sourceRoleArn",
                         "smithy.api#required": {}
@@ -541,7 +533,6 @@
                 "Id": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ID of the PackagingConfiguration.",
                         "smithy.api#jsonName": "id",
                         "smithy.api#required": {}
@@ -556,7 +547,6 @@
                 "PackagingGroupId": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ID of a PackagingGroup.",
                         "smithy.api#jsonName": "packagingGroupId",
                         "smithy.api#required": {}
@@ -695,7 +685,6 @@
                 "Id": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The ID of the PackagingGroup.",
                         "smithy.api#jsonName": "id",
                         "smithy.api#required": {}
@@ -773,7 +762,6 @@
                 "SpekeKeyProvider": {
                     "target": "com.amazonaws.mediapackagevod#SpekeKeyProvider",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#jsonName": "spekeKeyProvider",
                         "smithy.api#required": {}
                     }
@@ -838,7 +826,6 @@
                 "DashManifests": {
                     "target": "com.amazonaws.mediapackagevod#__listOfDashManifest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A list of DASH manifest configurations.",
                         "smithy.api#jsonName": "dashManifests",
                         "smithy.api#required": {}
@@ -1476,7 +1463,6 @@
                 "PresetSpeke20Audio": {
                     "target": "com.amazonaws.mediapackagevod#PresetSpeke20Audio",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A collection of audio encryption presets.",
                         "smithy.api#jsonName": "presetSpeke20Audio",
                         "smithy.api#required": {}
@@ -1485,7 +1471,6 @@
                 "PresetSpeke20Video": {
                     "target": "com.amazonaws.mediapackagevod#PresetSpeke20Video",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A collection of video encryption presets.",
                         "smithy.api#jsonName": "presetSpeke20Video",
                         "smithy.api#required": {}
@@ -1549,7 +1534,6 @@
                 "SpekeKeyProvider": {
                     "target": "com.amazonaws.mediapackagevod#SpekeKeyProvider",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#jsonName": "spekeKeyProvider",
                         "smithy.api#required": {}
                     }
@@ -1620,7 +1604,6 @@
                 "HlsManifests": {
                     "target": "com.amazonaws.mediapackagevod#__listOfHlsManifest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A list of HLS manifest configurations.",
                         "smithy.api#jsonName": "hlsManifests",
                         "smithy.api#required": {}
@@ -2129,6 +2112,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -2171,8 +2155,7 @@
                                     },
                                     "type": "endpoint"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [
@@ -2185,6 +2168,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -2198,6 +2182,7 @@
                                             "assign": "PartitionResult"
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -2220,6 +2205,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -2254,6 +2240,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -2264,16 +2251,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -2287,12 +2272,14 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
                                                         {
                                                             "fn": "booleanEquals",
                                                             "argv": [
+                                                                true,
                                                                 {
                                                                     "fn": "getAttr",
                                                                     "argv": [
@@ -2301,11 +2288,11 @@
                                                                         },
                                                                         "supportsFIPS"
                                                                     ]
-                                                                },
-                                                                true
+                                                                }
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -2316,16 +2303,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS is enabled but this partition does not support FIPS",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -2339,6 +2324,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -2358,6 +2344,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -2368,16 +2355,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "DualStack is enabled but this partition does not support DualStack",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [],
@@ -2388,11 +2373,9 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
@@ -2905,7 +2888,6 @@
                 "SpekeKeyProvider": {
                     "target": "com.amazonaws.mediapackagevod#SpekeKeyProvider",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#jsonName": "spekeKeyProvider",
                         "smithy.api#required": {}
                     }
@@ -2948,7 +2930,6 @@
                 "MssManifests": {
                     "target": "com.amazonaws.mediapackagevod#__listOfMssManifest",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A list of MSS manifest configurations.",
                         "smithy.api#jsonName": "mssManifests",
                         "smithy.api#required": {}
@@ -3294,7 +3275,6 @@
                 "RoleArn": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "An Amazon Resource Name (ARN) of an IAM role that AWS Elemental\nMediaPackage will assume when accessing the key provider service.",
                         "smithy.api#jsonName": "roleArn",
                         "smithy.api#required": {}
@@ -3303,7 +3283,6 @@
                 "SystemIds": {
                     "target": "com.amazonaws.mediapackagevod#__listOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The system IDs to include in key requests.",
                         "smithy.api#jsonName": "systemIds",
                         "smithy.api#required": {}
@@ -3312,7 +3291,6 @@
                 "Url": {
                     "target": "com.amazonaws.mediapackagevod#__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "The URL of the external key provider service.",
                         "smithy.api#jsonName": "url",
                         "smithy.api#required": {}
@@ -3406,7 +3384,6 @@
                 "Tags": {
                     "target": "com.amazonaws.mediapackagevod#__mapOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A collection of tags associated with a resource",
                         "smithy.api#jsonName": "tags",
                         "smithy.api#required": {}
@@ -3492,7 +3469,6 @@
                 "TagKeys": {
                     "target": "com.amazonaws.mediapackagevod#__listOf__string",
                     "traits": {
-                        "smithy.api#clientOptional": {},
                         "smithy.api#documentation": "A comma-separated list of the tag keys to remove from the resource.",
                         "smithy.api#httpQuery": "tagKeys",
                         "smithy.api#required": {}

@@ -8,13 +8,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	protocoltesthttp "github.com/aws/aws-sdk-go-v2/internal/protocoltest"
 	"github.com/aws/aws-sdk-go-v2/internal/protocoltest/restxml/types"
+	smithydocument "github.com/aws/smithy-go/document"
 	"github.com/aws/smithy-go/middleware"
 	smithyprivateprotocol "github.com/aws/smithy-go/private/protocol"
 	smithyrand "github.com/aws/smithy-go/rand"
 	smithytesting "github.com/aws/smithy-go/testing"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"io"
 	"io/ioutil"
+	"math"
 	"net/http"
 	"net/url"
 	"testing"
@@ -52,7 +56,7 @@ func TestClient_NestedXmlMaps_awsRestxmlSerialize(t *testing.T) {
 			},
 			BodyMediaType: "application/xml",
 			BodyAssert: func(actual io.Reader) error {
-				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<NestedXmlMapsRequest>
+				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<NestedXmlMapsInputOutput>
 			    <nestedMap>
 			        <entry>
 			            <key>foo</key>
@@ -64,7 +68,7 @@ func TestClient_NestedXmlMaps_awsRestxmlSerialize(t *testing.T) {
 			            </value>
 			        </entry>
 			    </nestedMap>
-			</NestedXmlMapsRequest>`))
+			</NestedXmlMapsInputOutput>`))
 			},
 		},
 		// Tests requests with nested flat maps. Since maps can only be flattened when
@@ -85,7 +89,7 @@ func TestClient_NestedXmlMaps_awsRestxmlSerialize(t *testing.T) {
 			},
 			BodyMediaType: "application/xml",
 			BodyAssert: func(actual io.Reader) error {
-				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<NestedXmlMapsRequest>
+				return smithytesting.CompareXMLReaderBytes(actual, []byte(`<NestedXmlMapsInputOutput>
 			    <flatNestedMap>
 			        <key>foo</key>
 			        <value>
@@ -95,7 +99,7 @@ func TestClient_NestedXmlMaps_awsRestxmlSerialize(t *testing.T) {
 			            </entry>
 			        </value>
 			    </flatNestedMap>
-			</NestedXmlMapsRequest>`))
+			</NestedXmlMapsInputOutput>`))
 			},
 		},
 	}
@@ -178,7 +182,7 @@ func TestClient_NestedXmlMaps_awsRestxmlDeserialize(t *testing.T) {
 				"Content-Type": []string{"application/xml"},
 			},
 			BodyMediaType: "application/xml",
-			Body: []byte(`<NestedXmlMapsResponse>
+			Body: []byte(`<NestedXmlMapsInputOutput>
 			    <nestedMap>
 			        <entry>
 			            <key>foo</key>
@@ -190,7 +194,7 @@ func TestClient_NestedXmlMaps_awsRestxmlDeserialize(t *testing.T) {
 			            </value>
 			        </entry>
 			    </nestedMap>
-			</NestedXmlMapsResponse>`),
+			</NestedXmlMapsInputOutput>`),
 			ExpectResult: &NestedXmlMapsOutput{
 				NestedMap: map[string]map[string]types.FooEnum{
 					"foo": {
@@ -207,7 +211,7 @@ func TestClient_NestedXmlMaps_awsRestxmlDeserialize(t *testing.T) {
 				"Content-Type": []string{"application/xml"},
 			},
 			BodyMediaType: "application/xml",
-			Body: []byte(`<NestedXmlMapsResponse>
+			Body: []byte(`<NestedXmlMapsInputOutput>
 			    <flatNestedMap>
 			        <key>foo</key>
 			        <value>
@@ -217,7 +221,7 @@ func TestClient_NestedXmlMaps_awsRestxmlDeserialize(t *testing.T) {
 			            </entry>
 			        </value>
 			    </flatNestedMap>
-			</NestedXmlMapsResponse>`),
+			</NestedXmlMapsInputOutput>`),
 			ExpectResult: &NestedXmlMapsOutput{
 				FlatNestedMap: map[string]map[string]types.FooEnum{
 					"foo": {
@@ -278,7 +282,19 @@ func TestClient_NestedXmlMaps_awsRestxmlDeserialize(t *testing.T) {
 			if result == nil {
 				t.Fatalf("expect not nil result")
 			}
-			if err := smithytesting.CompareValues(c.ExpectResult, result); err != nil {
+			opts := cmp.Options{
+				cmpopts.IgnoreUnexported(
+					middleware.Metadata{},
+				),
+				cmp.FilterValues(func(x, y float64) bool {
+					return math.IsNaN(x) && math.IsNaN(y)
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmp.FilterValues(func(x, y float32) bool {
+					return math.IsNaN(float64(x)) && math.IsNaN(float64(y))
+				}, cmp.Comparer(func(_, _ interface{}) bool { return true })),
+				cmpopts.IgnoreTypes(smithydocument.NoSerde{}),
+			}
+			if err := smithytesting.CompareValues(c.ExpectResult, result, opts...); err != nil {
 				t.Errorf("expect c.ExpectResult value match:\n%v", err)
 			}
 		})

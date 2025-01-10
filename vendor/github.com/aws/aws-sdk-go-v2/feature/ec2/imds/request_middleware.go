@@ -17,11 +17,10 @@ import (
 
 func addAPIRequestMiddleware(stack *middleware.Stack,
 	options Options,
-	operation string,
 	getPath func(interface{}) (string, error),
 	getOutput func(*smithyhttp.Response) (interface{}, error),
 ) (err error) {
-	err = addRequestMiddleware(stack, options, "GET", operation, getPath, getOutput)
+	err = addRequestMiddleware(stack, options, "GET", getPath, getOutput)
 	if err != nil {
 		return err
 	}
@@ -45,7 +44,6 @@ func addAPIRequestMiddleware(stack *middleware.Stack,
 func addRequestMiddleware(stack *middleware.Stack,
 	options Options,
 	method string,
-	operation string,
 	getPath func(interface{}) (string, error),
 	getOutput func(*smithyhttp.Response) (interface{}, error),
 ) (err error) {
@@ -56,7 +54,6 @@ func addRequestMiddleware(stack *middleware.Stack,
 
 	// Operation timeout
 	err = stack.Initialize.Add(&operationTimeout{
-		Disabled:       options.DisableDefaultTimeout,
 		DefaultTimeout: defaultOperationTimeout,
 	}, middleware.Before)
 	if err != nil {
@@ -102,10 +99,6 @@ func addRequestMiddleware(stack *middleware.Stack,
 	err = addSetLoggerMiddleware(stack, options)
 	if err != nil {
 		return err
-	}
-
-	if err := addProtocolFinalizerMiddlewares(stack, options, operation); err != nil {
-		return fmt.Errorf("add protocol finalizers: %w", err)
 	}
 
 	// Retry support
@@ -261,7 +254,6 @@ const (
 // Otherwise the timeout cleanup will race the resource being consumed
 // upstream.
 type operationTimeout struct {
-	Disabled       bool
 	DefaultTimeout time.Duration
 }
 
@@ -272,10 +264,6 @@ func (m *operationTimeout) HandleInitialize(
 ) (
 	output middleware.InitializeOutput, metadata middleware.Metadata, err error,
 ) {
-	if m.Disabled {
-		return next.HandleInitialize(ctx, input)
-	}
-
 	if _, ok := ctx.Deadline(); !ok && m.DefaultTimeout != 0 {
 		var cancelFn func()
 		ctx, cancelFn = context.WithTimeout(ctx, m.DefaultTimeout)
@@ -294,20 +282,4 @@ func appendURIPath(base, add string) string {
 		reqPath += "/"
 	}
 	return reqPath
-}
-
-func addProtocolFinalizerMiddlewares(stack *middleware.Stack, options Options, operation string) error {
-	if err := stack.Finalize.Add(&resolveAuthSchemeMiddleware{operation: operation, options: options}, middleware.Before); err != nil {
-		return fmt.Errorf("add ResolveAuthScheme: %w", err)
-	}
-	if err := stack.Finalize.Insert(&getIdentityMiddleware{options: options}, "ResolveAuthScheme", middleware.After); err != nil {
-		return fmt.Errorf("add GetIdentity: %w", err)
-	}
-	if err := stack.Finalize.Insert(&resolveEndpointV2Middleware{options: options}, "GetIdentity", middleware.After); err != nil {
-		return fmt.Errorf("add ResolveEndpointV2: %w", err)
-	}
-	if err := stack.Finalize.Insert(&signRequestMiddleware{}, "ResolveEndpointV2", middleware.After); err != nil {
-		return fmt.Errorf("add Signing: %w", err)
-	}
-	return nil
 }

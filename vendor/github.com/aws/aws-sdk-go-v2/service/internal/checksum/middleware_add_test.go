@@ -5,12 +5,11 @@ package checksum
 
 import (
 	"context"
-	"fmt"
-	"reflect"
 	"testing"
 
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestAddInputMiddleware(t *testing.T) {
@@ -19,6 +18,7 @@ func TestAddInputMiddleware(t *testing.T) {
 		expectErr        string
 		expectMiddleware []string
 		expectInitialize *setupInputContext
+		expectBuild      *computeInputPayloadChecksum
 		expectFinalize   *computeInputPayloadChecksum
 	}{
 		"with trailing checksum": {
@@ -37,11 +37,10 @@ func TestAddInputMiddleware(t *testing.T) {
 				"Serialize stack step",
 				"Build stack step",
 				"ComputeContentLength",
+				"AWSChecksum:ComputeInputPayloadChecksum",
 				"ComputePayloadHash",
 				"Finalize stack step",
 				"Retry",
-				"addInputChecksumTrailer",
-				"ResolveEndpointV2",
 				"AWSChecksum:ComputeInputPayloadChecksum",
 				"Signing",
 				"Deserialize stack step",
@@ -51,7 +50,7 @@ func TestAddInputMiddleware(t *testing.T) {
 					return string(AlgorithmCRC32), true
 				},
 			},
-			expectFinalize: &computeInputPayloadChecksum{
+			expectBuild: &computeInputPayloadChecksum{
 				EnableTrailingChecksum:           true,
 				EnableComputePayloadHash:         true,
 				EnableDecodedContentLengthHeader: true,
@@ -72,11 +71,10 @@ func TestAddInputMiddleware(t *testing.T) {
 				"Serialize stack step",
 				"Build stack step",
 				"ComputeContentLength",
+				"AWSChecksum:ComputeInputPayloadChecksum",
 				"ComputePayloadHash",
 				"Finalize stack step",
 				"Retry",
-				"addInputChecksumTrailer",
-				"ResolveEndpointV2",
 				"AWSChecksum:ComputeInputPayloadChecksum",
 				"Signing",
 				"Deserialize stack step",
@@ -86,7 +84,7 @@ func TestAddInputMiddleware(t *testing.T) {
 					return string(AlgorithmCRC32), true
 				},
 			},
-			expectFinalize: &computeInputPayloadChecksum{
+			expectBuild: &computeInputPayloadChecksum{
 				RequireChecksum:        true,
 				EnableTrailingChecksum: true,
 			},
@@ -104,11 +102,10 @@ func TestAddInputMiddleware(t *testing.T) {
 				"Serialize stack step",
 				"Build stack step",
 				"ComputeContentLength",
+				"AWSChecksum:ComputeInputPayloadChecksum",
 				"ComputePayloadHash",
 				"Finalize stack step",
 				"Retry",
-				"ResolveEndpointV2",
-				"AWSChecksum:ComputeInputPayloadChecksum",
 				"Signing",
 				"Deserialize stack step",
 			},
@@ -117,7 +114,7 @@ func TestAddInputMiddleware(t *testing.T) {
 					return string(AlgorithmCRC32), true
 				},
 			},
-			expectFinalize: &computeInputPayloadChecksum{},
+			expectBuild: &computeInputPayloadChecksum{},
 		},
 	}
 
@@ -129,7 +126,6 @@ func TestAddInputMiddleware(t *testing.T) {
 			stack.Build.Add(nopBuildMiddleware("ContentChecksum"), middleware.After)
 			stack.Build.Add(nopBuildMiddleware("ComputePayloadHash"), middleware.After)
 			stack.Finalize.Add(nopFinalizeMiddleware("Retry"), middleware.After)
-			stack.Finalize.Add(nopFinalizeMiddleware("ResolveEndpointV2"), middleware.After)
 			stack.Finalize.Add(nopFinalizeMiddleware("Signing"), middleware.After)
 
 			err := AddInputMiddleware(stack, c.options)
@@ -137,7 +133,7 @@ func TestAddInputMiddleware(t *testing.T) {
 				t.Fatalf("expect no error, got %v", err)
 			}
 
-			if diff := cmpDiff(c.expectMiddleware, stack.List()); diff != "" {
+			if diff := cmp.Diff(c.expectMiddleware, stack.List()); diff != "" {
 				t.Fatalf("expect stack list match:\n%s", diff)
 			}
 
@@ -160,24 +156,36 @@ func TestAddInputMiddleware(t *testing.T) {
 				}
 			}
 
-			finalizeMW, ok := stack.Finalize.Get((*computeInputPayloadChecksum)(nil).ID())
-			if e, a := (c.expectFinalize != nil), ok; e != a {
+			buildMiddleware, ok := stack.Build.Get((*computeInputPayloadChecksum)(nil).ID())
+			if e, a := (c.expectBuild != nil), ok; e != a {
 				t.Errorf("expect build middleware %t, got %t", e, a)
 			}
 			var computeInput *computeInputPayloadChecksum
-			if c.expectFinalize != nil && ok {
-				computeInput = finalizeMW.(*computeInputPayloadChecksum)
-				if e, a := c.expectFinalize.RequireChecksum, computeInput.RequireChecksum; e != a {
+			if c.expectBuild != nil && ok {
+				computeInput = buildMiddleware.(*computeInputPayloadChecksum)
+				if e, a := c.expectBuild.RequireChecksum, computeInput.RequireChecksum; e != a {
 					t.Errorf("expect %v require checksum, got %v", e, a)
 				}
-				if e, a := c.expectFinalize.EnableTrailingChecksum, computeInput.EnableTrailingChecksum; e != a {
+				if e, a := c.expectBuild.EnableTrailingChecksum, computeInput.EnableTrailingChecksum; e != a {
 					t.Errorf("expect %v enable trailing checksum, got %v", e, a)
 				}
-				if e, a := c.expectFinalize.EnableComputePayloadHash, computeInput.EnableComputePayloadHash; e != a {
+				if e, a := c.expectBuild.EnableComputePayloadHash, computeInput.EnableComputePayloadHash; e != a {
 					t.Errorf("expect %v enable compute payload hash, got %v", e, a)
 				}
-				if e, a := c.expectFinalize.EnableDecodedContentLengthHeader, computeInput.EnableDecodedContentLengthHeader; e != a {
+				if e, a := c.expectBuild.EnableDecodedContentLengthHeader, computeInput.EnableDecodedContentLengthHeader; e != a {
 					t.Errorf("expect %v enable decoded length header, got %v", e, a)
+				}
+			}
+
+			if c.expectFinalize != nil && ok {
+				finalizeMiddleware, ok := stack.Build.Get((*computeInputPayloadChecksum)(nil).ID())
+				if !ok {
+					t.Errorf("expect finalize middleware")
+				}
+				finalizeComputeInput := finalizeMiddleware.(*computeInputPayloadChecksum)
+
+				if e, a := computeInput, finalizeComputeInput; e != a {
+					t.Errorf("expect build and finalize to be same value")
 				}
 			}
 		})
@@ -191,7 +199,6 @@ func TestRemoveInputMiddleware(t *testing.T) {
 	stack.Build.Add(nopBuildMiddleware("ContentChecksum"), middleware.After)
 	stack.Build.Add(nopBuildMiddleware("ComputePayloadHash"), middleware.After)
 	stack.Finalize.Add(nopFinalizeMiddleware("Retry"), middleware.After)
-	stack.Finalize.Add(nopFinalizeMiddleware("ResolveEndpointV2"), middleware.After)
 	stack.Finalize.Add(nopFinalizeMiddleware("Signing"), middleware.After)
 
 	err := AddInputMiddleware(stack, InputMiddlewareOptions{
@@ -212,13 +219,11 @@ func TestRemoveInputMiddleware(t *testing.T) {
 		"ComputePayloadHash",
 		"Finalize stack step",
 		"Retry",
-		"addInputChecksumTrailer",
-		"ResolveEndpointV2",
 		"Signing",
 		"Deserialize stack step",
 	}
 
-	if diff := cmpDiff(expectStack, stack.List()); diff != "" {
+	if diff := cmp.Diff(expectStack, stack.List()); diff != "" {
 		t.Fatalf("expect stack list match:\n%s", diff)
 	}
 }
@@ -308,7 +313,7 @@ func TestAddOutputMiddleware(t *testing.T) {
 				t.Fatalf("expect no error, got %v", err)
 			}
 
-			if diff := cmpDiff(c.expectMiddleware, stack.List()); diff != "" {
+			if diff := cmp.Diff(c.expectMiddleware, stack.List()); diff != "" {
 				t.Fatalf("expect stack list match:\n%s", diff)
 			}
 
@@ -337,7 +342,7 @@ func TestAddOutputMiddleware(t *testing.T) {
 			}
 			if c.expectDeserialize != nil && ok {
 				validateOutput := deserializeMiddleware.(*validateOutputPayloadChecksum)
-				if diff := cmpDiff(c.expectDeserialize.Algorithms, validateOutput.Algorithms); diff != "" {
+				if diff := cmp.Diff(c.expectDeserialize.Algorithms, validateOutput.Algorithms); diff != "" {
 					t.Errorf("expect algorithms match:\n%s", diff)
 				}
 				if e, a := c.expectDeserialize.IgnoreMultipartValidation, validateOutput.IgnoreMultipartValidation; e != a {
@@ -373,7 +378,7 @@ func TestRemoveOutputMiddleware(t *testing.T) {
 		"Deserialize stack step",
 	}
 
-	if diff := cmpDiff(expectStack, stack.List()); diff != "" {
+	if diff := cmp.Diff(expectStack, stack.List()); diff != "" {
 		t.Fatalf("expect stack list match:\n%s", diff)
 	}
 }
@@ -404,11 +409,4 @@ func nopFinalizeMiddleware(id string) middleware.FinalizeMiddleware {
 		) {
 			return next.HandleFinalize(ctx, input)
 		})
-}
-
-func cmpDiff(e, a interface{}) string {
-	if !reflect.DeepEqual(e, a) {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	return ""
 }

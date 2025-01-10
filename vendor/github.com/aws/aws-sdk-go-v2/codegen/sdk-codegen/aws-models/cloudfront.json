@@ -343,7 +343,7 @@
                 "ViewerProtocolPolicy": {
                     "target": "com.amazonaws.cloudfront#ViewerProtocolPolicy",
                     "traits": {
-                        "smithy.api#documentation": "<p>The protocol that viewers can use to access the files in the origin specified by\n\t\t\t\t<code>TargetOriginId</code> when a request matches the path pattern in\n\t\t\t\t<code>PathPattern</code>. You can specify the following options:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>allow-all</code>: Viewers can use HTTP or HTTPS.</p>\n            </li>\n            <li>\n               <p>\n                  <code>redirect-to-https</code>: If a viewer submits an HTTP request, CloudFront\n\t\t\t\t\treturns an HTTP status code of 301 (Moved Permanently) to the viewer along with\n\t\t\t\t\tthe HTTPS URL. The viewer then resubmits the request using the new URL.</p>\n            </li>\n            <li>\n               <p>\n                  <code>https-only</code>: If a viewer sends an HTTP request, CloudFront returns an\n\t\t\t\t\tHTTP status code of 403 (Forbidden).</p>\n            </li>\n         </ul>\n         <p>For more information about requiring the HTTPS protocol, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-https-viewers-to-cloudfront.html\">Requiring HTTPS Between Viewers and  CloudFront</a> in the\n\t\t\t\t<i>Amazon CloudFront Developer Guide</i>.</p>\n         <note>\n            <p>The only way to guarantee that viewers retrieve an object that was fetched from\n\t\t\t\tthe origin using HTTPS is never to use any other protocol to fetch the object. If\n\t\t\t\tyou have recently changed from HTTP to HTTPS, we recommend that you clear your\n\t\t\t\tobjects' cache because cached objects are protocol agnostic. That means that an edge\n\t\t\t\tlocation will return an object from the cache regardless of whether the current\n\t\t\t\trequest protocol matches the protocol used previously. For more information, see\n\t\t\t\t\t<a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Expiration.html\">Managing Cache\n\t\t\t\t\tExpiration</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>\n         </note>",
+                        "smithy.api#documentation": "<p>The protocol that viewers can use to access the files in the origin specified by\n\t\t\t\t<code>TargetOriginId</code> when a request matches the path pattern in\n\t\t\t\t<code>PathPattern</code>. You can specify the following options:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>allow-all</code>: Viewers can use HTTP or HTTPS.</p>\n            </li>\n            <li>\n               <p>\n                  <code>redirect-to-https</code>: If a viewer submits an HTTP request, CloudFront\n\t\t\t\t\treturns an HTTP status code of 301 (Moved Permanently) to the viewer along with\n\t\t\t\t\tthe HTTPS URL. The viewer then resubmits the request using the new URL.</p>\n            </li>\n            <li>\n               <p>\n                  <code>https-only</code>: If a viewer sends an HTTP request, CloudFront returns an\n\t\t\t\t\tHTTP status code of 403 (Forbidden).</p>\n            </li>\n         </ul>\n         <p>For more information about requiring the HTTPS protocol, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-https-viewers-to-cloudfront.html\">Requiring HTTPS Between Viewers and CloudFront</a> in the\n\t\t\t\t<i>Amazon CloudFront Developer Guide</i>.</p>\n         <note>\n            <p>The only way to guarantee that viewers retrieve an object that was fetched from\n\t\t\t\tthe origin using HTTPS is never to use any other protocol to fetch the object. If\n\t\t\t\tyou have recently changed from HTTP to HTTPS, we recommend that you clear your\n\t\t\t\tobjects' cache because cached objects are protocol agnostic. That means that an edge\n\t\t\t\tlocation will return an object from the cache regardless of whether the current\n\t\t\t\trequest protocol matches the protocol used previously. For more information, see\n\t\t\t\t\t<a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Expiration.html\">Managing Cache\n\t\t\t\t\tExpiration</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>\n         </note>",
                         "smithy.api#required": {}
                     }
                 },
@@ -434,7 +434,7 @@
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>A complex type that describes how CloudFront processes requests.</p>\n         <p>You must create at least as many cache behaviors (including the default cache\n\t\t\tbehavior) as you have origins if you want CloudFront to serve objects from all of the origins.\n\t\t\tEach cache behavior specifies the one origin from which you want CloudFront to get objects. If\n\t\t\tyou have two origins and only the default cache behavior, the default cache behavior\n\t\t\twill cause CloudFront to get objects from one of the origins, but the other origin is never\n\t\t\tused.</p>\n         <p>For the current quota (formerly known as limit) on the number of cache behaviors that\n\t\t\tyou can add to a distribution, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cloudfront-limits.html\">Quotas</a> in the\n\t\t\t<i>Amazon CloudFront Developer Guide</i>.</p>\n         <p>If you don't want to specify any cache behaviors, include only an empty\n\t\t\t\t<code>CacheBehaviors</code> element. Don't specify an empty individual\n\t\t\t\t<code>CacheBehavior</code> element, because this is invalid. For more information,\n\t\t\tsee <a href=\"https://docs.aws.amazon.com/cloudfront/latest/APIReference/API_CacheBehaviors.html\">CacheBehaviors</a>. </p>\n         <p>To delete all cache behaviors in an existing distribution, update the distribution\n\t\t\tconfiguration and include only an empty <code>CacheBehaviors</code> element.</p>\n         <p>To add, change, or remove one or more cache behaviors, update the distribution\n\t\t\tconfiguration and specify all of the cache behaviors that you want to include in the\n\t\t\tupdated distribution.</p>\n         <p>For more information about cache behaviors, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html#DownloadDistValuesCacheBehavior\">Cache Behavior Settings</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>"
+                "smithy.api#documentation": "<p>A complex type that describes how CloudFront processes requests.</p>\n         <p>You must create at least as many cache behaviors (including the default cache\n\t\t\tbehavior) as you have origins if you want CloudFront to serve objects from all of the origins.\n\t\t\tEach cache behavior specifies the one origin from which you want CloudFront to get objects. If\n\t\t\tyou have two origins and only the default cache behavior, the default cache behavior\n\t\t\twill cause CloudFront to get objects from one of the origins, but the other origin is never\n\t\t\tused.</p>\n         <p>For the current quota (formerly known as limit) on the number of cache behaviors that\n\t\t\tyou can add to a distribution, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cloudfront-limits.html\">Quotas</a> in the\n\t\t\t<i>Amazon CloudFront Developer Guide</i>.</p>\n         <p>If you don't want to specify any cache behaviors, include only an empty\n\t\t\t\t<code>CacheBehaviors</code> element. Don't include an empty\n\t\t\t\t<code>CacheBehavior</code> element because this is invalid.</p>\n         <p>To delete all cache behaviors in an existing distribution, update the distribution\n\t\t\tconfiguration and include only an empty <code>CacheBehaviors</code> element.</p>\n         <p>To add, change, or remove one or more cache behaviors, update the distribution\n\t\t\tconfiguration and specify all of the cache behaviors that you want to include in the\n\t\t\tupdated distribution.</p>\n         <p>For more information about cache behaviors, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/distribution-web-values-specify.html#DownloadDistValuesCacheBehavior\">Cache Behavior Settings</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>"
             }
         },
         "com.amazonaws.cloudfront#CacheBehaviorList": {
@@ -795,7 +795,7 @@
                 "Items": {
                     "target": "com.amazonaws.cloudfront#MethodsList",
                     "traits": {
-                        "smithy.api#documentation": "<p>A complex type that contains the HTTP methods that you want CloudFront to cache responses\n\t\t\tto. Valid values for <code>CachedMethods</code> include <code>GET</code>, <code>HEAD</code>, and <code>OPTIONS</code>, depending on which caching option you choose. For more information, see the preceding section.</p>",
+                        "smithy.api#documentation": "<p>A complex type that contains the HTTP methods that you want CloudFront to cache responses\n\t\t\tto.</p>",
                         "smithy.api#required": {}
                     }
                 }
@@ -815,19 +815,6 @@
                 "smithy.api#documentation": "<p>You can't change the value of a public key.</p>",
                 "smithy.api#error": "client",
                 "smithy.api#httpError": 400
-            }
-        },
-        "com.amazonaws.cloudfront#CannotDeleteEntityWhileInUse": {
-            "type": "structure",
-            "members": {
-                "Message": {
-                    "target": "com.amazonaws.cloudfront#string"
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The key value store entity cannot be deleted while it is in use.</p>",
-                "smithy.api#error": "client",
-                "smithy.api#httpError": 409
             }
         },
         "com.amazonaws.cloudfront#CertificateSource": {
@@ -1056,9 +1043,6 @@
                     "target": "com.amazonaws.cloudfront#CreateKeyGroup"
                 },
                 {
-                    "target": "com.amazonaws.cloudfront#CreateKeyValueStore"
-                },
-                {
                     "target": "com.amazonaws.cloudfront#CreateMonitoringSubscription"
                 },
                 {
@@ -1107,9 +1091,6 @@
                     "target": "com.amazonaws.cloudfront#DeleteKeyGroup"
                 },
                 {
-                    "target": "com.amazonaws.cloudfront#DeleteKeyValueStore"
-                },
-                {
                     "target": "com.amazonaws.cloudfront#DeleteMonitoringSubscription"
                 },
                 {
@@ -1132,9 +1113,6 @@
                 },
                 {
                     "target": "com.amazonaws.cloudfront#DescribeFunction"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#DescribeKeyValueStore"
                 },
                 {
                     "target": "com.amazonaws.cloudfront#GetCachePolicy"
@@ -1269,9 +1247,6 @@
                     "target": "com.amazonaws.cloudfront#ListKeyGroups"
                 },
                 {
-                    "target": "com.amazonaws.cloudfront#ListKeyValueStores"
-                },
-                {
                     "target": "com.amazonaws.cloudfront#ListOriginAccessControls"
                 },
                 {
@@ -1332,9 +1307,6 @@
                     "target": "com.amazonaws.cloudfront#UpdateKeyGroup"
                 },
                 {
-                    "target": "com.amazonaws.cloudfront#UpdateKeyValueStore"
-                },
-                {
                     "target": "com.amazonaws.cloudfront#UpdateOriginAccessControl"
                 },
                 {
@@ -1365,7 +1337,7 @@
                     "name": "cloudfront"
                 },
                 "aws.protocols#restXml": {},
-                "smithy.api#documentation": "<fullname>Amazon CloudFront</fullname>\n         <p>This is the <i>Amazon CloudFront API Reference</i>. This guide is for developers\n\t\t\twho need detailed information about CloudFront API actions, data types, and errors. For\n\t\t\tdetailed information about CloudFront features, see the\n\t\t\t<a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Introduction.html\">Amazon CloudFront Developer Guide</a>.</p>",
+                "smithy.api#documentation": "<fullname>Amazon CloudFront</fullname>\n         <p>This is the <i>Amazon CloudFront API Reference</i>. This guide is for developers\n\t\t\twho need detailed information about CloudFront API actions, data types, and errors. For\n\t\t\tdetailed information about CloudFront features, see the\n\t\t\t<i>Amazon CloudFront Developer Guide</i>.</p>",
                 "smithy.api#title": "Amazon CloudFront",
                 "smithy.api#xmlNamespace": {
                     "uri": "http://cloudfront.amazonaws.com/doc/2020-05-31/"
@@ -1412,6 +1384,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -1454,8 +1427,7 @@
                                     },
                                     "type": "endpoint"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [
@@ -1468,6 +1440,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -1481,6 +1454,7 @@
                                             "assign": "PartitionResult"
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -1656,6 +1630,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -1690,6 +1665,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -1700,16 +1676,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -1723,12 +1697,14 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
                                                         {
                                                             "fn": "booleanEquals",
                                                             "argv": [
+                                                                true,
                                                                 {
                                                                     "fn": "getAttr",
                                                                     "argv": [
@@ -1737,11 +1713,11 @@
                                                                         },
                                                                         "supportsFIPS"
                                                                     ]
-                                                                },
-                                                                true
+                                                                }
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -1752,16 +1728,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS is enabled but this partition does not support FIPS",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -1775,6 +1749,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -1794,6 +1769,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -1804,16 +1780,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "DualStack is enabled but this partition does not support DualStack",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [],
@@ -1824,11 +1798,9 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
@@ -2583,7 +2555,7 @@
                 "Weight": {
                     "target": "com.amazonaws.cloudfront#float",
                     "traits": {
-                        "smithy.api#documentation": "<p>The percentage of traffic to send to a staging distribution, expressed as a decimal\n\t\t\tnumber between 0 and 0.15. For example, a value of 0.10 means 10% of traffic is sent to the staging distribution.</p>",
+                        "smithy.api#documentation": "<p>The percentage of traffic to send to a staging distribution, expressed as a decimal\n\t\t\tnumber between 0 and .15.</p>",
                         "smithy.api#required": {}
                     }
                 },
@@ -4011,7 +3983,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Create a new invalidation. For more information, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Invalidation.html\">Invalidating files</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>",
+                "smithy.api#documentation": "<p>Create a new invalidation.</p>",
                 "smithy.api#http": {
                     "method": "POST",
                     "uri": "/2020-05-31/distribution/{DistributionId}/invalidation",
@@ -4138,99 +4110,6 @@
                     "traits": {
                         "smithy.api#documentation": "<p>The identifier for this version of the key group.</p>",
                         "smithy.api#httpHeader": "ETag"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#output": {}
-            }
-        },
-        "com.amazonaws.cloudfront#CreateKeyValueStore": {
-            "type": "operation",
-            "input": {
-                "target": "com.amazonaws.cloudfront#CreateKeyValueStoreRequest"
-            },
-            "output": {
-                "target": "com.amazonaws.cloudfront#CreateKeyValueStoreResult"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.cloudfront#AccessDenied"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#EntityAlreadyExists"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#EntityLimitExceeded"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#EntitySizeLimitExceeded"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#InvalidArgument"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#UnsupportedOperation"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Specifies the key value store resource to add to your account. In your account, the key value store names must be unique. You can also import key value store data in JSON format from an S3 bucket by providing a valid <code>ImportSource</code> that you own.</p>",
-                "smithy.api#http": {
-                    "method": "POST",
-                    "uri": "/2020-05-31/key-value-store",
-                    "code": 201
-                }
-            }
-        },
-        "com.amazonaws.cloudfront#CreateKeyValueStoreRequest": {
-            "type": "structure",
-            "members": {
-                "Name": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the key value store. The minimum length is 1 character and the maximum length is\n\t\t\t64 characters.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Comment": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreComment",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The comment of the key value store.</p>"
-                    }
-                },
-                "ImportSource": {
-                    "target": "com.amazonaws.cloudfront#ImportSource",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The S3 bucket that provides the source for the import. The source must be in a valid JSON format.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#input": {}
-            }
-        },
-        "com.amazonaws.cloudfront#CreateKeyValueStoreResult": {
-            "type": "structure",
-            "members": {
-                "KeyValueStore": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStore",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The resulting key value store.</p>",
-                        "smithy.api#httpPayload": {}
-                    }
-                },
-                "ETag": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The <code>ETag</code> in the resulting key value store.</p>",
-                        "smithy.api#httpHeader": "ETag"
-                    }
-                },
-                "Location": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The location of the resulting key value store.</p>",
-                        "smithy.api#httpHeader": "Location"
                     }
                 }
             },
@@ -4604,7 +4483,7 @@
                 "SamplingRate": {
                     "target": "com.amazonaws.cloudfront#long",
                     "traits": {
-                        "smithy.api#documentation": "<p>The sampling rate for this real-time log configuration. You can specify a whole number between 1 and 100 (inclusive) to determine the percentage of viewer requests that are represented in the real-time log data.</p>",
+                        "smithy.api#documentation": "<p>The sampling rate for this real-time log configuration. The sampling rate determines\n\t\t\tthe percentage of viewer requests that are represented in the real-time log data. You\n\t\t\tmust provide an integer between 1 and 100, inclusive.</p>",
                         "smithy.api#required": {}
                     }
                 }
@@ -5087,7 +4966,7 @@
                 "ViewerProtocolPolicy": {
                     "target": "com.amazonaws.cloudfront#ViewerProtocolPolicy",
                     "traits": {
-                        "smithy.api#documentation": "<p>The protocol that viewers can use to access the files in the origin specified by\n\t\t\t\t<code>TargetOriginId</code> when a request matches the path pattern in\n\t\t\t\t<code>PathPattern</code>. You can specify the following options:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>allow-all</code>: Viewers can use HTTP or HTTPS.</p>\n            </li>\n            <li>\n               <p>\n                  <code>redirect-to-https</code>: If a viewer submits an HTTP request, CloudFront\n\t\t\t\t\treturns an HTTP status code of 301 (Moved Permanently) to the viewer along with\n\t\t\t\t\tthe HTTPS URL. The viewer then resubmits the request using the new URL.</p>\n            </li>\n            <li>\n               <p>\n                  <code>https-only</code>: If a viewer sends an HTTP request, CloudFront returns an\n\t\t\t\t\tHTTP status code of 403 (Forbidden).</p>\n            </li>\n         </ul>\n         <p>For more information about requiring the HTTPS protocol, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-https-viewers-to-cloudfront.html\">Requiring HTTPS Between Viewers and  CloudFront</a> in the\n\t\t\t\t<i>Amazon CloudFront Developer Guide</i>.</p>\n         <note>\n            <p>The only way to guarantee that viewers retrieve an object that was fetched from\n\t\t\t\tthe origin using HTTPS is never to use any other protocol to fetch the object. If\n\t\t\t\tyou have recently changed from HTTP to HTTPS, we recommend that you clear your\n\t\t\t\tobjects' cache because cached objects are protocol agnostic. That means that an edge\n\t\t\t\tlocation will return an object from the cache regardless of whether the current\n\t\t\t\trequest protocol matches the protocol used previously. For more information, see\n\t\t\t\t\t<a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Expiration.html\">Managing Cache\n\t\t\t\t\tExpiration</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>\n         </note>",
+                        "smithy.api#documentation": "<p>The protocol that viewers can use to access the files in the origin specified by\n\t\t\t\t<code>TargetOriginId</code> when a request matches the path pattern in\n\t\t\t\t<code>PathPattern</code>. You can specify the following options:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>allow-all</code>: Viewers can use HTTP or HTTPS.</p>\n            </li>\n            <li>\n               <p>\n                  <code>redirect-to-https</code>: If a viewer submits an HTTP request, CloudFront\n\t\t\t\t\treturns an HTTP status code of 301 (Moved Permanently) to the viewer along with\n\t\t\t\t\tthe HTTPS URL. The viewer then resubmits the request using the new URL.</p>\n            </li>\n            <li>\n               <p>\n                  <code>https-only</code>: If a viewer sends an HTTP request, CloudFront returns an\n\t\t\t\t\tHTTP status code of 403 (Forbidden).</p>\n            </li>\n         </ul>\n         <p>For more information about requiring the HTTPS protocol, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-https-viewers-to-cloudfront.html\">Requiring HTTPS Between Viewers and CloudFront</a> in the\n\t\t\t\t<i>Amazon CloudFront Developer Guide</i>.</p>\n         <note>\n            <p>The only way to guarantee that viewers retrieve an object that was fetched from\n\t\t\t\tthe origin using HTTPS is never to use any other protocol to fetch the object. If\n\t\t\t\tyou have recently changed from HTTP to HTTPS, we recommend that you clear your\n\t\t\t\tobjects' cache because cached objects are protocol agnostic. That means that an edge\n\t\t\t\tlocation will return an object from the cache regardless of whether the current\n\t\t\t\trequest protocol matches the protocol used previously. For more information, see\n\t\t\t\t\t<a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/Expiration.html\">Managing Cache\n\t\t\t\t\tExpiration</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>\n         </note>",
                         "smithy.api#required": {}
                     }
                 },
@@ -5115,7 +4994,7 @@
                 "FunctionAssociations": {
                     "target": "com.amazonaws.cloudfront#FunctionAssociations",
                     "traits": {
-                        "smithy.api#documentation": "<p>A list of CloudFront functions that are associated with this cache behavior. Your functions\n\t\t\tmust be published to the <code>LIVE</code> stage to associate them with a cache\n\t\t\tbehavior.</p>"
+                        "smithy.api#documentation": "<p>A list of CloudFront functions that are associated with this cache behavior. CloudFront functions\n\t\t\tmust be published to the <code>LIVE</code> stage to associate them with a cache\n\t\t\tbehavior.</p>"
                     }
                 },
                 "FieldLevelEncryptionId": {
@@ -5643,68 +5522,6 @@
                 "smithy.api#input": {}
             }
         },
-        "com.amazonaws.cloudfront#DeleteKeyValueStore": {
-            "type": "operation",
-            "input": {
-                "target": "com.amazonaws.cloudfront#DeleteKeyValueStoreRequest"
-            },
-            "output": {
-                "target": "smithy.api#Unit"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.cloudfront#AccessDenied"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#CannotDeleteEntityWhileInUse"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#EntityNotFound"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#InvalidIfMatchVersion"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#PreconditionFailed"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#UnsupportedOperation"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Specifies the key value store to delete.</p>",
-                "smithy.api#http": {
-                    "method": "DELETE",
-                    "uri": "/2020-05-31/key-value-store/{Name}",
-                    "code": 204
-                },
-                "smithy.api#idempotent": {}
-            }
-        },
-        "com.amazonaws.cloudfront#DeleteKeyValueStoreRequest": {
-            "type": "structure",
-            "members": {
-                "Name": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the key value store.</p>",
-                        "smithy.api#httpLabel": {},
-                        "smithy.api#required": {}
-                    }
-                },
-                "IfMatch": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The key value store to delete, if a match occurs.</p>",
-                        "smithy.api#httpHeader": "If-Match",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#input": {}
-            }
-        },
         "com.amazonaws.cloudfront#DeleteMonitoringSubscription": {
             "type": "operation",
             "input": {
@@ -5728,7 +5545,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Disables additional CloudWatch metrics for the specified CloudFront distribution.</p>",
+                "smithy.api#documentation": "<p>Disables additional CloudWatch metrics for the specified CloudFront\n\t\t\tdistribution.</p>",
                 "smithy.api#http": {
                     "method": "DELETE",
                     "uri": "/2020-05-31/distributions/{DistributionId}/monitoring-subscription",
@@ -6172,75 +5989,6 @@
                 "smithy.api#output": {}
             }
         },
-        "com.amazonaws.cloudfront#DescribeKeyValueStore": {
-            "type": "operation",
-            "input": {
-                "target": "com.amazonaws.cloudfront#DescribeKeyValueStoreRequest"
-            },
-            "output": {
-                "target": "com.amazonaws.cloudfront#DescribeKeyValueStoreResult"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.cloudfront#AccessDenied"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#EntityNotFound"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#InvalidArgument"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#UnsupportedOperation"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Specifies the key value store and its configuration.</p>",
-                "smithy.api#http": {
-                    "method": "GET",
-                    "uri": "/2020-05-31/key-value-store/{Name}",
-                    "code": 200
-                }
-            }
-        },
-        "com.amazonaws.cloudfront#DescribeKeyValueStoreRequest": {
-            "type": "structure",
-            "members": {
-                "Name": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the key value store.</p>",
-                        "smithy.api#httpLabel": {},
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#input": {}
-            }
-        },
-        "com.amazonaws.cloudfront#DescribeKeyValueStoreResult": {
-            "type": "structure",
-            "members": {
-                "KeyValueStore": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStore",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The resulting key value store.</p>",
-                        "smithy.api#httpPayload": {}
-                    }
-                },
-                "ETag": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The <code>ETag</code> of the resulting key value store.</p>",
-                        "smithy.api#httpHeader": "ETag"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#output": {}
-            }
-        },
         "com.amazonaws.cloudfront#Distribution": {
             "type": "structure",
             "members": {
@@ -6424,13 +6172,13 @@
                 "WebACLId": {
                     "target": "com.amazonaws.cloudfront#string",
                     "traits": {
-                        "smithy.api#documentation": "<p>A unique identifier that specifies the WAF web ACL, if any, to associate with this\n\t\t\tdistribution. To specify a web ACL created using the latest version of WAF, use the\n\t\t\tACL ARN, for example\n\t\t\t<code>arn:aws:wafv2:us-east-1:123456789012:global/webacl/ExampleWebACL/a1b2c3d4-5678-90ab-cdef-EXAMPLE11111</code>.\n\t\t\tTo specify a web ACL created using WAF Classic, use the ACL ID, for example\n\t\t\t<code>a1b2c3d4-5678-90ab-cdef-EXAMPLE11111</code>.</p>\n         <p>WAF is a web application firewall that lets you monitor the HTTP and HTTPS requests\n\t\t\tthat are forwarded to CloudFront, and lets you control access to your content. Based on\n\t\t\tconditions that you specify, such as the IP addresses that requests originate from or\n\t\t\tthe values of query strings, CloudFront responds to requests either with the requested content\n\t\t\tor with an HTTP 403 status code (Forbidden). You can also configure CloudFront to return a\n\t\t\tcustom error page when a request is blocked. For more information about WAF, see the\n\t\t\t\t<a href=\"https://docs.aws.amazon.com/waf/latest/developerguide/what-is-aws-waf.html\">WAF Developer Guide</a>.</p>"
+                        "smithy.api#documentation": "<p>A unique identifier that specifies the WAF web ACL, if any, to associate with this\n\t\t\tdistribution. To specify a web ACL created using the latest version of WAF, use the\n\t\t\tACL ARN, for example\n\t\t\t\t<code>arn:aws:wafv2:us-east-1:123456789012:global/webacl/ExampleWebACL/473e64fd-f30b-4765-81a0-62ad96dd167a</code>.\n\t\t\tTo specify a web ACL created using WAF Classic, use the ACL ID, for example\n\t\t\t\t<code>473e64fd-f30b-4765-81a0-62ad96dd167a</code>.</p>\n         <p>WAF is a web application firewall that lets you monitor the HTTP and HTTPS requests\n\t\t\tthat are forwarded to CloudFront, and lets you control access to your content. Based on\n\t\t\tconditions that you specify, such as the IP addresses that requests originate from or\n\t\t\tthe values of query strings, CloudFront responds to requests either with the requested content\n\t\t\tor with an HTTP 403 status code (Forbidden). You can also configure CloudFront to return a\n\t\t\tcustom error page when a request is blocked. For more information about WAF, see the\n\t\t\t\t<a href=\"https://docs.aws.amazon.com/waf/latest/developerguide/what-is-aws-waf.html\">WAF Developer Guide</a>.</p>"
                     }
                 },
                 "HttpVersion": {
                     "target": "com.amazonaws.cloudfront#HttpVersion",
                     "traits": {
-                        "smithy.api#documentation": "<p>(Optional) Specify the HTTP version(s) that you want viewers to use to communicate with\n\t\t\tCloudFront. The default value for new web distributions is <code>http2</code>. Viewers that\n\t\t\tdon't support HTTP/2 automatically use an earlier HTTP version.</p>\n         <p>For viewers and CloudFront to use HTTP/2, viewers must support TLSv1.2 or later, and must\n\t\t\tsupport Server Name Indication (SNI).</p>\n         <p>For viewers and CloudFront to use HTTP/3, viewers must support TLSv1.3 and Server Name\n\t\t\tIndication (SNI). CloudFront supports HTTP/3 connection migration to allow the viewer to\n\t\t\tswitch networks without losing connection. For more information about connection\n\t\t\tmigration, see <a href=\"https://www.rfc-editor.org/rfc/rfc9000.html#name-connection-migration\">Connection Migration</a> at RFC 9000. For more information about supported\n\t\t\tTLSv1.3 ciphers, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/secure-connections-supported-viewer-protocols-ciphers.html\">Supported protocols and ciphers between viewers and CloudFront</a>.</p>"
+                        "smithy.api#documentation": "<p>(Optional) Specify the maximum HTTP version(s) that you want viewers to use to\n\t\t\tcommunicate with CloudFront. The default value for new web distributions is\n\t\t\t<code>http2</code>. Viewers that don't support HTTP/2 automatically use an earlier HTTP\n\t\t\tversion.</p>\n         <p>For viewers and CloudFront to use HTTP/2, viewers must support TLSv1.2 or later, and must\n\t\t\tsupport Server Name Indication (SNI).</p>\n         <p>For viewers and CloudFront to use HTTP/3, viewers must support TLSv1.3 and Server Name\n\t\t\tIndication (SNI). CloudFront supports HTTP/3 connection migration to allow the viewer to\n\t\t\tswitch networks without losing connection. For more information about connection\n\t\t\tmigration, see <a href=\"https://www.rfc-editor.org/rfc/rfc9000.html#name-connection-migration\">Connection Migration</a> at RFC 9000. For more information about supported\n\t\t\tTLSv1.3 ciphers, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/secure-connections-supported-viewer-protocols-ciphers.html\">Supported protocols and ciphers between viewers and CloudFront</a>.</p>"
                     }
                 },
                 "IsIPV6Enabled": {
@@ -6740,7 +6488,7 @@
                 "Staging": {
                     "target": "com.amazonaws.cloudfront#boolean",
                     "traits": {
-                        "smithy.api#documentation": "<p>A Boolean that indicates whether this is a staging distribution. When this value is\n\t\t\t\t<code>true</code>, this is a staging distribution. When this value is\n\t\t\t\t<code>false</code>, this is not a staging distribution.</p>",
+                        "smithy.api#documentation": "<p>Whether the primary distribution has a staging distribution enabled.</p>",
                         "smithy.api#required": {}
                     }
                 }
@@ -6842,58 +6590,6 @@
             "type": "list",
             "member": {
                 "target": "com.amazonaws.cloudfront#EndPoint"
-            }
-        },
-        "com.amazonaws.cloudfront#EntityAlreadyExists": {
-            "type": "structure",
-            "members": {
-                "Message": {
-                    "target": "com.amazonaws.cloudfront#string"
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The key value store entity already exists. You must provide a unique key value store\n\t\t\tentity.</p>",
-                "smithy.api#error": "client",
-                "smithy.api#httpError": 409
-            }
-        },
-        "com.amazonaws.cloudfront#EntityLimitExceeded": {
-            "type": "structure",
-            "members": {
-                "Message": {
-                    "target": "com.amazonaws.cloudfront#string"
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The key value store entity limit has been exceeded.</p>",
-                "smithy.api#error": "client",
-                "smithy.api#httpError": 400
-            }
-        },
-        "com.amazonaws.cloudfront#EntityNotFound": {
-            "type": "structure",
-            "members": {
-                "Message": {
-                    "target": "com.amazonaws.cloudfront#string"
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The key value store entity was not found.</p>",
-                "smithy.api#error": "client",
-                "smithy.api#httpError": 404
-            }
-        },
-        "com.amazonaws.cloudfront#EntitySizeLimitExceeded": {
-            "type": "structure",
-            "members": {
-                "Message": {
-                    "target": "com.amazonaws.cloudfront#string"
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The key value store entity size limit was exceeded.</p>",
-                "smithy.api#error": "client",
-                "smithy.api#httpError": 413
             }
         },
         "com.amazonaws.cloudfront#EventType": {
@@ -7044,7 +6740,7 @@
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>List of field-level encryption configurations.</p>"
+                "smithy.api#documentation": "<p>List of field-level encrpytion configurations.</p>"
             }
         },
         "com.amazonaws.cloudfront#FieldLevelEncryptionProfile": {
@@ -7197,7 +6893,7 @@
                 "LastModifiedTime": {
                     "target": "com.amazonaws.cloudfront#timestamp",
                     "traits": {
-                        "smithy.api#documentation": "<p>The time when the  field-level encryption profile summary was last updated.</p>",
+                        "smithy.api#documentation": "<p>The time when the the field-level encryption profile summary was last updated.</p>",
                         "smithy.api#required": {}
                     }
                 },
@@ -7452,12 +7148,12 @@
                 "Items": {
                     "target": "com.amazonaws.cloudfront#FunctionAssociationList",
                     "traits": {
-                        "smithy.api#documentation": "<p>The CloudFront functions that are associated with a cache behavior in a CloudFront distribution.\n\t\t\tYour functions must be published to the <code>LIVE</code> stage to associate them with a\n\t\t\tcache behavior.</p>"
+                        "smithy.api#documentation": "<p>The CloudFront functions that are associated with a cache behavior in a CloudFront distribution.\n\t\t\tCloudFront functions must be published to the <code>LIVE</code> stage to associate them with a\n\t\t\tcache behavior.</p>"
                     }
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>A list of CloudFront functions that are associated with a cache behavior in a CloudFront\n\t\t\tdistribution. Your functions must be published to the <code>LIVE</code> stage to\n\t\t\tassociate them with a cache behavior.</p>"
+                "smithy.api#documentation": "<p>A list of CloudFront functions that are associated with a cache behavior in a CloudFront\n\t\t\tdistribution. CloudFront functions must be published to the <code>LIVE</code> stage to\n\t\t\tassociate them with a cache behavior.</p>"
             }
         },
         "com.amazonaws.cloudfront#FunctionBlob": {
@@ -7483,14 +7179,8 @@
                 "Runtime": {
                     "target": "com.amazonaws.cloudfront#FunctionRuntime",
                     "traits": {
-                        "smithy.api#documentation": "<p>The function's runtime environment version.</p>",
+                        "smithy.api#documentation": "<p>The function's runtime environment verion.</p>",
                         "smithy.api#required": {}
-                    }
-                },
-                "KeyValueStoreAssociations": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreAssociations",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The configuration for the key value store associations.</p>"
                     }
                 }
             },
@@ -9725,39 +9415,6 @@
                 "smithy.api#httpError": 400
             }
         },
-        "com.amazonaws.cloudfront#ImportSource": {
-            "type": "structure",
-            "members": {
-                "SourceType": {
-                    "target": "com.amazonaws.cloudfront#ImportSourceType",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The source type of the import source for the key value store.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "SourceARN": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the import source for the key value store.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The import source for the key value store.</p>"
-            }
-        },
-        "com.amazonaws.cloudfront#ImportSourceType": {
-            "type": "enum",
-            "members": {
-                "S3": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "S3"
-                    }
-                }
-            }
-        },
         "com.amazonaws.cloudfront#InconsistentQuantities": {
             "type": "structure",
             "members": {
@@ -10460,172 +10117,6 @@
                 "smithy.api#documentation": "<p>A list of CloudFront key pair identifiers.</p>"
             }
         },
-        "com.amazonaws.cloudfront#KeyValueStore": {
-            "type": "structure",
-            "members": {
-                "Name": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the key value store.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Id": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The unique Id for the key value store.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Comment": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>A comment for the key value store.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "ARN": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the key value store.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Status": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The status of the key value store.</p>"
-                    }
-                },
-                "LastModifiedTime": {
-                    "target": "com.amazonaws.cloudfront#timestamp",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The last-modified time of the key value store.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The key value store. Use this to separate data from function code, allowing you to update\n\t\t\tdata without having to publish a new version of a function. The key value store holds\n\t\t\tkeys and their corresponding values.</p>"
-            }
-        },
-        "com.amazonaws.cloudfront#KeyValueStoreARN": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 0,
-                    "max": 85
-                },
-                "smithy.api#pattern": "^arn:aws:cloudfront::[0-9]{12}:key-value-store\\/[0-9a-fA-F-]{36}$"
-            }
-        },
-        "com.amazonaws.cloudfront#KeyValueStoreAssociation": {
-            "type": "structure",
-            "members": {
-                "KeyValueStoreARN": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreARN",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The Amazon Resource Name (ARN) of the key value store association.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The key value store association.</p>"
-            }
-        },
-        "com.amazonaws.cloudfront#KeyValueStoreAssociationList": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.cloudfront#KeyValueStoreAssociation",
-                "traits": {
-                    "smithy.api#xmlName": "KeyValueStoreAssociation"
-                }
-            }
-        },
-        "com.amazonaws.cloudfront#KeyValueStoreAssociations": {
-            "type": "structure",
-            "members": {
-                "Quantity": {
-                    "target": "com.amazonaws.cloudfront#integer",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The quantity of key value store associations.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Items": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreAssociationList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The items of the key value store association.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The key value store associations.</p>"
-            }
-        },
-        "com.amazonaws.cloudfront#KeyValueStoreComment": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 0,
-                    "max": 128
-                }
-            }
-        },
-        "com.amazonaws.cloudfront#KeyValueStoreList": {
-            "type": "structure",
-            "members": {
-                "NextMarker": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The next marker associated with the key value store list.</p>"
-                    }
-                },
-                "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The maximum number of items in the key value store list.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Quantity": {
-                    "target": "com.amazonaws.cloudfront#integer",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The quantity of the key value store list.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Items": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreSummaryList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The items of the key value store list.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The key value store list.</p>"
-            }
-        },
-        "com.amazonaws.cloudfront#KeyValueStoreName": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 1,
-                    "max": 64
-                },
-                "smithy.api#pattern": "^[a-zA-Z0-9-_]{1,64}$"
-            }
-        },
-        "com.amazonaws.cloudfront#KeyValueStoreSummaryList": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.cloudfront#KeyValueStore",
-                "traits": {
-                    "smithy.api#xmlName": "KeyValueStore"
-                }
-            }
-        },
         "com.amazonaws.cloudfront#KinesisStreamConfig": {
             "type": "structure",
             "members": {
@@ -10755,7 +10246,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of cache policies that you want in the response.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -10820,7 +10311,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of origin access identities you want in the response body.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -10965,7 +10456,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of continuous deployment policies that you want returned in the\n\t\t\tresponse.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11058,7 +10549,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of distribution IDs that you want in the response.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11128,7 +10619,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of distribution IDs that you want in the response.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11200,7 +10691,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of distribution IDs that you want in the response.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11266,7 +10757,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of distributions that you want in the response.</p>"
                     }
@@ -11341,7 +10832,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of distribution IDs that you want to get in the response.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11410,7 +10901,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of distributions that you want CloudFront to return in the response body.\n\t\t\tThe maximum and default values are both 100.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11419,7 +10910,7 @@
                 "WebACLId": {
                     "target": "com.amazonaws.cloudfront#string",
                     "traits": {
-                        "smithy.api#documentation": "<p>The ID of the WAF web ACL that you want to list the associated distributions. If you\n\t\t\tspecify \"null\" for the ID, the request returns a list of the distributions that aren't\n\t\t\tassociated with a web ACL. </p>\n         <p>For WAFV2, this is the ARN of the web ACL, such as\n\t\t\t\t<code>arn:aws:wafv2:us-east-1:123456789012:global/webacl/ExampleWebACL/a1b2c3d4-5678-90ab-cdef-EXAMPLE11111</code>.</p>\n         <p>For WAF Classic, this is the ID of the web ACL, such as <code>a1b2c3d4-5678-90ab-cdef-EXAMPLE11111</code>.</p>",
+                        "smithy.api#documentation": "<p>The ID of the WAF web ACL that you want to list the associated distributions. If you\n\t\t\tspecify \"null\" for the ID, the request returns a list of the distributions that aren't\n\t\t\tassociated with a web ACL.</p>",
                         "smithy.api#httpLabel": {},
                         "smithy.api#required": {}
                     }
@@ -11457,7 +10948,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of distributions you want in the response body.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11518,7 +11009,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of field-level encryption configurations you want in the response\n\t\t\tbody.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11577,7 +11068,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of field-level encryption profiles you want in the response body.\n\t\t</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11639,7 +11130,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of functions that you want in the response.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11725,7 +11216,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of invalidation batches that you want in the response body.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11786,7 +11277,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of key groups that you want in the response.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11804,84 +11295,6 @@
                     "target": "com.amazonaws.cloudfront#KeyGroupList",
                     "traits": {
                         "smithy.api#documentation": "<p>A list of key groups.</p>",
-                        "smithy.api#httpPayload": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#output": {}
-            }
-        },
-        "com.amazonaws.cloudfront#ListKeyValueStores": {
-            "type": "operation",
-            "input": {
-                "target": "com.amazonaws.cloudfront#ListKeyValueStoresRequest"
-            },
-            "output": {
-                "target": "com.amazonaws.cloudfront#ListKeyValueStoresResult"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.cloudfront#AccessDenied"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#InvalidArgument"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#UnsupportedOperation"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Specifies the key value stores to list.</p>",
-                "smithy.api#http": {
-                    "method": "GET",
-                    "uri": "/2020-05-31/key-value-store",
-                    "code": 200
-                },
-                "smithy.api#paginated": {
-                    "inputToken": "Marker",
-                    "outputToken": "KeyValueStoreList.NextMarker",
-                    "items": "KeyValueStoreList.Items",
-                    "pageSize": "MaxItems"
-                }
-            }
-        },
-        "com.amazonaws.cloudfront#ListKeyValueStoresRequest": {
-            "type": "structure",
-            "members": {
-                "Marker": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The marker associated with the key value stores list.</p>",
-                        "smithy.api#httpQuery": "Marker"
-                    }
-                },
-                "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The maximum number of items in the key value stores list.</p>",
-                        "smithy.api#httpQuery": "MaxItems"
-                    }
-                },
-                "Status": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The status of the request for the key value stores list.</p>",
-                        "smithy.api#httpQuery": "Status"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#input": {}
-            }
-        },
-        "com.amazonaws.cloudfront#ListKeyValueStoresResult": {
-            "type": "structure",
-            "members": {
-                "KeyValueStoreList": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The resulting key value stores list.</p>",
                         "smithy.api#httpPayload": {}
                     }
                 }
@@ -11923,7 +11336,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of origin access controls that you want in the response.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -11995,7 +11408,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of origin request policies that you want in the response.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -12054,7 +11467,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of public keys you want in the response body.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -12112,7 +11525,7 @@
             "type": "structure",
             "members": {
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of real-time log configurations that you want in the\n\t\t\tresponse.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -12191,7 +11604,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The maximum number of response headers policies that you want to get in the\n\t\t\tresponse.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -12256,7 +11669,7 @@
                     }
                 },
                 "MaxItems": {
-                    "target": "com.amazonaws.cloudfront#integer",
+                    "target": "smithy.api#Integer",
                     "traits": {
                         "smithy.api#documentation": "<p>The value that you provided for the <code>MaxItems</code> request parameter.</p>",
                         "smithy.api#httpQuery": "MaxItems"
@@ -12307,7 +11720,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>List tags for a CloudFront resource. For more information, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/tagging.html\">Tagging a distribution</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>",
+                "smithy.api#documentation": "<p>List tags for a CloudFront resource.</p>",
                 "smithy.api#http": {
                     "method": "GET",
                     "uri": "/2020-05-31/tagging",
@@ -12825,7 +12238,7 @@
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>An origin.</p>\n         <p>An origin is the location where content is stored, and from which CloudFront gets content to\n\t\t\tserve to viewers. To specify an origin:</p>\n         <ul>\n            <li>\n               <p>Use <code>S3OriginConfig</code> to specify an Amazon S3 bucket that is not\n\t\t\t\t\tconfigured with static website hosting.</p>\n            </li>\n            <li>\n               <p>Use <code>CustomOriginConfig</code> to specify all other kinds of origins,\n\t\t\t\t\tincluding:</p>\n               <ul>\n                  <li>\n                     <p>An Amazon S3 bucket that is configured with static website hosting</p>\n                  </li>\n                  <li>\n                     <p>An Elastic Load Balancing load balancer</p>\n                  </li>\n                  <li>\n                     <p>An Elemental MediaPackage endpoint</p>\n                  </li>\n                  <li>\n                     <p>An Elemental MediaStore container</p>\n                  </li>\n                  <li>\n                     <p>Any other HTTP server, running on an Amazon EC2 instance or any other kind\n\t\t\t\t\t\t\tof host</p>\n                  </li>\n               </ul>\n            </li>\n         </ul>\n         <p>For the current maximum number of origins that you can specify per distribution, see\n\t\t\t\t<a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cloudfront-limits.html#limits-web-distributions\">General Quotas on Web Distributions</a> in the\n\t\t\t\t<i>Amazon CloudFront Developer Guide</i> (quotas were formerly referred to as\n\t\t\tlimits).</p>"
+                "smithy.api#documentation": "<p>An origin.</p>\n         <p>An origin is the location where content is stored, and from which CloudFront gets content to\n\t\t\tserve to viewers. To specify an origin:</p>\n         <ul>\n            <li>\n               <p>Use <code>S3OriginConfig</code> to specify an Amazon S3 bucket that is not\n\t\t\t\t\tconfigured with static website hosting.</p>\n            </li>\n            <li>\n               <p>Use <code>CustomOriginConfig</code> to specify all other kinds of origins,\n\t\t\t\t\tincluding:</p>\n               <ul>\n                  <li>\n                     <p>An Amazon S3 bucket that is configured with static website hosting</p>\n                  </li>\n                  <li>\n                     <p>An Elastic Load Balancing load balancer</p>\n                  </li>\n                  <li>\n                     <p>An AWS Elemental MediaPackage endpoint</p>\n                  </li>\n                  <li>\n                     <p>An AWS Elemental MediaStore container</p>\n                  </li>\n                  <li>\n                     <p>Any other HTTP server, running on an Amazon EC2 instance or any other kind\n\t\t\t\t\t\t\tof host</p>\n                  </li>\n               </ul>\n            </li>\n         </ul>\n         <p>For the current maximum number of origins that you can specify per distribution, see\n\t\t\t\t<a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/cloudfront-limits.html#limits-web-distributions\">General Quotas on Web Distributions</a> in the\n\t\t\t\t<i>Amazon CloudFront Developer Guide</i> (quotas were formerly referred to as\n\t\t\tlimits).</p>"
             }
         },
         "com.amazonaws.cloudfront#OriginAccessControl": {
@@ -12868,7 +12281,7 @@
                 "Name": {
                     "target": "com.amazonaws.cloudfront#string",
                     "traits": {
-                        "smithy.api#documentation": "<p>A name to identify the origin access control. You can specify up to 64 characters.</p>",
+                        "smithy.api#documentation": "<p>A name to identify the origin access control.</p>",
                         "smithy.api#required": {}
                     }
                 },
@@ -12978,18 +12391,6 @@
                     "target": "smithy.api#Unit",
                     "traits": {
                         "smithy.api#enumValue": "mediastore"
-                    }
-                },
-                "mediapackagev2": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "mediapackagev2"
-                    }
-                },
-                "lambda": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "lambda"
                     }
                 }
             }
@@ -13144,7 +12545,7 @@
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>An origin group includes two origins (a primary origin and a second origin to failover to)\n\t\t\tand a failover criteria that you specify. You create an origin group to support origin\n\t\t\tfailover in  CloudFront. When you create or update a distribution, you can specify the\n\t\t\torigin group instead of a single origin, and CloudFront will failover from the primary\n\t\t\torigin to the second origin under the failover conditions that you've chosen.</p>"
+                "smithy.api#documentation": "<p>An origin group includes two origins (a primary origin and a second origin to failover\n\t\t\tto) and a failover criteria that you specify. You create an origin group to support\n\t\t\torigin failover in CloudFront. When you create or update a distribution, you can\n\t\t\tspecifiy the origin group instead of a single origin, and CloudFront will failover from\n\t\t\tthe primary origin to the second origin under the failover conditions that you've\n\t\t\tchosen.</p>"
             }
         },
         "com.amazonaws.cloudfront#OriginGroupFailoverCriteria": {
@@ -13153,7 +12554,7 @@
                 "StatusCodes": {
                     "target": "com.amazonaws.cloudfront#StatusCodes",
                     "traits": {
-                        "smithy.api#documentation": "<p>The status codes that, when returned from the primary origin, will trigger CloudFront to failover to the second origin.</p>",
+                        "smithy.api#documentation": "<p>The status codes that, when returned from the primary origin, will trigger CloudFront\n\t\t\tto failover to the second origin.</p>",
                         "smithy.api#required": {}
                     }
                 }
@@ -14989,7 +14390,7 @@
                 "StrictTransportSecurity": {
                     "target": "com.amazonaws.cloudfront#ResponseHeadersPolicyStrictTransportSecurity",
                     "traits": {
-                        "smithy.api#documentation": "<p>Determines whether CloudFront includes the <code>Strict-Transport-Security</code> HTTP\n\t\t\tresponse header and the header's value.</p>\n         <p>For more information about the <code>Strict-Transport-Security</code> HTTP response\n\t\t\theader, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/understanding-response-headers-policies.html#understanding-response-headers-policies-security\">Security headers</a> in the <i>Amazon CloudFront Developer Guide</i> and <a href=\"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security\">Strict-Transport-Security</a> in the MDN Web Docs.</p>"
+                        "smithy.api#documentation": "<p>Determines whether CloudFront includes the <code>Strict-Transport-Security</code> HTTP\n\t\t\tresponse header and the header's value.</p>\n         <p>For more information about the <code>Strict-Transport-Security</code> HTTP response\n\t\t\theader, see <a href=\"https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Strict-Transport-Security\">Strict-Transport-Security</a> in the MDN Web Docs.</p>"
                     }
                 }
             },
@@ -15177,7 +14578,7 @@
                 "OriginAccessIdentity": {
                     "target": "com.amazonaws.cloudfront#string",
                     "traits": {
-                        "smithy.api#documentation": "<note>\n            <p>If you're using origin access control (OAC) instead of origin access identity,\n\t\t\t\tspecify an empty <code>OriginAccessIdentity</code> element. For more information,\n\t\t\t\tsee <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/private-content-restricting-access-to-origin.html\">Restricting access to an Amazon Web Services</a> in the\n\t\t\t\t\t<i>Amazon CloudFront Developer Guide</i>.</p>\n         </note>\n         <p>The CloudFront origin access identity to associate with the origin. Use an origin access\n\t\t\tidentity to configure the origin so that viewers can <i>only</i> access\n\t\t\tobjects in an Amazon S3 bucket through CloudFront. The format of the value is:</p>\n         <p>\n            <code>origin-access-identity/cloudfront/ID-of-origin-access-identity</code>\n         </p>\n         <p>The <code>\n               <i>ID-of-origin-access-identity</i>\n            </code> is the value that CloudFront\n\t\t\treturned in the <code>ID</code> element when you created the origin access\n\t\t\tidentity.</p>\n         <p>If you want viewers to be able to access objects using either the CloudFront URL or the Amazon S3\n\t\t\tURL, specify an empty <code>OriginAccessIdentity</code> element.</p>\n         <p>To delete the origin access identity from an existing distribution, update the\n\t\t\tdistribution configuration and include an empty <code>OriginAccessIdentity</code>\n\t\t\telement.</p>\n         <p>To replace the origin access identity, update the distribution configuration and\n\t\t\tspecify the new origin access identity.</p>\n         <p>For more information about the origin access identity, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PrivateContent.html\">Serving Private\n\t\t\t\tContent through CloudFront</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>",
+                        "smithy.api#documentation": "<p>The CloudFront origin access identity to associate with the origin. Use an origin access\n\t\t\tidentity to configure the origin so that viewers can <i>only</i> access\n\t\t\tobjects in an Amazon S3 bucket through CloudFront. The format of the value is:</p>\n         <p>origin-access-identity/cloudfront/<i>ID-of-origin-access-identity</i>\n         </p>\n         <p>where <code>\n               <i>ID-of-origin-access-identity</i>\n            </code> is the value that\n\t\t\tCloudFront returned in the <code>ID</code> element when you created the origin access\n\t\t\tidentity.</p>\n         <p>If you want viewers to be able to access objects using either the CloudFront URL or the Amazon S3\n\t\t\tURL, specify an empty <code>OriginAccessIdentity</code> element.</p>\n         <p>To delete the origin access identity from an existing distribution, update the\n\t\t\tdistribution configuration and include an empty <code>OriginAccessIdentity</code>\n\t\t\telement.</p>\n         <p>To replace the origin access identity, update the distribution configuration and\n\t\t\tspecify the new origin access identity.</p>\n         <p>For more information about the origin access identity, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/PrivateContent.html\">Serving Private\n\t\t\t\tContent through CloudFront</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>",
                         "smithy.api#required": {}
                     }
                 }
@@ -15231,7 +14632,7 @@
                 "MaximumTTL": {
                     "target": "com.amazonaws.cloudfront#integer",
                     "traits": {
-                        "smithy.api#documentation": "<p>The maximum amount of time to consider requests from the viewer as being part of the\n\t\t\tsame session. Allowed values are 300–3600 seconds (5–60 minutes).</p>\n         <p>The value must be greater than or equal to <code>IdleTTL</code>.</p>",
+                        "smithy.api#documentation": "<p>The maximum amount of time to consider requests from the viewer as being part of the\n\t\t\tsame session. Allowed values are 300–3600 seconds (5–60 minutes).</p>\n         <p>The value must be less than or equal to <code>IdleTTL</code>.</p>",
                         "smithy.api#required": {}
                     }
                 }
@@ -15810,7 +15211,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Add tags to a CloudFront resource. For more information, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/tagging.html\">Tagging a distribution</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>",
+                "smithy.api#documentation": "<p>Add tags to a CloudFront resource.</p>",
                 "smithy.api#http": {
                     "method": "POST",
                     "uri": "/2020-05-31/tagging?Operation=Tag",
@@ -16835,7 +16236,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Remove tags from a CloudFront resource. For more information, see <a href=\"https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/tagging.html\">Tagging a distribution</a> in the <i>Amazon CloudFront Developer Guide</i>.</p>",
+                "smithy.api#documentation": "<p>Remove tags from a CloudFront resource.</p>",
                 "smithy.api#http": {
                     "method": "POST",
                     "uri": "/2020-05-31/tagging?Operation=Untag",
@@ -18089,97 +17490,6 @@
                     "target": "com.amazonaws.cloudfront#string",
                     "traits": {
                         "smithy.api#documentation": "<p>The identifier for this version of the key group.</p>",
-                        "smithy.api#httpHeader": "ETag"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#output": {}
-            }
-        },
-        "com.amazonaws.cloudfront#UpdateKeyValueStore": {
-            "type": "operation",
-            "input": {
-                "target": "com.amazonaws.cloudfront#UpdateKeyValueStoreRequest"
-            },
-            "output": {
-                "target": "com.amazonaws.cloudfront#UpdateKeyValueStoreResult"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.cloudfront#AccessDenied"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#EntityNotFound"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#InvalidArgument"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#InvalidIfMatchVersion"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#PreconditionFailed"
-                },
-                {
-                    "target": "com.amazonaws.cloudfront#UnsupportedOperation"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Specifies the key value store to update.</p>",
-                "smithy.api#http": {
-                    "method": "PUT",
-                    "uri": "/2020-05-31/key-value-store/{Name}",
-                    "code": 200
-                },
-                "smithy.api#idempotent": {}
-            }
-        },
-        "com.amazonaws.cloudfront#UpdateKeyValueStoreRequest": {
-            "type": "structure",
-            "members": {
-                "Name": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the key value store to update.</p>",
-                        "smithy.api#httpLabel": {},
-                        "smithy.api#required": {}
-                    }
-                },
-                "Comment": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStoreComment",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The comment of the key value store to update.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "IfMatch": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The key value store to update, if a match occurs.</p>",
-                        "smithy.api#httpHeader": "If-Match",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#input": {}
-            }
-        },
-        "com.amazonaws.cloudfront#UpdateKeyValueStoreResult": {
-            "type": "structure",
-            "members": {
-                "KeyValueStore": {
-                    "target": "com.amazonaws.cloudfront#KeyValueStore",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The resulting key value store to update.</p>",
-                        "smithy.api#httpPayload": {}
-                    }
-                },
-                "ETag": {
-                    "target": "com.amazonaws.cloudfront#string",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The <code>ETag</code> of the resulting key value store.</p>",
                         "smithy.api#httpHeader": "ETag"
                     }
                 }

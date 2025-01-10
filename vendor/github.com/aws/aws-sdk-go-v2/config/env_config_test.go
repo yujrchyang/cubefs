@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/feature/ec2/imds"
 	"github.com/aws/aws-sdk-go-v2/internal/awstesting"
 	"github.com/aws/smithy-go/ptr"
+	"github.com/google/go-cmp/cmp"
 )
 
 var _ sharedConfigProfileProvider = (*EnvConfig)(nil)
@@ -77,17 +78,6 @@ func TestNewEnvConfig_Creds(t *testing.T) {
 			},
 			Val: aws.Credentials{
 				AccessKeyID: "AKID", SecretAccessKey: "SECRET", SessionToken: "TOKEN",
-				Source: CredentialsSourceName,
-			},
-		},
-		{
-			Env: map[string]string{
-				"AWS_ACCESS_KEY_ID":     "AKID",
-				"AWS_SECRET_ACCESS_KEY": "SECRET",
-				"AWS_ACCOUNT_ID":        "012345678901",
-			},
-			Val: aws.Credentials{
-				AccessKeyID: "AKID", SecretAccessKey: "SECRET", AccountID: "012345678901",
 				Source: CredentialsSourceName,
 			},
 		},
@@ -433,96 +423,6 @@ func TestNewEnvConfig(t *testing.T) {
 			Config:  EnvConfig{},
 			WantErr: true,
 		},
-		38: {
-			Env: map[string]string{
-				"AWS_ENDPOINT_URL": "https://example.com",
-			},
-			Config: EnvConfig{
-				BaseEndpoint: "https://example.com",
-			},
-		},
-		39: {
-			Env: map[string]string{
-				"AWS_IGNORE_CONFIGURED_ENDPOINT_URLS": "true",
-			},
-			Config: EnvConfig{
-				IgnoreConfiguredEndpoints: ptr.Bool(true),
-			},
-		},
-		40: {
-			Env: map[string]string{
-				"AWS_EC2_METADATA_V1_DISABLED": "tRuE",
-			},
-			Config: EnvConfig{
-				EC2IMDSv1Disabled: aws.Bool(true),
-			},
-		},
-		41: {
-			Env: map[string]string{
-				"AWS_EC2_METADATA_V1_DISABLED": "invalid",
-			},
-			Config: EnvConfig{
-				EC2IMDSv1Disabled: aws.Bool(false), // setBoolPtrFromEnvVal new()s the bool even if it errors
-			},
-			WantErr: true,
-		},
-		42: {
-			Env: map[string]string{
-				"AWS_DISABLE_REQUEST_COMPRESSION":        "true",
-				"AWS_REQUEST_MIN_COMPRESSION_SIZE_BYTES": "12345",
-			},
-			Config: EnvConfig{
-				DisableRequestCompression:   aws.Bool(true),
-				RequestMinCompressSizeBytes: aws.Int64(12345),
-			},
-		},
-		43: {
-			Env: map[string]string{
-				"AWS_DISABLE_REQUEST_COMPRESSION":        "blabla",
-				"AWS_REQUEST_MIN_COMPRESSION_SIZE_BYTES": "12345",
-			},
-			Config: EnvConfig{
-				DisableRequestCompression: aws.Bool(false),
-			},
-			WantErr: true,
-		},
-		44: {
-			Env: map[string]string{
-				"AWS_DISABLE_REQUEST_COMPRESSION":        "true",
-				"AWS_REQUEST_MIN_COMPRESSION_SIZE_BYTES": "1.1",
-			},
-			Config: EnvConfig{
-				DisableRequestCompression: aws.Bool(true),
-			},
-			WantErr: true,
-		},
-		// expect err detected due to AWS_REQUEST_MIN_COMPRESSION_SIZE_BYTES exceeding max 10485760
-		45: {
-			Env: map[string]string{
-				"AWS_DISABLE_REQUEST_COMPRESSION":        "false",
-				"AWS_REQUEST_MIN_COMPRESSION_SIZE_BYTES": "10485761",
-			},
-			Config: EnvConfig{
-				DisableRequestCompression: aws.Bool(false),
-			},
-			WantErr: true,
-		},
-		46: {
-			Env: map[string]string{
-				"AWS_ACCOUNT_ID_ENDPOINT_MODE": "required",
-			},
-			Config: EnvConfig{
-				AccountIDEndpointMode: aws.AccountIDEndpointModeRequired,
-			},
-			WantErr: false,
-		},
-		47: {
-			Env: map[string]string{
-				"AWS_ACCOUNT_ID_ENDPOINT_MODE": "blabla",
-			},
-			Config:  EnvConfig{},
-			WantErr: true,
-		},
 	}
 
 	for i, c := range cases {
@@ -538,7 +438,7 @@ func TestNewEnvConfig(t *testing.T) {
 				t.Fatalf("WantErr=%v, got err=%v", c.WantErr, err)
 			}
 
-			if diff := cmpDiff(c.Config, cfg); len(diff) > 0 {
+			if diff := cmp.Diff(c.Config, cfg); len(diff) > 0 {
 				t.Errorf("expect config to match.\n%s",
 					diff)
 			}

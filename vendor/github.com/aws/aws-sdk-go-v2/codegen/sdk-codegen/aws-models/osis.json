@@ -148,6 +148,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -166,6 +167,7 @@
                                 },
                                 {
                                     "conditions": [],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -193,14 +195,13 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -213,6 +214,7 @@
                                             ]
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -226,6 +228,7 @@
                                                     "assign": "PartitionResult"
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -248,6 +251,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [
@@ -282,9 +286,11 @@
                                                                     ]
                                                                 }
                                                             ],
+                                                            "type": "tree",
                                                             "rules": [
                                                                 {
                                                                     "conditions": [],
+                                                                    "type": "tree",
                                                                     "rules": [
                                                                         {
                                                                             "conditions": [],
@@ -295,19 +301,16 @@
                                                                             },
                                                                             "type": "endpoint"
                                                                         }
-                                                                    ],
-                                                                    "type": "tree"
+                                                                    ]
                                                                 }
-                                                            ],
-                                                            "type": "tree"
+                                                            ]
                                                         },
                                                         {
                                                             "conditions": [],
                                                             "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                             "type": "error"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [
@@ -321,12 +324,14 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [
                                                                 {
                                                                     "fn": "booleanEquals",
                                                                     "argv": [
+                                                                        true,
                                                                         {
                                                                             "fn": "getAttr",
                                                                             "argv": [
@@ -335,14 +340,15 @@
                                                                                 },
                                                                                 "supportsFIPS"
                                                                             ]
-                                                                        },
-                                                                        true
+                                                                        }
                                                                     ]
                                                                 }
                                                             ],
+                                                            "type": "tree",
                                                             "rules": [
                                                                 {
                                                                     "conditions": [],
+                                                                    "type": "tree",
                                                                     "rules": [
                                                                         {
                                                                             "conditions": [],
@@ -353,19 +359,16 @@
                                                                             },
                                                                             "type": "endpoint"
                                                                         }
-                                                                    ],
-                                                                    "type": "tree"
+                                                                    ]
                                                                 }
-                                                            ],
-                                                            "type": "tree"
+                                                            ]
                                                         },
                                                         {
                                                             "conditions": [],
                                                             "error": "FIPS is enabled but this partition does not support FIPS",
                                                             "type": "error"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [
@@ -379,6 +382,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [
@@ -398,9 +402,11 @@
                                                                     ]
                                                                 }
                                                             ],
+                                                            "type": "tree",
                                                             "rules": [
                                                                 {
                                                                     "conditions": [],
+                                                                    "type": "tree",
                                                                     "rules": [
                                                                         {
                                                                             "conditions": [],
@@ -411,22 +417,20 @@
                                                                             },
                                                                             "type": "endpoint"
                                                                         }
-                                                                    ],
-                                                                    "type": "tree"
+                                                                    ]
                                                                 }
-                                                            ],
-                                                            "type": "tree"
+                                                            ]
                                                         },
                                                         {
                                                             "conditions": [],
                                                             "error": "DualStack is enabled but this partition does not support DualStack",
                                                             "type": "error"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -437,22 +441,18 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 },
                                 {
                                     "conditions": [],
                                     "error": "Invalid Configuration: Missing Region",
                                     "type": "error"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         }
                     ]
                 },
@@ -772,29 +772,8 @@
                 }
             }
         },
-        "com.amazonaws.osis#BlueprintFormat": {
-            "type": "string",
-            "traits": {
-                "smithy.api#pattern": "^(YAML|JSON)$"
-            }
-        },
         "com.amazonaws.osis#Boolean": {
             "type": "boolean"
-        },
-        "com.amazonaws.osis#BufferOptions": {
-            "type": "structure",
-            "members": {
-                "PersistentBufferEnabled": {
-                    "target": "com.amazonaws.osis#Boolean",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Whether persistent buffering should be enabled.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Options that specify the configuration of a persistent buffer.\n   To configure how OpenSearch Ingestion encrypts this data, set the <code>EncryptionAtRestOptions</code>. For more information, see <a href=\"https://docs.aws.amazon.com/opensearch-service/latest/developerguide/osis-features-overview.html#persistent-buffering\">Persistent buffering</a>.</p>"
-            }
         },
         "com.amazonaws.osis#ChangeProgressStage": {
             "type": "structure",
@@ -931,19 +910,13 @@
                 }
             }
         },
-        "com.amazonaws.osis#CidrBlock": {
-            "type": "string",
-            "traits": {
-                "smithy.api#pattern": "^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)/(3[0-2]|[12]?[0-9])$"
-            }
-        },
         "com.amazonaws.osis#CloudWatchLogDestination": {
             "type": "structure",
             "members": {
                 "LogGroup": {
                     "target": "com.amazonaws.osis#LogGroup",
                     "traits": {
-                        "smithy.api#documentation": "<p>The name of the CloudWatch Logs group to send pipeline logs to. You can specify an existing\n   log group or create a new one. For example,\n   <code>/aws/vendedlogs/OpenSearchService/pipelines</code>.</p>",
+                        "smithy.api#documentation": "<p>The name of the CloudWatch Logs group to send pipeline logs to. You can specify an existing\n   log group or create a new one. For example,\n    <code>/aws/OpenSearchService/IngestionService/my-pipeline</code>.</p>",
                         "smithy.api#required": {}
                     }
                 }
@@ -978,9 +951,6 @@
                     "target": "com.amazonaws.osis#AccessDeniedException"
                 },
                 {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
-                },
-                {
                     "target": "com.amazonaws.osis#InternalException"
                 },
                 {
@@ -988,9 +958,6 @@
                 },
                 {
                     "target": "com.amazonaws.osis#ResourceAlreadyExistsException"
-                },
-                {
-                    "target": "com.amazonaws.osis#ResourceNotFoundException"
                 },
                 {
                     "target": "com.amazonaws.osis#ValidationException"
@@ -1048,18 +1015,6 @@
                         "smithy.api#documentation": "<p>Container for the values required to configure VPC access for the pipeline. If you don't specify\n   these values, OpenSearch Ingestion creates the pipeline with a public endpoint.</p>"
                     }
                 },
-                "BufferOptions": {
-                    "target": "com.amazonaws.osis#BufferOptions",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Key-value pairs to configure persistent buffering for the pipeline.</p>"
-                    }
-                },
-                "EncryptionAtRestOptions": {
-                    "target": "com.amazonaws.osis#EncryptionAtRestOptions",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Key-value pairs to configure encryption for data that is written to a persistent buffer.</p>"
-                    }
-                },
                 "Tags": {
                     "target": "com.amazonaws.osis#TagList",
                     "traits": {
@@ -1099,9 +1054,6 @@
                 },
                 {
                     "target": "com.amazonaws.osis#ConflictException"
-                },
-                {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
                 },
                 {
                     "target": "com.amazonaws.osis#InternalException"
@@ -1145,34 +1097,6 @@
                 "smithy.api#output": {}
             }
         },
-        "com.amazonaws.osis#DisabledOperationException": {
-            "type": "structure",
-            "members": {
-                "message": {
-                    "target": "com.amazonaws.osis#ErrorMessage"
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Exception is thrown when an operation has been disabled.</p>",
-                "smithy.api#error": "client",
-                "smithy.api#httpError": 409
-            }
-        },
-        "com.amazonaws.osis#EncryptionAtRestOptions": {
-            "type": "structure",
-            "members": {
-                "KmsKeyArn": {
-                    "target": "com.amazonaws.osis#KmsKeyArn",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The ARN of the KMS key used to encrypt buffer data.\n   By default, data is encrypted using an Amazon Web Services owned key.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Options to control how OpenSearch encrypts buffer data.</p>"
-            }
-        },
         "com.amazonaws.osis#ErrorMessage": {
             "type": "string"
         },
@@ -1187,9 +1111,6 @@
             "errors": [
                 {
                     "target": "com.amazonaws.osis#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
                 },
                 {
                     "target": "com.amazonaws.osis#InternalException"
@@ -1223,9 +1144,6 @@
                     "target": "com.amazonaws.osis#AccessDeniedException"
                 },
                 {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
-                },
-                {
                     "target": "com.amazonaws.osis#InternalException"
                 },
                 {
@@ -1254,13 +1172,6 @@
                         "smithy.api#httpLabel": {},
                         "smithy.api#required": {}
                     }
-                },
-                "Format": {
-                    "target": "com.amazonaws.osis#BlueprintFormat",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The format format of the blueprint to retrieve.</p>",
-                        "smithy.api#httpQuery": "format"
-                    }
                 }
             },
             "traits": {
@@ -1274,12 +1185,6 @@
                     "target": "com.amazonaws.osis#PipelineBlueprint",
                     "traits": {
                         "smithy.api#documentation": "<p>The requested blueprint in YAML format.</p>"
-                    }
-                },
-                "Format": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The format of the blueprint.</p>"
                     }
                 }
             },
@@ -1298,9 +1203,6 @@
             "errors": [
                 {
                     "target": "com.amazonaws.osis#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
                 },
                 {
                     "target": "com.amazonaws.osis#InternalException"
@@ -1357,7 +1259,7 @@
                 "PipelineName": {
                     "target": "com.amazonaws.osis#PipelineName",
                     "traits": {
-                        "smithy.api#documentation": "<p>The name of the pipeline.</p>",
+                        "smithy.api#documentation": "<p>The name of the pipeline to get information about.</p>",
                         "smithy.api#httpLabel": {},
                         "smithy.api#required": {}
                     }
@@ -1419,15 +1321,6 @@
                 "smithy.api#httpError": 400
             }
         },
-        "com.amazonaws.osis#KmsKeyArn": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 7,
-                    "max": 2048
-                }
-            }
-        },
         "com.amazonaws.osis#LimitExceededException": {
             "type": "structure",
             "members": {
@@ -1452,9 +1345,6 @@
             "errors": [
                 {
                     "target": "com.amazonaws.osis#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
                 },
                 {
                     "target": "com.amazonaws.osis#InternalException"
@@ -1507,9 +1397,6 @@
             "errors": [
                 {
                     "target": "com.amazonaws.osis#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
                 },
                 {
                     "target": "com.amazonaws.osis#InternalException"
@@ -1588,9 +1475,6 @@
             "errors": [
                 {
                     "target": "com.amazonaws.osis#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
                 },
                 {
                     "target": "com.amazonaws.osis#InternalException"
@@ -1766,36 +1650,6 @@
                     "traits": {
                         "smithy.api#documentation": "<p>The VPC interface endpoints that have access to the pipeline.</p>"
                     }
-                },
-                "BufferOptions": {
-                    "target": "com.amazonaws.osis#BufferOptions"
-                },
-                "EncryptionAtRestOptions": {
-                    "target": "com.amazonaws.osis#EncryptionAtRestOptions"
-                },
-                "VpcEndpointService": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The VPC endpoint service name for the pipeline.</p>"
-                    }
-                },
-                "ServiceVpcEndpoints": {
-                    "target": "com.amazonaws.osis#ServiceVpcEndpointsList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>A list of VPC endpoints that OpenSearch Ingestion has created to other Amazon Web Services services.</p>"
-                    }
-                },
-                "Destinations": {
-                    "target": "com.amazonaws.osis#PipelineDestinationList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Destinations to which the pipeline writes data.</p>"
-                    }
-                },
-                "Tags": {
-                    "target": "com.amazonaws.osis#TagList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>A list of tags associated with the given pipeline.</p>"
-                    }
                 }
             },
             "traits": {
@@ -1826,30 +1680,6 @@
                     "traits": {
                         "smithy.api#documentation": "<p>The YAML configuration of the blueprint.</p>"
                     }
-                },
-                "DisplayName": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The display name of the blueprint.</p>"
-                    }
-                },
-                "DisplayDescription": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>A description of the blueprint.</p>"
-                    }
-                },
-                "Service": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the service that the blueprint is associated with.</p>"
-                    }
-                },
-                "UseCase": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The use case that the blueprint relates to.</p>"
-                    }
                 }
             },
             "traits": {
@@ -1863,30 +1693,6 @@
                     "target": "com.amazonaws.osis#String",
                     "traits": {
                         "smithy.api#documentation": "<p>The name of the blueprint.</p>"
-                    }
-                },
-                "DisplayName": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The display name of the blueprint.</p>"
-                    }
-                },
-                "DisplayDescription": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>A description of the blueprint.</p>"
-                    }
-                },
-                "Service": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the service that the blueprint is associated with.</p>"
-                    }
-                },
-                "UseCase": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The use case that the blueprint relates to.</p>"
                     }
                 }
             },
@@ -1907,32 +1713,6 @@
                     "min": 1,
                     "max": 24000
                 }
-            }
-        },
-        "com.amazonaws.osis#PipelineDestination": {
-            "type": "structure",
-            "members": {
-                "ServiceName": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the service receiving data from the pipeline.</p>"
-                    }
-                },
-                "Endpoint": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The endpoint receiving data from the pipeline.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>An object representing the destination of a pipeline.</p>"
-            }
-        },
-        "com.amazonaws.osis#PipelineDestinationList": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.osis#PipelineDestination"
             }
         },
         "com.amazonaws.osis#PipelineName": {
@@ -2071,18 +1851,6 @@
                     "traits": {
                         "smithy.api#documentation": "<p>The date and time when the pipeline was last updated.</p>"
                     }
-                },
-                "Destinations": {
-                    "target": "com.amazonaws.osis#PipelineDestinationList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>A list of destinations to which the pipeline writes data.</p>"
-                    }
-                },
-                "Tags": {
-                    "target": "com.amazonaws.osis#TagList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>A list of tags associated with the given pipeline.</p>"
-                    }
                 }
             },
             "traits": {
@@ -2099,7 +1867,8 @@
             "type": "integer",
             "traits": {
                 "smithy.api#range": {
-                    "min": 1
+                    "min": 1,
+                    "max": 96
                 }
             }
         },
@@ -2151,32 +1920,6 @@
                 }
             }
         },
-        "com.amazonaws.osis#ServiceVpcEndpoint": {
-            "type": "structure",
-            "members": {
-                "ServiceName": {
-                    "target": "com.amazonaws.osis#VpcEndpointServiceName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the service for which a VPC endpoint was created.</p>"
-                    }
-                },
-                "VpcEndpointId": {
-                    "target": "com.amazonaws.osis#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The unique identifier of the VPC endpoint that was created.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>A container for information about VPC endpoints that were created to other services</p>"
-            }
-        },
-        "com.amazonaws.osis#ServiceVpcEndpointsList": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.osis#ServiceVpcEndpoint"
-            }
-        },
         "com.amazonaws.osis#StartPipeline": {
             "type": "operation",
             "input": {
@@ -2191,9 +1934,6 @@
                 },
                 {
                     "target": "com.amazonaws.osis#ConflictException"
-                },
-                {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
                 },
                 {
                     "target": "com.amazonaws.osis#InternalException"
@@ -2255,9 +1995,6 @@
                 },
                 {
                     "target": "com.amazonaws.osis#ConflictException"
-                },
-                {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
                 },
                 {
                     "target": "com.amazonaws.osis#InternalException"
@@ -2387,9 +2124,6 @@
                     "target": "com.amazonaws.osis#AccessDeniedException"
                 },
                 {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
-                },
-                {
                     "target": "com.amazonaws.osis#InternalException"
                 },
                 {
@@ -2467,9 +2201,6 @@
                     "target": "com.amazonaws.osis#AccessDeniedException"
                 },
                 {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
-                },
-                {
                     "target": "com.amazonaws.osis#InternalException"
                 },
                 {
@@ -2534,9 +2265,6 @@
                     "target": "com.amazonaws.osis#ConflictException"
                 },
                 {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
-                },
-                {
                     "target": "com.amazonaws.osis#InternalException"
                 },
                 {
@@ -2589,18 +2317,6 @@
                     "traits": {
                         "smithy.api#documentation": "<p>Key-value pairs to configure log publishing.</p>"
                     }
-                },
-                "BufferOptions": {
-                    "target": "com.amazonaws.osis#BufferOptions",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Key-value pairs to configure persistent buffering for the pipeline.</p>"
-                    }
-                },
-                "EncryptionAtRestOptions": {
-                    "target": "com.amazonaws.osis#EncryptionAtRestOptions",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Key-value pairs to configure encryption for data that is written to a persistent buffer.</p>"
-                    }
                 }
             },
             "traits": {
@@ -2632,9 +2348,6 @@
             "errors": [
                 {
                     "target": "com.amazonaws.osis#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.osis#DisabledOperationException"
                 },
                 {
                     "target": "com.amazonaws.osis#InternalException"
@@ -2720,27 +2433,6 @@
                 "target": "com.amazonaws.osis#ValidationMessage"
             }
         },
-        "com.amazonaws.osis#VpcAttachmentOptions": {
-            "type": "structure",
-            "members": {
-                "AttachToVpc": {
-                    "target": "com.amazonaws.osis#Boolean",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Whether a VPC is attached to the pipeline.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "CidrBlock": {
-                    "target": "com.amazonaws.osis#CidrBlock",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The CIDR block to be reserved for OpenSearch Ingestion to create elastic network interfaces (ENIs).</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Options for attaching a VPC to pipeline.</p>"
-            }
-        },
         "com.amazonaws.osis#VpcEndpoint": {
             "type": "structure",
             "members": {
@@ -2767,34 +2459,6 @@
                 "smithy.api#documentation": "<p>An OpenSearch Ingestion-managed VPC endpoint that will access one or more\n   pipelines.</p>"
             }
         },
-        "com.amazonaws.osis#VpcEndpointManagement": {
-            "type": "enum",
-            "members": {
-                "CUSTOMER": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "CUSTOMER"
-                    }
-                },
-                "SERVICE": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "SERVICE"
-                    }
-                }
-            }
-        },
-        "com.amazonaws.osis#VpcEndpointServiceName": {
-            "type": "enum",
-            "members": {
-                "OPENSEARCH_SERVERLESS": {
-                    "target": "smithy.api#Unit",
-                    "traits": {
-                        "smithy.api#enumValue": "OPENSEARCH_SERVERLESS"
-                    }
-                }
-            }
-        },
         "com.amazonaws.osis#VpcEndpointsList": {
             "type": "list",
             "member": {
@@ -2815,18 +2479,6 @@
                     "target": "com.amazonaws.osis#SecurityGroupIds",
                     "traits": {
                         "smithy.api#documentation": "<p>A list of security groups associated with the VPC endpoint.</p>"
-                    }
-                },
-                "VpcAttachmentOptions": {
-                    "target": "com.amazonaws.osis#VpcAttachmentOptions",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Options for attaching a VPC to a pipeline.</p>"
-                    }
-                },
-                "VpcEndpointManagement": {
-                    "target": "com.amazonaws.osis#VpcEndpointManagement",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Defines whether you or Amazon OpenSearch Ingestion service create and manage the VPC endpoint configured for the pipeline.</p>"
                     }
                 }
             },

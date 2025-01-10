@@ -16,7 +16,6 @@ import software.amazon.smithy.go.codegen.GoSettings;
 import software.amazon.smithy.go.codegen.GoWriter;
 import software.amazon.smithy.go.codegen.SmithyGoDependency;
 import software.amazon.smithy.go.codegen.SymbolUtils;
-import software.amazon.smithy.go.codegen.endpoints.EndpointMiddlewareGenerator;
 import software.amazon.smithy.go.codegen.integration.ClientMember;
 import software.amazon.smithy.go.codegen.integration.ClientMemberResolver;
 import software.amazon.smithy.go.codegen.integration.ConfigField;
@@ -170,9 +169,9 @@ public class EndpointDiscoveryGenerator implements GoIntegration {
                     writer.addUseImports(SmithyGoDependency.SMITHY_MIDDLEWARE);
 
                     String closeBlock = String.format("}, \"%s\", middleware.After)",
-                            EndpointMiddlewareGenerator.MIDDLEWARE_ID);
+                            EndpointGenerator.MIDDLEWARE_NAME);
 
-                    writer.openBlock("return stack.Finalize.Insert(&$T{", closeBlock, DISCOVERY_MIDDLEWARE, () -> {
+                    writer.openBlock("return stack.Serialize.Insert(&$T{", closeBlock, DISCOVERY_MIDDLEWARE, () -> {
                         writer.openBlock("Options: []func($P){", "},", DISCOVERY_ENDPOINT_OPTIONS, () -> {
                             writer.openBlock("func (opt $P) {", "},", DISCOVERY_ENDPOINT_OPTIONS, () -> {
                                 writer.write("opt.$L = o.EndpointOptions.$L", DISABLE_HTTPS, DISABLE_HTTPS);
@@ -189,7 +188,6 @@ public class EndpointDiscoveryGenerator implements GoIntegration {
                         writer.write("EndpointDiscoveryEnableState: o.$L.$L,", ENDPOINT_DISCOVERY_OPTION, ENABLE_ENDPOINT_DISCOVERY_OPTION);
                         writer.write("EndpointDiscoveryRequired: $L,",
                                 operationRequiresEndpointDiscovery(model, service, operation));
-                        writer.write("Region: o.Region,");
                     });
                 });
         writer.write("");
@@ -217,10 +215,11 @@ public class EndpointDiscoveryGenerator implements GoIntegration {
         Symbol discoveryOperationInputSymbol = symbolProvider.toSymbol(discoveryOperationInput);
 
         writer.addUseImports(SmithyGoDependency.CONTEXT);
-        writer.openBlock("func (c *Client) $L(ctx context.Context, input $P, region, key string, opt $T) ($T, error) {", "}",
+        writer.openBlock("func (c *Client) $L(ctx context.Context, input $P, key string, opt $T) ($T, error) {", "}",
                 DISCOVERY_ENDPOINT_HANDLER_NAME, discoveryOperationInputSymbol, DISCOVERY_ENDPOINT_OPTIONS,
                 DISCOVERY_ENDPOINT_TYPE, () -> {
-if (serviceSupportsCustomDiscoveryEndpoint(model, service)) {
+
+                    if (serviceSupportsCustomDiscoveryEndpoint(model, service)) {
                         // check if endpoint resolver for endpoint discovery is of service-specific endpoint resolver type
                         writer.writeDocs("assert endpoint resolver interface is of expected type.");
                         writer.write("endpointResolver, ok := opt.$L.($T)", ENDPOINT_RESOLVER_USED_FOR_DISCOVERY,
@@ -238,7 +237,6 @@ if (serviceSupportsCustomDiscoveryEndpoint(model, service)) {
                     // fetch endpoint via making discovery call
                     writer.openBlock("output, err := c.$T(ctx, input, func(o *Options) {", "})",
                             discoveryOperationSymbol, () -> {
-                                writer.write("o.Region = region").write("");
                                 writer.write("o.EndpointOptions.$L = opt.$L", DISABLE_HTTPS, DISABLE_HTTPS);
                                 writer.write("o.Logger = opt.Logger");
 
@@ -330,10 +328,9 @@ if (serviceSupportsCustomDiscoveryEndpoint(model, service)) {
 
         writer.addUseImports(SmithyGoDependency.CONTEXT);
         writer.openBlock(
-                "func (c *Client) $L(ctx context.Context, region string, optFns ...func($P)) ($T, error) {", "}",
+                "func (c *Client) $L(ctx context.Context, input interface{}, optFns ...func($P)) ($T, error) {", "}",
                 fetchDiscoveredEndpointFuncName, DISCOVERY_ENDPOINT_OPTIONS, DISCOVERY_ENDPOINT_WEIGHTED_ADDRESS,
                 () -> {
-                    writer.write("input := getOperationInput(ctx)");
                     writer.write("in, ok := input.($P)", symbolProvider.toSymbol(inputShape));
                     writer.openBlock("if !ok {", "}", () -> {
                         writer.addUseImports(SmithyGoDependency.FMT);
@@ -346,10 +343,6 @@ if (serviceSupportsCustomDiscoveryEndpoint(model, service)) {
                     // build identifier map
                     String IDENTIFIER_MAP = "identifierMap";
                     writer.write("$L := make(map[string]string, 0)", IDENTIFIER_MAP);
-
-                    // include region at a minimum
-                    // see https://github.com/aws/aws-sdk-go-v2/issues/2163
-                    writer.write("$L[$S] = region", IDENTIFIER_MAP, "sdk#Region");
 
                     for (MemberShape member : getMembersUsedAsIdForDiscovery(model, service, operation)) {
                         String memberName = member.getMemberName();
@@ -390,13 +383,13 @@ if (serviceSupportsCustomDiscoveryEndpoint(model, service)) {
 
                     // if discovery not required, then spin up a unblocking go routine
                     if (!operationRequiresEndpointDiscovery(model, service, operation)) {
-                        writer.write("go c.$L(ctx, $L, region, key, opt)", DISCOVERY_ENDPOINT_HANDLER_NAME,
+                        writer.write("go c.$L(ctx, $L, key, opt)", DISCOVERY_ENDPOINT_HANDLER_NAME,
                                 DISCOVERY_OPERATION_INPUT_NAME);
                         writer.write("return $T{}, nil", DISCOVERY_ENDPOINT_WEIGHTED_ADDRESS);
                         return;
                     }
 
-                    writer.write("endpoint, err := c.$L(ctx, $L, region, key, opt)", DISCOVERY_ENDPOINT_HANDLER_NAME,
+                    writer.write("endpoint, err := c.$L(ctx, $L, key, opt)", DISCOVERY_ENDPOINT_HANDLER_NAME,
                             DISCOVERY_OPERATION_INPUT_NAME);
                     writer.write("if err != nil { return $T{}, err }", DISCOVERY_ENDPOINT_WEIGHTED_ADDRESS);
                     writer.write("");

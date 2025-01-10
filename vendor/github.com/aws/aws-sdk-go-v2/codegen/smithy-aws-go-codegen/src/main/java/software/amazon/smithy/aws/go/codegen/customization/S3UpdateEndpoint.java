@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
+import software.amazon.smithy.aws.go.codegen.AwsSignatureVersion4aUtils;
 import software.amazon.smithy.codegen.core.CodegenException;
 import software.amazon.smithy.codegen.core.Symbol;
 import software.amazon.smithy.codegen.core.SymbolProvider;
@@ -40,14 +41,14 @@ import software.amazon.smithy.model.knowledge.TopDownIndex;
 import software.amazon.smithy.model.shapes.MemberShape;
 import software.amazon.smithy.model.shapes.OperationShape;
 import software.amazon.smithy.model.shapes.ServiceShape;
+import software.amazon.smithy.model.shapes.ShapeId;
 import software.amazon.smithy.model.shapes.StructureShape;
 import software.amazon.smithy.utils.ListUtils;
 import software.amazon.smithy.utils.SetUtils;
 
-import static software.amazon.smithy.go.codegen.SymbolUtils.buildPackageSymbol;
-
 /**
- * S3UpdateEndpoint integration applies legacy (pre-EndpointResolverV2) endpoint customizations for the S3 service.
+ * S3UpdateEndpoint integration serves to apply customizations for S3 service,
+ * and modifies the resolved endpoint based on S3 client config or input shape values.
  */
 public class S3UpdateEndpoint implements GoIntegration {
     // Middleware name
@@ -181,16 +182,6 @@ public class S3UpdateEndpoint implements GoIntegration {
                         .build()
         ));
         runtimeClientPlugins.addAll(S3.getClientPlugins());
-        runtimeClientPlugins.add(
-                RuntimeClientPlugin.builder()
-                        .servicePredicate(S3ModelUtils::isServiceS3Control)
-                        .registerMiddleware(
-                                MiddlewareRegistrar.builder()
-                                        .resolvedFunction(buildPackageSymbol("addStashOperationInput"))
-                                        .build()
-                        )
-                        .build()
-        );
         return runtimeClientPlugins;
     }
 
@@ -257,6 +248,13 @@ public class S3UpdateEndpoint implements GoIntegration {
                                                     .putProperty(SymbolUtils.GO_UNIVERSE_TYPE, true)
                                                     .build())
                                             .documentation("Allows you to disable S3 Multi-Region access points feature.")
+                                            .build(),
+                                    ConfigField.builder()
+                                            .name(AwsSignatureVersion4aUtils.V4A_SIGNER_INTERFACE_NAME)
+                                            .type(SymbolUtils.createValueSymbolBuilder(
+                                                            AwsSignatureVersion4aUtils.V4A_SIGNER_INTERFACE_NAME)
+                                                    .build())
+                                            .documentation("Signature Version 4a (SigV4a) Signer")
                                             .build()
                             ))
                             .build()
@@ -590,11 +588,6 @@ public class S3UpdateEndpoint implements GoIntegration {
                         writer.write("cpy := *input");
                         writer.write("return &cpy, nil");
                     });
-            writer.write("""
-                    func (in $P) copy() interface{} {
-                        v := *in
-                        return &v
-                    }""", inputSymbol);
         }
 
         /**

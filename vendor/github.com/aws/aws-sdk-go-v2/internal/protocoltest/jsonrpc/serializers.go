@@ -20,61 +20,6 @@ import (
 	"strings"
 )
 
-type awsAwsjson11_serializeOpContentTypeParameters struct {
-}
-
-func (*awsAwsjson11_serializeOpContentTypeParameters) ID() string {
-	return "OperationSerializer"
-}
-
-func (m *awsAwsjson11_serializeOpContentTypeParameters) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
-	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
-) {
-	request, ok := in.Request.(*smithyhttp.Request)
-	if !ok {
-		return out, metadata, &smithy.SerializationError{Err: fmt.Errorf("unknown transport type %T", in.Request)}
-	}
-
-	input, ok := in.Parameters.(*ContentTypeParametersInput)
-	_ = input
-	if !ok {
-		return out, metadata, &smithy.SerializationError{Err: fmt.Errorf("unknown input parameters type %T", in.Parameters)}
-	}
-
-	operationPath := "/"
-	if len(request.Request.URL.Path) == 0 {
-		request.Request.URL.Path = operationPath
-	} else {
-		request.Request.URL.Path = path.Join(request.Request.URL.Path, operationPath)
-		if request.Request.URL.Path != "/" && operationPath[len(operationPath)-1] == '/' {
-			request.Request.URL.Path += "/"
-		}
-	}
-	request.Request.Method = "POST"
-	httpBindingEncoder, err := httpbinding.NewEncoder(request.URL.Path, request.URL.RawQuery, request.Header)
-	if err != nil {
-		return out, metadata, &smithy.SerializationError{Err: err}
-	}
-	httpBindingEncoder.SetHeader("Content-Type").String("application/x-amz-json-1.1")
-	httpBindingEncoder.SetHeader("X-Amz-Target").String("JsonProtocol.ContentTypeParameters")
-
-	jsonEncoder := smithyjson.NewEncoder()
-	if err := awsAwsjson11_serializeOpDocumentContentTypeParametersInput(input, jsonEncoder.Value); err != nil {
-		return out, metadata, &smithy.SerializationError{Err: err}
-	}
-
-	if request, err = request.SetStream(bytes.NewReader(jsonEncoder.Bytes())); err != nil {
-		return out, metadata, &smithy.SerializationError{Err: err}
-	}
-
-	if request.Request, err = httpBindingEncoder.Encode(request.Request); err != nil {
-		return out, metadata, &smithy.SerializationError{Err: err}
-	}
-	in.Request = request
-
-	return next.HandleSerialize(ctx, in)
-}
-
 type awsAwsjson11_serializeOpDatetimeOffsets struct {
 }
 
@@ -869,61 +814,6 @@ func (m *awsAwsjson11_serializeOpSimpleScalarProperties) HandleSerialize(ctx con
 
 	return next.HandleSerialize(ctx, in)
 }
-
-type awsAwsjson11_serializeOpSparseNullsOperation struct {
-}
-
-func (*awsAwsjson11_serializeOpSparseNullsOperation) ID() string {
-	return "OperationSerializer"
-}
-
-func (m *awsAwsjson11_serializeOpSparseNullsOperation) HandleSerialize(ctx context.Context, in middleware.SerializeInput, next middleware.SerializeHandler) (
-	out middleware.SerializeOutput, metadata middleware.Metadata, err error,
-) {
-	request, ok := in.Request.(*smithyhttp.Request)
-	if !ok {
-		return out, metadata, &smithy.SerializationError{Err: fmt.Errorf("unknown transport type %T", in.Request)}
-	}
-
-	input, ok := in.Parameters.(*SparseNullsOperationInput)
-	_ = input
-	if !ok {
-		return out, metadata, &smithy.SerializationError{Err: fmt.Errorf("unknown input parameters type %T", in.Parameters)}
-	}
-
-	operationPath := "/"
-	if len(request.Request.URL.Path) == 0 {
-		request.Request.URL.Path = operationPath
-	} else {
-		request.Request.URL.Path = path.Join(request.Request.URL.Path, operationPath)
-		if request.Request.URL.Path != "/" && operationPath[len(operationPath)-1] == '/' {
-			request.Request.URL.Path += "/"
-		}
-	}
-	request.Request.Method = "POST"
-	httpBindingEncoder, err := httpbinding.NewEncoder(request.URL.Path, request.URL.RawQuery, request.Header)
-	if err != nil {
-		return out, metadata, &smithy.SerializationError{Err: err}
-	}
-	httpBindingEncoder.SetHeader("Content-Type").String("application/x-amz-json-1.1")
-	httpBindingEncoder.SetHeader("X-Amz-Target").String("JsonProtocol.SparseNullsOperation")
-
-	jsonEncoder := smithyjson.NewEncoder()
-	if err := awsAwsjson11_serializeOpDocumentSparseNullsOperationInput(input, jsonEncoder.Value); err != nil {
-		return out, metadata, &smithy.SerializationError{Err: err}
-	}
-
-	if request, err = request.SetStream(bytes.NewReader(jsonEncoder.Bytes())); err != nil {
-		return out, metadata, &smithy.SerializationError{Err: err}
-	}
-
-	if request.Request, err = httpBindingEncoder.Encode(request.Request); err != nil {
-		return out, metadata, &smithy.SerializationError{Err: err}
-	}
-	in.Request = request
-
-	return next.HandleSerialize(ctx, in)
-}
 func awsAwsjson11_serializeDocumentDocument(v document.Interface, value smithyjson.Value) error {
 	if v == nil {
 		return nil
@@ -1452,18 +1342,6 @@ func awsAwsjson11_serializeDocumentStringMap(v map[string]string, value smithyjs
 	return nil
 }
 
-func awsAwsjson11_serializeOpDocumentContentTypeParametersInput(v *ContentTypeParametersInput, value smithyjson.Value) error {
-	object := value.Object()
-	defer object.Close()
-
-	if v.Value != nil {
-		ok := object.Key("value")
-		ok.Integer(*v.Value)
-	}
-
-	return nil
-}
-
 func awsAwsjson11_serializeOpDocumentEndpointWithHostLabelOperationInput(v *EndpointWithHostLabelOperationInput, value smithyjson.Value) error {
 	object := value.Object()
 	defer object.Close()
@@ -1728,6 +1606,20 @@ func awsAwsjson11_serializeOpDocumentNullOperationInput(v *NullOperationInput, v
 	object := value.Object()
 	defer object.Close()
 
+	if v.SparseStringList != nil {
+		ok := object.Key("sparseStringList")
+		if err := awsAwsjson11_serializeDocumentSparseStringList(v.SparseStringList, ok); err != nil {
+			return err
+		}
+	}
+
+	if v.SparseStringMap != nil {
+		ok := object.Key("sparseStringMap")
+		if err := awsAwsjson11_serializeDocumentSparseStringMap(v.SparseStringMap, ok); err != nil {
+			return err
+		}
+	}
+
 	if v.String_ != nil {
 		ok := object.Key("string")
 		ok.String(*v.String_)
@@ -1816,27 +1708,6 @@ func awsAwsjson11_serializeOpDocumentSimpleScalarPropertiesInput(v *SimpleScalar
 		default:
 			ok.Float(*v.FloatValue)
 
-		}
-	}
-
-	return nil
-}
-
-func awsAwsjson11_serializeOpDocumentSparseNullsOperationInput(v *SparseNullsOperationInput, value smithyjson.Value) error {
-	object := value.Object()
-	defer object.Close()
-
-	if v.SparseStringList != nil {
-		ok := object.Key("sparseStringList")
-		if err := awsAwsjson11_serializeDocumentSparseStringList(v.SparseStringList, ok); err != nil {
-			return err
-		}
-	}
-
-	if v.SparseStringMap != nil {
-		ok := object.Key("sparseStringMap")
-		if err := awsAwsjson11_serializeDocumentSparseStringMap(v.SparseStringMap, ok); err != nil {
-			return err
 		}
 	}
 

@@ -37,7 +37,7 @@
                     "min": 5,
                     "max": 200
                 },
-                "smithy.api#pattern": "^(geo|geo-routes|geo-places|geo-maps):\\w*\\*?$"
+                "smithy.api#pattern": "^geo:\\w*\\*?$"
             }
         },
         "com.amazonaws.location#ApiKeyActionList": {
@@ -86,9 +86,6 @@
                 "aws.api#arn": {
                     "template": "api-key/{KeyName}"
                 },
-                "aws.cloudformation#cfnResource": {
-                    "name": "APIKey"
-                },
                 "aws.iam#disableConditionKeyInference": {}
             }
         },
@@ -109,7 +106,7 @@
                 "AllowResources": {
                     "target": "com.amazonaws.location#GeoArnList",
                     "traits": {
-                        "smithy.api#documentation": "<p>A list of allowed resource ARNs that a API key bearer can perform actions on.</p>\n         <ul>\n            <li>\n               <p>The ARN must be the correct ARN for a map, place, or route ARN. You may \n                    include wildcards in the resource-id to match multiple resources of the \n                    same type.</p>\n            </li>\n            <li>\n               <p>The resources must be in the same <code>partition</code>, \n                    <code>region</code>, and <code>account-id</code> as the key that is being \n                    created.</p>\n            </li>\n            <li>\n               <p>Other than wildcards, you must include the full ARN, including the \n                    <code>arn</code>, <code>partition</code>, <code>service</code>,\n                    <code>region</code>, <code>account-id</code> and <code>resource-id</code>\n                    delimited by colons (:).</p>\n            </li>\n            <li>\n               <p>No spaces allowed, even with wildcards. For example,\n                    <code>arn:aws:geo:region:<i>account-id</i>:map/ExampleMap*</code>.</p>\n            </li>\n         </ul>\n         <p>For more information about ARN format, see <a href=\"https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html\">Amazon Resource Names\n            (ARNs)</a>.</p>",
+                        "smithy.api#documentation": "<p>A list of allowed resource ARNs that a API key bearer can perform actions on.</p>\n         <ul>\n            <li>\n               <p>The ARN must be the correct ARN for a map, place, or route ARN. You may \n                    include wildcards in the resource-id to match multiple resources of the \n                    same type.</p>\n            </li>\n            <li>\n               <p>The resources must be in the same <code>partition</code>, \n                    <code>region</code>, and <code>account-id</code> as the key that is being \n                    created.</p>\n            </li>\n            <li>\n               <p>Other than wildcards, you must include the full ARN, including the \n                    <code>arn</code>, <code>partition</code>, <code>service</code>,\n                    <code>region</code>, <code>account-id</code> and <code>resource-id</code>,\n                    delimited by colons (:).</p>\n            </li>\n            <li>\n               <p>No spaces allowed, even with wildcards. For example,\n                    <code>arn:aws:geo:region:<i>account-id</i>:map/ExampleMap*</code>.</p>\n            </li>\n         </ul>\n         <p>For more information about ARN format, see <a href=\"https://docs.aws.amazon.com/general/latest/gr/aws-arns-and-namespaces.html\">Amazon Resource Names\n            (ARNs)</a>.</p>",
                         "smithy.api#length": {
                             "min": 1,
                             "max": 5
@@ -213,15 +210,6 @@
         "com.amazonaws.location#AssociateTrackerConsumerResponse": {
             "type": "structure",
             "members": {}
-        },
-        "com.amazonaws.location#Base64EncodedGeobuf": {
-            "type": "blob",
-            "traits": {
-                "smithy.api#length": {
-                    "max": 600000
-                },
-                "smithy.api#sensitive": {}
-            }
         },
         "com.amazonaws.location#BatchDeleteDevicePositionHistory": {
             "type": "operation",
@@ -792,7 +780,7 @@
                 "Geometry": {
                     "target": "com.amazonaws.location#GeofenceGeometry",
                     "traits": {
-                        "smithy.api#documentation": "<p>Contains the details to specify the position of the geofence. Can be a\n            polygon, a circle or a polygon encoded in Geobuf format. Including multiple selections will return a validation error.</p>\n         <note>\n            <p>The <a href=\"https://docs.aws.amazon.com/location-geofences/latest/APIReference/API_GeofenceGeometry.html\">\n                geofence polygon</a> format supports a maximum of 1,000 vertices. The <a href=\"https://docs.aws.amazon.com/location-geofences/latest/APIReference/API_GeofenceGeometry.html\">Geofence geobuf</a> format supports a maximum of 100,000 vertices.</p>\n         </note>",
+                        "smithy.api#documentation": "<p>Contains the details of the position of the geofence. Can be either a \n            polygon or a circle. Including both will return a validation error.</p>\n         <note>\n            <p>Each <a href=\"https://docs.aws.amazon.com/location-geofences/latest/APIReference/API_GeofenceGeometry.html\">\n                geofence polygon</a> can have a maximum of 1,000 vertices.</p>\n         </note>",
                         "smithy.api#required": {}
                     }
                 },
@@ -1291,7 +1279,7 @@
                 "DepartureTime": {
                     "target": "com.amazonaws.location#Timestamp",
                     "traits": {
-                        "smithy.api#documentation": "<p>Specifies the desired time of departure. Uses the given time to calculate the route.\n            Otherwise, the best time of day to travel with the best traffic conditions is used to\n            calculate the route.</p>\n         <ul>\n            <li>\n               <p>In <a href=\"https://www.iso.org/iso-8601-date-and-time-format.html\">ISO\n                        8601</a> format: <code>YYYY-MM-DDThh:mm:ss.sssZ</code>. For example,\n                        <code>2020–07-2T12:15:20.000Z+01:00</code>\n               </p>\n            </li>\n         </ul>"
+                        "smithy.api#documentation": "<p>Specifies the desired time of departure. Uses the given time to calculate the route.\n            Otherwise, the best time of day to travel with the best traffic conditions is used to\n            calculate the route.</p>\n         <note>\n            <p>Setting a departure time in the past returns a <code>400\n                    ValidationException</code> error.</p>\n         </note>\n         <ul>\n            <li>\n               <p>In <a href=\"https://www.iso.org/iso-8601-date-and-time-format.html\">ISO\n                        8601</a> format: <code>YYYY-MM-DDThh:mm:ss.sssZ</code>. For example,\n                        <code>2020–07-2T12:15:20.000Z+01:00</code>\n               </p>\n            </li>\n         </ul>"
                     }
                 },
                 "DepartNow": {
@@ -1322,18 +1310,6 @@
                     "target": "com.amazonaws.location#CalculateRouteTruckModeOptions",
                     "traits": {
                         "smithy.api#documentation": "<p>Specifies route preferences when traveling by <code>Truck</code>, such as avoiding\n            routes that use ferries or tolls, and truck specifications to consider when choosing an\n            optimal road.</p>\n         <p>Requirements: <code>TravelMode</code> must be specified as <code>Truck</code>.</p>"
-                    }
-                },
-                "ArrivalTime": {
-                    "target": "com.amazonaws.location#Timestamp",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the desired time of arrival. Uses the given time to calculate the route. \n            Otherwise, the best time of day to travel with the best traffic conditions is used to calculate the route.</p>\n         <note>\n            <p>ArrivalTime is not supported Esri.</p>\n         </note>"
-                    }
-                },
-                "OptimizeFor": {
-                    "target": "com.amazonaws.location#OptimizationMode",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the distance to optimize for when calculating a route.</p>"
                     }
                 },
                 "Key": {
@@ -1448,25 +1424,6 @@
                 "smithy.api#documentation": "<p>Contains details about additional route preferences for requests that specify\n                <code>TravelMode</code> as <code>Truck</code>.</p>"
             }
         },
-        "com.amazonaws.location#CellSignals": {
-            "type": "structure",
-            "members": {
-                "LteCellDetails": {
-                    "target": "com.amazonaws.location#LteCellDetailsList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Information about the Long-Term Evolution (LTE) network the device is connected to.</p>",
-                        "smithy.api#length": {
-                            "min": 1,
-                            "max": 16
-                        },
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The cellular network communication infrastructure that the device uses.</p>"
-            }
-        },
         "com.amazonaws.location#Circle": {
             "type": "structure",
             "members": {
@@ -1507,6 +1464,12 @@
                 "smithy.api#httpError": 409
             }
         },
+        "com.amazonaws.location#CountryCode": {
+            "type": "string",
+            "traits": {
+                "smithy.api#pattern": "^[A-Z]{3}$"
+            }
+        },
         "com.amazonaws.location#CountryCode3": {
             "type": "string",
             "traits": {
@@ -1530,7 +1493,7 @@
         "com.amazonaws.location#CountryCodeList": {
             "type": "list",
             "member": {
-                "target": "com.amazonaws.location#CountryCode3"
+                "target": "com.amazonaws.location#CountryCode"
             },
             "traits": {
                 "smithy.api#length": {
@@ -1624,8 +1587,7 @@
                 "KmsKeyId": {
                     "target": "com.amazonaws.location#KmsKeyId",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "create-and-read",
-                        "smithy.api#documentation": "<p>A key identifier for an\n            <a href=\"https://docs.aws.amazon.com/kms/latest/developerguide/create-keys.html\">Amazon Web Services\n                KMS customer managed key</a>. Enter a key ID, key ARN, alias name, or alias ARN.\n\t</p>"
+                        "smithy.api#documentation": "<p>A key identifier for an \n            <a href=\"https://docs.aws.amazon.com/kms/latest/developerguide/create-keys.html\">Amazon Web Services \n                KMS customer managed key</a>. Enter a key ID, key ARN, alias name, or alias ARN.\n\t</p>"
                     }
                 }
             }
@@ -1818,7 +1780,6 @@
                 "MapName": {
                     "target": "com.amazonaws.location#ResourceName",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "create-and-read",
                         "smithy.api#documentation": "<p>The name for the map resource.</p>\n         <p>Requirements:</p>\n         <ul>\n            <li>\n               <p>Must contain only alphanumeric characters (A–Z, a–z, 0–9), hyphens (-), periods (.), and underscores (_). </p>\n            </li>\n            <li>\n               <p>Must be a unique map resource name. </p>\n            </li>\n            <li>\n               <p>No spaces allowed. For example, <code>ExampleMap</code>.</p>\n            </li>\n         </ul>",
                         "smithy.api#required": {}
                     }
@@ -1826,7 +1787,6 @@
                 "Configuration": {
                     "target": "com.amazonaws.location#MapConfiguration",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "create-and-read",
                         "smithy.api#documentation": "<p>Specifies the <code>MapConfiguration</code>, including the map style, for the \n            map resource that you create. The map style defines the look of maps and the data \n            provider for your map resource.</p>",
                         "smithy.api#required": {}
                     }
@@ -1934,7 +1894,6 @@
                 "DataSource": {
                     "target": "smithy.api#String",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "create-and-read",
                         "smithy.api#documentation": "<p>Specifies the geospatial data provider for the new place index.</p>\n         <note>\n            <p>This field is case-sensitive. Enter the valid values as shown. For example,\n                entering <code>HERE</code> returns an error.</p>\n         </note>\n         <p>Valid values include:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>Esri</code> – For additional information about <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/esri.html\">Esri</a>'s coverage in your region of interest, see <a href=\"https://developers.arcgis.com/rest/geocode/api-reference/geocode-coverage.htm\">Esri details on geocoding coverage</a>.</p>\n            </li>\n            <li>\n               <p>\n                  <code>Grab</code> – Grab provides place index functionality for Southeast \n                    Asia. For additional information about <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/grab.html\">GrabMaps</a>' coverage, see <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/grab.html#grab-coverage-area\">GrabMaps countries and areas covered</a>.</p>\n            </li>\n            <li>\n               <p>\n                  <code>Here</code> – For additional information about <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/HERE.html\">HERE\n                        Technologies</a>' coverage in your region of interest, see <a href=\"https://developer.here.com/documentation/geocoder/dev_guide/topics/coverage-geocoder.html\">HERE details on goecoding coverage</a>.</p>\n               <important>\n                  <p>If you specify HERE Technologies (<code>Here</code>) as the data provider,\n                        you may not <a href=\"https://docs.aws.amazon.com/location-places/latest/APIReference/API_DataSourceConfiguration.html\">store results</a> for locations in Japan. For more information, see\n                        the <a href=\"http://aws.amazon.com/service-terms/\">Amazon Web Services Service\n                            Terms</a> for Amazon Location Service.</p>\n               </important>\n            </li>\n         </ul>\n         <p>For additional information , see <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/what-is-data-provider.html\">Data\n                providers</a> on the <i>Amazon Location Service Developer Guide</i>.</p>",
                         "smithy.api#required": {}
                     }
@@ -2048,7 +2007,6 @@
                 "DataSource": {
                     "target": "smithy.api#String",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "create-and-read",
                         "smithy.api#documentation": "<p>Specifies the data provider of traffic and road network data.</p>\n         <note>\n            <p>This field is case-sensitive. Enter the valid values as shown. For example,\n                entering <code>HERE</code> returns an error.</p>\n         </note>\n         <p>Valid values include:</p>\n         <ul>\n            <li>\n               <p>\n                  <code>Esri</code> – For additional information about <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/esri.html\">Esri</a>'s coverage in your region of interest, see <a href=\"https://doc.arcgis.com/en/arcgis-online/reference/network-coverage.htm\">Esri details on street networks and traffic coverage</a>.</p>\n               <p>Route calculators that use Esri as a\n                    data source only calculate routes that are shorter than 400 km.</p>\n            </li>\n            <li>\n               <p>\n                  <code>Grab</code> – Grab provides routing functionality for Southeast Asia.\n                    For additional information about <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/grab.html\">GrabMaps</a>' coverage,\n                    see <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/grab.html#grab-coverage-area\">GrabMaps\n                        countries and areas covered</a>.</p>\n            </li>\n            <li>\n               <p>\n                  <code>Here</code> – For additional information about <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/HERE.html\">HERE\n                        Technologies</a>' coverage in your region of interest, see <a href=\"https://developer.here.com/documentation/routing-api/dev_guide/topics/coverage/car-routing.html\">HERE car routing coverage</a> and <a href=\"https://developer.here.com/documentation/routing-api/dev_guide/topics/coverage/truck-routing.html\">HERE truck routing coverage</a>.</p>\n            </li>\n         </ul>\n         <p>For additional information , see <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/what-is-data-provider.html\">Data\n                providers</a> on the <i>Amazon Location Service Developer Guide</i>.</p>",
                         "smithy.api#required": {}
                     }
@@ -2166,7 +2124,6 @@
                 "KmsKeyId": {
                     "target": "com.amazonaws.location#KmsKeyId",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "create-and-read",
                         "smithy.api#documentation": "<p>A key identifier for an \n           <a href=\"https://docs.aws.amazon.com/kms/latest/developerguide/create-keys.html\">Amazon Web Services \n               KMS customer managed key</a>. Enter a key ID, key ARN, alias name, or alias ARN.</p>"
                     }
                 },
@@ -2235,27 +2192,6 @@
                         "smithy.api#documentation": "<p>The timestamp for when the tracker resource was created in <a href=\"https://www.iso.org/iso-8601-date-and-time-format.html\"> ISO 8601</a>\n            format: <code>YYYY-MM-DDThh:mm:ss.sssZ</code>. </p>",
                         "smithy.api#required": {}
                     }
-                }
-            }
-        },
-        "com.amazonaws.location#CustomLayer": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 1,
-                    "max": 100
-                },
-                "smithy.api#pattern": "^[-._\\w]+$"
-            }
-        },
-        "com.amazonaws.location#CustomLayerList": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.location#CustomLayer"
-            },
-            "traits": {
-                "smithy.api#length": {
-                    "max": 10
                 }
             }
         },
@@ -2373,13 +2309,6 @@
                         "smithy.api#documentation": "<p>The name of the API key to delete.</p>",
                         "smithy.api#httpLabel": {},
                         "smithy.api#required": {}
-                    }
-                },
-                "ForceDelete": {
-                    "target": "smithy.api#Boolean",
-                    "traits": {
-                        "smithy.api#documentation": "<p>ForceDelete bypasses an API key's expiry conditions and deletes the key. Set the parameter <code>true</code> to delete the key or to <code>false</code> to not preemptively delete the API key.</p>\n         <p>Valid values: <code>true</code>, or <code>false</code>.</p>\n         <p>Required: No</p>\n         <note>\n            <p>This action is irreversible. Only use ForceDelete if you are certain the key is no longer in use.</p>\n         </note>",
-                        "smithy.api#httpQuery": "forceDelete"
                     }
                 }
             }
@@ -2704,7 +2633,7 @@
                 "KmsKeyId": {
                     "target": "com.amazonaws.location#KmsKeyId",
                     "traits": {
-                        "smithy.api#documentation": "<p>A key identifier for an\n            <a href=\"https://docs.aws.amazon.com/kms/latest/developerguide/create-keys.html\">Amazon Web Services\n                KMS customer managed key</a> assigned to the Amazon Location resource</p>"
+                        "smithy.api#documentation": "<p>A key identifier for an \n            <a href=\"https://docs.aws.amazon.com/kms/latest/developerguide/create-keys.html\">Amazon Web Services \n                KMS customer managed key</a> assigned to the Amazon Location resource</p>"
                     }
                 },
                 "Tags": {
@@ -2730,7 +2659,6 @@
                 "GeofenceCount": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The number of geofences in the geofence collection.</p>",
                         "smithy.api#range": {
                             "min": 0
@@ -2795,7 +2723,6 @@
                 "Key": {
                     "target": "com.amazonaws.location#ApiKey",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The key value/string of an API key.</p>",
                         "smithy.api#required": {}
                     }
@@ -2935,7 +2862,6 @@
                 "DataSource": {
                     "target": "smithy.api#String",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>Specifies the data provider for the associated map tiles.</p>",
                         "smithy.api#required": {}
                     }
@@ -3306,7 +3232,6 @@
                 "Tags": {
                     "target": "com.amazonaws.location#TagMap",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>The tags associated with the tracker resource.</p>"
                     }
                 },
@@ -3456,57 +3381,6 @@
                 "target": "com.amazonaws.location#DevicePositionUpdate"
             }
         },
-        "com.amazonaws.location#DeviceState": {
-            "type": "structure",
-            "members": {
-                "DeviceId": {
-                    "target": "com.amazonaws.location#Id",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The device identifier.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "SampleTime": {
-                    "target": "com.amazonaws.location#Timestamp",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The timestamp at which the device's position was determined. Uses <a href=\"https://www.iso.org/iso-8601-date-and-time-format.html\"> ISO 8601 </a>\n           format: <code>YYYY-MM-DDThh:mm:ss.sssZ</code>. </p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Position": {
-                    "target": "com.amazonaws.location#Position",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The last known device position.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Accuracy": {
-                    "target": "com.amazonaws.location#PositionalAccuracy"
-                },
-                "Ipv4Address": {
-                    "target": "smithy.api#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The device's Ipv4 address.</p>",
-                        "smithy.api#pattern": "^(?:(?:25[0-5]|(?:2[0-4]|1\\d|[0-9]|)\\d)\\.?\\b){4}$"
-                    }
-                },
-                "WiFiAccessPoints": {
-                    "target": "com.amazonaws.location#WiFiAccessPointList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The Wi-Fi access points the device is using.</p>"
-                    }
-                },
-                "CellSignals": {
-                    "target": "com.amazonaws.location#CellSignals",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The cellular network infrastructure that the device is connected to.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The device's position, IP address, and Wi-Fi access points.</p>"
-            }
-        },
         "com.amazonaws.location#DimensionUnit": {
             "type": "string",
             "traits": {
@@ -3594,26 +3468,6 @@
                 ]
             }
         },
-        "com.amazonaws.location#Earfcn": {
-            "type": "integer",
-            "traits": {
-                "smithy.api#default": 0,
-                "smithy.api#range": {
-                    "min": 0,
-                    "max": 262143
-                }
-            }
-        },
-        "com.amazonaws.location#EutranCellId": {
-            "type": "integer",
-            "traits": {
-                "smithy.api#default": 0,
-                "smithy.api#range": {
-                    "min": 0,
-                    "max": 268435455
-                }
-            }
-        },
         "com.amazonaws.location#FilterPlaceCategoryList": {
             "type": "list",
             "member": {
@@ -3624,250 +3478,6 @@
                     "min": 1,
                     "max": 5
                 }
-            }
-        },
-        "com.amazonaws.location#ForecastGeofenceEvents": {
-            "type": "operation",
-            "input": {
-                "target": "com.amazonaws.location#ForecastGeofenceEventsRequest"
-            },
-            "output": {
-                "target": "com.amazonaws.location#ForecastGeofenceEventsResponse"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.location#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.location#InternalServerException"
-                },
-                {
-                    "target": "com.amazonaws.location#ResourceNotFoundException"
-                },
-                {
-                    "target": "com.amazonaws.location#ThrottlingException"
-                },
-                {
-                    "target": "com.amazonaws.location#ValidationException"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Evaluates device positions against\n      geofence geometries from a given geofence collection. The event forecasts three states for which\n      a device can be in relative to a geofence:</p>\n         <p>\n            <code>ENTER</code>: If a device is outside of a geofence, but would breach the fence if the device is moving at its current speed within time horizon window.</p>\n         <p>\n            <code>EXIT</code>: If a device is inside of a geofence, but would breach the fence if the device is moving at its current speed within time horizon window.</p>\n         <p>\n            <code>IDLE</code>: If a device is inside of a geofence, and the device is not moving.</p>",
-                "smithy.api#endpoint": {
-                    "hostPrefix": "geofencing."
-                },
-                "smithy.api#http": {
-                    "uri": "/geofencing/v0/collections/{CollectionName}/forecast-geofence-events",
-                    "method": "POST"
-                },
-                "smithy.api#paginated": {
-                    "pageSize": "MaxResults",
-                    "inputToken": "NextToken",
-                    "outputToken": "NextToken",
-                    "items": "ForecastedEvents"
-                },
-                "smithy.api#readonly": {}
-            }
-        },
-        "com.amazonaws.location#ForecastGeofenceEventsDeviceState": {
-            "type": "structure",
-            "members": {
-                "Position": {
-                    "target": "com.amazonaws.location#Position",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The device's position.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Speed": {
-                    "target": "smithy.api#Double",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The device's speed.</p>",
-                        "smithy.api#range": {
-                            "min": 0
-                        }
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The device's position, IP address, and WiFi access points.</p>"
-            }
-        },
-        "com.amazonaws.location#ForecastGeofenceEventsRequest": {
-            "type": "structure",
-            "members": {
-                "CollectionName": {
-                    "target": "com.amazonaws.location#ResourceName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the geofence collection.</p>",
-                        "smithy.api#httpLabel": {},
-                        "smithy.api#required": {}
-                    }
-                },
-                "DeviceState": {
-                    "target": "com.amazonaws.location#ForecastGeofenceEventsDeviceState",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The device's state, including current position and speed.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "TimeHorizonMinutes": {
-                    "target": "smithy.api#Double",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the time horizon in minutes for the forecasted events.</p>",
-                        "smithy.api#range": {
-                            "min": 0
-                        }
-                    }
-                },
-                "DistanceUnit": {
-                    "target": "com.amazonaws.location#DistanceUnit",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The distance unit used for the <code>NearestDistance</code> property returned in a forecasted event.\n          The measurement system must match for <code>DistanceUnit</code> and <code>SpeedUnit</code>; if <code>Kilometers</code>\n          is specified for <code>DistanceUnit</code>, then <code>SpeedUnit</code> must be <code>KilometersPerHour</code>.\n      </p>\n         <p>Default Value: <code>Kilometers</code>\n         </p>"
-                    }
-                },
-                "SpeedUnit": {
-                    "target": "com.amazonaws.location#SpeedUnit",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The speed unit for the device captured by the device state. The measurement system must match for <code>DistanceUnit</code> and <code>SpeedUnit</code>; if <code>Kilometers</code>\n          is specified for <code>DistanceUnit</code>, then <code>SpeedUnit</code> must be <code>KilometersPerHour</code>.</p>\n         <p>Default Value: <code>KilometersPerHour</code>.</p>"
-                    }
-                },
-                "NextToken": {
-                    "target": "com.amazonaws.location#LargeToken",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The pagination token specifying which page of results to return in the response. If no\n            token is provided, the default page is the first page.</p>\n         <p>Default value: <code>null</code>\n         </p>"
-                    }
-                },
-                "MaxResults": {
-                    "target": "smithy.api#Integer",
-                    "traits": {
-                        "smithy.api#default": null,
-                        "smithy.api#documentation": "<p>An optional limit for the number of resources returned in a single call.</p>\n         <p>Default value: <code>20</code>\n         </p>",
-                        "smithy.api#range": {
-                            "min": 1,
-                            "max": 20
-                        }
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#input": {}
-            }
-        },
-        "com.amazonaws.location#ForecastGeofenceEventsResponse": {
-            "type": "structure",
-            "members": {
-                "ForecastedEvents": {
-                    "target": "com.amazonaws.location#ForecastedEventsList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The list of forecasted events.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "NextToken": {
-                    "target": "com.amazonaws.location#LargeToken",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The pagination token specifying which page of results to return in the response. If no\n            token is provided, the default page is the first page. </p>"
-                    }
-                },
-                "DistanceUnit": {
-                    "target": "com.amazonaws.location#DistanceUnit",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The distance unit for the forecasted events.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "SpeedUnit": {
-                    "target": "com.amazonaws.location#SpeedUnit",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The speed unit for the forecasted events.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#output": {}
-            }
-        },
-        "com.amazonaws.location#ForecastedEvent": {
-            "type": "structure",
-            "members": {
-                "EventId": {
-                    "target": "com.amazonaws.location#Uuid",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The forecasted event identifier.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "GeofenceId": {
-                    "target": "com.amazonaws.location#Id",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The geofence identifier pertaining to the forecasted event.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "IsDeviceInGeofence": {
-                    "target": "smithy.api#Boolean",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Indicates if the device is located within the geofence.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "NearestDistance": {
-                    "target": "com.amazonaws.location#NearestDistance",
-                    "traits": {
-                        "smithy.api#default": 0,
-                        "smithy.api#documentation": "<p>The closest distance from the device's position to the geofence.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "EventType": {
-                    "target": "com.amazonaws.location#ForecastedGeofenceEventType",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The event type, forecasting three states for which\n          a device can be in relative to a geofence:</p>\n         <p>\n            <code>ENTER</code>: If a device is outside of a geofence, but would breach the fence if the device is moving at its current speed within time horizon window.</p>\n         <p>\n            <code>EXIT</code>: If a device is inside of a geofence, but would breach the fence if the device is moving at its current speed within time horizon window.</p>\n         <p>\n            <code>IDLE</code>: If a device is inside of a geofence, and the device is not moving.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "ForecastedBreachTime": {
-                    "target": "com.amazonaws.location#Timestamp",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The forecasted time the device will breach the geofence in <a href=\"https://www.iso.org/iso-8601-date-and-time-format.html\">ISO 8601</a>\n          format: <code>YYYY-MM-DDThh:mm:ss.sssZ</code>\n         </p>"
-                    }
-                },
-                "GeofenceProperties": {
-                    "target": "com.amazonaws.location#PropertyMap",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The geofence properties.</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>A forecasted event represents a geofence event in relation to the requested device state, that may occur\n      given the provided device state and time horizon.</p>"
-            }
-        },
-        "com.amazonaws.location#ForecastedEventsList": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.location#ForecastedEvent"
-            }
-        },
-        "com.amazonaws.location#ForecastedGeofenceEventType": {
-            "type": "string",
-            "traits": {
-                "smithy.api#enum": [
-                    {
-                        "value": "ENTER",
-                        "documentation": "This event type signifies that a device is forecasted to enter the geofence"
-                    },
-                    {
-                        "value": "EXIT",
-                        "documentation": "This event type signifies that a device is forecasted to exit the geofence"
-                    },
-                    {
-                        "value": "IDLE",
-                        "documentation": "This event type signifies that a device is stationary in the geofence and an exit/enter cannot be forecasted"
-                    }
-                ]
             }
         },
         "com.amazonaws.location#GenericResource": {
@@ -3906,17 +3516,7 @@
         "com.amazonaws.location#GeoArnList": {
             "type": "list",
             "member": {
-                "target": "com.amazonaws.location#GeoArnV2"
-            }
-        },
-        "com.amazonaws.location#GeoArnV2": {
-            "type": "string",
-            "traits": {
-                "aws.api#arnReference": {},
-                "smithy.api#length": {
-                    "max": 1600
-                },
-                "smithy.api#pattern": "(^arn(:[a-z0-9]+([.-][a-z0-9]+)*):geo(:([a-z0-9]+([.-][a-z0-9]+)*))(:[0-9]+):((\\*)|([-a-z]+[/][*-._\\w]+))$)|(^arn(:[a-z0-9]+([.-][a-z0-9]+)*):(geo-routes|geo-places|geo-maps)(:((\\*)|([a-z0-9]+([.-][a-z0-9]+)*)))::((provider[\\/][*-._\\w]+))$)"
+                "target": "com.amazonaws.location#GeoArn"
             }
         },
         "com.amazonaws.location#GeofenceCollectionResource": {
@@ -3952,9 +3552,6 @@
                     "target": "com.amazonaws.location#BatchPutGeofence"
                 },
                 {
-                    "target": "com.amazonaws.location#ForecastGeofenceEvents"
-                },
-                {
                     "target": "com.amazonaws.location#GetGeofence"
                 },
                 {
@@ -3967,9 +3564,6 @@
             "traits": {
                 "aws.api#arn": {
                     "template": "geofence-collection/{CollectionName}"
-                },
-                "aws.cloudformation#cfnResource": {
-                    "name": "GeofenceCollection"
                 },
                 "aws.iam#disableConditionKeyInference": {}
             }
@@ -3988,16 +3582,10 @@
                     "traits": {
                         "smithy.api#documentation": "<p>A circle on the earth, as defined by a center point and a radius.</p>"
                     }
-                },
-                "Geobuf": {
-                    "target": "com.amazonaws.location#Base64EncodedGeobuf",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Geobuf is a compact binary encoding for geographic data that provides lossless compression of GeoJSON polygons. The Geobuf must be Base64-encoded.</p>\n         <p>A polygon in Geobuf format can have up to 100,000 vertices.</p>"
-                    }
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>Contains the geofence geometry details.</p>\n         <p>A geofence geometry is made up of either a polygon or a circle. Can be a\n            polygon, a circle or a polygon encoded in Geobuf format. Including multiple selections will return a validation error.</p>\n         <note>\n            <p>Amazon Location doesn't currently support polygons with holes, multipolygons, polygons\n                that are wound clockwise, or that cross the antimeridian. </p>\n         </note>"
+                "smithy.api#documentation": "<p>Contains the geofence geometry details.</p>\n         <p>A geofence geometry is made up of either a polygon or a circle. Can be either a \n            polygon or a circle. Including both will return a validation error.</p>\n         <note>\n            <p>Amazon Location doesn't currently support polygons with holes, multipolygons, polygons\n                that are wound clockwise, or that cross the antimeridian. </p>\n         </note>"
             }
         },
         "com.amazonaws.location#GetDevicePosition": {
@@ -4120,7 +3708,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional limit for the number of device positions returned in a single call.</p>\n         <p>Default value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -4188,7 +3775,7 @@
                 "ReceivedTime": {
                     "target": "com.amazonaws.location#Timestamp",
                     "traits": {
-                        "smithy.api#documentation": "<p>The timestamp for when the tracker resource received the device position. Uses <a href=\"https://www.iso.org/iso-8601-date-and-time-format.html\"> ISO 8601 </a>\n            format: <code>YYYY-MM-DDThh:mm:ss.sssZ</code>. </p>",
+                        "smithy.api#documentation": "<p>The timestamp for when the tracker resource received the device position in <a href=\"https://www.iso.org/iso-8601-date-and-time-format.html\"> ISO 8601 </a>\n            format: <code>YYYY-MM-DDThh:mm:ss.sssZ</code>. </p>",
                         "smithy.api#required": {}
                     }
                 },
@@ -4239,7 +3826,7 @@
                 }
             ],
             "traits": {
-                "smithy.api#documentation": "<p>Retrieves the geofence details from a geofence collection.</p>\n         <note>\n            <p>The returned geometry will always match the geometry format used when the geofence was created.</p>\n         </note>",
+                "smithy.api#documentation": "<p>Retrieves the geofence details from a geofence collection.</p>",
                 "smithy.api#endpoint": {
                     "hostPrefix": "geofencing."
                 },
@@ -4810,39 +4397,6 @@
                 "target": "com.amazonaws.location#Id"
             }
         },
-        "com.amazonaws.location#InferredState": {
-            "type": "structure",
-            "members": {
-                "Position": {
-                    "target": "com.amazonaws.location#Position",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The device position inferred by the provided position, IP address, cellular signals, and Wi-Fi- access points.</p>"
-                    }
-                },
-                "Accuracy": {
-                    "target": "com.amazonaws.location#PositionalAccuracy",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The level of certainty of the inferred position.</p>"
-                    }
-                },
-                "DeviationDistance": {
-                    "target": "smithy.api#Double",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The distance between the inferred position and the device's self-reported position.</p>"
-                    }
-                },
-                "ProxyDetected": {
-                    "target": "smithy.api#Boolean",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Indicates if a proxy was used.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>The inferred state of the device, given the provided position, IP address, cellular signals, and Wi-Fi- access points.</p>"
-            }
-        },
         "com.amazonaws.location#IntendedUse": {
             "type": "string",
             "traits": {
@@ -4891,15 +4445,6 @@
                 "smithy.api#length": {
                     "min": 2,
                     "max": 35
-                }
-            }
-        },
-        "com.amazonaws.location#LargeToken": {
-            "type": "string",
-            "traits": {
-                "smithy.api#length": {
-                    "min": 1,
-                    "max": 60000
                 }
             }
         },
@@ -5071,7 +4616,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional limit for the number of entries returned in a single call.</p>\n         <p>Default value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -5088,7 +4632,7 @@
                 "FilterGeometry": {
                     "target": "com.amazonaws.location#TrackingFilterGeometry",
                     "traits": {
-                        "smithy.api#documentation": "<p>The geometry used to filter device positions.</p>"
+                        "smithy.api#documentation": "<p>The geomerty used to filter device positions.</p>"
                     }
                 }
             }
@@ -5204,7 +4748,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional limit for the number of resources returned in a single call. </p>\n         <p>Default value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -5291,7 +4834,7 @@
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>Contains the geofence collection details.</p>\n         <note>\n            <p>The returned geometry will always match the geometry format used when the geofence was created.</p>\n         </note>"
+                "smithy.api#documentation": "<p>Contains the geofence collection details.</p>"
             }
         },
         "com.amazonaws.location#ListGeofenceCollectionsResponseEntryList": {
@@ -5346,7 +4889,7 @@
                 }
             },
             "traits": {
-                "smithy.api#documentation": "<p>Contains a list of geofences stored in a given geofence collection.</p>\n         <note>\n            <p>The returned geometry will always match the geometry format used when the geofence was created.</p>\n         </note>"
+                "smithy.api#documentation": "<p>Contains a list of geofences stored in a given geofence collection.</p>"
             }
         },
         "com.amazonaws.location#ListGeofenceResponseEntryList": {
@@ -5410,7 +4953,7 @@
                     }
                 },
                 "NextToken": {
-                    "target": "com.amazonaws.location#LargeToken",
+                    "target": "com.amazonaws.location#Token",
                     "traits": {
                         "smithy.api#documentation": "<p>The pagination token specifying which page of results to return in the response. If no\n            token is provided, the default page is the first page. </p>\n         <p>Default value: <code>null</code>\n         </p>"
                     }
@@ -5418,7 +4961,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional limit for the number of geofences returned in a single call. </p>\n         <p>Default value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -5439,7 +4981,7 @@
                     }
                 },
                 "NextToken": {
-                    "target": "com.amazonaws.location#LargeToken",
+                    "target": "com.amazonaws.location#Token",
                     "traits": {
                         "smithy.api#documentation": "<p>A pagination token indicating there are additional pages available. You can use the\n            token in a following request to fetch the next set of results. </p>"
                     }
@@ -5492,7 +5034,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional limit for the number of resources returned in a single call. </p>\n         <p>Default value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -5632,7 +5173,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional limit for the number of resources returned in a single call. </p>\n         <p>Default value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -5771,7 +5311,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional limit for the maximum number of results returned in a single call.</p>\n         <p>Default value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -5910,7 +5449,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional maximum number of results returned in a single call.</p>\n         <p>Default Value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -6121,7 +5659,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional limit for the number of resources returned in a single call. </p>\n         <p>Default value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -6201,7 +5738,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional limit for the number of resources returned in a single call. </p>\n         <p>Default value: <code>100</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -6376,6 +5912,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -6418,8 +5955,7 @@
                                     },
                                     "type": "endpoint"
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [
@@ -6432,6 +5968,7 @@
                                     ]
                                 }
                             ],
+                            "type": "tree",
                             "rules": [
                                 {
                                     "conditions": [
@@ -6445,6 +5982,7 @@
                                             "assign": "PartitionResult"
                                         }
                                     ],
+                                    "type": "tree",
                                     "rules": [
                                         {
                                             "conditions": [
@@ -6467,6 +6005,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -6501,6 +6040,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -6511,16 +6051,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS and DualStack are enabled, but this partition does not support one or both",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -6534,12 +6072,14 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
                                                         {
                                                             "fn": "booleanEquals",
                                                             "argv": [
+                                                                true,
                                                                 {
                                                                     "fn": "getAttr",
                                                                     "argv": [
@@ -6548,11 +6088,11 @@
                                                                         },
                                                                         "supportsFIPS"
                                                                     ]
-                                                                },
-                                                                true
+                                                                }
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -6563,16 +6103,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "FIPS is enabled but this partition does not support FIPS",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [
@@ -6586,6 +6124,7 @@
                                                     ]
                                                 }
                                             ],
+                                            "type": "tree",
                                             "rules": [
                                                 {
                                                     "conditions": [
@@ -6605,6 +6144,7 @@
                                                             ]
                                                         }
                                                     ],
+                                                    "type": "tree",
                                                     "rules": [
                                                         {
                                                             "conditions": [],
@@ -6615,16 +6155,14 @@
                                                             },
                                                             "type": "endpoint"
                                                         }
-                                                    ],
-                                                    "type": "tree"
+                                                    ]
                                                 },
                                                 {
                                                     "conditions": [],
                                                     "error": "DualStack is enabled but this partition does not support DualStack",
                                                     "type": "error"
                                                 }
-                                            ],
-                                            "type": "tree"
+                                            ]
                                         },
                                         {
                                             "conditions": [],
@@ -6635,11 +6173,9 @@
                                             },
                                             "type": "endpoint"
                                         }
-                                    ],
-                                    "type": "tree"
+                                    ]
                                 }
-                            ],
-                            "type": "tree"
+                            ]
                         },
                         {
                             "conditions": [],
@@ -6964,178 +6500,6 @@
                 }
             }
         },
-        "com.amazonaws.location#LteCellDetails": {
-            "type": "structure",
-            "members": {
-                "CellId": {
-                    "target": "com.amazonaws.location#EutranCellId",
-                    "traits": {
-                        "smithy.api#default": 0,
-                        "smithy.api#documentation": "<p>The E-UTRAN Cell Identifier (ECI).</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Mcc": {
-                    "target": "smithy.api#Integer",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The Mobile Country Code (MCC).</p>",
-                        "smithy.api#range": {
-                            "min": 200,
-                            "max": 999
-                        },
-                        "smithy.api#required": {}
-                    }
-                },
-                "Mnc": {
-                    "target": "smithy.api#Integer",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The Mobile Network Code (MNC)</p>",
-                        "smithy.api#range": {
-                            "min": 0,
-                            "max": 999
-                        },
-                        "smithy.api#required": {}
-                    }
-                },
-                "LocalId": {
-                    "target": "com.amazonaws.location#LteLocalId",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The LTE local identification information (local ID).</p>"
-                    }
-                },
-                "NetworkMeasurements": {
-                    "target": "com.amazonaws.location#LteNetworkMeasurementsList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The network measurements.</p>",
-                        "smithy.api#length": {
-                            "min": 1,
-                            "max": 32
-                        }
-                    }
-                },
-                "TimingAdvance": {
-                    "target": "smithy.api#Integer",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Timing Advance (TA).</p>",
-                        "smithy.api#range": {
-                            "min": 0,
-                            "max": 1282
-                        }
-                    }
-                },
-                "NrCapable": {
-                    "target": "smithy.api#Boolean",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Indicates whether the LTE object is capable of supporting NR (new radio).</p>"
-                    }
-                },
-                "Rsrp": {
-                    "target": "com.amazonaws.location#Rsrp",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Signal power of the reference signal received, measured in decibel-milliwatts (dBm).</p>"
-                    }
-                },
-                "Rsrq": {
-                    "target": "com.amazonaws.location#Rsrq",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Signal quality of the reference Signal received, measured in decibels (dB).</p>"
-                    }
-                },
-                "Tac": {
-                    "target": "smithy.api#Integer",
-                    "traits": {
-                        "smithy.api#documentation": "<p>LTE Tracking Area Code (TAC).</p>",
-                        "smithy.api#range": {
-                            "min": 0,
-                            "max": 65535
-                        }
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Details about the Long-Term Evolution (LTE) network.</p>"
-            }
-        },
-        "com.amazonaws.location#LteCellDetailsList": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.location#LteCellDetails"
-            }
-        },
-        "com.amazonaws.location#LteLocalId": {
-            "type": "structure",
-            "members": {
-                "Earfcn": {
-                    "target": "com.amazonaws.location#Earfcn",
-                    "traits": {
-                        "smithy.api#default": 0,
-                        "smithy.api#documentation": "<p>E-UTRA (Evolved Universal Terrestrial Radio Access) absolute radio frequency channel number (EARFCN).</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Pci": {
-                    "target": "com.amazonaws.location#Pci",
-                    "traits": {
-                        "smithy.api#default": 0,
-                        "smithy.api#documentation": "<p>Physical Cell ID (PCI).</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>LTE local identification information (local ID).</p>"
-            }
-        },
-        "com.amazonaws.location#LteNetworkMeasurements": {
-            "type": "structure",
-            "members": {
-                "Earfcn": {
-                    "target": "com.amazonaws.location#Earfcn",
-                    "traits": {
-                        "smithy.api#default": 0,
-                        "smithy.api#documentation": "<p>E-UTRA (Evolved Universal Terrestrial Radio Access) absolute radio frequency channel number (EARFCN).</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "CellId": {
-                    "target": "com.amazonaws.location#EutranCellId",
-                    "traits": {
-                        "smithy.api#default": 0,
-                        "smithy.api#documentation": "<p>E-UTRAN Cell Identifier (ECI).</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Pci": {
-                    "target": "com.amazonaws.location#Pci",
-                    "traits": {
-                        "smithy.api#default": 0,
-                        "smithy.api#documentation": "<p>Physical Cell ID (PCI).</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Rsrp": {
-                    "target": "com.amazonaws.location#Rsrp",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Signal power of the reference signal received, measured in dBm (decibel-milliwatts).</p>"
-                    }
-                },
-                "Rsrq": {
-                    "target": "com.amazonaws.location#Rsrq",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Signal quality of the reference Signal received, measured in decibels (dB).</p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>LTE network measurements.</p>"
-            }
-        },
-        "com.amazonaws.location#LteNetworkMeasurementsList": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.location#LteNetworkMeasurements"
-            }
-        },
         "com.amazonaws.location#MapConfiguration": {
             "type": "structure",
             "members": {
@@ -7151,12 +6515,6 @@
                     "traits": {
                         "smithy.api#documentation": "<p>Specifies the political view for the style. Leave unset to not use a political \n            view, or, for styles that support specific political views, you can choose a view, \n            such as <code>IND</code> for the Indian view.</p>\n         <p>Default is unset.</p>\n         <note>\n            <p>Not all map resources or styles support political view styles. See \n                <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/map-concepts.html#political-views\">Political \n                    views</a> \n                for more information.</p>\n         </note>"
                     }
-                },
-                "CustomLayers": {
-                    "target": "com.amazonaws.location#CustomLayerList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the custom layers for the style. Leave unset to not enable any custom layer, or, for styles that support custom layers, you can enable layer(s), such as POI layer for the VectorEsriNavigation style.\nDefault is <code>unset</code>.</p>\n         <note>\n            <p>Not all map resources or styles support custom layers. See Custom Layers for more information.</p>\n         </note>"
-                    }
                 }
             },
             "traits": {
@@ -7170,12 +6528,6 @@
                     "target": "com.amazonaws.location#CountryCode3OrEmpty",
                     "traits": {
                         "smithy.api#documentation": "<p>Specifies the political view for the style. Set to an empty string to not use a\n            political view, or, for styles that support specific political views, you can choose a \n            view, such as <code>IND</code> for the Indian view.</p>\n         <note>\n            <p>Not all map resources or styles support political view styles. See \n                <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/map-concepts.html#political-views\">Political \n                    views</a> \n                for more information.</p>\n         </note>"
-                    }
-                },
-                "CustomLayers": {
-                    "target": "com.amazonaws.location#CustomLayerList",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Specifies the custom layers for the style. Leave unset to not enable any custom layer, or, for styles that support custom layers, you can enable layer(s), such as POI layer for the VectorEsriNavigation style.\nDefault is <code>unset</code>.</p>\n         <note>\n            <p>Not all map resources or styles support custom layers. See Custom Layers for more information.</p>\n         </note>"
                     }
                 }
             },
@@ -7223,9 +6575,6 @@
                 "aws.api#arn": {
                     "template": "map/{MapName}"
                 },
-                "aws.cloudformation#cfnResource": {
-                    "name": "Map"
-                },
                 "aws.iam#disableConditionKeyInference": {}
             }
         },
@@ -7237,38 +6586,6 @@
                     "max": 100
                 },
                 "smithy.api#pattern": "^[-._\\w]+$"
-            }
-        },
-        "com.amazonaws.location#NearestDistance": {
-            "type": "double",
-            "traits": {
-                "smithy.api#default": 0,
-                "smithy.api#range": {
-                    "min": 0
-                }
-            }
-        },
-        "com.amazonaws.location#OptimizationMode": {
-            "type": "string",
-            "traits": {
-                "smithy.api#enum": [
-                    {
-                        "value": "FastestRoute"
-                    },
-                    {
-                        "value": "ShortestRoute"
-                    }
-                ]
-            }
-        },
-        "com.amazonaws.location#Pci": {
-            "type": "integer",
-            "traits": {
-                "smithy.api#default": 0,
-                "smithy.api#range": {
-                    "min": 0,
-                    "max": 503
-                }
             }
         },
         "com.amazonaws.location#Place": {
@@ -7369,12 +6686,6 @@
                     "traits": {
                         "smithy.api#documentation": "<p>Categories from the data provider that describe the Place that are not mapped\n            to any Amazon Location categories.</p>"
                     }
-                },
-                "SubMunicipality": {
-                    "target": "smithy.api#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>An area that's part of a larger municipality. For example, <code>Blissville </code> \n            is a submunicipality in the Queen County in New York.</p>\n         <note>\n            <p>This property supported by Esri and OpenData. The Esri property is <code>district</code>, and the OpenData property is <code>borough</code>.</p>\n         </note>"
-                    }
                 }
             },
             "traits": {
@@ -7458,15 +6769,13 @@
                 "aws.api#arn": {
                     "template": "place-index/{IndexName}"
                 },
-                "aws.cloudformation#cfnResource": {
-                    "name": "PlaceIndex"
-                },
                 "aws.iam#disableConditionKeyInference": {}
             }
         },
         "com.amazonaws.location#PlaceIndexSearchResultLimit": {
             "type": "integer",
             "traits": {
+                "smithy.api#default": 0,
                 "smithy.api#range": {
                     "min": 1,
                     "max": 50
@@ -7543,7 +6852,7 @@
                         "smithy.api#documentation": "<p>Estimated maximum distance, in meters, between the measured position and the true\n            position of a device, along the Earth's surface.</p>",
                         "smithy.api#range": {
                             "min": 0,
-                            "max": 10000000
+                            "max": 10000
                         },
                         "smithy.api#required": {}
                     }
@@ -7661,7 +6970,7 @@
                 "Geometry": {
                     "target": "com.amazonaws.location#GeofenceGeometry",
                     "traits": {
-                        "smithy.api#documentation": "<p>Contains the details to specify the position of the geofence. Can be a\n            polygon, a circle or a polygon encoded in Geobuf format. Including multiple selections will return a validation error.</p>\n         <note>\n            <p>The <a href=\"https://docs.aws.amazon.com/location-geofences/latest/APIReference/API_GeofenceGeometry.html\">\n                geofence polygon</a> format supports a maximum of 1,000 vertices. The <a href=\"https://docs.aws.amazon.com/location-geofences/latest/APIReference/API_GeofenceGeometry.html\">Geofence Geobuf</a> format supports a maximum of 100,000 vertices.</p>\n         </note>",
+                        "smithy.api#documentation": "<p>Contains the details to specify the position of the geofence. Can be either a \n            polygon or a circle. Including both will return a validation error.</p>\n         <note>\n            <p>Each <a href=\"https://docs.aws.amazon.com/location-geofences/latest/APIReference/API_GeofenceGeometry.html\">\n                geofence polygon</a> can have a maximum of 1,000 vertices.</p>\n         </note>",
                         "smithy.api#required": {}
                     }
                 },
@@ -7784,9 +7093,6 @@
                 "aws.api#arn": {
                     "template": "route-calculator/{CalculatorName}"
                 },
-                "aws.cloudformation#cfnResource": {
-                    "name": "RouteCalculator"
-                },
                 "aws.iam#disableConditionKeyInference": {}
             }
         },
@@ -7878,24 +7184,6 @@
             "type": "list",
             "member": {
                 "target": "com.amazonaws.location#RouteMatrixEntry"
-            }
-        },
-        "com.amazonaws.location#Rsrp": {
-            "type": "integer",
-            "traits": {
-                "smithy.api#range": {
-                    "min": -140,
-                    "max": -44
-                }
-            }
-        },
-        "com.amazonaws.location#Rsrq": {
-            "type": "float",
-            "traits": {
-                "smithy.api#range": {
-                    "min": -19.5,
-                    "max": -3
-                }
             }
         },
         "com.amazonaws.location#SearchForPositionResult": {
@@ -8078,6 +7366,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.location#PlaceIndexSearchResultLimit",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>An optional parameter. The maximum number of results returned per request.</p>\n         <p>Default value: <code>50</code>\n         </p>"
                     }
                 },
@@ -8128,6 +7417,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.location#PlaceIndexSearchResultLimit",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Contains the optional result count limit that is specified in the request.</p>\n         <p>Default value: <code>50</code>\n         </p>"
                     }
                 },
@@ -8229,7 +7519,6 @@
                 "MaxResults": {
                     "target": "smithy.api#Integer",
                     "traits": {
-                        "smithy.api#default": null,
                         "smithy.api#documentation": "<p>An optional parameter. The maximum number of results returned per request. </p>\n         <p>The default: <code>5</code>\n         </p>",
                         "smithy.api#range": {
                             "min": 1,
@@ -8415,6 +7704,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.location#PlaceIndexSearchResultLimit",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>An optional parameter. The maximum number of results returned per request. </p>\n         <p>The default: <code>50</code>\n         </p>"
                     }
                 },
@@ -8489,6 +7779,7 @@
                 "MaxResults": {
                     "target": "com.amazonaws.location#PlaceIndexSearchResultLimit",
                     "traits": {
+                        "smithy.api#default": 0,
                         "smithy.api#documentation": "<p>Contains the optional result count limit specified in the request.</p>"
                     }
                 },
@@ -8544,19 +7835,6 @@
                 "smithy.api#documentation": "<p>The operation was denied because the request would exceed the maximum <a href=\"https://docs.aws.amazon.com/location/latest/developerguide/location-quotas.html\">quota</a>\n      set for Amazon Location Service.</p>",
                 "smithy.api#error": "client",
                 "smithy.api#httpError": 402
-            }
-        },
-        "com.amazonaws.location#SpeedUnit": {
-            "type": "string",
-            "traits": {
-                "smithy.api#enum": [
-                    {
-                        "value": "KilometersPerHour"
-                    },
-                    {
-                        "value": "MilesPerHour"
-                    }
-                ]
             }
         },
         "com.amazonaws.location#Status": {
@@ -8840,9 +8118,6 @@
                 },
                 {
                     "target": "com.amazonaws.location#ListTrackerConsumers"
-                },
-                {
-                    "target": "com.amazonaws.location#VerifyDevicePosition"
                 }
             ],
             "traits": {
@@ -9162,7 +8437,6 @@
                 "KeyName": {
                     "target": "com.amazonaws.location#ResourceName",
                     "traits": {
-                        "aws.cloudformation#cfnMutability": "create-and-read",
                         "smithy.api#documentation": "<p>The name of the API key resource to update.</p>",
                         "smithy.api#httpLabel": {},
                         "smithy.api#required": {}
@@ -9293,7 +8567,6 @@
                 "ConfigurationUpdate": {
                     "target": "com.amazonaws.location#MapConfigurationUpdate",
                     "traits": {
-                        "aws.cloudformation#cfnExcludeProperty": {},
                         "smithy.api#documentation": "<p>Updates the parts of the map configuration that can be updated, including the\n            political view.</p>"
                     }
                 }
@@ -9635,12 +8908,6 @@
                 }
             }
         },
-        "com.amazonaws.location#Uuid": {
-            "type": "string",
-            "traits": {
-                "smithy.api#pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
-            }
-        },
         "com.amazonaws.location#ValidationException": {
             "type": "structure",
             "members": {
@@ -9744,155 +9011,10 @@
                 ]
             }
         },
-        "com.amazonaws.location#VerifyDevicePosition": {
-            "type": "operation",
-            "input": {
-                "target": "com.amazonaws.location#VerifyDevicePositionRequest"
-            },
-            "output": {
-                "target": "com.amazonaws.location#VerifyDevicePositionResponse"
-            },
-            "errors": [
-                {
-                    "target": "com.amazonaws.location#AccessDeniedException"
-                },
-                {
-                    "target": "com.amazonaws.location#InternalServerException"
-                },
-                {
-                    "target": "com.amazonaws.location#ResourceNotFoundException"
-                },
-                {
-                    "target": "com.amazonaws.location#ThrottlingException"
-                },
-                {
-                    "target": "com.amazonaws.location#ValidationException"
-                }
-            ],
-            "traits": {
-                "smithy.api#documentation": "<p>Verifies the integrity of the device's position by determining if it was reported behind a proxy, and by comparing it to an inferred position estimated based on the device's state.</p>",
-                "smithy.api#endpoint": {
-                    "hostPrefix": "tracking."
-                },
-                "smithy.api#http": {
-                    "uri": "/tracking/v0/trackers/{TrackerName}/positions/verify",
-                    "method": "POST"
-                }
-            }
-        },
-        "com.amazonaws.location#VerifyDevicePositionRequest": {
-            "type": "structure",
-            "members": {
-                "TrackerName": {
-                    "target": "com.amazonaws.location#ResourceName",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The name of the tracker resource to be associated with verification request.</p>",
-                        "smithy.api#httpLabel": {},
-                        "smithy.api#required": {}
-                    }
-                },
-                "DeviceState": {
-                    "target": "com.amazonaws.location#DeviceState",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The device's state, including position, IP address, cell signals and Wi-Fi access points.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "DistanceUnit": {
-                    "target": "com.amazonaws.location#DistanceUnit",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The distance unit for the verification request.</p>\n         <p>Default Value: <code>Kilometers</code>\n         </p>"
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#input": {}
-            }
-        },
-        "com.amazonaws.location#VerifyDevicePositionResponse": {
-            "type": "structure",
-            "members": {
-                "InferredState": {
-                    "target": "com.amazonaws.location#InferredState",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The inferred state of the device, given the provided position, IP address, cellular signals, and Wi-Fi- access points.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "DeviceId": {
-                    "target": "com.amazonaws.location#Id",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The device identifier.</p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "SampleTime": {
-                    "target": "com.amazonaws.location#Timestamp",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The timestamp at which the device's position was determined. Uses <a href=\"https://www.iso.org/iso-8601-date-and-time-format.html\"> ISO 8601 </a>\n           format: <code>YYYY-MM-DDThh:mm:ss.sssZ</code>. </p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "ReceivedTime": {
-                    "target": "com.amazonaws.location#Timestamp",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The timestamp for when the tracker resource received the device position in <a href=\"https://www.iso.org/iso-8601-date-and-time-format.html\"> ISO 8601 </a>\n            format: <code>YYYY-MM-DDThh:mm:ss.sssZ</code>. </p>",
-                        "smithy.api#required": {}
-                    }
-                },
-                "DistanceUnit": {
-                    "target": "com.amazonaws.location#DistanceUnit",
-                    "traits": {
-                        "smithy.api#documentation": "<p>The distance unit for the verification response.</p>",
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#output": {}
-            }
-        },
         "com.amazonaws.location#WaypointPositionList": {
             "type": "list",
             "member": {
                 "target": "com.amazonaws.location#Position"
-            }
-        },
-        "com.amazonaws.location#WiFiAccessPoint": {
-            "type": "structure",
-            "members": {
-                "MacAddress": {
-                    "target": "smithy.api#String",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Medium access control address (Mac).</p>",
-                        "smithy.api#length": {
-                            "min": 12,
-                            "max": 17
-                        },
-                        "smithy.api#pattern": "^([0-9A-Fa-f]{2}[:-]?){5}([0-9A-Fa-f]{2})$",
-                        "smithy.api#required": {}
-                    }
-                },
-                "Rss": {
-                    "target": "smithy.api#Integer",
-                    "traits": {
-                        "smithy.api#documentation": "<p>Received signal strength (dBm) of the WLAN measurement data.</p>",
-                        "smithy.api#range": {
-                            "min": -128,
-                            "max": 0
-                        },
-                        "smithy.api#required": {}
-                    }
-                }
-            },
-            "traits": {
-                "smithy.api#documentation": "<p>Wi-Fi access point.</p>"
-            }
-        },
-        "com.amazonaws.location#WiFiAccessPointList": {
-            "type": "list",
-            "member": {
-                "target": "com.amazonaws.location#WiFiAccessPoint"
             }
         }
     }

@@ -2,9 +2,7 @@ package presignedurl
 
 import (
 	"context"
-	"fmt"
 	"net/http"
-	"reflect"
 	"strings"
 	"testing"
 
@@ -13,6 +11,7 @@ import (
 
 	"github.com/aws/smithy-go/middleware"
 	smithyhttp "github.com/aws/smithy-go/transport/http"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestPresignMiddleware(t *testing.T) {
@@ -71,7 +70,7 @@ func TestPresignMiddleware(t *testing.T) {
 					out middleware.InitializeOutput, metadata middleware.Metadata, err error,
 				) {
 					input := in.Parameters.(*mockURLPresignInput)
-					if diff := cmpDiff(c.ExpectInput, input); len(diff) != 0 {
+					if diff := cmp.Diff(c.ExpectInput, input); len(diff) != 0 {
 						t.Errorf("expect input to be updated\n%s", diff)
 					}
 
@@ -149,11 +148,4 @@ func (*mockURLPresigner) PresignURL(ctx context.Context, srcRegion string, param
 		Method:       "GET",
 		SignedHeader: http.Header{},
 	}, nil
-}
-
-func cmpDiff(e, a interface{}) string {
-	if !reflect.DeepEqual(e, a) {
-		return fmt.Sprintf("%v != %v", e, a)
-	}
-	return ""
 }

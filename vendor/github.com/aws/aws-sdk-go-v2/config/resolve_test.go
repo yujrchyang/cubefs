@@ -18,6 +18,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/internal/awstesting"
 	"github.com/aws/aws-sdk-go-v2/internal/awstesting/unit"
 	"github.com/aws/smithy-go/logging"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestResolveCustomCABundle(t *testing.T) {
@@ -146,126 +147,6 @@ func TestResolveAppID(t *testing.T) {
 
 	if e, a := "5678", cfg.AppID; e != a {
 		t.Errorf("expect %v app ID, got %v", e, a)
-	}
-}
-
-func TestResolveRequestMinCompressSizeBytes(t *testing.T) {
-	cases := map[string]struct {
-		RequestMinCompressSizeBytes *int64
-		ExpectMinBytes              int64
-	}{
-		"min requet size of 100 bytes": {
-			RequestMinCompressSizeBytes: aws.Int64(100),
-			ExpectMinBytes:              100,
-		},
-		"min request size unset": {
-			ExpectMinBytes: 10240,
-		},
-	}
-
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			var options LoadOptions
-			optFns := []func(options *LoadOptions) error{
-				WithRequestMinCompressSizeBytes(c.RequestMinCompressSizeBytes),
-			}
-
-			for _, optFn := range optFns {
-				optFn(&options)
-			}
-
-			configs := configs{options}
-
-			var cfg aws.Config
-
-			if err := resolveRequestMinCompressSizeBytes(context.Background(), &cfg, configs); err != nil {
-				t.Fatalf("expect no error, got %v", err)
-			}
-
-			if e, a := c.ExpectMinBytes, cfg.RequestMinCompressSizeBytes; e != a {
-				t.Errorf("expect RequestMinCompressSizeBytes to be %v , got %v", e, a)
-			}
-		})
-	}
-}
-
-func TestResolveDisableRequestCompression(t *testing.T) {
-	cases := map[string]struct {
-		DisableRequestCompression *bool
-		ExpectDisable             bool
-	}{
-		"disable request compression": {
-			DisableRequestCompression: aws.Bool(true),
-			ExpectDisable:             true,
-		},
-		"disable request compression unset": {
-			ExpectDisable: false,
-		},
-	}
-
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			var options LoadOptions
-			optFns := []func(options *LoadOptions) error{
-				WithDisableRequestCompression(c.DisableRequestCompression),
-			}
-
-			for _, optFn := range optFns {
-				optFn(&options)
-			}
-
-			configs := configs{options}
-
-			var cfg aws.Config
-
-			if err := resolveDisableRequestCompression(context.Background(), &cfg, configs); err != nil {
-				t.Fatalf("expect no error, got %v", err)
-			}
-
-			if e, a := c.ExpectDisable, cfg.DisableRequestCompression; e != a {
-				t.Errorf("expect DisableRequestCompression to be %v , got %v", e, a)
-			}
-		})
-	}
-}
-
-func TestResolveAccountIDEndpointMode(t *testing.T) {
-	cases := map[string]struct {
-		AccountIDEndpointMode aws.AccountIDEndpointMode
-		ExpectMode            aws.AccountIDEndpointMode
-	}{
-		"accountID required for endpoint routing": {
-			AccountIDEndpointMode: aws.AccountIDEndpointModeRequired,
-			ExpectMode:            aws.AccountIDEndpointModeRequired,
-		},
-		"accountID unset": {
-			ExpectMode: aws.AccountIDEndpointModePreferred,
-		},
-	}
-
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			var options LoadOptions
-			optFns := []func(options *LoadOptions) error{
-				WithAccountIDEndpointMode(c.AccountIDEndpointMode),
-			}
-
-			for _, optFn := range optFns {
-				optFn(&options)
-			}
-
-			configs := configs{options}
-
-			var cfg aws.Config
-
-			if err := resolveAccountIDEndpointMode(context.Background(), &cfg, configs); err != nil {
-				t.Fatalf("expect no error, got %v", err)
-			}
-
-			if e, a := c.ExpectMode, cfg.AccountIDEndpointMode; e != a {
-				t.Errorf("expect AccountIDEndpointMode to be %v , got %v", e, a)
-			}
-		})
 	}
 }
 
@@ -513,11 +394,11 @@ func TestResolveDefaultsMode(t *testing.T) {
 				t.Errorf("expect no error, got %v", err)
 			}
 
-			if diff := cmpDiff(tt.ExpectedDefaultsMode, cfg.DefaultsMode); len(diff) > 0 {
+			if diff := cmp.Diff(tt.ExpectedDefaultsMode, cfg.DefaultsMode); len(diff) > 0 {
 				t.Errorf(diff)
 			}
 
-			if diff := cmpDiff(tt.ExpectedRuntimeEnvironment, cfg.RuntimeEnvironment); len(diff) > 0 {
+			if diff := cmp.Diff(tt.ExpectedRuntimeEnvironment, cfg.RuntimeEnvironment); len(diff) > 0 {
 				t.Errorf(diff)
 			}
 		})

@@ -23,16 +23,12 @@ import software.amazon.smithy.go.codegen.integration.GoIntegration;
 import software.amazon.smithy.model.Model;
 import software.amazon.smithy.model.shapes.OperationShape;
 import software.amazon.smithy.model.shapes.ShapeId;
-import software.amazon.smithy.model.traits.AuthTrait;
 import software.amazon.smithy.model.traits.OptionalAuthTrait;
 import software.amazon.smithy.utils.MapUtils;
 import software.amazon.smithy.utils.SetUtils;
 
 /**
- * Backfill missing Smithy OptionalAuth traits to AWS models. Also adds empty auth (@auth: []) since defaulted+invalid
- * credential providers from the environment would otherwise get stuck on sigv4 in post-SRA auth if sigv4 suddenly
- * became an option, which anecdotally matches the c2s transform that causes all existing instances of @optionalAuth
- * anyway.
+ * Backfill missing Smithy OptionalAuth traits to AWS models.
  */
 public class BackfillOptionalAuthTrait implements GoIntegration {
     private static final Logger LOGGER = Logger.getLogger(BackfillOptionalAuthTrait.class.getName());
@@ -73,7 +69,6 @@ public class BackfillOptionalAuthTrait implements GoIntegration {
             }
             builder.addShape(operationShape.toBuilder()
                     .addTrait(new OptionalAuthTrait())
-                    .addTrait(new AuthTrait(SetUtils.of()))
                     .build());
         }
 
