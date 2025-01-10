@@ -606,104 +606,6 @@ func (migInode *MigrateInode) handleError(action string, err *error) {
 
 func (migInode *MigrateInode) ProcessReadAndWriteData(ctx context.Context, ek proto.ExtentKey, fileOffset uint64, size uint64, crc hash.Hash32, writeTotal *int) error {
 	var (
-		firstWrite               = true
-		readSize          uint64 = unit.BlockSize
-		buff                     = make([]byte, readSize)
-		writeN            int
-		extentWriteOffset int
-		writeFileOffset   = fileOffset
-		dp                *data.DataPartition
-		newEk             *proto.ExtentKey
-		readStartOffset   uint64
-		totalSize         uint64
-	)
-
-	switch migInode.migDirection {
-	case ReverseS3FileMigrate:
-		readStartOffset = ek.ExtentOffset
-		totalSize = uint64(ek.Size)
-	default:
-		readStartOffset = fileOffset
-		totalSize = size
-	}
-	readOffset := readStartOffset
-
-	for {
-		remainingSize := totalSize - (readOffset - readStartOffset)
-		if remainingSize <= 0 {
-			break
-		}
-
-		if remainingSize < readSize {
-			readSize = remainingSize
-		}
-		var (
-			readN int
-			err   error
-		)
-		if migInode.migDirection == ReverseS3FileMigrate {
-			readN, err = migInode.readDataFromS3(ctx, ek.PartitionId, ek.ExtentId, readOffset, readSize, buff)
-		} else {
-			readN, _, err = migInode.extentClient.Read(ctx, migInode.inodeInfo.Inode, buff, readOffset, int(readSize))
-		}
-
-		if err != nil && err != io.EOF {
-			return err
-		}
-
-		if readN > 0 {
-			_, _ = crc.Write(buff[:readN])
-			if firstWrite {
-				dp, writeN, newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, writeFileOffset, buff[:readN], migInode.DirectWrite)
-				if err != nil {
-					return err
-				}
-				if !checkMigDirectionMediumTypeIsMatch(migInode, dp) {
-					err = fmt.Errorf("ReadAndWriteDataNode syncWrite dpId(%v) incorrect medium type, volume(%v) mp(%v) inode(%v) migType(%v)",
-						dp.PartitionID, migInode.vol.Name, migInode.mpOp.mpId, migInode.inodeInfo.Inode, migInode.migDirection)
-					return err
-				}
-				migInode.newEks = append(migInode.newEks, newEk)
-				firstWrite = false
-			} else {
-				writeN, err = migInode.extentClient.SyncWriteToSpecificExtent(ctx, dp, migInode.inodeInfo.Inode, writeFileOffset, extentWriteOffset, buff[:readN], int(newEk.ExtentId), migInode.DirectWrite)
-				if err != nil {
-					log.LogWarnf("ReadS3AndWriteToDataNode syncWriteToSpecificExtent ino(%v), err(%v)", migInode.name, err)
-					dp, writeN, newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, writeFileOffset, buff[:readN], migInode.DirectWrite)
-					extentWriteOffset = 0
-					if err != nil {
-						return err
-					}
-					migInode.newEks = append(migInode.newEks, newEk)
-					err = migInode.checkNewEkCountValid()
-					if err != nil {
-						return err
-					}
-				} else {
-					newEk.Size += uint32(writeN)
-				}
-			}
-
-			readOffset += uint64(readN)
-			extentWriteOffset += writeN
-			writeFileOffset += uint64(writeN)
-			*writeTotal += writeN
-
-			log.LogDebugf("ReadS3AndWriteToDataNode write data ino(%v), totalSize(%v), readN(%v), writeFileOffset(%v), extentWriteOffset(%v), dpId(%v), extId(%v), directWrite(%v)",
-				migInode.name, totalSize, readN, writeFileOffset, extentWriteOffset, dp.PartitionID, newEk.ExtentId, migInode.DirectWrite)
-		}
-
-		if err == io.EOF {
-			err = nil
-			break
-		}
-	}
-
-	return nil
-}
-
-func (migInode *MigrateInode) ProcessReadAndWriteData_dlw(ctx context.Context, ek proto.ExtentKey, fileOffset uint64, size uint64, crc hash.Hash32, writeTotal *int) error {
-	var (
 		firstWrite = true
 		readSize   uint64 = unit.BlockSize
 		buff              = make([]byte, readSize)
@@ -740,7 +642,7 @@ func (migInode *MigrateInode) ProcessReadAndWriteData_dlw(ctx context.Context, e
 
 		if readN > 0 {
 			_, _ = crc.Write(buff[:readN])
-			err = migInode.writeData(ctx, dp, newEk, &firstWrite, &writeFileOffset, buff[:readN], writeTotal)
+			err = migInode.writeData(ctx, &dp, &newEk, &firstWrite, &writeFileOffset, buff[:readN], writeTotal)
 			if err != nil {
 				return err
 			}
@@ -752,15 +654,6 @@ func (migInode *MigrateInode) ProcessReadAndWriteData_dlw(ctx context.Context, e
 	return nil
 }
 
-func (migInode *MigrateInode) getReadStartOffsetAndTotalSize(ek proto.ExtentKey, fileOffset, size uint64) (uint64, uint64) {
-	switch migInode.migDirection {
-	case ReverseS3FileMigrate:
-		return ek.ExtentOffset, uint64(ek.Size)
-	default:
-		return fileOffset, size
-	}
-}
-
 func (migInode *MigrateInode) readData(ctx context.Context, ek proto.ExtentKey, readOffset, readSize uint64, buff []byte) (readN int, err error) {
 	if migInode.migDirection == ReverseS3FileMigrate {
 		readN, err = migInode.readDataFromS3(ctx, ek.PartitionId, ek.ExtentId, readOffset, readSize, buff)
@@ -770,7 +663,7 @@ func (migInode *MigrateInode) readData(ctx context.Context, ek proto.ExtentKey, 
 	return
 }
 
-func (migInode *MigrateInode) writeData(ctx context.Context, dp *data.DataPartition, newEk *proto.ExtentKey, firstWrite *bool, writeFileOffset *uint64, buff []byte, writeTotal *int) error {
+func (migInode *MigrateInode) writeData(ctx context.Context, dp **data.DataPartition, newEk **proto.ExtentKey, firstWrite *bool, writeFileOffset *uint64, buff []byte, writeTotal *int) error {
 	var (
 		writeN            int
 		extentWriteOffset int
@@ -778,32 +671,32 @@ func (migInode *MigrateInode) writeData(ctx context.Context, dp *data.DataPartit
 	)
 
 	if *firstWrite {
-		dp, writeN, newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, *writeFileOffset, buff, migInode.DirectWrite)
+		*dp, writeN, *newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, *writeFileOffset, buff, migInode.DirectWrite)
 		if err != nil {
 			return err
 		}
-		if !checkMigDirectionMediumTypeIsMatch(migInode, dp) {
+		if !checkMigDirectionMediumTypeIsMatch(migInode, *dp) {
 			return fmt.Errorf("ReadAndWriteDataNode syncWrite dpId(%v) incorrect medium type, volume(%v) mp(%v) inode(%v) migType(%v)",
-				dp.PartitionID, migInode.vol.Name, migInode.mpOp.mpId, migInode.inodeInfo.Inode, migInode.migDirection)
+				(*dp).PartitionID, migInode.vol.Name, migInode.mpOp.mpId, migInode.inodeInfo.Inode, migInode.migDirection)
 		}
-		migInode.newEks = append(migInode.newEks, newEk)
+		migInode.newEks = append(migInode.newEks, *newEk)
 		*firstWrite = false
 	} else {
-		writeN, err = migInode.extentClient.SyncWriteToSpecificExtent(ctx, dp, migInode.inodeInfo.Inode, *writeFileOffset, extentWriteOffset, buff, int(newEk.ExtentId), migInode.DirectWrite)
+		writeN, err = migInode.extentClient.SyncWriteToSpecificExtent(ctx, *dp, migInode.inodeInfo.Inode, *writeFileOffset, extentWriteOffset, buff, int((*newEk).ExtentId), migInode.DirectWrite)
 		if err != nil {
 			log.LogWarnf("ReadS3AndWriteToDataNode syncWriteToSpecificExtent ino(%v), err(%v)", migInode.name, err)
-			dp, writeN, newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, *writeFileOffset, buff, migInode.DirectWrite)
+			*dp, writeN, *newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, *writeFileOffset, buff, migInode.DirectWrite)
 			extentWriteOffset = 0
 			if err != nil {
 				return err
 			}
-			migInode.newEks = append(migInode.newEks, newEk)
+			migInode.newEks = append(migInode.newEks, *newEk)
 			err = migInode.checkNewEkCountValid()
 			if err != nil {
 				return err
 			}
 		} else {
-			newEk.Size += uint32(writeN)
+			(*newEk).Size += uint32(writeN)
 		}
 	}
 
