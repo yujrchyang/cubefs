@@ -9,6 +9,7 @@ import (
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/cubefs/cubefs/sdk/mysql"
+	"github.com/cubefs/cubefs/sdk/s3"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
@@ -28,6 +29,7 @@ const (
 	DefaultCompactVolumeLoadDuration = 60
 	RetryDoGetMaxCnt                 = 3
 	PageSize                         = 1000
+	ForceROWModifyDuration           = 5 * 60
 )
 
 const (
@@ -62,8 +64,7 @@ const (
 
 const (
 	migClose = iota
-	ssdToHdd
-	HddToSsd
+	migOpen
 )
 
 const (
@@ -375,9 +376,15 @@ func (w *Worker) getMigrationConfig(cluster, volName string) (volumeConfig proto
 	if sv, has := volViews.SmartVolumes[volName]; has {
 		volumeConfig = proto.MigrationConfig{
 			Smart:         sv.Smart,
+			SmartRules:    strings.Join(sv.SmartRules, ","),
 			HddDirs:       sv.HddDirs,
 			SsdDirs:       sv.SsdDirs,
 			MigrationBack: sv.MigrationBack,
+			Region:        sv.BoundBucket.Region,
+			Endpoint:      sv.BoundBucket.EndPoint,
+			AccessKey:     sv.BoundBucket.AccessKey,
+			SecretKey:     sv.BoundBucket.SecretAccessKey,
+			Bucket:        sv.BoundBucket.BucketName,
 		}
 	}
 	return
@@ -392,7 +399,7 @@ func (w *Worker) getMigrationSwitch(cluster, volName string) (migSwitch bool) {
 	migSwitch = true
 	var (
 		volumeConfigs []*proto.MigrationConfig
-		err error
+		err           error
 	)
 	volumeConfigs, err = mysql.SelectVolumeConfig(cluster, volName)
 	if err != nil {
@@ -428,7 +435,7 @@ func (w *Worker) getCompactSwitch(cluster, volName string) (compactSwitch bool) 
 	}
 	var (
 		volumeConfigs []*proto.MigrationConfig
-		err error
+		err           error
 	)
 	volumeConfigs, err = mysql.SelectVolumeConfig(cluster, volName)
 	if err != nil {
@@ -889,12 +896,12 @@ func (w *Worker) migrationConfigAddOrUpdate(res http.ResponseWriter, r *http.Req
 		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: fmt.Sprintf("cluster(%v) not support", migConfig.ClusterName)})
 		return
 	}
-	if migConfig.Smart == ssdToHdd {
-		mc := value.(*master.MasterClient)
-		if volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(migConfig.VolName); err != nil {
-			SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
-			return
-		}
+	mc := value.(*master.MasterClient)
+	if volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(migConfig.VolName); err != nil {
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	if migConfig.Smart == migOpen {
 		if idcMap, err = getIdcMap(mc); err != nil {
 			SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
@@ -911,6 +918,10 @@ func (w *Worker) migrationConfigAddOrUpdate(res http.ResponseWriter, r *http.Req
 	var volumeConfigs []*proto.MigrationConfig
 	volumeConfigs, err = mysql.SelectVolumeConfig(migConfig.ClusterName, migConfig.VolName)
 	if err != nil {
+		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		return
+	}
+	if err = checkS3BucketExist(migConfig.SmartRules, volumeInfo); err != nil {
 		SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
@@ -1082,8 +1093,8 @@ func parseParamVolumeConfig(w *Worker, r *http.Request) (config *proto.Migration
 		}
 	}
 	if smart > 0 {
-		if smart != ssdToHdd && smart != HddToSsd {
-			err = fmt.Errorf("parse param %v fail: %v", ParamKeySmart, "should be 1 or 2")
+		if smart != migOpen {
+			err = fmt.Errorf("parse param %v fail: %v", ParamKeySmart, "should be 1 migOpen")
 			return
 		}
 	}
@@ -1131,6 +1142,47 @@ func parseParamVolumeConfig(w *Worker, r *http.Request) (config *proto.Migration
 		SsdDirs:       ssdDirs,
 		MigrationBack: int8(migBack),
 		Compact:       int8(compact),
+	}
+	return
+}
+
+func checkVolumeForceROW(smartRules string, volumeInfo *proto.SimpleVolView) (err error) {
+	if !strings.Contains(smartRules, proto.MediumS3Name) {
+		return
+	}
+	timeSinceLastForceROWModify := time.Now().Unix() - volumeInfo.ForceROWModifyTime
+	if volumeInfo.ForceROW && timeSinceLastForceROWModify >= ForceROWModifyDuration {
+		return
+	}
+	if volumeInfo.ForceROW && timeSinceLastForceROWModify < ForceROWModifyDuration {
+		err = fmt.Errorf("forcerow has been opened, reset s3 migration after %v",
+			time.Unix(volumeInfo.ForceROWModifyTime+ForceROWModifyDuration, 0).Format(proto.TimeFormat))
+		return
+	}
+	if !volumeInfo.ForceROW {
+		err = fmt.Errorf("please open forcerow first")
+		return
+	}
+	return
+}
+
+func checkS3BucketExist(smartRules string, volumeInfo *proto.SimpleVolView) (err error) {
+	if !strings.Contains(smartRules, proto.MediumS3Name) {
+		return
+	}
+	if volumeInfo.BoundBucket != nil && len(volumeInfo.BoundBucket.EndPoint) == 0 || len(volumeInfo.BoundBucket.BucketName) == 0 {
+		err = fmt.Errorf("s3 configuration does not exist")
+		return
+	}
+	s3Config := volumeInfo.BoundBucket
+	s3Client := s3.NewS3Client(s3Config.Region, s3Config.EndPoint, s3Config.AccessKey, s3Config.SecretAccessKey, false)
+	var exist bool
+	exist, err = s3Client.CheckBucketExist(context.Background(), s3Config.BucketName)
+	if err != nil {
+		return
+	}
+	if !exist {
+		err = fmt.Errorf("bucket(%v) is not exist", s3Config.BucketName)
 	}
 	return
 }

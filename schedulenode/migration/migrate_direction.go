@@ -3,10 +3,12 @@ package migration
 type MigrateDirection uint8
 
 const (
-	SSDTOHDDFILEMIGRATE MigrateDirection = iota
-	HDDTOSSDFILEMIGRATE
-	COMPACTFILEMIGRATE
-	S3FILEMIGRATE
+	NoneFileMigrate      MigrateDirection = iota
+	SSDToHDDFileMigrate
+	HDDToSSDFileMigrate
+	CompactFileMigrate
+	S3FileMigrate
+	ReverseS3FileMigrate // s3回迁
 )
 
 const (
@@ -15,12 +17,16 @@ const (
 
 func (m MigrateDirection) String() string {
 	switch m {
-	case SSDTOHDDFILEMIGRATE:
-		return "SsdToHddFileMigrate"
-	case HDDTOSSDFILEMIGRATE:
-		return "HddToSsdFileMigrate"
-	case COMPACTFILEMIGRATE:
+	case NoneFileMigrate:
+		return "NoneFileMigrate"
+	case SSDToHDDFileMigrate:
+		return "SSDToHDDFileMigrate"
+	case HDDToSSDFileMigrate:
+		return "HDDToSSDFileMigrate"
+	case CompactFileMigrate:
 		return "CompactFileMigrate"
+	case S3FileMigrate:
+		return "S3FileMigrate"
 	}
-	return "S3FileMigrate"
+	return "ReverseS3FileMigrate"
 }

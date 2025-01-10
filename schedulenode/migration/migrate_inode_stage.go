@@ -26,7 +26,7 @@ func (s migrateInodeStage) String() string {
 	case CheckCanMigrate:
 		return "CheckCanMigrate"
 	case ReadAndWriteEkData:
-		return "ReadAndWriteEkData"
+		return "ReadAndWriteDataNode"
 	case MetaMergeExtents:
 		return "MetaMergeExtents"
 	case InodeMigStopped:

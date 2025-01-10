@@ -1,6 +1,7 @@
 package migration
 
 import (
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data"
 	"strings"
 	"testing"
@@ -17,7 +18,10 @@ var volume *VolumeInfo
 func TestNewVolumeInfo(t *testing.T) {
 	var err error
 	mcc := &ControlConfig{InodeCheckStep: 100, InodeConcurrent: 10, MinEkLen: 2, MinInodeSize: 1, MaxEkAvgSize: 32}
-	if volume, err = NewVolumeInfo(ClusterName, LtptestVolume, strings.Split(LtptestMaster, ","), mcc, data.Normal, nil, nil, nil); err != nil {
+	getMigrationConfig := func(cluster, volName string) (volumeConfig proto.MigrationConfig) {
+		return proto.MigrationConfig{}
+	}
+	if volume, err = NewVolumeInfo(ClusterName, LtptestVolume, strings.Split(LtptestMaster, ","), mcc, data.Normal, nil, nil, getMigrationConfig); err != nil {
 		t.Fatalf("NewVolumeInfo should not hava err, but err:%v", err)
 	}
 }

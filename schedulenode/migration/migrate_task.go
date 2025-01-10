@@ -376,10 +376,9 @@ func (migTask *MigrateTask) getInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err
 	return
 }
 
-func (migTask *MigrateTask) getInodeMigDirection(inodeInfo *proto.InodeInfo) (migDirection MigrateDirection, err error) {
+func (migTask *MigrateTask) getInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigrateDirection, err error) {
 	vol := migTask.vol
 	policies, exist := vol.GetLayerPolicies(vol.ClusterName, vol.Name)
-	migDirection = HDDTOSSDFILEMIGRATE
 	if !exist {
 		err = fmt.Errorf("getLayerPolicies does not exist, cluster(%v) volume(%v) mp(%v)", vol.ClusterName, vol.Name, migTask.mpId)
 		return
@@ -391,25 +390,57 @@ func (migTask *MigrateTask) getInodeMigDirection(inodeInfo *proto.InodeInfo) (mi
 			break
 		}
 		if policyInodeATime.TimeType == proto.InodeAccessTimeTypeTimestamp {
-			if int64(inodeInfo.AccessTime) < policyInodeATime.TimeValue &&
-				int64(inodeInfo.ModifyTime) < policyInodeATime.TimeValue {
-				migDirection = SSDTOHDDFILEMIGRATE
+			isToColdMedium := timeStampAgo(inodeInfo, policyInodeATime)
+			migDir = convertMigrateDirection(policyInodeATime, isToColdMedium)
+			if isToColdMedium {
 				break
 			}
 		}
 		if policyInodeATime.TimeType == proto.InodeAccessTimeTypeDays {
-			if time.Now().Unix()-int64(inodeInfo.AccessTime) > policyInodeATime.TimeValue*24*60*60 &&
-				time.Now().Unix()-int64(inodeInfo.ModifyTime) > policyInodeATime.TimeValue*24*60*60 {
-				migDirection = SSDTOHDDFILEMIGRATE
+			isToColdMedium := daysAgo(inodeInfo, policyInodeATime)
+			migDir = convertMigrateDirection(policyInodeATime, isToColdMedium)
+			if isToColdMedium {
 				break
 			}
 		}
 		if policyInodeATime.TimeType == proto.InodeAccessTimeTypeSec {
-			if time.Now().Unix()-int64(inodeInfo.AccessTime) > policyInodeATime.TimeValue &&
-				time.Now().Unix()-int64(inodeInfo.ModifyTime) > policyInodeATime.TimeValue {
-				migDirection = SSDTOHDDFILEMIGRATE
+			isToColdMedium := secondsAgo(inodeInfo, policyInodeATime)
+			migDir = convertMigrateDirection(policyInodeATime, isToColdMedium)
+			if isToColdMedium {
 				break
 			}
+		}
+	}
+	return
+}
+
+func timeStampAgo(inodeInfo *proto.InodeInfo, policyInodeATime *proto.LayerPolicyInodeATime) bool {
+	return int64(inodeInfo.AccessTime) < policyInodeATime.TimeValue &&
+		int64(inodeInfo.ModifyTime) < policyInodeATime.TimeValue
+}
+
+func daysAgo(inodeInfo *proto.InodeInfo, policyInodeATime *proto.LayerPolicyInodeATime) bool {
+	return time.Now().Unix()-int64(inodeInfo.AccessTime) > policyInodeATime.TimeValue*24*60*60 &&
+		time.Now().Unix()-int64(inodeInfo.ModifyTime) > policyInodeATime.TimeValue*24*60*60
+}
+
+func secondsAgo(inodeInfo *proto.InodeInfo, policyInodeATime *proto.LayerPolicyInodeATime) bool {
+	return time.Now().Unix()-int64(inodeInfo.AccessTime) > policyInodeATime.TimeValue &&
+		time.Now().Unix()-int64(inodeInfo.ModifyTime) > policyInodeATime.TimeValue
+}
+
+func convertMigrateDirection(policyInodeATime *proto.LayerPolicyInodeATime, isToColdMedium bool) (migDir MigrateDirection) {
+	if policyInodeATime.TargetMedium == proto.MediumHDD {
+		if isToColdMedium {
+			migDir = SSDToHDDFileMigrate
+		} else {
+			migDir = HDDToSSDFileMigrate
+		}
+	} else if policyInodeATime.TargetMedium == proto.MediumS3 {
+		if isToColdMedium {
+			migDir = S3FileMigrate
+		} else {
+			migDir = ReverseS3FileMigrate
 		}
 	}
 	return

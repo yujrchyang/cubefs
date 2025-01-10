@@ -24,7 +24,7 @@ var task = &proto.Task{
 	WorkerAddr: "127.0.0.1:17321",
 }
 
-func TestGetMpInfo(t *testing.T) {
+func getMpInfo(t *testing.T) {
 	time.Sleep(time.Minute * 2)
 	migTask = NewMigrateTask(task, masterClient, vol)
 	err := migTask.GetMpInfo()
@@ -35,7 +35,7 @@ func TestGetMpInfo(t *testing.T) {
 }
 
 func TestGetProfPort(t *testing.T) {
-	TestGetMpInfo(t)
+	getMpInfo(t)
 	err := migTask.GetProfPort()
 	if err != nil {
 		assert.FailNowf(t, err.Error(), "GetProfPort err(%v)", err)

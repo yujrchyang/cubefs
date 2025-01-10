@@ -269,7 +269,7 @@ func (w *Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView 
 		newTask := proto.NewDataTask(proto.WorkerTypeInodeMigration, vol.ClusterId, vol.Name, 0, mp.PartitionID, FileMigrateOpen)
 		var exist bool
 		if exist, _, err = w.ContainMPTask(newTask, runningTasks); err != nil || exist {
-			log.LogErrorf("FileMigrationWorker CreateMpTask ContainMPTask failed, cluster(%v), volume(%v) exist(%v), err(%v)",
+			log.LogWarnf("FileMigrationWorker CreateMpTask ContainMPTask failed, cluster(%v), volume(%v) exist(%v), err(%v)",
 				vol.ClusterId, vol.Name, exist, err)
 			continue
 		}
@@ -312,7 +312,7 @@ func (w *Worker) checkCanCreateTask(key string) (canCreate bool) {
 	if v, ok := w.volumeTaskPos.Load(key); ok {
 		mpId = v.(uint64)
 	}
-	if mpId == 0 && time.Now().Unix()-lastTaskTime < TaskTimeInterval{
+	if mpId == 0 && time.Now().Unix()-lastTaskTime < TaskTimeInterval {
 		log.LogInfof("last task time create file migrate task time is too short, volume(%v)", key)
 		return false
 	}
@@ -348,7 +348,7 @@ func (w *Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMigV
 		newTask := proto.NewDataTask(workerType, cluster, vol.Name, 0, mp.PartitionID, vol.CompactTag.String())
 		var exist bool
 		if exist, _, err = w.ContainMPTask(newTask, runningTasks); err != nil || exist {
-			log.LogErrorf("CompactWorker CreateMpTask ContainMPTask failed, cluster(%v), volume(%v) exist(%v), err(%v)",
+			log.LogWarnf("CompactWorker CreateMpTask ContainMPTask failed, cluster(%v), volume(%v) exist(%v), err(%v)",
 				cluster, vol.Name, exist, err)
 			continue
 		}
@@ -630,6 +630,10 @@ func (w *Worker) loadSmartVolume() {
 						SsdDirs:        vc.SsdDirs,
 						MigrationBack:  vc.MigrationBack,
 						DataPartitions: dpView.DataPartitions,
+						BoundBucket:    volInfo.BoundBucket,
+					}
+					if smartVolume.BoundBucket == nil {
+						smartVolume.BoundBucket = &proto.BoundBucketInfo{}
 					}
 					if _, ok = clusterVolumes[vc.ClusterName]; !ok {
 						clusterVolumes[vc.ClusterName] = make(map[string]*proto.SmartVolume)

@@ -2,8 +2,10 @@ package migration
 
 import (
 	"crypto/md5"
+	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/s3"
 	"hash/crc32"
 	"io"
 	"os"
@@ -28,6 +30,8 @@ const (
 	clusterName   = "chubaofs01"
 	ltptestVolume = "ltptest"
 	ltptestMaster = "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010"
+	size1M        = 1 * 1024 * 1024
+	size5M        = 5 * 1024 * 1024
 	size10M       = 10 * 1024 * 1024
 	size128M      = 128 * 1024 * 1024
 	size512M      = 512 * 1024 * 1024
@@ -39,11 +43,21 @@ var (
 )
 
 func init() {
-	vol = &VolumeInfo{}
+	vol = &VolumeInfo{
+		GetMigrationConfig: func(cluster, volName string) (volumeConfig proto.MigrationConfig) {
+			return proto.MigrationConfig{
+				Region:    region,
+				Endpoint:  endPoint,
+				AccessKey: accessKey,
+				SecretKey: secretKey,
+				Bucket:    bucketName,
+			}
+		},
+	}
+	vol.ClusterName = clusterName
 	vol.Name = ltptestVolume
 	nodes := strings.Split(ltptestMaster, ",")
-	mcc := &ControlConfig{}
-	err := vol.Init(clusterName, ltptestVolume, nodes, mcc, data.Normal)
+	err := vol.Init(nodes, data.Normal)
 	if err != nil {
 		panic(fmt.Sprintf("vol.Init, err:%v", err))
 	}
@@ -57,54 +71,107 @@ func init() {
 	}
 }
 
-func getInodeATimePolicies(cluster, volName string) (layerPolicies []interface{}, exist bool) {
-	exist = true
-	lp := &proto.LayerPolicyInodeATime{
-		ClusterId:  clusterName,
-		VolumeName: ltptestVolume,
-		OriginRule: "inodeAccessTime:sec:15:hdd",
-		TimeType:   3,
-		// TimeType = 1, inode should be migrated if inode access time is earlier then this value
-		// TimeType = 2, inode should be migrated if the days since inode be accessed is more then this value
-		TimeValue:    15,
-		TargetMedium: 2,
-	}
-	layerPolicies = append(layerPolicies, lp)
-	return
-}
-
 var clusterInfo = &ClusterInfo{
 	Name:         clusterName,
 	MasterClient: master.NewMasterClient(strings.Split(ltptestMaster, ","), false),
 }
 
+type LayerPolicyMeta struct {
+	TimeType     int8
+	TimeValue    int64
+	TargetMedium proto.MediumType
+}
+
 func TestSetInodeMigDirection(t *testing.T) {
-	vol.GetLayerPolicies = getInodeATimePolicies
-	mpOperation := &MigrateTask{
-		vol:  vol,
-		mpId: 1,
-	}
-	inodeOperation := &MigrateInode{
-		mpOp: mpOperation,
-		inodeInfo: &proto.InodeInfo{
-			AccessTime: proto.CubeFSTime(time.Now().Unix() - 100),
-			ModifyTime: proto.CubeFSTime(time.Now().Unix() - 100),
+	layerPolicyMetas := []LayerPolicyMeta{
+		{
+			TimeType:     proto.InodeAccessTimeTypeSec,
+			TimeValue:    15,
+			TargetMedium: proto.MediumHDD,
+		},
+		{
+			TimeType:     proto.InodeAccessTimeTypeDays,
+			TimeValue:    15,
+			TargetMedium: proto.MediumHDD,
+		},
+		{
+			TimeType:     proto.InodeAccessTimeTypeTimestamp,
+			TimeValue:    15,
+			TargetMedium: proto.MediumHDD,
+		},
+		{
+			TimeType:     proto.InodeAccessTimeTypeSec,
+			TimeValue:    15,
+			TargetMedium: proto.MediumS3,
+		},
+		{
+			TimeType:     proto.InodeAccessTimeTypeDays,
+			TimeValue:    15,
+			TargetMedium: proto.MediumS3,
+		},
+		{
+			TimeType:     proto.InodeAccessTimeTypeTimestamp,
+			TimeValue:    15,
+			TargetMedium: proto.MediumS3,
 		},
 	}
-	var (
-		migDir MigrateDirection
-		err    error
-	)
-	if migDir, err = inodeOperation.mpOp.getInodeMigDirection(inodeOperation.inodeInfo); err != nil {
-		assert.FailNow(t, err.Error())
-		return
+	for _, policyMeta := range layerPolicyMetas {
+		vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+			exist = true
+			lp := &proto.LayerPolicyInodeATime{
+				TimeType:     policyMeta.TimeType,
+				TimeValue:    policyMeta.TimeValue,
+				TargetMedium: policyMeta.TargetMedium,
+			}
+			layerPolicies = append(layerPolicies, lp)
+			return
+		}
+		mpOperation := &MigrateTask{
+			vol:  vol,
+			mpId: 1,
+		}
+		inodeOperation := &MigrateInode{
+			mpOp: mpOperation,
+			inodeInfo: &proto.InodeInfo{
+				AccessTime: proto.CubeFSTime(0),
+				ModifyTime: proto.CubeFSTime(0),
+			},
+		}
+		var (
+			migDir MigrateDirection
+			err    error
+		)
+		if migDir, err = inodeOperation.mpOp.getInodeMigDirection(inodeOperation.inodeInfo); err != nil {
+			assert.FailNow(t, err.Error())
+		}
+		if policyMeta.TargetMedium == proto.MediumHDD {
+			assert.Equal(t, SSDToHDDFileMigrate, migDir)
+		}
+		if policyMeta.TargetMedium == proto.MediumS3 {
+			assert.Equal(t, S3FileMigrate, migDir)
+		}
+		inodeOperation = &MigrateInode{
+			mpOp: mpOperation,
+			inodeInfo: &proto.InodeInfo{
+				AccessTime: proto.CubeFSTime(time.Now().Unix()),
+				ModifyTime: proto.CubeFSTime(time.Now().Unix()),
+			},
+		}
+		if migDir, err = inodeOperation.mpOp.getInodeMigDirection(inodeOperation.inodeInfo); err != nil {
+			assert.FailNow(t, err.Error())
+		}
+		if policyMeta.TargetMedium == proto.MediumHDD {
+			assert.Equal(t, HDDToSSDFileMigrate, migDir)
+		}
+		if policyMeta.TargetMedium == proto.MediumS3 {
+			assert.Equal(t, ReverseS3FileMigrate, migDir)
+		}
 	}
-	assert.Equal(t, SSDTOHDDFILEMIGRATE, migDir)
 }
 
 func TestGetSSSDEkSegment(t *testing.T) {
 	inodeOperation := new(MigrateInode)
-	inodeOperation.migDirection = SSDTOHDDFILEMIGRATE
+	inodeOperation.migDirection = SSDToHDDFileMigrate
 	inodeOperation.vol = &VolumeInfo{
 		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
 			if dpId == 0 {
@@ -172,7 +239,7 @@ func TestGetSSSDEkSegment(t *testing.T) {
 
 func TestLookupMaxSegment(t *testing.T) {
 	inodeOperation := new(MigrateInode)
-	inodeOperation.migDirection = COMPACTFILEMIGRATE
+	inodeOperation.migDirection = CompactFileMigrate
 	inodeOperation.vol = &VolumeInfo{
 		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
 			return proto.MediumSSDName
@@ -208,11 +275,215 @@ func TestLookupMaxSegment(t *testing.T) {
 	})
 	inodeOperation.extentMaxIndex = make(map[string]int, 0)
 	inodeOperation.initExtentMaxIndex()
-	fmt.Println(inodeOperation.extentMaxIndex)
+	expectExtentMaxIndex := make(map[string]int, 0)
+	expectExtentMaxIndex["1#100"] = 4
+	expectExtentMaxIndex["2#100"] = 5
+	expectExtentMaxIndex["3#100"] = 6
+	for key, value := range inodeOperation.extentMaxIndex {
+		assert.Equal(t, expectExtentMaxIndex[key], value)
+	}
 	if err := inodeOperation.LookupEkSegment(); err != nil {
 		assert.FailNow(t, err.Error())
 	}
-	fmt.Printf("startIndex:%v endIndex:%v\n", inodeOperation.startIndex, inodeOperation.endIndex)
+	assert.Equal(t, 0, inodeOperation.startIndex)
+	assert.Equal(t, 7, inodeOperation.endIndex)
+}
+
+func TestLookupEkS3MigDirection(t *testing.T) {
+	inodeOperation := new(MigrateInode)
+	inodeOperation.migDirection = S3FileMigrate
+	inodeOperation.vol = &VolumeInfo{
+		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
+			return proto.MediumSSDName
+		}}
+	inodeOperation.extents = append(inodeOperation.extents, proto.ExtentKey{
+		PartitionId: uint64(1),
+		ExtentId:    100,
+		Size:        1 * 1024 * 1024,
+		CRC:         0,
+	}, proto.ExtentKey{
+		PartitionId: uint64(2),
+		ExtentId:    100,
+		Size:        1 * 1024 * 1024,
+		CRC:         0,
+	}, proto.ExtentKey{
+		PartitionId: uint64(3),
+		ExtentId:    100,
+		Size:        1 * 1024 * 1024,
+		CRC:         0,
+	})
+	inodeOperation.extentMaxIndex = make(map[string]int, 0)
+	inodeOperation.initExtentMaxIndex()
+	expectExtentMaxIndex := make(map[string]int, 0)
+	expectExtentMaxIndex["1#100"] = 0
+	expectExtentMaxIndex["2#100"] = 1
+	expectExtentMaxIndex["3#100"] = 2
+	for key, value := range inodeOperation.extentMaxIndex {
+		assert.Equal(t, expectExtentMaxIndex[key], value)
+	}
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 0, inodeOperation.startIndex)
+	assert.Equal(t, 3, inodeOperation.endIndex)
+	inodeOperation.extents[1].CRC = 1
+	inodeOperation.lastMigEkIndex = 0
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 0, inodeOperation.startIndex)
+	assert.Equal(t, 1, inodeOperation.endIndex)
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 2, inodeOperation.startIndex)
+	assert.Equal(t, 3, inodeOperation.endIndex)
+	inodeOperation.migDirection = ReverseS3FileMigrate
+	inodeOperation.lastMigEkIndex = 0
+	inodeOperation.startIndex = 0
+	inodeOperation.endIndex = 0
+	inodeOperation.extents[0].CRC = 1
+	inodeOperation.extents[1].CRC = 1
+	inodeOperation.extents[2].CRC = 1
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 0, inodeOperation.startIndex)
+	assert.Equal(t, 3, inodeOperation.endIndex)
+	inodeOperation.lastMigEkIndex = 0
+	inodeOperation.startIndex = 0
+	inodeOperation.endIndex = 0
+	inodeOperation.extents[1].CRC = 0
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 0, inodeOperation.startIndex)
+	assert.Equal(t, 1, inodeOperation.endIndex)
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 2, inodeOperation.startIndex)
+	assert.Equal(t, 3, inodeOperation.endIndex)
+}
+
+func TestLookupEkHddMigDirection(t *testing.T) {
+	inodeOperation := new(MigrateInode)
+	inodeOperation.migDirection = SSDToHDDFileMigrate
+	inodeOperation.vol = &VolumeInfo{
+		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
+			return proto.MediumSSDName
+		}}
+	inodeOperation.extents = append(inodeOperation.extents, proto.ExtentKey{
+		PartitionId: uint64(1),
+		ExtentId:    100,
+		Size:        1 * 1024 * 1024,
+		CRC:         0,
+	}, proto.ExtentKey{
+		PartitionId: uint64(2),
+		ExtentId:    100,
+		Size:        1 * 1024 * 1024,
+		CRC:         0,
+	}, proto.ExtentKey{
+		PartitionId: uint64(3),
+		ExtentId:    100,
+		Size:        1 * 1024 * 1024,
+		CRC:         0,
+	}, proto.ExtentKey{
+		PartitionId: uint64(3),
+		ExtentId:    101,
+		Size:        128 * 1024 * 1024,
+		CRC:         0,
+	})
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 0, inodeOperation.startIndex)
+	assert.Equal(t, 3, inodeOperation.endIndex)
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 3, inodeOperation.startIndex)
+	assert.Equal(t, 4, inodeOperation.endIndex)
+	inodeOperation.vol = &VolumeInfo{
+		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
+			return proto.MediumHDDName
+		}}
+	inodeOperation.lastMigEkIndex = 0
+	inodeOperation.startIndex = 0
+	inodeOperation.endIndex = 0
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 0, inodeOperation.startIndex)
+	assert.Equal(t, 0, inodeOperation.endIndex)
+	inodeOperation.migDirection = HDDToSSDFileMigrate
+	inodeOperation.lastMigEkIndex = 0
+	inodeOperation.startIndex = 0
+	inodeOperation.endIndex = 0
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 0, inodeOperation.startIndex)
+	assert.Equal(t, 3, inodeOperation.endIndex)
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, 3, inodeOperation.startIndex)
+	assert.Equal(t, 4, inodeOperation.endIndex)
+}
+
+func TestLookupEkSegmentNoTinyExtent(t *testing.T) {
+	inodeOperation := new(MigrateInode)
+	inodeOperation.migDirection = SSDToHDDFileMigrate
+	inodeOperation.vol = &VolumeInfo{
+		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
+			return proto.MediumSSDName
+		}}
+	inodeOperation.extents = append(inodeOperation.extents, proto.ExtentKey{
+		PartitionId: uint64(1),
+		ExtentId:    1,
+		Size:        1 * 1024 * 1024,
+	}, proto.ExtentKey{
+		PartitionId: uint64(2),
+		ExtentId:    100,
+		Size:        1 * 1024 * 1024,
+	}, proto.ExtentKey{
+		PartitionId: uint64(3),
+		ExtentId:    3,
+		Size:        1 * 1024 * 1024,
+	}, proto.ExtentKey{
+		PartitionId: uint64(1),
+		ExtentId:    100,
+		Size:        125 * 1024 * 1024,
+	}, proto.ExtentKey{
+		PartitionId: uint64(1),
+		ExtentId:    100,
+		Size:        1 * 1024 * 1024,
+	}, proto.ExtentKey{
+		PartitionId: uint64(2),
+		ExtentId:    100,
+		Size:        1 * 1024 * 1024,
+	}, proto.ExtentKey{
+		PartitionId: uint64(3),
+		ExtentId:    5,
+		Size:        1 * 1024 * 1024,
+	})
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, LockExtents, inodeOperation.stage)
+	assert.Equal(t, 1, inodeOperation.startIndex)
+	assert.Equal(t, 2, inodeOperation.endIndex)
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, LockExtents, inodeOperation.stage)
+	assert.Equal(t, 3, inodeOperation.startIndex)
+	assert.Equal(t, 6, inodeOperation.endIndex)
+	if err := inodeOperation.LookupEkSegment(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, InodeMigStopped, inodeOperation.stage)
 }
 
 func TestLockAndUnlockExtent(t *testing.T) {
@@ -325,8 +596,15 @@ func TestCheckReplicaCrcValid(t *testing.T) {
 	}
 	mpOp.vol.NormalDataClient = ec
 	mpOp.vol.MetaClient = mw
+	mpOp.vol.ControlConfig = &ControlConfig{
+		DirectWrite: true,
+	}
 	ctx := context.Background()
-	writeRowFileByMountDir(size512M, testFile)
+	err := writeRowFileByMountDir(size512M, testFile)
+	if err != nil {
+		assert.FailNow(t, err.Error())
+		return
+	}
 	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
@@ -361,11 +639,12 @@ func TestCheckReplicaCrcValid(t *testing.T) {
 	subTask.migDataCrc = crc.Sum32()
 	subTask.startIndex = 0
 	subTask.endIndex = len(subTask.extents)
-	replicaCrc, err := subTask.getReplicaDataCRC()
+	migEks := subTask.extents[subTask.startIndex:subTask.endIndex]
+	replicaCrc, err := subTask.getReplicaDataCRC(migEks)
 	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
-	if err = subTask.checkReplicaCRCValid(replicaCrc); err != nil {
+	if err = subTask.checkReplicaCRCValid(replicaCrc, replicaCrc); err != nil {
 		assert.FailNow(t, err.Error())
 	}
 }
@@ -389,8 +668,15 @@ func TestCheckReplicaCrcValid2(t *testing.T) {
 	}
 	mpOp.vol.NormalDataClient = ec
 	mpOp.vol.MetaClient = mw
+	mpOp.vol.ControlConfig = &ControlConfig{
+		DirectWrite: true,
+	}
 	ctx := context.Background()
-	writeRowFileByMountDir(size512M, testFile)
+	err := writeRowFileByMountDir(size512M, testFile)
+	if err != nil {
+		assert.FailNow(t, err.Error())
+		return
+	}
 	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
@@ -406,21 +692,193 @@ func TestCheckReplicaCrcValid2(t *testing.T) {
 		assert.FailNow(t, err.Error())
 		return
 	}
-	subTask.migDirection = SSDTOHDDFILEMIGRATE
+	subTask.migDirection = SSDToHDDFileMigrate
 	_ = subTask.OpenFile()
 	subTask.startIndex = 0
 	subTask.endIndex = len(subTask.extents)
-	err = subTask.ReadAndWriteEkData()
+	err = subTask.ReadAndWriteDataNode()
 	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
-	replicaCrc, err := subTask.getReplicaDataCRC()
+	migEks := subTask.extents[subTask.startIndex:subTask.endIndex]
+	oldReplicaCrc, err := subTask.getReplicaDataCRC(migEks)
 	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
-	if err = subTask.checkReplicaCRCValid(replicaCrc); err != nil {
+	copyNewEks := make([]proto.ExtentKey, len(subTask.newEks))
+	for i, ek := range subTask.newEks {
+		copyNewEks[i] = *ek
+	}
+	newReplicaCrc, err := subTask.getReplicaDataCRC(copyNewEks)
+	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
+	if err = subTask.checkReplicaCRCValid(oldReplicaCrc, newReplicaCrc); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+}
+
+func TestCheckS3CrcValid(t *testing.T) {
+	tests := []struct{
+		name     string
+		fileSize int
+	}{
+		{"1M", size1M},
+		{"2M", size1M*2},
+		{"5M", size5M},
+		{"6M", size5M+size1M},
+		{"128M", size128M},
+		{"129M", size128M+size1M},
+		{"512M", size512M},
+		{"1024M", size512M*2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			readDatanodeWriteS3(tt.fileSize, t)
+		})
+	}
+}
+
+func readDatanodeWriteS3(fileSize int, t *testing.T) {
+	setVolForceRow(true)
+	defer setVolForceRow(false)
+
+	testFile := fmt.Sprintf("/cfs/mnt/TestReadWriteS3_%v", fileSize)
+	file, _ := os.Create(testFile)
+	defer func() {
+		file.Close()
+		os.Remove(testFile)
+		log.LogFlush()
+	}()
+	subTask := createMigrateInode(fileSize, testFile, t)
+
+	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+		exist = true
+		lp := &proto.LayerPolicyInodeATime{
+			ClusterId:    clusterName,
+			VolumeName:   ltptestVolume,
+			OriginRule:   "inodeAccessTime:sec:15:s3",
+			TimeType:     1,
+			TimeValue:    15,
+			TargetMedium: 5,
+		}
+		layerPolicies = append(layerPolicies, lp)
+		return
+	}
+	if err := subTask.Init(); err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	_ = subTask.OpenFile()
+	for i := range subTask.extents {
+		subTask.startIndex = i
+		subTask.endIndex = i+1
+		err := subTask.ReadDataNodeAndWriteToS3()
+		if err != nil {
+			assert.FailNow(t, err.Error())
+		}
+		migEks := subTask.extents[subTask.startIndex:subTask.endIndex]
+		oldReplicaCrc, err := subTask.getReplicaDataCRC(migEks)
+		if err != nil {
+			assert.FailNow(t, err.Error())
+		}
+		newEks := make([]proto.ExtentKey, len(subTask.newEks))
+		for i, ek := range subTask.newEks {
+			newEks[i] = *ek
+		}
+		assert.Equal(t, migEks[0].FileOffset, newEks[i].FileOffset)
+		assert.Equal(t, migEks[0].PartitionId, newEks[i].PartitionId)
+		assert.Equal(t, migEks[0].ExtentId, newEks[i].ExtentId)
+		assert.Equal(t, migEks[0].Size, newEks[i].Size)
+		newReplicaCrc, err := subTask.getS3DataCRC([]proto.ExtentKey{newEks[i]})
+		if err != nil {
+			assert.FailNow(t, err.Error())
+		}
+		if err = subTask.checkReplicaCRCValid(oldReplicaCrc, newReplicaCrc); err != nil {
+			assert.FailNow(t, err.Error())
+		}
+	}
+	// test ReadS3AndWriteToDataNode
+	subTask.extents = nil
+	for _, ek := range subTask.newEks {
+		subTask.extents = append(subTask.extents, *ek)
+	}
+	subTask.newEks = nil
+	subTask.migDirection = ReverseS3FileMigrate
+	for i := range subTask.extents {
+		subTask.startIndex = i
+		subTask.endIndex = i+1
+		newEksLen := len(subTask.newEks)
+		err := subTask.ReadS3AndWriteToDataNode()
+		if err != nil {
+			assert.FailNow(t, err.Error())
+		}
+		migEks := subTask.extents[subTask.startIndex:subTask.endIndex]
+		oldReplicaCrc, err := subTask.getS3DataCRC(migEks)
+		newEks := make([]proto.ExtentKey, len(subTask.newEks))
+		for i, ek := range subTask.newEks {
+			newEks[i] = *ek
+		}
+		assert.Equal(t, migEks[0].FileOffset, newEks[newEksLen].FileOffset)
+		var newEkSize uint32
+		for _, ek := range newEks[newEksLen:] {
+			newEkSize += ek.Size
+		}
+		assert.Equal(t, migEks[0].Size, newEkSize)
+		newReplicaCrc, err := subTask.getReplicaDataCRC(newEks[newEksLen:])
+		if err != nil {
+			assert.FailNow(t, err.Error())
+		}
+		if err = subTask.checkReplicaCRCValid(oldReplicaCrc, newReplicaCrc); err != nil {
+			assert.FailNow(t, err.Error())
+		}
+	}
+}
+
+func createMigrateInode(fileSize int, testFile string, t *testing.T) (inodeOp *MigrateInode) {
+	mw, ec, _ := creatHelper(t)
+	stat := getFileStat(t, testFile)
+	inodeInfo := &proto.InodeInfo{
+		Inode: stat.Ino,
+	}
+	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.S3Client = s3.NewS3Client(region, endPoint, accessKey, secretKey, false)
+	mpOp.vol.Bucket = ltptestVolume
+	mpOp.vol.MetaClient = mw
+	mpOp.vol.ControlConfig = &ControlConfig{
+		DirectWrite: true,
+	}
+
+	ctx := context.Background()
+	err := writeRowFileByMountDir(fileSize, testFile)
+	if err != nil {
+		assert.FailNow(t, err.Error())
+		return
+	}
+	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
+	migInode := &proto.InodeExtents{
+		Inode:   inodeInfo,
+		Extents: extents,
+	}
+	_, mpID, err := util_sdk.LocateInode(stat.Ino, mpOp.mc, ltptestVolume)
+	if err != nil {
+		t.Fatalf("LocateInode(%v) info failed, err(%v)", stat.Ino, err)
+	}
+	mpOp.mpId = mpID
+	err = mpOp.GetMpInfo()
+	if err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	err = mpOp.GetProfPort()
+	if err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeInodeMigration}
+	inodeOp, err = NewMigrateInode(mpOp, migInode)
+	if err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	return
 }
 
 func TestDeleteOldExtents(t *testing.T) {
@@ -506,7 +964,7 @@ func TestCalcCmpExtents(t *testing.T) {
 		return
 	}
 	_ = inodeOperation.Init()
-	inodeOperation.migDirection = COMPACTFILEMIGRATE
+	inodeOperation.migDirection = CompactFileMigrate
 	results := [][3]int{
 		{0, 20, int(LockExtents)},
 		{0, 20, int(InodeMigStopped)},
@@ -545,15 +1003,110 @@ func TestInitTask(t *testing.T) {
 		return
 	}
 	subTask.Init()
-	if subTask.statisticsInfo.MigEkCnt != 0 {
-		t.Fatalf("inode task Initial CmpEkCnt expect:%v, actual:%v", 0, subTask.statisticsInfo.MigEkCnt)
+	assert.Equal(t, subTask.migDirection, CompactFileMigrate)
+	assert.Equal(t, subTask.statisticsInfo.MigEkCnt, uint64(0))
+	assert.Equal(t, subTask.statisticsInfo.MigCnt, uint64(0))
+	assert.Equal(t, subTask.stage, OpenFile)
+}
+
+func TestInitFileMigrate(t *testing.T) {
+	testFile := fmt.Sprintf("/cfs/mnt/TestReadWriteS3_%v", size1M)
+	file, _ := os.Create(testFile)
+	defer func() {
+		file.Close()
+		os.Remove(testFile)
+		log.LogFlush()
+	}()
+	migInode := createMigrateInode(size1M, testFile, t)
+
+	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+		exist = true
+		lp := &proto.LayerPolicyInodeATime{
+			OriginRule:   "inodeAccessTime:xxx:15:s3",
+			TimeType:     proto.InodeAccessTimeTypeReserved,
+			TimeValue:    15,
+			TargetMedium: proto.MediumS3,
+		}
+		layerPolicies = append(layerPolicies, lp)
+		return
 	}
-	if subTask.statisticsInfo.MigCnt != 0 {
-		t.Fatalf("inode task Initial CmpCnt expect:%v, actual:%v", 0, subTask.statisticsInfo.MigCnt)
+	err := migInode.initFileMigrate()
+	if err != nil {
+		assert.FailNow(t, err.Error())
 	}
-	if subTask.stage != OpenFile {
-		t.Fatalf("inode task Initial stage expect:%v, actual:%v", OpenFile, subTask.stage)
+	assert.Equal(t, NoneFileMigrate, migInode.migDirection)
+	assert.Equal(t, InodeMigStopped, migInode.stage)
+	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+		exist = true
+		lp := &proto.LayerPolicyInodeATime{
+			OriginRule:   "inodeAccessTime:timestamp:0:hdd",
+			TimeType:     proto.InodeAccessTimeTypeTimestamp,
+			TimeValue:    0,
+			TargetMedium: proto.MediumHDD,
+		}
+		layerPolicies = append(layerPolicies, lp)
+		return
 	}
+	mpOp.vol.GetMigrationConfig = func(cluster, volName string) (volumeConfig proto.MigrationConfig) {
+		return proto.MigrationConfig{
+			MigrationBack: noMigrationBack,
+		}
+	}
+	err = migInode.initFileMigrate()
+	if err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, HDDToSSDFileMigrate, migInode.migDirection)
+	assert.Equal(t, InodeMigStopped, migInode.stage)
+	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+		exist = true
+		lp := &proto.LayerPolicyInodeATime{
+			OriginRule:   "inodeAccessTime:timestamp:32526344848:hdd",
+			TimeType:     proto.InodeAccessTimeTypeTimestamp,
+			TimeValue:    32526344848,
+			TargetMedium: proto.MediumHDD,
+		}
+		layerPolicies = append(layerPolicies, lp)
+		return
+	}
+	err = migInode.initFileMigrate()
+	if err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, SSDToHDDFileMigrate, migInode.migDirection)
+	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+		exist = true
+		lp := &proto.LayerPolicyInodeATime{
+			OriginRule:   "inodeAccessTime:timestamp:32526344848:s3",
+			TimeType:     proto.InodeAccessTimeTypeTimestamp,
+			TimeValue:    32526344848,
+			TargetMedium: proto.MediumS3,
+		}
+		layerPolicies = append(layerPolicies, lp)
+		return
+	}
+	err = migInode.initFileMigrate()
+	if err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, S3FileMigrate, migInode.migDirection)
+	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+		exist = true
+		lp := &proto.LayerPolicyInodeATime{
+			OriginRule:   "inodeAccessTime:timestamp:0:s3",
+			TimeType:     proto.InodeAccessTimeTypeTimestamp,
+			TimeValue:    0,
+			TargetMedium: proto.MediumS3,
+		}
+		layerPolicies = append(layerPolicies, lp)
+		return
+	}
+	err = migInode.initFileMigrate()
+	if err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	assert.Equal(t, ReverseS3FileMigrate, migInode.migDirection)
+	assert.Equal(t, InodeMigStopped, migInode.stage)
 }
 
 func TestOpenFile(t *testing.T) {
@@ -590,6 +1143,9 @@ func TestOpenFile(t *testing.T) {
 		Extents: []proto.ExtentKey{},
 	}
 	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.ControlConfig = &ControlConfig{
+		DirectWrite: true,
+	}
 	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
 	subTask, _ := NewMigrateInode(mpOp, cmpInode)
 	_ = subTask.Init()
@@ -650,7 +1206,7 @@ func TestReadAndWriteEkData(t *testing.T) {
 	for i := 0; i < len(extents); i++ {
 		subTask.startIndex = i
 		subTask.endIndex = len(extents) - 1
-		err := subTask.ReadAndWriteEkData()
+		err := subTask.ReadAndWriteDataNode()
 		if err != nil {
 			cmpEksCnt := subTask.endIndex - subTask.startIndex + 1
 			if len(subTask.newEks) >= cmpEksCnt {
@@ -696,7 +1252,7 @@ func TestReadAndWriteEkData2(t *testing.T) {
 	subTask.endIndex = len(extents)
 	_ = subTask.Init()
 	_ = subTask.OpenFile()
-	err := subTask.ReadAndWriteEkData()
+	err := subTask.ReadAndWriteDataNode()
 	if err != nil {
 		cmpEksCnt := subTask.endIndex - subTask.startIndex + 1
 		if len(subTask.newEks) >= cmpEksCnt {
@@ -744,8 +1300,7 @@ func TestMetaMergeExtents(t *testing.T) {
 	mpOp.vol.SetMetaClient(mw)
 	ctx := context.Background()
 	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.NormalDataClient)
-	gen, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
-	//fmt.Printf("before merge gen:%v\n", gen)
+	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
 		Extents: extents,
@@ -753,14 +1308,16 @@ func TestMetaMergeExtents(t *testing.T) {
 	// 根据inode获取mpId，再根据mpId获取info
 	_, mpID, err := util_sdk.LocateInode(stat.Ino, mpOp.mc, ltptestVolume)
 	if err != nil {
-		t.Fatalf("LocateInode(%v) info failed, err(%v)", stat.Ino, err)
+		assert.FailNow(t, err.Error())
+		return
 	}
 	mpOp.mpId = mpID
 	var mpInfo *proto.MetaPartitionInfo
 	cMP := &meta.MetaPartition{PartitionID: mpID}
 	mpInfo, err = mpOp.mc.ClientAPI().GetMetaPartition(mpID, ltptestVolume)
 	if err != nil {
-		t.Fatalf("get meta partition(%v) info failed, err(%v)", mpID, err)
+		assert.FailNow(t, err.Error())
+		return
 	}
 	for _, replica := range mpInfo.Replicas {
 		cMP.Members = append(cMP.Members, replica.Addr)
@@ -778,7 +1335,8 @@ func TestMetaMergeExtents(t *testing.T) {
 	mpOp.leader = cMP.GetLeaderAddr()
 	err = mpOp.GetProfPort()
 	if err != nil {
-		t.Fatalf("GetProfPort(%v) info failed, err(%v)", mpID, err)
+		assert.FailNow(t, err.Error())
+		return
 	}
 	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
 	subTask, _ := NewMigrateInode(mpOp, cmpInode)
@@ -786,24 +1344,18 @@ func TestMetaMergeExtents(t *testing.T) {
 	subTask.endIndex = len(extents)
 	_ = subTask.Init()
 	_ = subTask.OpenFile()
-	err = subTask.ReadAndWriteEkData()
+	subTask.searchMaxExtentIndex(subTask.startIndex, &subTask.endIndex)
+	err = subTask.ReadAndWriteDataNode()
 	if err != nil {
 		assert.FailNow(t, err.Error())
 		return
 	}
 	afterCompactEkLen := len(subTask.newEks)
 	err = subTask.MetaMergeExtents()
-	if err != nil {
-		t.Fatalf("inode task MetaMergeExtents failed: err(%v)", err)
-	}
-	gen, _, extents, _ = mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
-	fmt.Printf("after merge gen:%v\n", gen)
-	if len(extents) != afterCompactEkLen {
-		t.Fatalf("inode task MetaMergeExtents failed: extents length, expect:%v, actual:%v", afterCompactEkLen, len(extents))
-	}
-	if subTask.stage != LookupEkSegment {
-		t.Fatalf("inode task Initial stage expect:%v, actual:%v", LookupEkSegment, subTask.stage)
-	}
+	assert.Nil(t, err)
+	_, _, extents, _ = mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
+	assert.Equal(t, len(extents), afterCompactEkLen)
+	assert.Equal(t, LookupEkSegment, subTask.stage)
 }
 
 func TestMetaMergeExtentsError(t *testing.T) {
@@ -862,7 +1414,7 @@ func TestMetaMergeExtentsError(t *testing.T) {
 	subTask.endIndex = len(extents) - 2
 	_ = subTask.Init()
 	_ = subTask.OpenFile()
-	_ = subTask.ReadAndWriteEkData()
+	_ = subTask.ReadAndWriteDataNode()
 	// modify file
 	_, _, _ = ec.Write(ctx, stat.Ino, 0, []byte{1, 2, 3, 4, 5}, false)
 	if err := ec.Flush(ctx, stat.Ino); err != nil {
@@ -914,7 +1466,7 @@ func TestCompareReplicasInodeEksEqual(t *testing.T) {
 	mpOp.vol.NormalDataClient = ec
 	mpOp.vol.MetaClient = mw
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size128M, mpOp.vol.GetDataClient())
+	writeRowFileBySdk(t, ctx, stat.Ino, size128M, mpOp.vol.DataClient)
 	mps, err := clusterInfo.MasterClient.ClientAPI().GetMetaPartitions(ltptestVolume)
 	if err != nil {
 		assert.FailNowf(t, err.Error(), "", "")
@@ -945,7 +1497,7 @@ func TestCompareReplicasInodeEksEqual(t *testing.T) {
 		return
 	}
 	mpOp.profPort = leaderNodeInfo.ProfPort
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.GetDataClient())
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
 	cmpInode := &proto.InodeExtents{
 		Inode: inodeInfo,
 	}
@@ -955,16 +1507,227 @@ func TestCompareReplicasInodeEksEqual(t *testing.T) {
 	assert.True(t, isEqual, "")
 }
 
-func writeRowFileByMountDir(size int, filePath string) {
+func TestInitExtentMaxIndex(t *testing.T) {
+	items := [][]uint64{{1, 1}, {1, 1}, {2, 1}, {9, 10}, {1, 1}, {2, 1}, {3, 1}, {9, 10}, {7, 6}}
+	migInode := &MigrateInode{
+		extentMaxIndex: make(map[string]int),
+	}
+	for _, item := range items {
+		migInode.extents = append(migInode.extents, proto.ExtentKey{
+			PartitionId: item[0],
+			ExtentId:    item[1],
+		})
+	}
+	migInode.initExtentMaxIndex()
+	assert.Equal(t, 4, migInode.extentMaxIndex[dpIdExtentIdKey(1, 1)])
+	assert.Equal(t, 5, migInode.extentMaxIndex[dpIdExtentIdKey(2, 1)])
+	assert.Equal(t, 6, migInode.extentMaxIndex[dpIdExtentIdKey(3, 1)])
+	assert.Equal(t, 7, migInode.extentMaxIndex[dpIdExtentIdKey(9, 10)])
+	assert.Equal(t, 8, migInode.extentMaxIndex[dpIdExtentIdKey(7, 6)])
+}
+
+func TestSearchMaxExtentIndex(t *testing.T) {
+	items := [][]uint64{{1, 1}, {1, 1}, {2, 1}, {9, 10}, {1, 1}, {2, 1}, {3, 1}, {9, 10}, {7, 6}}
+	migInode := &MigrateInode{
+		extentMaxIndex: make(map[string]int),
+	}
+	for _, item := range items {
+		migInode.extents = append(migInode.extents, proto.ExtentKey{
+			PartitionId: item[0],
+			ExtentId:    item[1],
+		})
+	}
+	migInode.initExtentMaxIndex()
+	var start, end = 0, 1
+	migInode.searchMaxExtentIndex(start, &end)
+	assert.Equal(t, 8, end)
+	end = 2
+	migInode.searchMaxExtentIndex(start, &end)
+	assert.Equal(t, 8, end)
+	end = 3
+	migInode.searchMaxExtentIndex(start, &end)
+	assert.Equal(t, 8, end)
+	end = 4
+	migInode.searchMaxExtentIndex(start, &end)
+	assert.Equal(t, 8, end)
+	end = 5
+	migInode.searchMaxExtentIndex(start, &end)
+	assert.Equal(t, 8, end)
+	end = 6
+	migInode.searchMaxExtentIndex(start, &end)
+	assert.Equal(t, 8, end)
+	end = 7
+	migInode.searchMaxExtentIndex(start, &end)
+	assert.Equal(t, 8, end)
+	end = 8
+	migInode.searchMaxExtentIndex(start, &end)
+	assert.Equal(t, 8, end)
+	end = 9
+	migInode.searchMaxExtentIndex(start, &end)
+	assert.Equal(t, 9, end)
+}
+
+func TestCheckEkSegmentHasHole(t *testing.T) {
+	items := [][]uint64{{1, 1}, {2, 2}, {4, 1}, {9, 10}, {19, 1}, {20, 1}, {22, 5}, {27, 10}, {37, 6}}
+	migInode := &MigrateInode{}
+	for _, item := range items {
+		migInode.extents = append(migInode.extents, proto.ExtentKey{
+			FileOffset: item[0],
+			Size:       uint32(item[1]),
+		})
+	}
+	var start, end = 0, 1
+	fileOffset, hasHold := migInode.checkEkSegmentHasHole(start, end)
+	assert.Equal(t, uint64(0), fileOffset)
+	assert.Equal(t, false, hasHold)
+	start, end = 0, 2
+	fileOffset, hasHold = migInode.checkEkSegmentHasHole(start, end)
+	assert.Equal(t, uint64(0), fileOffset)
+	assert.Equal(t, false, hasHold)
+	start, end = 0, 3
+	fileOffset, hasHold = migInode.checkEkSegmentHasHole(start, end)
+	assert.Equal(t, uint64(0), fileOffset)
+	assert.Equal(t, false, hasHold)
+	start, end = 0, 4
+	fileOffset, hasHold = migInode.checkEkSegmentHasHole(start, end)
+	assert.Equal(t, uint64(9), fileOffset)
+	assert.Equal(t, true, hasHold)
+	start, end = 0, 5
+	fileOffset, hasHold = migInode.checkEkSegmentHasHole(start, end)
+	assert.Equal(t, uint64(9), fileOffset)
+	assert.Equal(t, true, hasHold)
+	start, end = 0, 9
+	fileOffset, hasHold = migInode.checkEkSegmentHasHole(start, end)
+	assert.Equal(t, uint64(9), fileOffset)
+	assert.Equal(t, true, hasHold)
+}
+
+func TestCheckEkSegmentHasTinyExtent(t *testing.T) {
+	items := []uint64{100, 101, 105, 200, 300, 60, 900, 35}
+	migInode := &MigrateInode{}
+	for _, item := range items {
+		migInode.extents = append(migInode.extents, proto.ExtentKey{
+			ExtentId: item,
+		})
+	}
+	var start, end = 0, 1
+	tinyExtentId, hasTinyExtent := migInode.checkEkSegmentHasTinyExtent(start, end)
+	assert.Equal(t, uint64(0), tinyExtentId)
+	assert.Equal(t, false, hasTinyExtent)
+	start, end = 0, 2
+	tinyExtentId, hasTinyExtent = migInode.checkEkSegmentHasTinyExtent(start, end)
+	assert.Equal(t, uint64(0), tinyExtentId)
+	assert.Equal(t, false, hasTinyExtent)
+	start, end = 2, 5
+	tinyExtentId, hasTinyExtent = migInode.checkEkSegmentHasTinyExtent(start, end)
+	assert.Equal(t, uint64(0), tinyExtentId)
+	assert.Equal(t, false, hasTinyExtent)
+	start, end = 2, 6
+	tinyExtentId, hasTinyExtent = migInode.checkEkSegmentHasTinyExtent(start, end)
+	assert.Equal(t, uint64(60), tinyExtentId)
+	assert.Equal(t, true, hasTinyExtent)
+	start, end = 2, 7
+	tinyExtentId, hasTinyExtent = migInode.checkEkSegmentHasTinyExtent(start, end)
+	assert.Equal(t, uint64(60), tinyExtentId)
+	assert.Equal(t, true, hasTinyExtent)
+	start, end = 2, 8
+	tinyExtentId, hasTinyExtent = migInode.checkEkSegmentHasTinyExtent(start, end)
+	assert.Equal(t, uint64(60), tinyExtentId)
+	assert.Equal(t, true, hasTinyExtent)
+	start, end = 7, 8
+	tinyExtentId, hasTinyExtent = migInode.checkEkSegmentHasTinyExtent(start, end)
+	assert.Equal(t, uint64(35), tinyExtentId)
+	assert.Equal(t, true, hasTinyExtent)
+}
+
+func TestCheckEkSegmentHasS3Extent(t *testing.T) {
+	migInode := &MigrateInode{}
+	extentCnt := 10
+	s3Index1 := 5
+	s3Index2 := 9
+	for i := 0; i < extentCnt; i++ {
+		if i == s3Index1 || i == s3Index2 {
+			migInode.extents = append(migInode.extents, proto.ExtentKey{
+				CRC: uint32(proto.S3Extent),
+			})
+		} else {
+			migInode.extents = append(migInode.extents, proto.ExtentKey{
+				CRC: uint32(proto.CubeFSExtent),
+			})
+		}
+	}
+	var start, end = 0, s3Index1
+	hasS3Extent := migInode.checkEkSegmentHasS3Extent(start, end)
+	assert.Equal(t, false, hasS3Extent)
+	start, end = s3Index1, 6
+	hasS3Extent = migInode.checkEkSegmentHasS3Extent(start, end)
+	assert.Equal(t, true, hasS3Extent)
+	start, end = 6, s3Index2
+	hasS3Extent = migInode.checkEkSegmentHasS3Extent(start, end)
+	assert.Equal(t, false, hasS3Extent)
+	start, end = s3Index2, 10
+	hasS3Extent = migInode.checkEkSegmentHasS3Extent(start, end)
+	assert.Equal(t, true, hasS3Extent)
+	start, end = 0, extentCnt
+	hasS3Extent = migInode.checkEkSegmentHasS3Extent(start, end)
+	assert.Equal(t, true, hasS3Extent)
+}
+
+func TestGetDelExtentKeys(t *testing.T) {
+	items := [][]uint64{{1, 1}, {1, 1}, {2, 1}, {9, 10}, {1, 1}, {2, 1}, {3, 1}, {9, 10}, {7, 6}}
+	migInode := &MigrateInode{
+		extentMaxIndex: make(map[string]int),
+	}
+	for _, item := range items {
+		migInode.extents = append(migInode.extents, proto.ExtentKey{
+			PartitionId: item[0],
+			ExtentId:    item[1],
+		})
+	}
+	migInode.initExtentMaxIndex()
+	var start, end = 0, 1
+	migInode.searchMaxExtentIndex(start, &end)
+	migInode.endIndex = end
+	migEks := migInode.extents[start:end]
+	canDeleteEks := migInode.getDelExtentKeys(migEks)
+	assert.Equal(t, len(migEks), len(canDeleteEks))
+	assert.Equal(t, 8, len(canDeleteEks))
+	migInode.extents = append(migInode.extents, proto.ExtentKey{
+		PartitionId: 1,
+		ExtentId:    1,
+	})
+	start, end = 0, 8
+	migInode.endIndex = end
+	migEks = migInode.extents[start:end]
+	canDeleteEks = migInode.getDelExtentKeys(migEks)
+	assert.Equal(t, 5, len(canDeleteEks))
+	assert.NotEqual(t, len(canDeleteEks), len(migEks))
+	migInode.initExtentMaxIndex()
+	migInode.searchMaxExtentIndex(start, &end)
+	migInode.endIndex = end
+	assert.Equal(t, 10, end)
+	migEks = migInode.extents[start:end]
+	canDeleteEks = migInode.getDelExtentKeys(migEks)
+	assert.Equal(t, len(migEks), len(canDeleteEks))
+	assert.Equal(t, 10, len(canDeleteEks))
+}
+
+func writeRowFileByMountDir(size int, filePath string) (err error) {
 	file, _ := os.Create(filePath)
 	defer func() {
 		file.Close()
 	}()
-	bufStr := strings.Repeat("A", size)
-	bytes := []byte(bufStr)
-	_, _ = file.WriteAt(bytes, 0)
-	mStr := strings.Repeat("b", 10)
-	mBytes := []byte(mStr)
+	var randomBytes []byte
+	randomBytes, err = generateRandomBytes(size)
+	if err != nil {
+		return
+	}
+	_, _ = file.WriteAt(randomBytes, 0)
+	var mBytes []byte
+	mBytes, err = generateRandomBytes(10)
+	if err != nil {
+		return
+	}
 	for i := 0; i < size; i++ {
 		remain := i % (1024 * 1024)
 		if remain == 0 {
@@ -975,18 +1738,30 @@ func writeRowFileByMountDir(size int, filePath string) {
 	return
 }
 
+func generateRandomBytes(n int) ([]byte, error) {
+	b := make([]byte, n)
+	if _, err := rand.Read(b); err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
 func writeRowFileBySdk(t *testing.T, ctx context.Context, inoId uint64, size int, ec *data.ExtentClient) {
-	bufStr := strings.Repeat("A", size)
-	bytes := []byte(bufStr)
+	bytes, err := generateRandomBytes(size)
+	if err != nil {
+		t.Fatalf("generateRandomString failed: size(%v), err(%v)", size, err)
+	}
 	if err := ec.OpenStream(inoId, false, false); err != nil {
 		t.Fatalf("writeRowFileBySdk OpenStream failed: inodeId(%v), err(%v)", inoId, err)
 	}
-	_, _, err := ec.Write(ctx, inoId, 0, bytes, false)
+	_, _, err = ec.Write(ctx, inoId, 0, bytes, false)
 	if err != nil {
 		t.Fatalf("writeRowFileBySdk SyncWrite failed: inodeId(%v), err(%v)", inoId, err)
 	}
-	mStr := strings.Repeat("b", 10)
-	mBytes := []byte(mStr)
+	mBytes, err := generateRandomBytes(10)
+	if err != nil {
+		t.Fatalf("generateRandomString failed: size(%v), err(%v)", size, err)
+	}
 	for i := 0; i < size; i++ {
 		remain := i % (1024 * 1024)
 		if remain == 0 {
@@ -1051,3 +1826,4 @@ func getMasterClient() *master.MasterClient {
 	masterClient := master.NewMasterClient(strings.Split(ltptestMaster, ","), false)
 	return masterClient
 }
+
