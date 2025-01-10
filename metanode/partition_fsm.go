@@ -1199,7 +1199,7 @@ func (mp *metaPartition) HandleLeaderChange(leader uint64) {
 func (mp *metaPartition) initWaitApplyCompleteCtx() {
 	mp.waitCtxMu.Lock()
 	mp.lastValidIndexOnLeaderChange = atomic.LoadUint64(&mp.lastValidRaftLogIndex)
-	if mp.waitCtx != nil && mp.applyID < mp.lastValidIndexOnLeaderChange {
+	if mp.waitCtx == nil && mp.applyID < mp.lastValidIndexOnLeaderChange {
 		mp.waitCtx, mp.waitCancelFunc = context.WithCancel(context.Background())
 	}
 	mp.waitCtxMu.Unlock()
