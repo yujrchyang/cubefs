@@ -2,6 +2,10 @@ package migration
 
 import (
 	"fmt"
+	"sort"
+	"strings"
+	"time"
+
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/schedulenode/worker"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -9,9 +13,6 @@ import (
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
-	"sort"
-	"strings"
-	"time"
 )
 
 const (
@@ -584,6 +585,106 @@ func GetCompactVolumes(cluster string, mc *master.MasterClient) (cvv *proto.Data
 type FileMigrateVolumeView struct {
 	Cluster      string
 	SmartVolumes map[string]*proto.SmartVolume
+}
+
+func (w *Worker) loadSmartVolume_bjguoweilong() {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+
+	for {
+		log.LogDebugf("[loadSmartVolume] FileMigrationWorker smart volume loader is running, workerId(%v), workerAddr(%v)",
+			w.WorkerId, w.WorkerAddr)
+
+		select {
+		case <-timer.C:
+			if err := w.loadAndProcessVolumes(); err != nil {
+				log.LogErrorf("[loadSmartVolume] FileMigrationWorker smart volume loader has exception, err(%v)", err)
+			}
+			timer.Reset(time.Second * DefaultVolumeLoadDuration)
+		case <-w.StopC:
+			return
+		}
+	}
+}
+
+func (w *Worker) loadAndProcessVolumes() error {
+	metrics := exporter.NewModuleTP(proto.MonitorSmartLoadSmartVolumeInode)
+	defer metrics.Set(nil)
+
+	clusterVolumes := make(map[string]map[string]*proto.SmartVolume)
+	volumeConfigs := loadAllMigrationConfig("", "")
+
+	for _, vc := range volumeConfigs {
+		mc, ok := w.getMasterClient(vc.ClusterName)
+		if !ok {
+			log.LogErrorf("cannot [getMasterClient] cluster(%v) ", vc.ClusterName)
+			continue
+		}
+
+		smartVolume, err := w.createSmartVolume(mc, vc)
+		if err != nil {
+			log.LogErrorf("[createSmartVolume] cluster(%v) vol(%v) err(%v)", vc.ClusterName, vc.VolName, err)
+			continue
+		}
+
+		if _, ok := clusterVolumes[vc.ClusterName]; !ok {
+			clusterVolumes[vc.ClusterName] = make(map[string]*proto.SmartVolume)
+		}
+		clusterVolumes[vc.ClusterName][vc.VolName] = smartVolume
+	}
+
+	w.storeVolumeViews(clusterVolumes)
+	return nil
+}
+
+func (w *Worker) createSmartVolume(mc *master.MasterClient, vc *proto.MigrationConfig) (*proto.SmartVolume, error) {
+	volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(vc.VolName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get volume simple info: %v", err)
+	}
+
+	dpView, err := mc.ClientAPI().GetDataPartitions(vc.VolName, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get data partitions: %v", err)
+	}
+
+	smartVolume := &proto.SmartVolume{
+		ClusterId:      vc.ClusterName,
+		Name:           vc.VolName,
+		Owner:          volInfo.Owner,
+		StoreMode:      volInfo.DefaultStoreMode,
+		Smart:          vc.Smart,
+		SmartRules:     strings.Split(vc.SmartRules, ","),
+		HddDirs:        vc.HddDirs,
+		SsdDirs:        vc.SsdDirs,
+		MigrationBack:  vc.MigrationBack,
+		DataPartitions: dpView.DataPartitions,
+		BoundBucket:    volInfo.BoundBucket,
+	}
+
+	if smartVolume.BoundBucket == nil {
+		smartVolume.BoundBucket = &proto.BoundBucketInfo{}
+	}
+
+	return smartVolume, nil
+}
+
+func (w *Worker) storeVolumeViews(clusterVolumes map[string]map[string]*proto.SmartVolume) {
+	for cluster, volumes := range clusterVolumes {
+		cvv := &FileMigrateVolumeView{
+			Cluster:      cluster,
+			SmartVolumes: volumes,
+		}
+
+		for volume, vv := range cvv.SmartVolumes {
+			log.LogInfof("smart info volume:%v vv:%v", volume, vv.SmartRules)
+			if !w.parseLayerPolicy(vv) {
+				delete(cvv.SmartVolumes, volume)
+			}
+		}
+
+		w.volumeView.Store(cluster, cvv)
+	}
 }
 
 func (w *Worker) loadSmartVolume() {

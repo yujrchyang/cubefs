@@ -1,10 +1,11 @@
 package migration
 
 import (
-	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/sdk/master"
 	"strings"
 	"testing"
+
+	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/master"
 )
 
 func TestGetMpView(t *testing.T) {
