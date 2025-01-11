@@ -337,6 +337,153 @@ func (migInode *MigrateInode) LookupEkSegment() (err error) {
 	return
 }
 
+func (migInode *MigrateInode) LookupEkSegment_bjguoweilong() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
+	defer metrics.Set(err)
+
+	defer func() {
+		if err != nil {
+			log.LogErrorf("LookupEkSegment inode[%v] %v:%v", migInode.name, InodeLookupEkFailed, err.Error())
+			migInode.MigTaskCloseStream()
+			migInode.DealActionErr(InodeLookupEkCode, err)
+		}
+		handleCompactFileMigrate(migInode)
+	}()
+
+	srcMediumType := getSrcMediumType(migInode.migDirection)
+	if srcMediumType == "" {
+		err = fmt.Errorf("migrate direction invalid(%v)", migInode.migDirection)
+		return err
+	}
+
+	start, end, migSize, migCnt, findFirstSSd := 0, 0, uint64(0), uint64(0), false
+	for i := migInode.lastMigEkIndex; i < len(migInode.extents); i++ {
+		migInode.lastMigEkIndex = i + 1
+		ek := migInode.extents[i]
+
+		candidateMediumType := getCandidateMediumType(migInode, srcMediumType, ek)
+		log.LogDebugf("lookup inode(%v) srcMediumType(%v) candidateMediumType(%v) ek(%v)", migInode.name, srcMediumType, candidateMediumType, ek)
+
+		if !isValidExtent(ek, srcMediumType, candidateMediumType) {
+			if start < end {
+				break
+			}
+			continue
+		}
+
+		if !findFirstSSd {
+			findFirstSSd = true
+			start = i
+		}
+
+		end = i + 1
+		if err := checkForHole(migInode, i, start, end); err != nil {
+			return err
+		}
+
+		migCnt++
+		migSize += uint64(ek.Size)
+		if migSize > uint64(limitSize*1024*1024) {
+			end--
+			migInode.lastMigEkIndex--
+			migCnt--
+			migSize -= uint64(ek.Size)
+			break
+		}
+	}
+
+	if end == 0 {
+		migInode.stage = InodeMigStopped
+		return
+	}
+
+	migInode.searchMaxExtentIndex(start, &end)
+	if err := validateEkSegment(migInode, start, end); err != nil {
+		return err
+	}
+
+	migInode.startIndex = start
+	migInode.endIndex = end
+
+	if migInode.startIndex >= migInode.endIndex {
+		migInode.stage = InodeMigStopped
+	} else {
+		migInode.stage = LockExtents
+		log.LogDebugf("LookupEkSegment ino:%v startIndex:%v endIndex:%v migType:%v", migInode.name, migInode.startIndex, migInode.endIndex, migInode.migDirection)
+	}
+
+	return
+}
+
+func getSrcMediumType(migDirection MigrateDirection) string {
+	switch migDirection {
+	case CompactFileMigrate, S3FileMigrate:
+		return NoneMediumType
+	case HDDToSSDFileMigrate:
+		return proto.MediumHDDName
+	case SSDToHDDFileMigrate:
+		return proto.MediumSSDName
+	case ReverseS3FileMigrate:
+		return proto.MediumS3Name
+	default:
+		return ""
+	}
+}
+
+func getCandidateMediumType(migInode *MigrateInode, srcMediumType string, ek proto.ExtentKey) string {
+	if srcMediumType == NoneMediumType {
+		return ""
+	}
+	if srcMediumType == proto.MediumS3Name {
+		return strings.ToLower(proto.ExtentType(ek.CRC).String())
+	}
+	return strings.ToLower(migInode.vol.GetDpMediumType(migInode.vol.ClusterName, migInode.vol.Name, ek.PartitionId))
+}
+
+func isValidExtent(ek proto.ExtentKey, srcMediumType, candidateMediumType string) bool {
+	return !proto.IsTinyExtent(ek.ExtentId) && ((srcMediumType == NoneMediumType && ek.CRC == uint32(proto.CubeFSExtent)) || candidateMediumType == srcMediumType)
+}
+
+func checkForHole(migInode *MigrateInode, i, start, end int) error {
+	if start < end && i > 0 {
+		prevEk := migInode.extents[i-1]
+		currEk := migInode.extents[i]
+		if prevEk.FileOffset+uint64(prevEk.Size) < currEk.FileOffset {
+			return fmt.Errorf("lookup ino:%v fileOffset:%v migType:%v has a hole", migInode.name, currEk.FileOffset, migInode.migDirection)
+		}
+	}
+	return nil
+}
+
+func validateEkSegment(migInode *MigrateInode, start, end int) error {
+	if fileOffset, hasHole := migInode.checkEkSegmentHasHole(start, end); hasHole {
+		return fmt.Errorf("checkEkSegmentHasHole ino:%v fileOffset:%v migDirection:%v has a hole", migInode.name, fileOffset, migInode.migDirection)
+	}
+	if tinyExtentId, hasTinyExtent := migInode.checkEkSegmentHasTinyExtent(start, end); hasTinyExtent {
+		return fmt.Errorf("checkEkSegmentHasTinyExtent ino:%v tinyExtentId:%v migDirection:%v can't have tiny extent", migInode.name, tinyExtentId, migInode.migDirection)
+	}
+	if migInode.migDirection != ReverseS3FileMigrate && migInode.checkEkSegmentHasS3Extent(start, end) {
+		return fmt.Errorf("checkEkSegmentHasS3Extent ino:%v ek start:%v end:%v migDirection:%v can't have s3 extent", migInode.name, start, end, migInode.migDirection)
+	}
+	if migInode.migDirection == ReverseS3FileMigrate && migInode.checkEkSegmentHasCubeFSExtent(start, end) {
+		return fmt.Errorf("checkEkSegmentHasCubeFSExtent ino:%v ek start:%v end:%v migDirection:%v can't have cubeFS extent", migInode.name, start, end, migInode.migDirection)
+	}
+	return nil
+}
+
+func handleCompactFileMigrate(migInode *MigrateInode) {
+	if migInode.migDirection == CompactFileMigrate {
+		if migInode.endIndex-migInode.startIndex != 1 {
+			return
+		}
+		if migInode.endIndex >= len(migInode.extents) {
+			migInode.stage = InodeMigStopped
+		} else {
+			migInode.stage = LookupEkSegment
+		}
+	}
+}
+
 func (migInode *MigrateInode) LockExtents() (err error) {
 	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
 	defer metrics.Set(err)
@@ -606,21 +753,21 @@ func (migInode *MigrateInode) handleError(action string, err *error) {
 
 func (migInode *MigrateInode) ProcessReadAndWriteData(ctx context.Context, ek proto.ExtentKey, fileOffset uint64, size uint64, crc hash.Hash32, writeTotal *int) error {
 	var (
-		firstWrite = true
-		readSize   uint64 = unit.BlockSize
-		buff              = make([]byte, readSize)
-		writeFileOffset   = fileOffset
-		readStartOffset   uint64
-		totalSize         uint64
-		dp                *data.DataPartition
-		newEk             *proto.ExtentKey
+		firstWrite             = true
+		readSize        uint64 = unit.BlockSize
+		buff                   = make([]byte, readSize)
+		writeFileOffset        = fileOffset
+		readStartOffset uint64
+		totalSize       uint64
+		dp              *data.DataPartition
+		newEk           *proto.ExtentKey
 	)
 
 	switch migInode.migDirection {
 	case ReverseS3FileMigrate:
-		readStartOffset, totalSize =  ek.ExtentOffset, uint64(ek.Size)
+		readStartOffset, totalSize = ek.ExtentOffset, uint64(ek.Size)
 	default:
-		readStartOffset, totalSize =  fileOffset, size
+		readStartOffset, totalSize = fileOffset, size
 	}
 
 	readOffset := readStartOffset
@@ -706,7 +853,6 @@ func (migInode *MigrateInode) writeData(ctx context.Context, dp **data.DataParti
 	return nil
 }
 
-
 func (migInode *MigrateInode) readDataFromS3(ctx context.Context, partitionId, extentId, readOffset, readSize uint64, buff []byte) (readN int, err error) {
 	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.inodeInfo.Inode, partitionId, extentId)
 	readN, err = migInode.vol.S3Client.GetObject(ctx, migInode.vol.Bucket, s3Key, readOffset, readSize, buff)
@@ -776,7 +922,7 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 	}
 	var (
 		beforeReplicateDataCRC []uint32
-		afterReplicateDataCRC []uint32
+		afterReplicateDataCRC  []uint32
 	)
 	beforeReplicateDataCRC, afterReplicateDataCRC, err = migInode.getMigBeforeAfterDataCRC(migEks, newEks)
 	if err != nil {
@@ -1009,7 +1155,7 @@ func (migInode *MigrateInode) getS3DataCRC(extentKeys []proto.ExtentKey) (s3Data
 		offset := ek.ExtentOffset
 		totalSize := uint64(ek.Size)
 		readOffset := offset
-		var readSize   uint64
+		var readSize uint64
 
 		remainingSize := totalSize
 		for remainingSize > 0 {
