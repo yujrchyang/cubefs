@@ -510,6 +510,59 @@ func (w *Worker) loadVolumeInfo() {
 	}
 }
 
+func (w *Worker) loadCompactVolume_bjguoweilong() {
+	timer := time.NewTimer(0)
+	defer timer.Stop()
+
+	for {
+		log.LogDebugf("[loadCompactVolume] compact volume loader is running, workerType(%v), localIp(%v)", w.WorkerType, w.LocalIp)
+
+		select {
+		case <-timer.C:
+			if err := w.loadAndStoreCompactVolumes(); err != nil {
+				log.LogErrorf("[loadCompactVolume] compact volume loader has exception, err(%v)", err)
+			}
+			timer.Reset(time.Second * DefaultVolumeLoadDuration)
+		case <-w.StopC:
+			return
+		}
+	}
+}
+
+func (w *Worker) loadAndStoreCompactVolumes() error {
+	metrics := exporter.NewModuleTP(proto.MonitorCompactLoadCompactVolume)
+	defer metrics.Set(nil)
+
+	clusterVolumes := make(map[string][]*proto.DataMigVolume)
+	migrationConfigs := loadAllMigrationConfig("", "")
+
+	for _, vc := range migrationConfigs {
+		mc, ok := w.getMasterClient(vc.ClusterName)
+		if !ok {
+			continue
+		}
+
+		volInfo, err := mc.AdminAPI().GetVolumeSimpleInfo(vc.VolName)
+		if err != nil {
+			continue
+		}
+
+		dataMigVolume := &proto.DataMigVolume{
+			Name:       vc.VolName,
+			Owner:      volInfo.Owner,
+			CompactTag: convertCompactTag(vc.Compact),
+		}
+		clusterVolumes[vc.ClusterName] = append(clusterVolumes[vc.ClusterName], dataMigVolume)
+	}
+
+	for cluster, volumes := range clusterVolumes {
+		cvv := proto.NewDataMigVolumeView(cluster, volumes)
+		w.volumeView.Store(cluster, cvv)
+	}
+
+	return nil
+}
+
 func (w *Worker) loadCompactVolume() {
 	timer := time.NewTimer(0)
 	for {
