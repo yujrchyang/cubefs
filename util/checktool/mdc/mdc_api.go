@@ -15,8 +15,8 @@ const (
 )
 
 const (
-	MDCToken = "043e7fe70e26369fae5d81a0989ea4fa"
-	AGGToken = "f5d35b09e654379aa79a9fc11899bfd1" //just for operating system aggregation query
+	MDCToken = ""
+	AGGToken = "" //just for operating system aggregation query
 	//0 - 查询分钟级数据， 1 - 查询秒级数据
 	QueryTypeMinute = 0
 	QueryTypeSecond = 1
