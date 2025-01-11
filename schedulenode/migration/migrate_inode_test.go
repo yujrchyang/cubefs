@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/s3"
 	"hash/crc32"
 	"io"
 	"os"
@@ -14,6 +13,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/cubefs/cubefs/sdk/s3"
 
 	util_sdk "github.com/cubefs/cubefs/cli/cmd/util/sdk"
 	"github.com/cubefs/cubefs/proto"
@@ -719,18 +720,18 @@ func TestCheckReplicaCrcValid2(t *testing.T) {
 }
 
 func TestCheckS3CrcValid(t *testing.T) {
-	tests := []struct{
+	tests := []struct {
 		name     string
 		fileSize int
 	}{
 		{"1M", size1M},
-		{"2M", size1M*2},
+		{"2M", size1M * 2},
 		{"5M", size5M},
-		{"6M", size5M+size1M},
+		{"6M", size5M + size1M},
 		{"128M", size128M},
-		{"129M", size128M+size1M},
+		{"129M", size128M + size1M},
 		{"512M", size512M},
-		{"1024M", size512M*2},
+		{"1024M", size512M * 2},
 	}
 
 	for _, tt := range tests {
@@ -772,7 +773,7 @@ func readDatanodeWriteS3(fileSize int, t *testing.T) {
 	_ = subTask.OpenFile()
 	for i := range subTask.extents {
 		subTask.startIndex = i
-		subTask.endIndex = i+1
+		subTask.endIndex = i + 1
 		err := subTask.ReadDataNodeAndWriteToS3()
 		if err != nil {
 			assert.FailNow(t, err.Error())
@@ -807,7 +808,7 @@ func readDatanodeWriteS3(fileSize int, t *testing.T) {
 	subTask.migDirection = ReverseS3FileMigrate
 	for i := range subTask.extents {
 		subTask.startIndex = i
-		subTask.endIndex = i+1
+		subTask.endIndex = i + 1
 		newEksLen := len(subTask.newEks)
 		err := subTask.ReadS3AndWriteToDataNode()
 		if err != nil {
@@ -1827,3 +1828,286 @@ func getMasterClient() *master.MasterClient {
 	return masterClient
 }
 
+/*
+func TestNewMigrateInode(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{}}
+
+	// 正常情况
+	migInode, err := NewMigrateInode(mpOp, inode)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if migInode == nil {
+		t.Fatal("Expected non-nil MigrateInode, got nil")
+	}
+
+	// 测试传入的 inode 为 nil
+	_, err = NewMigrateInode(mpOp, nil)
+	if err == nil {
+		t.Fatal("Expected error for nil inode, got nil")
+	}
+
+	// 测试传入的 mpOp 为 nil
+	_, err = NewMigrateInode(nil, inode)
+	if err == nil {
+		t.Fatal("Expected error for nil mpOp, got nil")
+	}
+}
+
+func TestMigrateInode_Init(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}, task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 正常情况
+	err := migInode.Init()
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// 测试 Compact 任务类型
+	mpOp.task.TaskType = proto.WorkerTypeCompact
+	err = migInode.Init()
+	if err != nil {
+		t.Fatalf("Expected no error for compact task, got %v", err)
+	}
+
+	// 测试 initFileMigrate 返回错误
+	mpOp.task.TaskType = proto.WorkerTypeInodeMigration
+	migInode.vol = nil // 强制返回错误
+	err = migInode.Init()
+	if err == nil {
+		t.Fatal("Expected error for nil volume, got nil")
+	}
+}
+
+func TestMigrateInode_LookupEkSegment(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}, task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+	}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 正常情况
+	err := migInode.LookupEkSegment()
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// 测试无效的 migDirection
+	migInode.migDirection = InvalidMigrateDirection
+	err = migInode.LookupEkSegment()
+	if err == nil {
+		t.Fatal("Expected error for invalid migDirection, got nil")
+	}
+
+	// 测试 extents 为空
+	migInode.extents = []proto.ExtentKey{}
+	err = migInode.LookupEkSegment()
+	if err == nil {
+		t.Fatal("Expected error for empty extents, got nil")
+	}
+
+	// 测试 extents 中有空洞
+	migInode.extents = []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 2048, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+	}
+	err = migInode.LookupEkSegment()
+	if err == nil {
+		t.Fatal("Expected error for hole in extents, got nil")
+	}
+}
+
+func TestMigrateInode_LockExtents(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}, task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+	}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 正常情况
+	err := migInode.LockExtents()
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// 测试 ReverseS3FileMigrate 情况
+	migInode.migDirection = ReverseS3FileMigrate
+	err = migInode.LockExtents()
+	if err != nil {
+		t.Fatalf("Expected no error for ReverseS3FileMigrate, got %v", err)
+	}
+
+	// 测试锁定失败的情况
+	migInode.extentClient = nil // 强制返回错误
+	err = migInode.LockExtents()
+	if err == nil {
+		t.Fatal("Expected error for nil extentClient, got nil")
+	}
+}
+
+func TestMigrateInode_ReadAndWriteDataNode(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}, task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+	}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 正常情况
+	err := migInode.ReadAndWriteDataNode()
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// 测试读写失败的情况
+	migInode.extentClient = nil // 强制返回错误
+	err = migInode.ReadAndWriteDataNode()
+	if err == nil {
+		t.Fatal("Expected error for nil extentClient, got nil")
+	}
+
+	// 测试 CRC 校验失败的情况
+	migInode.migDataCrc = 0 // 强制 CRC 校验失败
+	err = migInode.ReadAndWriteDataNode()
+	if err == nil {
+		t.Fatal("Expected error for CRC mismatch, got nil")
+	}
+}
+
+func TestMigrateInode_MetaMergeExtents(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}, task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+	}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 正常情况
+	err := migInode.MetaMergeExtents()
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+
+	// 测试合并失败的情况
+	migInode.vol.MetaClient = nil // 强制返回错误
+	err = migInode.MetaMergeExtents()
+	if err == nil {
+		t.Fatal("Expected error for nil metaClient, got nil")
+	}
+
+	// 测试 extents 为空的情况
+	migInode.extents = []proto.ExtentKey{}
+	err = migInode.MetaMergeExtents()
+	if err == nil {
+		t.Fatal("Expected error for empty extents, got nil")
+	}
+}
+
+func TestMigrateInode_checkEkSegmentHasHole(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}, task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 2048, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+	}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 测试有空洞的情况
+	fileOffset, hasHole := migInode.checkEkSegmentHasHole(0, 2)
+	if !hasHole {
+		t.Fatal("Expected hole, got no hole")
+	}
+	if fileOffset != 2048 {
+		t.Fatalf("Expected fileOffset 2048, got %v", fileOffset)
+	}
+
+	// 测试没有空洞的情况
+	migInode.extents = []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+	}
+	fileOffset, hasHole = migInode.checkEkSegmentHasHole(0, 2)
+	if hasHole {
+		t.Fatal("Expected no hole, got hole")
+	}
+}
+
+func TestMigrateInode_checkEkSegmentHasTinyExtent(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}, task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+	}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 测试有 TinyExtent 的情况
+	tinyExtentId, hasTinyExtent := migInode.checkEkSegmentHasTinyExtent(0, 2)
+	if !hasTinyExtent {
+		t.Fatal("Expected TinyExtent, got no TinyExtent")
+	}
+	if tinyExtentId != 2 {
+		t.Fatalf("Expected TinyExtentId 2, got %v", tinyExtentId)
+	}
+
+	// 测试没有 TinyExtent 的情况
+	migInode.extents = []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+	}
+	tinyExtentId, hasTinyExtent = migInode.checkEkSegmentHasTinyExtent(0, 2)
+	if hasTinyExtent {
+		t.Fatal("Expected no TinyExtent, got TinyExtent")
+	}
+}
+
+func TestMigrateInode_checkEkSegmentHasS3Extent(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}, task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.S3Extent)},
+	}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 测试有 S3Extent 的情况
+	hasS3Extent := migInode.checkEkSegmentHasS3Extent(0, 2)
+	if !hasS3Extent {
+		t.Fatal("Expected S3Extent, got no S3Extent")
+	}
+
+	// 测试没有 S3Extent 的情况
+	migInode.extents = []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+	}
+	hasS3Extent = migInode.checkEkSegmentHasS3Extent(0, 2)
+	if hasS3Extent {
+		t.Fatal("Expected no S3Extent, got S3Extent")
+	}
+}
+
+func TestMigrateInode_checkEkSegmentHasCubeFSExtent(t *testing.T) {
+	mpOp := &MigrateTask{vol: &VolumeInfo{Name: "testVol"}, task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration}}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.S3Extent)},
+	}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 测试有 CubeFSExtent 的情况
+	hasCubeFSExtent := migInode.checkEkSegmentHasCubeFSExtent(0, 2)
+	if !hasCubeFSExtent {
+		t.Fatal("Expected CubeFSExtent, got no CubeFSExtent")
+	}
+
+	// 测试没有 CubeFSExtent 的情况
+	migInode.extents = []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.S3Extent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.S3Extent)},
+	}
+	hasCubeFSExtent = migInode.checkEkSegmentHasCubeFSExtent(0, 2)
+	if hasCubeFSExtent {
+		t.Fatal("Expected no CubeFSExtent, got CubeFSExtent")
+	}
+}
+*/

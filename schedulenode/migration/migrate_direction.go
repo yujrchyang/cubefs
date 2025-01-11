@@ -3,12 +3,13 @@ package migration
 type MigrateDirection uint8
 
 const (
-	NoneFileMigrate      MigrateDirection = iota
+	NoneFileMigrate MigrateDirection = iota
 	SSDToHDDFileMigrate
 	HDDToSSDFileMigrate
 	CompactFileMigrate
 	S3FileMigrate
 	ReverseS3FileMigrate // s3回迁
+	InvalidMigrateDirection
 )
 
 const (
@@ -27,6 +28,8 @@ func (m MigrateDirection) String() string {
 		return "CompactFileMigrate"
 	case S3FileMigrate:
 		return "S3FileMigrate"
+	case ReverseS3FileMigrate:
+		return "ReverseS3FileMigrate"
 	}
-	return "ReverseS3FileMigrate"
+	return "invalid migrate direction"
 }
