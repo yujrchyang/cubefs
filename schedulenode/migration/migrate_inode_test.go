@@ -697,7 +697,7 @@ func TestCheckReplicaCrcValid2(t *testing.T) {
 	_ = subTask.OpenFile()
 	subTask.startIndex = 0
 	subTask.endIndex = len(subTask.extents)
-	err = subTask.ReadAndWriteDataNode()
+	err = subTask.ReadFromDataNodeAndWriteToDataNode()
 	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
@@ -774,7 +774,7 @@ func readDatanodeWriteS3(fileSize int, t *testing.T) {
 	for i := range subTask.extents {
 		subTask.startIndex = i
 		subTask.endIndex = i + 1
-		err := subTask.ReadDataNodeAndWriteToS3()
+		err := subTask.ReadFromDataNodeAndWriteToS3()
 		if err != nil {
 			assert.FailNow(t, err.Error())
 		}
@@ -810,7 +810,7 @@ func readDatanodeWriteS3(fileSize int, t *testing.T) {
 		subTask.startIndex = i
 		subTask.endIndex = i + 1
 		newEksLen := len(subTask.newEks)
-		err := subTask.ReadS3AndWriteToDataNode()
+		err := subTask.ReadFromS3AndWriteToDataNode()
 		if err != nil {
 			assert.FailNow(t, err.Error())
 		}
@@ -1207,7 +1207,7 @@ func TestReadAndWriteEkData(t *testing.T) {
 	for i := 0; i < len(extents); i++ {
 		subTask.startIndex = i
 		subTask.endIndex = len(extents) - 1
-		err := subTask.ReadAndWriteDataNode()
+		err := subTask.ReadFromDataNodeAndWriteToDataNode()
 		if err != nil {
 			cmpEksCnt := subTask.endIndex - subTask.startIndex + 1
 			if len(subTask.newEks) >= cmpEksCnt {
@@ -1253,7 +1253,7 @@ func TestReadAndWriteEkData2(t *testing.T) {
 	subTask.endIndex = len(extents)
 	_ = subTask.Init()
 	_ = subTask.OpenFile()
-	err := subTask.ReadAndWriteDataNode()
+	err := subTask.ReadFromDataNodeAndWriteToDataNode()
 	if err != nil {
 		cmpEksCnt := subTask.endIndex - subTask.startIndex + 1
 		if len(subTask.newEks) >= cmpEksCnt {
@@ -1346,7 +1346,7 @@ func TestMetaMergeExtents(t *testing.T) {
 	_ = subTask.Init()
 	_ = subTask.OpenFile()
 	subTask.searchMaxExtentIndex(subTask.startIndex, &subTask.endIndex)
-	err = subTask.ReadAndWriteDataNode()
+	err = subTask.ReadFromDataNodeAndWriteToDataNode()
 	if err != nil {
 		assert.FailNow(t, err.Error())
 		return
@@ -1415,7 +1415,7 @@ func TestMetaMergeExtentsError(t *testing.T) {
 	subTask.endIndex = len(extents) - 2
 	_ = subTask.Init()
 	_ = subTask.OpenFile()
-	_ = subTask.ReadAndWriteDataNode()
+	_ = subTask.ReadFromDataNodeAndWriteToDataNode()
 	// modify file
 	_, _, _ = ec.Write(ctx, stat.Ino, 0, []byte{1, 2, 3, 4, 5}, false)
 	if err := ec.Flush(ctx, stat.Ino); err != nil {
