@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	DDDomain   = "open.timline.jd.com"
-	DDKey      = "00_312f283d5f0f4dde"
-	DDSecret   = "466801e6a4a64351b1586e0549005f11"
+	DDDomain   = ""
+	DDKey      = ""
+	DDSecret   = ""
 	MsgExpires = 60 * 5 // 5 min
 )
 
