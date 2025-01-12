@@ -173,9 +173,7 @@ func (s *DataNode) batchDeleteTrashExtents(w http.ResponseWriter, r *http.Reques
 	}
 	releaseCount := uint64(0)
 	for _, d := range s.space.disks {
-		for _, partition := range d.partitionMap {
-			releaseCount += partition.batchDeleteTrashExtents(keepTime)
-		}
+		releaseCount += d.deleteTrash(keepTime)
 	}
 	s.buildSuccessResp(w, fmt.Sprintf("release trash extents, release extent count: %v: ", releaseCount))
 }
@@ -1839,7 +1837,8 @@ func (s *DataNode) batchRecoverExtents(w http.ResponseWriter, r *http.Request) {
 }
 
 type SwitchCollectionPara struct {
-	DisableBlackList string `json:"disableBlackList,omitempty"`
+	DisableBlackList       string `json:"disableBlackList,omitempty"`
+	DisableAutoDeleteTrash string `json:"disableAutoDeleteTrash,omitempty"`
 }
 
 func (s *DataNode) setSettings(w http.ResponseWriter, r *http.Request) {
@@ -1876,6 +1875,18 @@ func (s *DataNode) setSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if gConnPool != nil {
 			gConnPool.DisableBlackList(isDisable)
+		}
+	}
+	if paras.DisableAutoDeleteTrash != "" {
+		var isDisable bool
+		isDisable, err = strconv.ParseBool(paras.DisableAutoDeleteTrash)
+		if err != nil {
+			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err = s.settings.Set(SettingKeyDisableAutoDeleteTrash, strconv.FormatBool(isDisable)); err != nil {
+			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
+			return
 		}
 	}
 	s.buildSuccessResp(w, fmt.Sprintf("set switch collection success"))

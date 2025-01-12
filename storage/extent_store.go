@@ -71,7 +71,7 @@ const (
 
 const (
 	IndexTrashTime = 0
-	IndexTrashSize = 1
+	IndexTrashSize = 1 // passed by trash request, only used for flush delete record, accuracy is not guaranteed
 )
 
 var (
@@ -700,10 +700,13 @@ func (s *ExtentStore) TrashExtent(extent, inode uint64, size uint32) (err error)
 	if inode != 0 && ei[Inode] != 0 && inode != ei[Inode] {
 		return NewParameterMismatchErr(fmt.Sprintf("inode mismatch: expected %v, actual %v", ei[Inode], inode))
 	}
+	if s.IsDeleted(extent) || s.IsTrashed(extent) {
+		return nil
+	}
 
 	trashTime := time.Now().Unix()
 
-	// remove extent in memory(要确保这两个操作是幂等的)
+	// remove extent in memory(确保这两个操作幂等)
 	s.cache.Del(extent)
 	s.infoStore.Delete(extent)
 
@@ -713,10 +716,10 @@ func (s *ExtentStore) TrashExtent(extent, inode uint64, size uint32) (err error)
 	extentPath := path.Join(s.dataPath, strconv.FormatUint(extent, 10))
 	newExtentFileName := ExtentTrashPrefix + strconv.FormatUint(extent, 10) + "_" + strconv.FormatUint(uint64(size), 10) + "_" + strconv.FormatUint(uint64(trashTime), 10)
 	err = os.Rename(extentPath, path.Join(s.dataPath, ExtentTrashDirName, newExtentFileName))
-	if err != nil {
-		return err
+	if err != nil && os.IsNotExist(err) {
+		err = nil
 	}
-	return
+	return err
 }
 
 // BatchDeleteTrashExtents
@@ -923,6 +926,7 @@ func (s *ExtentStore) recoverTrashExtent(extent uint64, trashTime, size uint64) 
 	_, ok := s.getExtentInfoByExtentID(extent)
 	if ok {
 		err = fmt.Errorf("extent exists, can not recover")
+		return err
 	}
 
 	// todo is there need newFName exists judgement?

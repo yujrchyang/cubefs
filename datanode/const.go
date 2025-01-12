@@ -152,7 +152,8 @@ const (
 )
 
 const (
-	SettingKeyDisableBlackList = "DisableBlackList"
+	SettingKeyDisableBlackList       = "DisableBlackList"
+	SettingKeyDisableAutoDeleteTrash = "DisableAutoDeleteTrash"
 )
 
 const (

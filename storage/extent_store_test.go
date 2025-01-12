@@ -16,6 +16,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -271,6 +272,12 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 		futures[fmt.Sprintf("WriteWorker-%d", i)] = future
 	}
 
+	const (
+		deleteMarker       = 0
+		trashMarker        = 1
+		trashRecoverMarker = 2
+	)
+
 	// Start extents delete worker
 	{
 		var future = async.NewFuture()
@@ -302,12 +309,101 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 					return
 				}
 				for _, eib := range eibs {
+					if eib[FileID]%3 != deleteMarker {
+						continue
+					}
 					_ = storage.MarkDelete(SingleMarker(0, eib[FileID], 0, 0))
 				}
 			}
 		}
 		async.ParamWorker(worker, handleWorkerPanic).RunWith(future, ctx, cancel)
 		futures["DeleteWorker"] = future
+	}
+
+	// Start extents trash worker
+	{
+		var future = async.NewFuture()
+		var worker async.ParamWorkerFunc = func(args ...interface{}) {
+			var (
+				future     = args[0].(*async.Future)
+				ctx        = args[1].(context.Context)
+				cancelFunc = args[2].(context.CancelFunc)
+				err        error
+			)
+			defer func() {
+				if err != nil {
+					cancelFunc()
+				}
+				future.Respond(nil, err)
+			}()
+			var batchTrashTicker = time.NewTicker(1 * time.Second)
+			for {
+				select {
+				case <-batchTrashTicker.C:
+				case <-ctx.Done():
+					return
+				}
+				var eibs []ExtentInfoBlock
+				if eibs, err = storage.GetAllWatermarks(proto.NormalExtentType, nil); err != nil {
+					return
+				}
+				if _, err = storage.GetAllExtentInfoWithByteArr(ExtentFilterForValidateCRC()); err != nil {
+					return
+				}
+				for _, eib := range eibs {
+					if eib[FileID]%3 != trashMarker {
+						continue
+					}
+					_ = storage.TrashExtent(eib[FileID], 0, 0)
+				}
+			}
+		}
+		async.ParamWorker(worker, handleWorkerPanic).RunWith(future, ctx, cancel)
+		futures["TrashWorker"] = future
+	}
+
+	// Start extents trash and recover worker
+	{
+		var future = async.NewFuture()
+		var worker async.ParamWorkerFunc = func(args ...interface{}) {
+			var (
+				future     = args[0].(*async.Future)
+				ctx        = args[1].(context.Context)
+				cancelFunc = args[2].(context.CancelFunc)
+				err        error
+			)
+			defer func() {
+				if err != nil {
+					cancelFunc()
+				}
+				future.Respond(nil, err)
+			}()
+			var batchTrashRecoverTicker = time.NewTicker(1 * time.Second)
+			for {
+				select {
+				case <-batchTrashRecoverTicker.C:
+				case <-ctx.Done():
+					return
+				}
+				var eibs []ExtentInfoBlock
+				if eibs, err = storage.GetAllWatermarks(proto.NormalExtentType, nil); err != nil {
+					return
+				}
+				if _, err = storage.GetAllExtentInfoWithByteArr(ExtentFilterForValidateCRC()); err != nil {
+					return
+				}
+				for _, eib := range eibs {
+					if eib[FileID]%3 != trashRecoverMarker {
+						continue
+					}
+					_ = storage.TrashExtent(eib[FileID], 0, 0)
+					time.Sleep(time.Millisecond * 200)
+					storage.RecoverTrashExtent(eib[FileID])
+				}
+			}
+		}
+		async.ParamWorker(worker, handleWorkerPanic).RunWith(future, ctx, cancel)
+		futures["TrashRecoverWorker"] = future
 	}
 
 	// Start control worker
@@ -612,4 +708,382 @@ func TestLoadTrashExtents(t *testing.T) {
 	}
 	assert.Equal(t, len(extents), recovered)
 	assert.Equal(t, uint64(extentSize)*uint64(len(extents)), storage.infoStore.NormalUsed())
+}
+
+func TestConcurrencyTrashExtents(t *testing.T) {
+	var testPath = testutil.InitTempTestPath(t)
+	defer testPath.Cleanup()
+	_, err := log.InitLog(path.Join(os.TempDir(), t.Name(), "logs"), "datanode_test", log.DebugLevel, nil)
+	if err != nil {
+		t.Errorf("Init log failed: %v", err)
+		return
+	}
+	defer log.LogFlush()
+
+	extentSize := int64(4 * 1024)
+	const (
+		partitionID      uint64 = 1
+		storageSize             = 128 * 1024 * 1024
+		dataSizePreWrite        = 16
+	)
+	var storage *ExtentStore
+	var testPartitionPath = path.Join(testPath.Path(), fmt.Sprintf("datapartition_%d", partitionID))
+
+	if storage, err = NewExtentStore(testPartitionPath, partitionID, storageSize, cacheCapacity,
+		func(event CacheEvent, e *Extent) {}, true, IOInterceptors{}); err != nil {
+		t.Fatalf("Create extent store failed: %v", err)
+		return
+	}
+
+	storage.Load()
+	for {
+		if storage.IsFinishLoad() {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	var dataSize = int64(dataSizePreWrite)
+	var data = make([]byte, dataSize)
+	var dataCRC = crc32.ChecksumIEEE(data)
+	// 100% trash 产生, 50% trash 最终删除, 50% trash 最终恢复
+	trashCh1 := make(chan uint64, 1024)
+	trashCh2 := make(chan uint64, 1024)
+	recoverCh1 := make(chan uint64, 102400)
+	recoverCh2 := make(chan uint64, 102400)
+	wg := sync.WaitGroup{}
+	wg.Add(3)
+	testTimer := time.NewTimer(time.Second * 30)
+	defer testTimer.Stop()
+	stopCh := make(chan struct{}, 1)
+
+	go func() {
+		for {
+			select {
+			case <-testTimer.C:
+				close(stopCh)
+				return
+			}
+		}
+	}()
+
+	// goroutine-1: create extent
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			default:
+				extentID, _ := storage.NextExtentID()
+				_ = storage.Create(extentID, uint64(testInode), true)
+				var offset int64 = 0
+				for offset+dataSize <= extentSize {
+					if err = storage.Write(context.Background(), extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
+						err = nil
+						break
+					}
+					offset += dataSize
+				}
+				trashCh1 <- extentID
+				trashCh2 <- extentID
+				if extentID%2 == 0 {
+					recoverCh1 <- extentID
+					recoverCh2 <- extentID
+				}
+			}
+		}
+
+	}()
+
+	// goroutine-2: trash worker-1
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case extent := <-trashCh1:
+				if extent == 0 {
+					continue
+				}
+				err = storage.TrashExtent(extent, testInode, uint32(extentSize))
+				assert.NoError(t, err)
+			}
+		}
+	}()
+
+	// goroutine-3: trash worker-2
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case extent := <-trashCh2:
+				if extent == 0 {
+					continue
+				}
+				err = storage.TrashExtent(extent, testInode, uint32(extentSize))
+				assert.NoError(t, err)
+			}
+		}
+	}()
+
+	wg.Wait()
+	verifyExtentStoreSize(t, testPartitionPath, storage)
+
+	stopCh = make(chan struct{}, 1)
+	testTimer.Reset(time.Second * 10)
+	go func() {
+		for {
+			select {
+			case <-testTimer.C:
+				close(stopCh)
+				return
+			}
+		}
+	}()
+
+	wg.Add(2)
+	// goroutine-4:  trash recover worker-1
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case extent := <-recoverCh1:
+				if extent == 0 {
+					continue
+				}
+				storage.RecoverTrashExtent(extent)
+			}
+		}
+	}()
+
+	// goroutine-5: trash recover worker-2
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case extent := <-recoverCh2:
+				if extent == 0 {
+					continue
+				}
+				storage.RecoverTrashExtent(extent)
+			}
+		}
+	}()
+
+	wg.Add(2)
+	// goroutine-6: trash delete worker-1
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			default:
+				time.Sleep(time.Second)
+				storage.BatchDeleteTrashExtents(1)
+				var deleted, remain int
+				deleted, remain, err = storage.FlushDelete(nil, 512)
+				assert.NoError(t, err)
+				t.Logf("flushdelete extent store, deleted(%v) remain(%v)", deleted, remain)
+			}
+		}
+	}()
+
+	// goroutine-7: trash delete worker-2
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			default:
+				time.Sleep(time.Second)
+				storage.BatchDeleteTrashExtents(1)
+				var deleted, remain int
+				deleted, remain, err = storage.FlushDelete(nil, 512)
+				assert.NoError(t, err)
+				t.Logf("flushdelete extent store, deleted(%v) remain(%v)", deleted, remain)
+			}
+		}
+	}()
+	wg.Wait()
+	close(trashCh1)
+	close(trashCh2)
+	close(recoverCh1)
+	close(recoverCh2)
+	verifyExtentStoreSize(t, testPartitionPath, storage)
+}
+
+// 验证普通删除和Trash删除并发的场景
+func TestBatchDeleteAndTrashDeleteConcurrency(t *testing.T) {
+	var testPath = testutil.InitTempTestPath(t)
+	defer testPath.Cleanup()
+	_, err := log.InitLog(path.Join(os.TempDir(), t.Name(), "logs"), "datanode_test", log.DebugLevel, nil)
+	if err != nil {
+		t.Errorf("Init log failed: %v", err)
+		return
+	}
+	defer log.LogFlush()
+
+	extentSize := int64(4 * 1024)
+	const (
+		partitionID      uint64 = 1
+		storageSize             = 128 * 1024 * 1024
+		dataSizePreWrite        = 16
+	)
+	var storage *ExtentStore
+	var testPartitionPath = path.Join(testPath.Path(), fmt.Sprintf("datapartition_%d", partitionID))
+
+	if storage, err = NewExtentStore(testPartitionPath, partitionID, storageSize, cacheCapacity,
+		func(event CacheEvent, e *Extent) {}, true, IOInterceptors{}); err != nil {
+		t.Fatalf("Create extent store failed: %v", err)
+		return
+	}
+
+	storage.Load()
+	for {
+		if storage.IsFinishLoad() {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+
+	var dataSize = int64(dataSizePreWrite)
+	var data = make([]byte, dataSize)
+	var dataCRC = crc32.ChecksumIEEE(data)
+	trashCh := make(chan uint64, 1024)
+	deleteCh := make(chan uint64, 1024)
+	wg := sync.WaitGroup{}
+	wg.Add(4)
+	testTimer := time.NewTimer(time.Second * 30)
+	defer testTimer.Stop()
+	stopCh := make(chan struct{}, 1)
+
+	go func() {
+		for {
+			select {
+			case <-testTimer.C:
+				close(stopCh)
+				return
+			}
+		}
+	}()
+
+	// goroutine-1: create extent
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			default:
+				extentID, _ := storage.NextExtentID()
+				_ = storage.Create(extentID, uint64(testInode), true)
+				var offset int64 = 0
+				for offset+dataSize <= extentSize {
+					if err = storage.Write(context.Background(), extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
+						err = nil
+						break
+					}
+					offset += dataSize
+				}
+				trashCh <- extentID
+				deleteCh <- extentID
+			}
+		}
+	}()
+
+	// goroutine-2: trash worker
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case extent := <-trashCh:
+				if extent == 0 {
+					continue
+				}
+				err = storage.TrashExtent(extent, testInode, uint32(extentSize))
+				assert.NoError(t, err)
+			}
+		}
+	}()
+
+	// goroutine-3: delete worker
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case extent := <-deleteCh:
+				if extent == 0 {
+					continue
+				}
+				err = storage.MarkDelete(SingleMarker(testInode, extent, 0, extentSize))
+				assert.NoError(t, err)
+			}
+		}
+	}()
+
+	// goroutine-4: flush delete worker
+	var remain int
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopCh:
+				return
+			default:
+				time.Sleep(time.Second)
+				var deleted int
+				deleted, remain, err = storage.FlushDelete(nil, 512)
+				assert.NoError(t, err)
+				t.Logf("flushdelete extent store, deleted(%v) remain(%v)", deleted, remain)
+			}
+		}
+	}()
+	wg.Wait()
+	close(deleteCh)
+	close(trashCh)
+	storage.FlushDelete(nil, 0)
+	verifyExtentStoreSize(t, testPartitionPath, storage)
+}
+
+func verifyExtentStoreSize(t *testing.T, extentStorePath string, storage *ExtentStore) {
+	// 1-文件实际size累加和
+	realSize := int64(0)
+	dirs, err := os.ReadDir(extentStorePath)
+	assert.NoError(t, err)
+	for _, dir := range dirs {
+		if _, ok := storage.ExtentID(dir.Name()); !ok {
+			continue
+		}
+		var stat os.FileInfo
+		stat, err = os.Stat(path.Join(extentStorePath, dir.Name()))
+		if !assert.NoError(t, err) {
+			continue
+		}
+		realSize += stat.Size()
+	}
+
+	// 2-ExtentInfoBlockSize累加和
+	extentInfoBlockSize := int64(0)
+	extents, _ := storage.GetAllWatermarks(proto.NormalExtentType, nil)
+	for _, extent := range extents {
+		extentInfoBlockSize += int64(extent[Size])
+	}
+	// 3-storage.GetStoreUsedSize()程序计数器累加和
+	storageUsedSize := storage.GetStoreUsedSize()
+	assert.Equal(t, realSize, storageUsedSize)
+	assert.Equal(t, extentInfoBlockSize, storageUsedSize)
 }

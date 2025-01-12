@@ -172,6 +172,7 @@ func OpenDisk(path string, config *DiskConfig, space *SpaceManager, parallelism 
 	d.startScheduler(d.flushDeleteScheduler)
 	d.startScheduler(d.crcComputationScheduler)
 	d.startScheduler(d.flushFPScheduler)
+	d.startScheduler(d.deleteTrashScheduler)
 
 	return
 }
@@ -1437,4 +1438,47 @@ func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error)
 		return
 	}
 	return
+}
+
+func (d *Disk) deleteTrashScheduler() {
+	ticker := time.NewTicker(time.Minute * 10)
+	const defaultTrashKeepTimeSec = uint64(60 * 60 * 24 * 7)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if !gHasLoadDataPartition {
+				continue
+			}
+			dn := d.space.dataNode
+			if disable, exist := dn.settings.GetBool(SettingKeyDisableAutoDeleteTrash); exist && disable {
+				log.LogDebugf("action[deleteTrashScheduler] disk(%v) deleteTrashScheduler skipped", d.Path)
+				continue
+			}
+			avg, err := load.Avg()
+			if err != nil {
+				log.LogErrorf("Disk %v: get host load value failed: %v", d.Path, err)
+				continue
+			}
+			if math.Max(avg.Load1, avg.Load5) > 1000.00 {
+				if log.IsWarnEnabled() {
+					log.LogWarnf("Disk %v: skip flush delete: host load value larger than 1000", d.Path)
+				}
+				continue
+			}
+			d.deleteTrash(defaultTrashKeepTimeSec)
+		}
+	}
+}
+
+func (d *Disk) deleteTrash(keepTimeSec uint64) uint64 {
+	total := uint64(0)
+	d.WalkPartitions(func(partition *DataPartition) bool {
+		count := partition.batchDeleteTrashExtents(keepTimeSec)
+		total += count
+		log.LogInfof("action[deleteTrash] disk(%v) partition(%v) deleteTrash(%v)", d.Path, partition.partitionID, count)
+		return true
+	})
+	log.LogInfof("action[deleteTrash] disk(%v) total(%v)", d.Path, total)
+	return total
 }
