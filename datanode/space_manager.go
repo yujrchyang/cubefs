@@ -607,6 +607,11 @@ func (manager *SpaceManager) SetDiskReservedRatio(ratio float64) {
 	}
 }
 
+func (manager *SpaceManager) SetAutoDeleteTrash(autoDelete bool) {
+	if autoDelete {
+	}
+}
+
 func (manager *SpaceManager) GetDiskReservedRatio() float64 {
 	return manager.diskReservedRatio.Load()
 }

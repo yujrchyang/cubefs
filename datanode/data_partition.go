@@ -1188,6 +1188,8 @@ func (dp *DataPartition) limit(ctx context.Context, op int, size uint32, bandTyp
 	}
 	err = multirate.WaitNUseDefaultTimeout(ctx, prBuilder.Properties(), stBuilder.Stat())
 	if err != nil {
+		tp := exporter.NewModuleTP(fmt.Sprintf("limit_%v", op))
+		tp.Set(nil)
 		err = errors.Trace(err, proto.RateLimit)
 	}
 	return

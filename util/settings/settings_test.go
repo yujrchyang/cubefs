@@ -62,25 +62,6 @@ func TestSettings(t *testing.T) {
 		assert.Equal(t, "true", res3)
 	})
 
-	t.Run("rollback on modiry", func(t *testing.T) {
-		os.RemoveAll(tmpDir)
-		err = settings.SetBool("set-bool", false)
-		assert.Error(t, err)
-		assert.Equal(t, true, os.IsNotExist(err))
-		res, exist := settings.GetBool("set-bool")
-		assert.True(t, exist)
-		assert.Equal(t, true, res)
-	})
-
-	t.Run("rollback on delete", func(t *testing.T) {
-		err = settings.Set("set-roolback-del", "false")
-		assert.Error(t, err)
-		assert.Equal(t, true, os.IsNotExist(err))
-		res, exist := settings.Get("set-roolback-del")
-		assert.False(t, exist)
-		assert.Equal(t, "", res)
-	})
-
 	t.Run("Del", func(t *testing.T) {
 		for k, v := range sets {
 			pref, ok := settings.Del(k)
@@ -95,5 +76,40 @@ func TestSettings(t *testing.T) {
 			return true
 		})
 		assert.Equal(t, 0, count)
+	})
+
+	t.Run("set empty", func(t *testing.T) {
+		err = settings.Set("set-empty", "true")
+		assert.NoError(t, err)
+		res, exist := settings.Get("set-empty")
+		assert.True(t, exist)
+		assert.Equal(t, "true", res)
+
+		err = settings.Set("set-empty", "")
+		assert.NoError(t, err)
+
+		res, exist = settings.Get("set-empty")
+		assert.False(t, exist)
+		assert.Equal(t, "", res)
+	})
+
+	t.Run("rollback on modiry", func(t *testing.T) {
+		os.RemoveAll(tmpDir)
+		err = settings.SetBool("set-bool", false)
+		assert.Error(t, err)
+		assert.Equal(t, true, os.IsNotExist(err))
+		res, exist := settings.GetBool("set-bool")
+		assert.True(t, exist)
+		assert.Equal(t, true, res)
+	})
+
+	t.Run("rollback on delete", func(t *testing.T) {
+		os.RemoveAll(tmpDir)
+		err = settings.Set("set-roolback-del", "false")
+		assert.Error(t, err)
+		assert.Equal(t, true, os.IsNotExist(err))
+		res, exist := settings.Get("set-roolback-del")
+		assert.False(t, exist)
+		assert.Equal(t, "", res)
 	})
 }
