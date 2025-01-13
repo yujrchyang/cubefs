@@ -1388,15 +1388,14 @@ func (vol *Vol) doCreateMetaPartition(c *Cluster, start, end uint64) (mp *MetaPa
 	}
 	log.LogInfof("vol:%v, mp:%v, target meta hosts:%v, recorders:%v, peers:%v", vol.Name, mp.PartitionID, hosts, recorders, peers)
 
-	parallelFunc := func(putErr bool, addrs []string, opFunc func(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32,
-		bucketInfo *proto.BoundBucketInfo) (err error)) {
+	parallelFunc := func(putErr bool, addrs []string, opFunc func(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error)) {
 		for _, addr := range addrs {
 			wg.Add(1)
 			go func(addr string) {
 				defer func() {
 					wg.Done()
 				}()
-				opErr := opFunc(addr, mp, storeMode, vol.trashRemainingDays, vol.BoundBucket)
+				opErr := opFunc(addr, mp, storeMode, vol.trashRemainingDays)
 				if putErr && opErr != nil {
 					errChannel <- opErr
 				}

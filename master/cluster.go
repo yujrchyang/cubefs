@@ -901,8 +901,7 @@ func (c *Cluster) doCreateMetaPartition(host string, mp *MetaPartition, storeMod
 	return
 }
 
-func (c *Cluster) doCreateMetaRecorder(addr string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32,
-	bucketInfo *proto.BoundBucketInfo) (err error) {
+func (c *Cluster) doCreateMetaRecorder(addr string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
 	if err = c.syncCreateMetaRecorderToMetaNode(addr, mp); err != nil {
 		return
 	}
@@ -914,8 +913,7 @@ func (c *Cluster) doCreateMetaRecorder(addr string, mp *MetaPartition, storeMode
 	return
 }
 
-func (c *Cluster) doDeleteMetaPartition(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32,
-	bucketInfo *proto.BoundBucketInfo) (err error) {
+func (c *Cluster) doDeleteMetaPartition(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
 	var mr *MetaReplica
 	mr, err = mp.getMetaReplica(host)
 	if err != nil {
@@ -928,8 +926,7 @@ func (c *Cluster) doDeleteMetaPartition(host string, mp *MetaPartition, storeMod
 	return
 }
 
-func (c *Cluster) doDeleteMetaRecorder(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32,
-	bucketInfo *proto.BoundBucketInfo) (err error) {
+func (c *Cluster) doDeleteMetaRecorder(host string, mp *MetaPartition, storeMode proto.StoreMode, trashDays uint32) (err error) {
 	var mr *MetaRecorder
 	mr, err = mp.getMetaRecorder(host)
 	if err != nil {
