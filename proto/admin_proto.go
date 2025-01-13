@@ -746,6 +746,8 @@ type LimitInfo struct {
 	TopologyForceFetchIntervalSec int64
 
 	DataNodeDiskReservedRatio      float64
+	DataNodeDisableAutoDeleteTrash bool
+	DataNodeTrashKeepTimeSec       uint64
 	ApiReqBwRateLimitMap           map[uint8]int64
 	DisableClusterCheckDeleteEK    bool
 	DelayMinutesReduceReplicaNum   int64

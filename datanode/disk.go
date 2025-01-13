@@ -1442,7 +1442,6 @@ func (d *Disk) loadPartition(partitionDir string) (dp *DataPartition, err error)
 
 func (d *Disk) deleteTrashScheduler() {
 	ticker := time.NewTicker(time.Minute * 10)
-	const defaultTrashKeepTimeSec = uint64(60 * 60 * 24 * 7)
 	defer ticker.Stop()
 	for {
 		select {
@@ -1450,11 +1449,19 @@ func (d *Disk) deleteTrashScheduler() {
 			if !gHasLoadDataPartition {
 				continue
 			}
+
+			// if data settings exist, ignore master setting
 			dn := d.space.dataNode
-			if disable, exist := dn.settings.GetBool(SettingKeyDisableAutoDeleteTrash); exist && disable {
-				log.LogDebugf("action[deleteTrashScheduler] disk(%v) deleteTrashScheduler skipped", d.Path)
+			disable, exist := dn.settings.GetBool(SettingKeyDisableAutoDeleteTrash)
+			if exist && disable {
+				log.LogDebugf("action[deleteTrashScheduler] disk(%v) deleteTrashScheduler skipped by data settings", d.Path)
 				continue
 			}
+			if !exist && d.space.disableAutoDeleteTrash {
+				log.LogDebugf("action[deleteTrashScheduler] disk(%v) deleteTrashScheduler skipped by master config", d.Path)
+				continue
+			}
+
 			avg, err := load.Avg()
 			if err != nil {
 				log.LogErrorf("Disk %v: get host load value failed: %v", d.Path, err)
@@ -1466,7 +1473,20 @@ func (d *Disk) deleteTrashScheduler() {
 				}
 				continue
 			}
-			d.deleteTrash(defaultTrashKeepTimeSec)
+
+			keepTimeSec := d.space.trashKeepTimeSec
+			keepTimeSecStr, exist := dn.settings.Get(SettingsKeyTrashKeepTimeSec)
+			if exist {
+				keepTime, e := strconv.ParseUint(keepTimeSecStr, 10, 64)
+				if e != nil {
+					log.LogErrorf("Disk %v: get host load value failed: %v", d.Path, e)
+				} else {
+					keepTimeSec = keepTime
+				}
+			}
+			log.LogDebugf("action[deleteTrashScheduler] disk(%v) keepTimeSec(%v)", d.Path, keepTimeSec)
+
+			d.deleteTrash(keepTimeSec)
 		}
 	}
 }

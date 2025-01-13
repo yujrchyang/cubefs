@@ -63,6 +63,8 @@ type SpaceManager struct {
 	normalExtentDeleteExpireTime   uint64
 	flushFDIntervalSec             uint32
 	flushFDParallelismOnDisk       uint64
+	disableAutoDeleteTrash         bool
+	trashKeepTimeSec               uint64
 	topoManager                    *topology.TopologyManager
 	diskReservedRatio              *atomic2.Float64
 
@@ -607,8 +609,21 @@ func (manager *SpaceManager) SetDiskReservedRatio(ratio float64) {
 	}
 }
 
-func (manager *SpaceManager) SetAutoDeleteTrash(autoDelete bool) {
-	if autoDelete {
+func (manager *SpaceManager) SetDisableAutoDeleteTrash(disableAutoDelete bool) {
+	if disableAutoDelete == manager.disableAutoDeleteTrash {
+		return
+	}
+	log.LogInfof("action[SetDisableAutoDeleteTrash] from(%v) to(%v)", manager.disableAutoDeleteTrash, disableAutoDelete)
+	manager.disableAutoDeleteTrash = disableAutoDelete
+}
+
+func (manager *SpaceManager) SetTrashKeepTimeSec(keepTimeSec uint64) {
+	if keepTimeSec == 0 {
+		keepTimeSec = DefaultTrashKeepTimeSec
+	}
+	if keepTimeSec > 0 && manager.trashKeepTimeSec != keepTimeSec {
+		log.LogInfof("action[SetTrashKeepTimeSec] change TrashKeepTimeSec from(%v) to(%v)", manager.trashKeepTimeSec, keepTimeSec)
+		manager.trashKeepTimeSec = keepTimeSec
 	}
 }
 
