@@ -14,6 +14,7 @@ const (
 	accessKey  = "39bEF4RrAQgMj6RV"
 	secretKey  = "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd"
 	bucketName = "ltptest"
+	volId      = 24
 )
 
 func TestCheckVolumeForceROW(t *testing.T) {

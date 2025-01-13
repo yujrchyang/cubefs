@@ -52,12 +52,12 @@ func init() {
 				AccessKey: accessKey,
 				SecretKey: secretKey,
 				Bucket:    bucketName,
+				VolId:     volId,
 			}
 		},
 	}
 	vol.ClusterName = clusterName
 	vol.Name = ltptestVolume
-	vol.VolId = 24
 	nodes := strings.Split(ltptestMaster, ",")
 	err := vol.Init(nodes, data.Normal)
 	if err != nil {
@@ -914,6 +914,7 @@ func TestDeleteOldExtents(t *testing.T) {
 	inodeOperation.startIndex = 0
 	inodeOperation.endIndex = 2
 	inodeOperation.mpOp = mpOp
+	inodeOperation.vol = mpOp.vol
 	err := inodeOperation.deleteOldExtents(inodeOperation.extents[inodeOperation.startIndex:inodeOperation.endIndex])
 	assert.Nil(t, err)
 }
