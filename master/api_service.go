@@ -867,7 +867,7 @@ func (m *Server) addMetaReplica(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err = m.cluster.addMetaReplica(mp, addr, proto.StoreMode(storeMode), vol.PersistenceMode); err != nil {
+	if err = m.cluster.addMetaReplica(mp, addr, proto.StoreMode(storeMode), vol.PersistenceMode, vol.BoundBucket); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -968,7 +968,8 @@ func (m *Server) addMetaReplicaLearner(w http.ResponseWriter, r *http.Request) {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold, isNeedIncreaseMPLearnerNum, proto.StoreMode(storeMode), vol.PersistenceMode); err != nil {
+	if err = m.cluster.addMetaReplicaLearner(mp, addr, auto, threshold, isNeedIncreaseMPLearnerNum,
+		proto.StoreMode(storeMode), vol.PersistenceMode, vol.BoundBucket); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
@@ -3103,7 +3104,8 @@ func (m *Server) decommissionMetaPartition(w http.ResponseWriter, r *http.Reques
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, getTargetAddressForMetaPartitionDecommission, destAddr, false, proto.StoreMode(storeMode), vol.PersistenceMode); err != nil {
+	if err = m.cluster.decommissionMetaPartition(nodeAddr, mp, getTargetAddressForMetaPartitionDecommission, destAddr,
+		false, proto.StoreMode(storeMode), vol.PersistenceMode, vol.BoundBucket); err != nil {
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}

@@ -98,7 +98,9 @@ func (c *Cluster) loadDataPartition(dp *DataPartition) {
 // 3. synchronized decommission meta partition
 // 4. synchronized create a new meta partition
 // 5. persistent the new host list
-func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, chooseMetaHostFunc ChooseMetaHostFunc, destAddr string, strictMode bool, dstStoreMode proto.StoreMode, persistenceMode proto.PersistenceMode) (err error) {
+func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, chooseMetaHostFunc ChooseMetaHostFunc,
+	destAddr string, strictMode bool, dstStoreMode proto.StoreMode, persistenceMode proto.PersistenceMode,
+	bucketInfo *proto.BoundBucketInfo) (err error) {
 	var (
 		addAddr         string
 		excludeNodeSets []uint64
@@ -160,7 +162,7 @@ func (c *Cluster) decommissionMetaPartition(nodeAddr string, mp *MetaPartition, 
 			goto errHandler
 		}
 	} else {
-		isLearner, err = c.decommissionMetaReplica(mp, vol.CrossRegionHAType, nodeAddr, addAddr, strictMode, dstStoreMode, persistenceMode)
+		isLearner, err = c.decommissionMetaReplica(mp, vol.CrossRegionHAType, nodeAddr, addAddr, strictMode, dstStoreMode, persistenceMode, bucketInfo)
 		if err != nil {
 			goto errHandler
 		}
@@ -188,7 +190,8 @@ errHandler:
 	return
 }
 
-func (c *Cluster) decommissionMetaReplica(mp *MetaPartition, crossRegionHAType proto.CrossRegionHAType, nodeAddr, addAddr string, strictMode bool, dstStoreMode proto.StoreMode, persistenceMode proto.PersistenceMode) (isLearner bool, err error) {
+func (c *Cluster) decommissionMetaReplica(mp *MetaPartition, crossRegionHAType proto.CrossRegionHAType, nodeAddr, addAddr string,
+	strictMode bool, dstStoreMode proto.StoreMode, persistenceMode proto.PersistenceMode, bucketInfo *proto.BoundBucketInfo) (isLearner bool, err error) {
 	var (
 		pmConfig   *proto.PromoteConfig
 		regionType proto.RegionType
@@ -207,11 +210,11 @@ func (c *Cluster) decommissionMetaReplica(mp *MetaPartition, crossRegionHAType p
 		}
 	}
 	if isLearner {
-		if err = c.addMetaReplicaLearner(mp, addAddr, pmConfig.AutoProm, pmConfig.PromThreshold, false, dstStoreMode, persistenceMode); err != nil {
+		if err = c.addMetaReplicaLearner(mp, addAddr, pmConfig.AutoProm, pmConfig.PromThreshold, false, dstStoreMode, persistenceMode, bucketInfo); err != nil {
 			return
 		}
 	} else {
-		if err = c.addMetaReplica(mp, addAddr, dstStoreMode, persistenceMode); err != nil {
+		if err = c.addMetaReplica(mp, addAddr, dstStoreMode, persistenceMode, bucketInfo); err != nil {
 			return
 		}
 	}
@@ -879,7 +882,8 @@ func (c *Cluster) updateMetaPartitionOfflinePeerIDWithLock(mp *MetaPartition, pe
 	}
 	return
 }
-func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string, storeMode proto.StoreMode, persistenceMode proto.PersistenceMode) (err error) {
+func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string, storeMode proto.StoreMode,
+	persistenceMode proto.PersistenceMode, bucketInfo *proto.BoundBucketInfo) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addMetaReplica], vol[%v], meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
@@ -919,7 +923,7 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string, storeMod
 		partition.IsRecover = oldIsRecovered
 		return
 	}
-	if err = c.createMetaReplica(partition, addPeer, storeMode, persistenceMode); err != nil {
+	if err = c.createMetaReplica(partition, addPeer, storeMode, persistenceMode, bucketInfo); err != nil {
 		return
 	}
 	if err = partition.afterCreation(addPeer.Addr, c, storeMode); err != nil {
@@ -928,7 +932,9 @@ func (c *Cluster) addMetaReplica(partition *MetaPartition, addr string, storeMod
 	return
 }
 
-func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, autoProm bool, threshold uint8, isNeedIncreaseMPLearnerNum bool, storeMode proto.StoreMode, persistenceMode proto.PersistenceMode) (err error) {
+func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, autoProm bool, threshold uint8,
+	isNeedIncreaseMPLearnerNum bool, storeMode proto.StoreMode, persistenceMode proto.PersistenceMode,
+	bucketInfo *proto.BoundBucketInfo) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("action[addMetaReplicaLearner], vol[%v], meta partition[%v], err[%v]", partition.volName, partition.PartitionID, err)
@@ -989,7 +995,7 @@ func (c *Cluster) addMetaReplicaLearner(partition *MetaPartition, addr string, a
 		}
 		return
 	}
-	if err = c.createMetaReplica(partition, addPeer, storeMode, persistenceMode); err != nil {
+	if err = c.createMetaReplica(partition, addPeer, storeMode, persistenceMode, bucketInfo); err != nil {
 		return
 	}
 	if err = partition.afterCreation(addPeer.Addr, c, storeMode); err != nil {
@@ -1211,8 +1217,9 @@ func (c *Cluster) deleteMetaRecorderFromNode(partition *MetaPartition, removeMet
 	return nil
 }
 
-func (c *Cluster) createMetaReplica(partition *MetaPartition, addPeer proto.Peer, storeMode proto.StoreMode, persistenceMode proto.PersistenceMode) (err error) {
-	task, err := partition.createTaskToCreateReplica(addPeer.Addr, storeMode, persistenceMode)
+func (c *Cluster) createMetaReplica(partition *MetaPartition, addPeer proto.Peer, storeMode proto.StoreMode,
+	persistenceMode proto.PersistenceMode, bucketInfo *proto.BoundBucketInfo) (err error) {
+	task, err := partition.createTaskToCreateReplica(addPeer.Addr, storeMode, persistenceMode, bucketInfo)
 	if err != nil {
 		return
 	}

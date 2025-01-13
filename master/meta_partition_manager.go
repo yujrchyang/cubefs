@@ -237,7 +237,7 @@ func (c *Cluster) fulfillMetaReplica(partitionID uint64, badAddr string) (isPush
 	if vol, err = c.getVol(partition.volName); err != nil {
 		return
 	}
-	if err = c.addMetaReplica(partition, newPeer.Addr, vol.DefaultStoreMode, vol.PersistenceMode); err != nil {
+	if err = c.addMetaReplica(partition, newPeer.Addr, vol.DefaultStoreMode, vol.PersistenceMode, vol.BoundBucket); err != nil {
 		return
 	}
 	newPanicHost := make([]string, 0)
