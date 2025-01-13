@@ -639,7 +639,7 @@ func (mp *metaPartition) doDeleteS3Object(ctx context.Context, ext *proto.MetaDe
 		return
 	}
 
-	key := proto.GenS3Key(mp.manager.metaNode.clusterId, mp.config.VolName, ext.InodeId, ext.PartitionId, ext.ExtentId)
+	key := proto.GenS3Key(mp.manager.metaNode.clusterId, mp.config.VolName, mp.config.VolID, ext.InodeId, ext.PartitionId, ext.ExtentId)
 	err = mp.s3Client.DeleteObject(context.Background(), bucketName, key)
 	if err != nil {
 		log.LogErrorf("delete object failed, bucket: %s, key: %s, err: %v", bucketName, key, err)

@@ -385,6 +385,7 @@ func (w *Worker) getMigrationConfig(cluster, volName string) (volumeConfig proto
 			AccessKey:     sv.BoundBucket.AccessKey,
 			SecretKey:     sv.BoundBucket.SecretAccessKey,
 			Bucket:        sv.BoundBucket.BucketName,
+			VolId:         sv.VolId,
 		}
 	}
 	return

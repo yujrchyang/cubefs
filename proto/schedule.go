@@ -406,4 +406,5 @@ type MigrationConfig struct {
 	AccessKey     string
 	SecretKey     string
 	Bucket        string
+	VolId         uint64
 }

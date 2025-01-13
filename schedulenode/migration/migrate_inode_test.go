@@ -57,6 +57,7 @@ func init() {
 	}
 	vol.ClusterName = clusterName
 	vol.Name = ltptestVolume
+	vol.VolId = 24
 	nodes := strings.Split(ltptestMaster, ",")
 	err := vol.Init(nodes, data.Normal)
 	if err != nil {

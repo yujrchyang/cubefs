@@ -655,6 +655,7 @@ func (w *Worker) createSmartVolume(mc *master.MasterClient, vc *proto.MigrationC
 	smartVolume := &proto.SmartVolume{
 		ClusterId:      vc.ClusterName,
 		Name:           vc.VolName,
+		VolId:          volInfo.ID,
 		Owner:          volInfo.Owner,
 		StoreMode:      volInfo.DefaultStoreMode,
 		Smart:          vc.Smart,

@@ -38,6 +38,7 @@ const (
 type VolumeInfo struct {
 	sync.RWMutex
 	Name               string
+	VolId              uint64
 	ClusterName        string
 	State              uint32
 	LastUpdate         int64
@@ -104,6 +105,7 @@ func (vol *VolumeInfo) Init(nodes []string, extentClientType data.ExtentClientTy
 
 func (vol *VolumeInfo) initTargetClient(nodes []string, extentClientType data.ExtentClientType) (err error) {
 	migConfig := vol.GetMigrationConfig(vol.ClusterName, vol.Name)
+	vol.VolId = migConfig.VolId
 	if strings.Contains(migConfig.SmartRules, proto.MediumS3Name) {
 		log.LogDebugf("init s3 client")
 		if len(migConfig.Endpoint) > 0 && len(migConfig.Bucket) > 0 {
@@ -359,7 +361,8 @@ func (vol *VolumeInfo) updateS3Client() {
 		vol.S3Client = s3.NewS3Client(migConfig.Region, migConfig.Endpoint, migConfig.AccessKey, migConfig.SecretKey, false)
 		vol.Bucket = migConfig.Bucket
 	}
-	log.LogDebugf("refresh s3 client endpoint:%v bucket:%v", migConfig.Endpoint, migConfig.Bucket)
+	vol.VolId = migConfig.VolId
+	log.LogDebugf("refresh s3 client volume:%v volId:%v endpoint:%v bucket:%v", vol.Name, migConfig.VolId, migConfig.Endpoint, migConfig.Bucket)
 }
 
 func (vol *VolumeInfo) readDir(ctx context.Context, parentID uint64, fileNameReg string) (err error) {

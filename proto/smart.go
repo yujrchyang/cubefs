@@ -21,6 +21,7 @@ func NewSmartVolumeView(cluster string, smartVolumes []*SmartVolume) *SmartVolum
 type SmartVolume struct {
 	ClusterId         string
 	Name              string
+	VolId             uint64
 	Owner             string
 	Status            uint8
 	Smart             int8

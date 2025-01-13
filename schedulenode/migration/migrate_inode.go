@@ -72,6 +72,10 @@ func NewMigrateInode(mpOp *MigrateTask, inode *proto.InodeExtents) (inodeOp *Mig
 		name:           fmt.Sprintf("%s_%d_%d", mpOp.vol.Name, mpOp.mpId, inode.Inode.Inode),
 		DirectWrite:    mpOp.vol.ControlConfig.DirectWrite,
 	}
+	if mpOp.vol.VolId == 0 {
+		err = fmt.Errorf("new migrate inode volume(%v) volId(%v) mpId(%v) inodeId(%v) volId should not be 0",
+			mpOp.vol.Name, mpOp.vol.VolId, mpOp.mpId, inode.Inode.Inode)
+	}
 	return
 }
 
@@ -450,7 +454,7 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 	minBlockSize := 5 * unit.MB
 	partCount := int(math.Ceil(float64(totalSize) / float64(minBlockSize)))
 	chunks := make([][]byte, partCount)
-	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.inodeInfo.Inode, migInode.extents[migInode.startIndex].PartitionId, migInode.extents[migInode.startIndex].ExtentId)
+	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.vol.VolId, migInode.inodeInfo.Inode, migInode.extents[migInode.startIndex].PartitionId, migInode.extents[migInode.startIndex].ExtentId)
 
 	if totalSize <= uint64(minBlockSize) {
 		if err = migInode.readAndWriteSmallDataToS3(offset, totalSize, s3Key, chunks); err != nil {

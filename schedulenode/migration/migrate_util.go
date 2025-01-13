@@ -226,7 +226,7 @@ func (migInode *MigrateInode) readData(ctx context.Context, ek proto.ExtentKey, 
 }
 
 func (migInode *MigrateInode) readDataFromS3(ctx context.Context, partitionId, extentId, readOffset, readSize uint64, buff []byte) (readN int, err error) {
-	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.inodeInfo.Inode, partitionId, extentId)
+	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.vol.VolId, migInode.inodeInfo.Inode, partitionId, extentId)
 	readN, err = migInode.vol.S3Client.GetObject(ctx, migInode.vol.Bucket, s3Key, readOffset, readSize, buff)
 	return
 }
@@ -386,7 +386,7 @@ func (migInode *MigrateInode) getS3DataCRC(extentKeys []proto.ExtentKey) (s3Data
 			if remainingSize < readSize {
 				readSize = remainingSize
 			}
-			s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.inodeInfo.Inode, ek.PartitionId, ek.ExtentId)
+			s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.vol.VolId, migInode.inodeInfo.Inode, ek.PartitionId, ek.ExtentId)
 			buff := make([]byte, readSize)
 			var readN int
 			readN, err = migInode.vol.S3Client.GetObject(context.Background(), migInode.vol.Bucket, s3Key, readOffset, readSize, buff)
