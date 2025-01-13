@@ -308,7 +308,7 @@ func (m *ClusterService) decommissionMetaPartition(ctx context.Context, args str
 		err = fmt.Errorf("storeMode can only be %d and %d,received storeMode is[%v]", proto.StoreModeMem, proto.StoreModeRocksDb, args.storeMode)
 		return nil, err
 	}
-	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, "", false, proto.StoreMode(args.storeMode), vol.PersistenceMode); err != nil {
+	if err := m.cluster.decommissionMetaPartition(args.NodeAddr, mp, getTargetAddressForMetaPartitionDecommission, "", false, proto.StoreMode(args.storeMode), vol.PersistenceMode, vol.BoundBucket); err != nil {
 		return nil, err
 	}
 	log.LogInfof(proto.AdminDecommissionMetaPartition+" partitionID :%v  decommissionMetaPartition successfully", args.PartitionID)

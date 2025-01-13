@@ -268,7 +268,7 @@ func (c *Cluster) repairMetaPartition(wg sync.WaitGroup) {
 				}
 				switch task.RType {
 				case BalanceMetaZone:
-					if err = c.decommissionMetaPartition("", mp, getTargetAddressForRepairMetaZone, "", false, 0, vol.PersistenceMode); err != nil {
+					if err = c.decommissionMetaPartition("", mp, getTargetAddressForRepairMetaZone, "", false, 0, vol.PersistenceMode, vol.BoundBucket); err != nil {
 						return
 					}
 					log.LogInfof("action[repairMetaPartition] clusterID[%v] vol[%v] meta partition[%v] "+
@@ -2766,7 +2766,7 @@ func (c *Cluster) decommissionMetaNode(metaNode *MetaNode, strictMode bool) (err
 						errChannel <- err
 						return
 					}
-					if err1 := c.decommissionMetaPartition(metaNode.Addr, tmpMp, getTargetAddressForMetaPartitionDecommission, "", strictMode, proto.StoreModeDef, vol.PersistenceMode); err1 != nil {
+					if err1 := c.decommissionMetaPartition(metaNode.Addr, tmpMp, getTargetAddressForMetaPartitionDecommission, "", strictMode, proto.StoreModeDef, vol.PersistenceMode, vol.BoundBucket); err1 != nil {
 						errChannel <- err1
 					}
 				}
