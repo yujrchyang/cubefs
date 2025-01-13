@@ -339,7 +339,7 @@ func (s *Streamer) readFromDataNode(ctx context.Context, req *ExtentRequest, off
 }
 
 func (s *Streamer) readFromS3(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
-	s3Key := proto.GenS3Key(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId)
+	s3Key := proto.GenS3Key(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, s.client.dataWrapper.volID, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId)
 	s3Offset := req.FileOffset - req.ExtentKey.FileOffset + req.ExtentKey.ExtentOffset
 	s3Client := s.client.dataWrapper.externalS3Client
 	bucketName := s.client.dataWrapper.externalS3BucketName.ToString()

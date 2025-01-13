@@ -66,6 +66,7 @@ type DataPartitionView struct {
 type Wrapper struct {
 	sync.RWMutex
 	clusterName           string
+	volID				  uint64
 	volName               string
 	zoneName              string
 	masters               []string
@@ -262,6 +263,7 @@ func RebuildDataPartitionWrapper(volName string, masters []string, dataState *Da
 	LocalIP = dataState.LocalIP
 
 	view := dataState.VolView
+	w.volID = view.ID
 	w.volCreateTime = view.CreateTime
 	w.followerRead = view.FollowerRead
 	w.nearRead = view.NearRead
@@ -404,6 +406,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 		log.LogWarnf("getSimpleVolView: get volume simple info fail: volume(%v) err(%v)", w.volName, err)
 		return
 	}
+	w.volID = view.ID
 	w.volCreateTime = view.CreateTime
 	w.followerRead = view.FollowerRead
 	w.nearRead = view.NearRead
@@ -443,6 +446,7 @@ func (w *Wrapper) getSimpleVolView() (err error) {
 
 func (w *Wrapper) saveSimpleVolView() *proto.SimpleVolView {
 	view := &proto.SimpleVolView{
+		ID: 				  w.volID,
 		CreateTime:           w.volCreateTime,
 		FollowerRead:         w.followerRead,
 		NearRead:             w.nearRead,
@@ -540,7 +544,9 @@ func (w *Wrapper) updateSimpleVolView() (err error) {
 	}
 
 	if w.volCreateTime != "" && w.volCreateTime != view.CreateTime {
-		log.LogWarnf("updateSimpleVolView: update volCreateTime from old(%v) to new(%v) and clear data partitions", w.volCreateTime, view.CreateTime)
+		log.LogWarnf("updateSimpleVolView: update volCreateTime from old(%v) to new(%v) and clear data partitions, volID from(%v) to(%v)",
+			w.volCreateTime, view.CreateTime, w.volID, view.ID)
+		w.volID = view.ID
 		w.volCreateTime = view.CreateTime
 		w.partitions = new(sync.Map)
 	}
