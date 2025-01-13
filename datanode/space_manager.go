@@ -624,15 +624,16 @@ type dpReloadInfo struct {
 func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]bool) (failedDisks []string, failedDps, successDps []uint64) {
 	var err error
 	restoreMap := make(map[uint64]*dpReloadInfo)
-	for _, d := range manager.disks {
+	manager.WalkDisks(func(disk *Disk) bool {
 		var failedDpsDisk, successDpsDisk []uint64
-		if failedDpsDisk, successDpsDisk, err = d.prepareRestorePartitions(all, ids, restoreMap); err != nil {
-			failedDisks = append(failedDisks, d.Path)
-			continue
+		if failedDpsDisk, successDpsDisk, err = disk.prepareRestorePartitions(all, ids, restoreMap); err != nil {
+			failedDisks = append(failedDisks, disk.Path)
+			return true
 		}
 		failedDps = append(failedDps, failedDpsDisk...)
 		successDps = append(successDps, successDpsDisk...)
-	}
+		return true
+	})
 
 	log.LogWarnf("action[RestoreExpiredPartitions] total need restore partitions:%v", len(restoreMap))
 	for dpid, dpInfo := range restoreMap {

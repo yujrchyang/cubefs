@@ -553,11 +553,11 @@ func (s *DataNode) releasePartitions(w http.ResponseWriter, r *http.Request) {
 	var keepTimeDuring = time.Second * time.Duration(keepTimeSec)
 	var now = time.Now()
 
-	for _, d := range s.space.disks {
+	s.space.WalkDisks(func(d *Disk) bool {
 		fList, err := ioutil.ReadDir(d.Path)
 		if err != nil {
 			failedDisks = append(failedDisks, d.Path)
-			continue
+			return true
 		}
 
 		for _, fInfo := range fList {
@@ -585,7 +585,8 @@ func (s *DataNode) releasePartitions(w http.ResponseWriter, r *http.Request) {
 			}
 			successVols = append(successVols, d.Path+":"+fInfo.Name())
 		}
-	}
+		return true
+	})
 	s.buildSuccessResp(w, fmt.Sprintf("release partitions, success partitions: %v, failed partitions: %v, failed disks: %v", successVols, failedVols, failedDisks))
 }
 
@@ -1934,10 +1935,9 @@ func (s *DataNode) releaseTrashExtents(w http.ResponseWriter, r *http.Request) {
 		keepTime = keepTimeSecVal
 	}
 	releaseCount := uint64(0)
-	for _, d := range s.space.disks {
-		for _, partition := range d.partitionMap {
-			releaseCount += partition.batchDeleteTrashExtents(keepTime)
-		}
-	}
+	s.space.WalkDisks(func(disk *Disk) bool {
+		releaseCount += disk.deleteTrash(keepTime)
+		return true
+	})
 	s.buildSuccessResp(w, fmt.Sprintf("release trash extents, release extent count: %v: ", releaseCount))
 }
