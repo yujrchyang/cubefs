@@ -61,8 +61,8 @@ func (t ExtentType) String() string {
 	}
 }
 
-func GenS3Key(cluster, volume string, inodeId, partitionId, extentId uint64) string {
-	return fmt.Sprintf("/cubefs_%v/%v/%v/%v/%v", cluster, volume, inodeId, partitionId, extentId)
+func GenS3Key(cluster, volume string, volId, inodeId, partitionId, extentId uint64) string {
+	return fmt.Sprintf("/cubefs_%v/%v_%v/%v/%v/%v", cluster, volume, volId, inodeId, partitionId, extentId)
 }
 
 // ExtentKey defines the extent key struct.
