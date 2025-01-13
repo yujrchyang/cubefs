@@ -477,7 +477,7 @@ func (migInode *MigrateInode) deleteOldExtents(extentKeys []proto.ExtentKey) (er
 		dpIdEksMap[dpId] = append(dpIdEksMap[dpId], metaDelExtentKey)
 	}
 	for dpId, eks := range dpIdEksMap {
-		err = retryDeleteExtents(migInode.mpOp.mc, dpId, eks, migInode.inodeInfo.Inode)
+		err = retryDeleteExtents(migInode.mpOp.mc, migInode.vol.Name, dpId, eks, migInode.inodeInfo.Inode)
 		if err != nil {
 			log.LogErrorf("deleteOldExtents ino:%v partitionId:%v extentKeys:%v err:%v", migInode.name, dpId, eks, err)
 			return
@@ -680,10 +680,10 @@ func (migInode *MigrateInode) setInodeAttrMaxTime() (err error) {
 	return
 }
 
-func retryDeleteExtents(mc *master.MasterClient, partitionId uint64, eks []proto.ExtentKey, inodeId uint64) (err error) {
+func retryDeleteExtents(mc *master.MasterClient, volume string, partitionId uint64, eks []proto.ExtentKey, inodeId uint64) (err error) {
 	retryNum := 5
 	for i := 0; i < retryNum; i++ {
-		if err = deleteExtents(mc, partitionId, eks, inodeId); err != nil {
+		if err = deleteExtents(mc, volume, partitionId, eks, inodeId); err != nil {
 			continue
 		}
 		break
@@ -691,9 +691,9 @@ func retryDeleteExtents(mc *master.MasterClient, partitionId uint64, eks []proto
 	return
 }
 
-func deleteExtents(mc *master.MasterClient, partitionId uint64, eks []proto.ExtentKey, inodeId uint64) (err error) {
+func deleteExtents(mc *master.MasterClient, volume string, partitionId uint64, eks []proto.ExtentKey, inodeId uint64) (err error) {
 	var partition *proto.DataPartitionInfo
-	partition, err = mc.AdminAPI().GetDataPartition("", partitionId)
+	partition, err = mc.AdminAPI().GetDataPartition(volume, partitionId)
 	if err != nil {
 		err = errors.NewErrorf("get data partition:%v, err:%v", partitionId, err)
 		return
