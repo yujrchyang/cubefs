@@ -3876,6 +3876,30 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreUint64(&c.cfg.DeleteEKRecordFilesMaxSize, val.(uint64))
 	}
 
+	oldDataNodeTrashKeepTimeSec := c.cfg.DataNodeTrashKeepTimeSec
+	if val, ok := params[proto.DataNodeTrashKeepTimeSecKey]; ok {
+		v := val.(uint64)
+		if v < minTrashKeepTimeSec {
+			err = errors.NewErrorf("parameter %s must be greater than %d", proto.DataNodeTrashKeepTimeSecKey, minTrashKeepTimeSec)
+			return err
+		}
+		atomic.StoreUint64(&c.cfg.DataNodeTrashKeepTimeSec, val.(uint64))
+	}
+
+	oldFlashNodeReadTimeoutUs := c.cfg.FlashNodeReadTimeoutUs
+	if val, ok := params[proto.FlashNodeReadTimeoutUsKey]; ok {
+		v := val.(uint64)
+		if v < minFlashNodeReadTimeoutUs {
+			err = errors.NewErrorf("parameter %s must be greater than %d", proto.FlashNodeReadTimeoutUsKey, minFlashNodeReadTimeoutUs)
+			return err
+		}
+		if v > maxFlashNodeReadTimeoutUs {
+			err = errors.NewErrorf("parameter %s must be less than %d", proto.FlashNodeReadTimeoutUsKey, maxFlashNodeReadTimeoutUs)
+			return err
+		}
+		atomic.StoreUint64(&c.cfg.FlashNodeReadTimeoutUs, val.(uint64))
+	}
+
 	oldMetaTrashCleanInterval := atomic.LoadUint64(&c.cfg.MetaTrashCleanInterval)
 	if val, ok := params[proto.MetaTrashCleanIntervalKey]; ok {
 		atomic.StoreUint64(&c.cfg.MetaTrashCleanInterval, val.(uint64))
@@ -4025,10 +4049,26 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DataNodeDiskReservedRatio = v
 	}
 
+	oldDataNodeDisableBlacklist := c.cfg.DataNodeDisableBlacklist
+	if val, ok := params[proto.DataNodeDisableBlacklistKey]; ok {
+		c.cfg.DataNodeDisableBlacklist = val.(bool)
+	}
+
+	oldDataNodeDisableAutoDeleteTrash := c.cfg.DataNodeDisableAutoDeleteTrash
+	if val, ok := params[proto.DataNodeDisableAutoDeleteTrashKey]; ok {
+		c.cfg.DataNodeDisableAutoDeleteTrash = val.(bool)
+	}
+
 	oldDisableClusterCheckDelEK := c.cfg.DisableClusterCheckDeleteEK
 	if val, ok := params[proto.DisableClusterCheckDelEK]; ok {
 		c.cfg.DisableClusterCheckDeleteEK = val.(bool)
 	}
+
+	oldFlashNodeDisableStack := c.cfg.FlashNodeDisableStack
+	if val, ok := params[proto.FlashNodeDisableStackKey]; ok {
+		c.cfg.FlashNodeDisableStack = val.(bool)
+	}
+
 	if err = c.syncPutCluster(); err != nil {
 		log.LogErrorf("action[setClusterConfig] err[%v]", err)
 		atomic.StoreUint64(&c.cfg.MetaNodeDeleteBatchCount, oldDeleteBatchCount)
@@ -4080,6 +4120,12 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		atomic.StoreInt64(&c.cfg.TopologyForceFetchIntervalSec, oldTopologyForceFetchIntervalSec)
 		c.cfg.DataNodeDiskReservedRatio = oldDataNodeDiskReservedRatio
 		c.cfg.DisableClusterCheckDeleteEK = oldDisableClusterCheckDelEK
+		c.cfg.DataNodeDisableBlacklist = oldDataNodeDisableBlacklist
+		c.cfg.DataNodeDisableAutoDeleteTrash = oldDataNodeDisableAutoDeleteTrash
+		atomic.StoreUint64(&c.cfg.DataNodeTrashKeepTimeSec, oldDataNodeTrashKeepTimeSec)
+		atomic.StoreUint64(&c.cfg.FlashNodeReadTimeoutUs, oldFlashNodeReadTimeoutUs)
+		c.cfg.FlashNodeDisableStack = oldFlashNodeDisableStack
+
 		err = proto.ErrPersistenceByRaft
 		return
 	}

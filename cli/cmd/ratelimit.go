@@ -467,6 +467,11 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  TopologyFroceFetchInterval       : %v Sec\n", info.TopologyForceFetchIntervalSec))
 	sb.WriteString(fmt.Sprintf("  DataNodeDiskReservedRatio        : %v\n", info.DataNodeDiskReservedRatio))
 	sb.WriteString(fmt.Sprintf("  ClusterCheckDeleteEK             : %v\n", formatEnabledDisabled(!info.DisableClusterCheckDeleteEK)))
+	sb.WriteString(fmt.Sprintf("  DataNodeDisableBlacklist         : %v\n", info.DataNodeDisableBlacklist))
+	sb.WriteString(fmt.Sprintf("  DataNodeDisableAutoDeleteTrash   : %v\n", info.DataNodeDisableAutoDeleteTrash))
+	sb.WriteString(fmt.Sprintf("  DataNodeTrashKeepTimeSec         : %v\n", info.DataNodeTrashKeepTimeSec))
+	sb.WriteString(fmt.Sprintf("  FlashNodeReadTimeoutUs           : %v\n", info.FlashNodeReadTimeoutUs))
+	sb.WriteString(fmt.Sprintf("  FlashNodeDisableStack            : %v\n", info.FlashNodeDisableStack))
 	sb.WriteString(fmt.Sprintf("  PersistenceMode                  : %v (%v)\n", info.PersistenceMode.String(), info.PersistenceMode.Int32()))
 	return sb.String()
 }

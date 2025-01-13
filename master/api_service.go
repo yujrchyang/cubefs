@@ -5451,7 +5451,10 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		monitorSummarySecondKey, monitorReportSecondKey, proto.MetaRocksWalTTLKey, proto.MetaRocksWalFlushIntervalKey, proto.MetaRocksLogReservedCnt, proto.MetaRockDBWalFileMaxMB,
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
 		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey, flashNodeRateKey, flashNodeVolRateKey,
-		proto.MetaNodeDelEKZoneRateLimitKey, proto.MetaNodeDelEKVolRateLimitKey}
+		proto.MetaNodeDelEKZoneRateLimitKey, proto.MetaNodeDelEKVolRateLimitKey,
+		proto.DataNodeTrashKeepTimeSecKey,
+		proto.FlashNodeReadTimeoutUsKey,
+	}
 	for _, key := range uintKeys {
 		if err = parseUintKey(params, key, r); err != nil {
 			return
@@ -5473,7 +5476,11 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		}
 	}
 	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey,
-		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey, proto.DisableClusterCheckDelEK}
+		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey, proto.DisableClusterCheckDelEK,
+		proto.DataNodeDisableBlacklistKey,
+		proto.DataNodeDisableAutoDeleteTrashKey,
+		proto.FlashNodeDisableStackKey,
+	}
 	for _, key := range boolKey {
 		if err = parseBoolKey(params, key, r); err != nil {
 			return
