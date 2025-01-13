@@ -47,10 +47,6 @@ func (f *Node) Attr(ctx context.Context, a *fuse.Attr) error {
 	info, err := Sup.InodeGet(ctx, ino)
 	if err != nil {
 		log.LogErrorf("Attr: ino(%v) err(%v)", ino, err)
-		if err == fuse.ENOENT {
-			a.Inode = ino
-			return nil
-		}
 		return ParseError(err)
 	}
 
@@ -121,7 +117,12 @@ func (f *Node) Open(ctx context.Context, req *fuse.OpenRequest, resp *fuse.OpenR
 	start := time.Now()
 	Sup.ec.OpenStream(ino, false, false)
 	if Sup.prefetchManager == nil {
-		Sup.ec.RefreshExtentsCache(ctx, ino)
+		// not update access time when upgrading
+		if req == nil {
+			Sup.ec.RefreshExtentsCacheNoModifyAccessTime(ctx, ino)
+		} else {
+			Sup.ec.RefreshExtentsCache(ctx, ino)
+		}
 	}
 
 	if Sup.keepCache && resp != nil {

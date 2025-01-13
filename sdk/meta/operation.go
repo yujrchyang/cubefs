@@ -745,7 +745,7 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 	if err != nil {
 		if needCheckRead {
 			log.LogWarnf("insertExtentKey: check results, mp(%v) req(%v)", mp, *req)
-			newStatus, _, _, newExtents, newErr := mw.getExtents(ctx, mp, inode)
+			newStatus, _, _, newExtents, newErr := mw.getExtents(ctx, mp, inode, true)
 			if newErr == nil && newStatus == statusOK && containsExtent(newExtents, ek) {
 				log.LogWarnf("insertExtentKey: check results successfully, mp(%v) req(%v)", mp, *req)
 				return statusOK, nil
@@ -769,7 +769,7 @@ func (mw *MetaWrapper) insertExtentKey(ctx context.Context, mp *MetaPartition, i
 	return status, nil
 }
 
-func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode uint64) (status int, gen, size uint64, extents []proto.ExtentKey, err error) {
+func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode uint64, modifyAccessTime bool) (status int, gen, size uint64, extents []proto.ExtentKey, err error) {
 
 	req := &proto.GetExtentsRequest{
 		VolName:     mw.volname,
@@ -778,7 +778,11 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 	}
 
 	packet := proto.NewPacketReqID(ctx)
-	packet.Opcode = proto.OpMetaExtentsList
+	if modifyAccessTime {
+		packet.Opcode = proto.OpMetaExtentsList
+	} else {
+		packet.Opcode = proto.OpMetaGetExtentsNoModifyAccessTime
+	}
 	packet.PartitionID = mp.PartitionID
 	err = packet.MarshalData(req)
 	if err != nil {
@@ -800,7 +804,7 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 		log.LogWarnf("getExtents: packet(%v) mp(%v) inode(%v) result(%v)", packet, mp, inode, packet.GetResultMsg())
 		newMp := mw.getRefreshMp(ctx, inode)
 		if newMp != nil && newMp.PartitionID != mp.PartitionID {
-			return mw.getExtents(ctx, newMp, inode)
+			return mw.getExtents(ctx, newMp, inode, modifyAccessTime)
 		}
 	}
 	if status != statusOK {
@@ -822,54 +826,6 @@ func (mw *MetaWrapper) getExtents(ctx context.Context, mp *MetaPartition, inode 
 			size += uint64(resp.Extents[i].Size)
 		}
 		resp.Size = size
-	}
-	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
-}
-
-func (mw *MetaWrapper) getExtentsNoModifyAccessTime(ctx context.Context, mp *MetaPartition, inode uint64) (status int, gen, size uint64, extents []proto.ExtentKey, err error) {
-	req := &proto.GetExtentsRequest{
-		VolName:     mw.volname,
-		PartitionID: mp.PartitionID,
-		Inode:       inode,
-	}
-
-	packet := proto.NewPacketReqID(ctx)
-	packet.Opcode = proto.OpMetaGetExtentsNoModifyAccessTime
-	packet.PartitionID = mp.PartitionID
-	err = packet.MarshalData(req)
-	if err != nil {
-		log.LogWarnf("getExtents: req(%v) err(%v)", *req, err)
-		return
-	}
-
-	metric := exporter.NewModuleTPUs(packet.GetOpMsg() + "_us")
-	defer metric.Set(err)
-
-	packet, err = mw.sendReadToMP(ctx, mp, packet)
-	if err != nil {
-		log.LogWarnf("getExtents: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
-		return
-	}
-
-	status = parseStatus(packet.ResultCode)
-	if status == statusOutOfRange {
-		log.LogWarnf("getExtents: packet(%v) mp(%v) inode(%v) result(%v)", packet, mp, inode, packet.GetResultMsg())
-		newMp := mw.getRefreshMp(ctx, inode)
-		if newMp != nil && newMp.PartitionID != mp.PartitionID {
-			return mw.getExtents(ctx, newMp, inode)
-		}
-	}
-	if status != statusOK {
-		extents = make([]proto.ExtentKey, 0)
-		log.LogWarnf("getExtents: packet(%v) mp(%v) result(%v)", packet, mp, packet.GetResultMsg())
-		return
-	}
-
-	resp := new(proto.GetExtentsResponse)
-	err = packet.UnmarshalData(resp)
-	if err != nil {
-		log.LogWarnf("getExtents: packet(%v) mp(%v) err(%v) PacketData(%v)", packet, mp, err, string(packet.Data))
-		return
 	}
 	return statusOK, resp.Generation, resp.Size, resp.Extents, nil
 }

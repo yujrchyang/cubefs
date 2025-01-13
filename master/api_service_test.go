@@ -4356,7 +4356,7 @@ func TestSetClusterName(t *testing.T) {
 	}
 
 	reqURL = fmt.Sprintf("%v%v?%s=%s",
-		hostAddr, proto.AdminSetClusterName, forceKey, "true")
+		hostAddr, proto.AdminSetClusterName, proto.ForceKey, "true")
 	process(reqURL, t)
 	if err := server.checkClusterName(); err != nil || server.cluster.cfg.ClusterName != "" {
 		assert.NoError(t, err)
@@ -4388,7 +4388,7 @@ func TestMetaNodeReg(t *testing.T) {
 	defer func() {
 		releaseRegMetanode(t)
 		reqURL := fmt.Sprintf("%v%v?%s=%s",
-			hostAddr, proto.AdminSetClusterName, forceKey, "true")
+			hostAddr, proto.AdminSetClusterName, proto.ForceKey, "true")
 		process(reqURL, t)
 	}()
 

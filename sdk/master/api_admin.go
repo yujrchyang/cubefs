@@ -718,6 +718,21 @@ func (api *AdminAPI) GetLimitInfo(volName string) (info *proto.LimitInfo, err er
 	return
 }
 
+func (api *AdminAPI) GetLimitInfoNoCache(volName string) (info *proto.LimitInfo, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetLimitInfo)
+	request.addParam("name", volName)
+	request.addParam(proto.ForceKey, "true")
+	var data []byte
+	if data, _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	info = &proto.LimitInfo{}
+	if err = json.Unmarshal(data, &info); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) GetNodeInfo() (ni *proto.NodeInfo, err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminGetNodeInfo)
 	var data []byte

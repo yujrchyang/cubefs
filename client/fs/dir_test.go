@@ -27,8 +27,9 @@ func Test_ReaddirPlus(t *testing.T) {
 	d := &Node{}
 	ctx := context.Background()
 	// create test dir
+	os.RemoveAll("/cfs/mnt/Test_ReaddirPlus")
 	var dInfo *proto.InodeInfo
-	if dInfo, err = s.mw.Create_ll(ctx, 1, "Test_ReaddirPlus", uint32(os.ModeDir), 0, 0, nil); err != nil {
+	if dInfo, err = s.mw.Create_ll(ctx, proto.RootIno, "Test_ReaddirPlus", uint32(os.ModeDir), 0, 0, nil); err != nil {
 		t.Fatalf("Test_ReaddirPlus: create dir err(%v)", err)
 		return
 	}

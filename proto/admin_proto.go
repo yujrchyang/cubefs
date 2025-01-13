@@ -328,10 +328,11 @@ const (
 	ReqRecordReservedTimeKey         = "volReqRecordReservedTime"
 	ReqRecordMaxCountKey             = "volReqRecordMaxCount"
 	PersistenceModeKey               = "persistenceMode"
-	DataNodeDisableBlacklistKey       = "dataNodeDisableBlacklist"
-	DataNodeTrashKeepTimeSecKey       = "dataNodeTrashKeepTimeSec"
-	FlashNodeReadTimeoutUsKey         = "flashNodeReadTimeoutUs"
-	FlashNodeDisableStackKey          = "flashNodeDisableStack"
+	DataNodeDisableBlacklistKey      = "dataNodeDisableBlacklist"
+	DataNodeTrashKeepTimeSecKey      = "dataNodeTrashKeepTimeSec"
+	FlashNodeReadTimeoutUsKey        = "flashNodeReadTimeoutUs"
+	FlashNodeDisableStackKey         = "flashNodeDisableStack"
+	ForceKey                         = "force"
 
 	IDsKey            = "ids"
 	MetaOutKey        = "metaOut"
@@ -744,15 +745,15 @@ type LimitInfo struct {
 	TopologyFetchIntervalMin      int64
 	TopologyForceFetchIntervalSec int64
 
-	DataNodeDiskReservedRatio      float64
-	ApiReqBwRateLimitMap           map[uint8]int64
-	DisableClusterCheckDeleteEK    bool
-	DelayMinutesReduceReplicaNum   int64
-	UnrecoverableDuration          int64
-	DataNodeDisableBlacklist       bool
-	DataNodeTrashKeepTimeSec       int64
-	FlashNodeDisableStack          bool
-	FlashNodeReadTimeoutUs         uint64
+	DataNodeDiskReservedRatio    float64
+	ApiReqBwRateLimitMap         map[uint8]int64
+	DisableClusterCheckDeleteEK  bool
+	DelayMinutesReduceReplicaNum int64
+	UnrecoverableDuration        int64
+	DataNodeDisableBlacklist     bool
+	DataNodeTrashKeepTimeSec     int64
+	FlashNodeDisableStack        bool
+	FlashNodeReadTimeoutUs       uint64
 }
 
 // CreateDataPartitionRequest defines the request to create a data partition.

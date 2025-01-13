@@ -22,12 +22,12 @@ func TestInodeReuse(t *testing.T) {
 	filePath := "/cfs/mnt/" + fileName
 	dirName := "TestInodeReuseDir"
 	dirPath := "/cfs/mnt/" + dirName
-	os.Create(filePath)
+	osCreate(filePath)
 	fInfo, _ := os.Stat(filePath)
 	ino := fInfo.Sys().(*syscall.Stat_t).Ino
-	_, err := mw.Delete_ll(nil, proto.RootIno, fileName, false)
+	_, err := mw.Delete_ll(ctx, proto.RootIno, fileName, false)
 	assert.Nil(t, err)
-	err = mw.Evict(nil, ino, true)
+	err = mw.Evict(ctx, ino, true)
 	assert.Nil(t, err)
 
 	mc := masterSDK.NewMasterClient(ltptestMaster, false)
@@ -42,7 +42,8 @@ func TestInodeReuse(t *testing.T) {
 	assert.Nil(t, err)
 	t.Logf("CreateInode mp(%v) ino(%v) mode(%v) inodeInfo(%v)", mp.PartitionID, ino, mode, inodeInfo)
 	mpParent := getMpByInode(mps, proto.RootIno)
-	err = mw.DentryCreate_ll(nil, mpParent.PartitionID, dirName, ino, mode)
+	mw.Delete_ll(ctx, mpParent.PartitionID, dirName, true)
+	err = mw.DentryCreate_ll(ctx, mpParent.PartitionID, dirName, ino, mode)
 	assert.Nil(t, err)
 
 	exec.Command("curl", "http://192.168.0.10:17410/clearCache").Run()
@@ -53,7 +54,7 @@ func TestInodeReuse(t *testing.T) {
 func TestInodeReuse_MultiFD(t *testing.T) {
 	fileName := "TestInodeReuse_MultiFD"
 	filePath := "/cfs/mnt/" + fileName
-	os.Create(filePath)
+	osCreate(filePath)
 	fInfo, _ := os.Stat(filePath)
 	ino := fInfo.Sys().(*syscall.Stat_t).Ino
 	data := make([]byte, 1024)
@@ -64,9 +65,9 @@ func TestInodeReuse_MultiFD(t *testing.T) {
 	assert.Nil(t, err)
 	err = ec.Flush(ctx, ino)
 	assert.Nil(t, err)
-	_, err = mw.Delete_ll(nil, proto.RootIno, fileName, false)
+	_, err = mw.Delete_ll(ctx, proto.RootIno, fileName, false)
 	assert.Nil(t, err)
-	err = mw.Evict(nil, ino, true)
+	err = mw.Evict(ctx, ino, true)
 	assert.Nil(t, err)
 
 	mc := masterSDK.NewMasterClient(ltptestMaster, false)
@@ -95,26 +96,27 @@ func getMpByInode(mps []*proto.MetaPartitionView, inode uint64) *proto.MetaParti
 func TestRenameOpenedFile(t *testing.T) {
 	testFile1 := "/cfs/mnt/TestStreamer_RenameOpenedFile1"
 	testFile2 := "/cfs/mnt/TestStreamer_RenameOpenedFile2"
-	os.Create(testFile1)
+	osCreate(testFile1)
 	info1, _ := os.Stat(testFile1)
 	ino1 := info1.Sys().(*syscall.Stat_t).Ino
-	os.Create(testFile2)
+	osCreate(testFile2)
 	err := os.Rename(testFile2, testFile1)
 	assert.Nil(t, err)
-	_, err = mw.InodeGet_ll(nil, ino1)
+	_, err = mw.InodeGet_ll(ctx, ino1)
 	assert.Nil(t, err)
 
 	testName3 := "TestStreamer_RenameOpenedFile3"
 	testFile3 := "/cfs/mnt/" + testName3
-	info3, _ := mw.Create_ll(nil, proto.RootIno, testName3, 0777, 0, 0, nil)
+	info3, _ := create(testName3)
 	err = os.Rename(testFile1, testFile3)
 	assert.Nil(t, err)
-	_, err = mw.InodeGet_ll(nil, info3.Inode)
+	_, err = mw.InodeGet_ll(ctx, info3.Inode)
 	assert.Equal(t, syscall.ENOENT, err)
 }
 
 func TestMknod(t *testing.T) {
 	fileName := "/cfs/mnt/TestMknod"
+	os.Remove(fileName)
 	err := syscall.Mknod(fileName, 0600, 0)
 	assert.Nil(t, err)
 	f, _ := os.OpenFile(fileName, os.O_RDWR, 0)

@@ -752,7 +752,7 @@ func (mw *MetaWrapper) GetExtents(ctx context.Context, inode uint64) (gen uint64
 		return 0, 0, nil, syscall.ENOENT
 	}
 
-	status, gen, size, extents, err = mw.getExtents(ctx, mp, inode)
+	status, gen, size, extents, err = mw.getExtents(ctx, mp, inode, true)
 	if err != nil || status != statusOK {
 		return 0, 0, nil, statusToErrno(status)
 	}
@@ -772,7 +772,7 @@ func (mw *MetaWrapper) GetExtentsNoModifyAccessTime(ctx context.Context, inode u
 		return 0, 0, nil, syscall.ENOENT
 	}
 
-	status, gen, size, extents, err = mw.getExtentsNoModifyAccessTime(ctx, mp, inode)
+	status, gen, size, extents, err = mw.getExtents(ctx, mp, inode, false)
 	if err != nil || status != statusOK {
 		return 0, 0, nil, statusToErrno(status)
 	}

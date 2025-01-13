@@ -72,10 +72,10 @@ func TestRateLimit(t *testing.T) {
 	offset := uint64(unit.DefaultTinySizeLimit)
 
 	// limited by 100 op/s for writing
-	limit := map[string]string{proto.EnableUsedVolLimitInfoRespCacheKey: "false", proto.VolumeKey: ltptestVolume, proto.ClientWriteVolRateKey: "100"}
+	limit := map[string]string{proto.VolumeKey: ltptestVolume, proto.ClientWriteVolRateKey: "100"}
 	err := mc.AdminAPI().SetRateLimitWithMap(limit)
 	assert.Nil(t, err)
-	ec.updateConfig()
+	ec.updateConfig(true)
 	assert.Equal(t, rate.Limit(100), ec.writeLimiter.Limit())
 	// consume burst first
 	for i := 0; i < 100; i++ {
@@ -94,7 +94,7 @@ func TestRateLimit(t *testing.T) {
 	limit[proto.ClientWriteVolRateKey] = "0"
 	err = mc.AdminAPI().SetRateLimitWithMap(limit)
 	assert.Nil(t, err)
-	ec.updateConfig()
+	ec.updateConfig(true)
 	assert.Equal(t, rate.Inf, ec.writeLimiter.Limit())
 	begin = time.Now()
 	for i := 0; i < 200; i++ {
@@ -108,7 +108,7 @@ func TestRateLimit(t *testing.T) {
 	limit[proto.ClientWriteVolRateKey] = "1000"
 	err = mc.AdminAPI().SetRateLimitWithMap(limit)
 	assert.Nil(t, err)
-	ec.updateConfig()
+	ec.updateConfig(true)
 	assert.Equal(t, rate.Limit(1000), ec.writeLimiter.Limit())
 	// wait limiter to fill burst
 	time.Sleep(time.Second)
@@ -123,7 +123,7 @@ func TestRateLimit(t *testing.T) {
 	limit[proto.ClientWriteVolRateKey] = "0"
 	err = mc.AdminAPI().SetRateLimitWithMap(limit)
 	assert.Nil(t, err)
-	ec.updateConfig()
+	ec.updateConfig(true)
 	assert.Equal(t, rate.Inf, ec.writeLimiter.Limit())
 }
 
