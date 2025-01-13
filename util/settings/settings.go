@@ -23,7 +23,7 @@ func OpenKeyValues(path string) (*KeyValues, error) {
 	var bs []byte
 	bs, err = os.ReadFile(s.path)
 	if os.IsNotExist(err) {
-		return nil, nil
+		return s, nil
 	}
 
 	if err = json.Unmarshal(bs, &s.values); err != nil {
@@ -108,7 +108,7 @@ func (s *KeyValues) persist() error {
 		return err
 	}
 	var tmpFilepath = s.path + ".tmp"
-	if err = os.WriteFile(s.path, bs, 0666); err != nil {
+	if err = os.WriteFile(tmpFilepath, bs, 0666); err != nil {
 		return err
 	}
 	if err = os.Rename(tmpFilepath, s.path); err != nil {
