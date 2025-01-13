@@ -90,6 +90,7 @@ const (
 	AdminStatTrash                 = "/admin/trash/stat"
 	AdminSetClientPkgAddr          = "/clientPkgAddr/set"
 	AdminGetClientPkgAddr          = "/clientPkgAddr/get"
+	AdminSetClientConf             = "/clientConfig/set"
 	AdminSetVolChildMaxCnt         = "/vol/setChildMaxCnt"
 	AdminCheckVolPartitionReplica  = "/vol/checkReplica"
 	AdminSetNodeSetCapacity        = "/admin/nodeSetCapacity/set"

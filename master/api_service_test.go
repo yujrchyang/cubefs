@@ -3904,7 +3904,7 @@ func TestSetAutoUpdatePartitionReplicaNum(t *testing.T) {
 	for _, testCase := range testCases {
 		reqURL := fmt.Sprintf("%v%v?autoUpdatePartitionReplicaNum=%v", hostAddr, proto.AdminSetNodeInfo, strconv.FormatBool(testCase.Value))
 		process(reqURL, t)
-		limitInfo, err := mc.AdminAPI().GetLimitInfo("")
+		limitInfo, err := mc.AdminAPI().GetLimitInfoWithNoCache("")
 		if err != nil {
 			assert.Fail(t, err.Error())
 		}
@@ -4078,7 +4078,7 @@ func TestSetRemoteCacheHandler(t *testing.T) {
 		t.Errorf("set remoteCacheEnableState to %v failed", remoteCacheEnableState)
 		return
 	}
-	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reqURL = fmt.Sprintf("%v%v?force=true", hostAddr, proto.AdminGetLimitInfo)
 	fmt.Println(reqURL)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
@@ -5136,4 +5136,40 @@ func TestSetPingRule(t *testing.T) {
 	reqURL = fmt.Sprintf("%v%v?pingRule=%v", hostAddr, proto.AdminAPISetPingRule, pingRule)
 	httpReply := processWithError(reqURL, t)
 	assert.Contains(t, httpReply.Msg, "invalid value")
+}
+
+func TestSetClientRetryTime(t *testing.T) {
+	writeRetryTime := int64(1200)
+	readRetryTime := int64(600)
+	reqURL := fmt.Sprintf("%v%v?writeRetryTimeSec=%v&readRetryTimeSec=%v", hostAddr, proto.AdminSetClientConf, writeRetryTime, readRetryTime)
+	process(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v?name=%v&force=true", hostAddr, proto.AdminGetLimitInfo, commonVolName)
+	reply := processReturnRawReply(reqURL, t)
+	assert.Zerof(t, reply.Code, "get limit info")
+	info := &proto.LimitInfo{}
+	err := json.Unmarshal(reply.Data, info)
+	assert.NoError(t, err)
+	assert.Equal(t, info.ClientWriteRetryTimeSec, writeRetryTime, "get write retry time")
+	assert.Equal(t, info.ClientReadRetryTimeSec, readRetryTime, "get read retry time")
+}
+
+func TestSetVolConnConfig(t *testing.T)  {
+	connConfig := &proto.ConnConfig{
+		IdleTimeoutSec: 10,
+		ConnectTimeoutNs: 100000000,
+		WriteTimeoutNs: 200000000,
+		ReadTimeoutNs: 300000000,
+	}
+	vol, err := server.cluster.getVol(commonVolName)
+	assert.NoErrorf(t, err, "get vol")
+	reqURL := fmt.Sprintf("%v%v?name=%v&authKey=%v&idleTimeoutSec=%v&connTimeout=%v&writeConnTimeout=%v&readConnTimeout=%v",
+		hostAddr, proto.AdminUpdateVol, commonVolName, buildAuthKey(vol.Owner), connConfig.IdleTimeoutSec, connConfig.ConnectTimeoutNs, connConfig.WriteTimeoutNs, connConfig.ReadTimeoutNs)
+	process(reqURL, t)
+	reqURL = fmt.Sprintf("%v%v?name=%v", hostAddr, proto.AdminGetVol, commonVolName)
+	reply := processReturnRawReply(reqURL, t)
+	assert.Zerof(t, reply.Code, "get vol info")
+	svv := &proto.SimpleVolView{}
+	err = json.Unmarshal(reply.Data, svv)
+	assert.NoErrorf(t, err, "unmarshal reply")
+	assert.Equalf(t, connConfig, svv.ConnConfig, "get vol conn config")
 }

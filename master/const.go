@@ -149,6 +149,7 @@ const (
 	addSlaveKey                         = "addslave"
 	newNameKey                          = "newName"
 	fgSlotsKey                          = "slots"
+	volIdleTimeoutKey					= "idleTimeoutSec"
 	volConnTimeoutKey                   = "connTimeout"
 	volReadConnTimeoutKey               = "readConnTimeout"
 	volWriteConnTimeoutKey              = "writeConnTimeout"
@@ -159,6 +160,8 @@ const (
 	disableStatKey                      = "disable"
 	readAheadMemoryKey                  = "readAheadMemMB"
 	readAheadWindowKey                  = "readAheadWindowMB"
+	clientWriteRetryTimeKey				= "writeRetryTimeSec"
+	clientReadRetryTimeKey				= "readRetryTimeSec"
 )
 
 const (

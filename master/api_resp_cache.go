@@ -240,6 +240,8 @@ func (c *Cluster) buildLimitInfo(volName string) (cInfo *proto.LimitInfo) {
 		DataNodeTrashKeepTimeSec:               c.cfg.DataNodeTrashKeepTimeSec,
 		FlashNodeReadTimeoutUs:                 c.cfg.FlashNodeReadTimeoutUs,
 		FlashNodeDisableStack:                  c.cfg.FlashNodeDisableStack,
+		ClientWriteRetryTimeSec: 				c.cfg.ClientWriteRetryTimeSec,
+		ClientReadRetryTimeSec: 				c.cfg.ClientReadRetryTimeSec,
 	}
 	return
 }

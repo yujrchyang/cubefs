@@ -472,6 +472,8 @@ func formatRateLimitInfo(info *proto.LimitInfo) string {
 	sb.WriteString(fmt.Sprintf("  FlashNodeReadTimeoutUs           : %v\n", info.FlashNodeReadTimeoutUs))
 	sb.WriteString(fmt.Sprintf("  FlashNodeDisableStack            : %v\n", info.FlashNodeDisableStack))
 	sb.WriteString(fmt.Sprintf("  PersistenceMode                  : %v (%v)\n", info.PersistenceMode.String(), info.PersistenceMode.Int32()))
+	sb.WriteString(fmt.Sprintf("  ClientWriteRetryTime             : %v Sec\n", info.ClientWriteRetryTimeSec))
+	sb.WriteString(fmt.Sprintf("  ClientReadRetryTime              : %v Sec\n", info.ClientReadRetryTimeSec))
 	return sb.String()
 }
 

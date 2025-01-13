@@ -365,14 +365,16 @@ func withLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode
 }
 
 func withPriorityAndDown(t *testing.T, testName string, isLease bool, mode RaftMode, peers []proto.Peer) {
-	peers[0].Priority = 1
-	peers[1].Priority = 3
-	peers[2].Priority = 2
-	if len(peers) == len(recorderPeers) {
-		peers[3].Priority = 2
-		peers[4].Priority = 2
+	priorityPeer := make([]proto.Peer, len(peers))
+	copy(priorityPeer, peers)
+	priorityPeer[0].Priority = 1
+	priorityPeer[1].Priority = 3
+	priorityPeer[2].Priority = 2
+	if len(priorityPeer) == len(recorderPeers) {
+		priorityPeer[3].Priority = 2
+		priorityPeer[4].Priority = 2
 	}
-	servers := initTestServer(peers, false, true, 1, mode)
+	servers := initTestServer(priorityPeer, false, true, 1, mode)
 	f, w := getLogFile("", testName+".log")
 	defer func() {
 		w.Flush()

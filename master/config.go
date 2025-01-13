@@ -87,6 +87,7 @@ const (
 	defaultFlashNodeReadTimeoutUs                            = 60 * 1000
 	minFlashNodeReadTimeoutUs                                = 500
 	maxFlashNodeReadTimeoutUs                                = 10 * 1000 * 1000
+	minClientRetryTimeSec									 = 30
 )
 
 // AddrDatabase is a map that stores the address of a given host (e.g., the leader)
@@ -136,6 +137,8 @@ type clusterConfig struct {
 	DataPartitionsRecoverPoolSize       int32
 	MetaPartitionsRecoverPoolSize       int32
 	ClientPkgAddr                       string
+	ClientWriteRetryTimeSec				int64
+	ClientReadRetryTimeSec				int64
 	UmpJmtpAddr                         string
 	UmpJmtpBatch                        uint64
 	MetaNodeRocksdbDiskThreshold        float32

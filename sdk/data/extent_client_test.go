@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/time/rate"
@@ -65,6 +66,9 @@ func TestSetExtentSize(t *testing.T) {
 }
 
 func TestRateLimit(t *testing.T) {
+	log.SetLogLevel(log.WarnLevel)
+	defer log.SetLogLevel(log.DebugLevel)
+
 	file := "TestRateLimit"
 	info, _ := create(file)
 	ec.OpenStream(info.Inode, false, false)

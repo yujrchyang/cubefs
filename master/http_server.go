@@ -153,7 +153,12 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminGetClientPkgAddr).
 		HandlerFunc(m.getClientPkgAddr)
-	router.NewRoute().Methods(http.MethodGet).Path(proto.ClientConfCluster).HandlerFunc(m.getClientClusterConf)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.AdminSetClientConf).
+		HandlerFunc(m.setClientConfig)
+	router.NewRoute().Methods(http.MethodGet).
+		Path(proto.ClientConfCluster).
+		HandlerFunc(m.getClientClusterConf)
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AdminSetNodeSetCapacity).
 		HandlerFunc(m.setNodeSetCapacity)

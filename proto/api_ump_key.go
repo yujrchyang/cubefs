@@ -57,6 +57,7 @@ const (
 	AdminSetVolMinRWPartitionUmpKey             = "vol_setMinRWPartition"
 	AdminSetClientPkgAddrUmpKey                 = "clientPkgAddr_set"
 	AdminGetClientPkgAddrUmpKey                 = "clientPkgAddr_get"
+	AdminSetClientConfigUmpKey                  = "clientConfig_set"
 	AdminSmartVolListUmpKey                     = "admin_smartVol_list"
 	AdminGetHddDataPartitionsUmpKey             = "admin_hddDataPartition_get"
 	AdminSetMNRocksDBDiskThresholdUmpKey        = "rocksdbDiskThreshold_set"

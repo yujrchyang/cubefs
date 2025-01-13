@@ -874,7 +874,8 @@ func (mp *MetaPartition) createTaskToAddRaftRecorder(addRecorder proto.Peer, lea
 }
 
 func (mp *MetaPartition) createTaskToRemoveRaftRecorder(removePeer proto.Peer) (t *proto.AdminTask, err error) {
-	mr, err := mp.getMetaReplicaLeader()
+	var mr *MetaReplica
+	mr, err = mp.getMetaReplicaLeader()
 	if err != nil {
 		return nil, errors.NewError(err)
 	}

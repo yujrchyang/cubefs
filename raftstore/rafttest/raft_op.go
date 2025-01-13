@@ -512,14 +512,13 @@ func tryToLeader(nodeID uint64, servers []*testServer, w *bufio.Writer) (leadSer
 	for {
 		for i := 0; i < len(servers); i++ {
 			servers[i].raft.TryToLeader(1)
-		}
-		leadServer = waitElect(servers, 1, w)
-		if leadServer.nodeID == nodeID {
-			break
+			leadServer = waitElect(servers, 1, w)
+			if leadServer.nodeID == nodeID {
+				printLog(w, fmt.Sprintf("try leader(%v) done", nodeID))
+				return leadServer
+			}
 		}
 	}
-	printLog(w, fmt.Sprintf("try leader(%v) done", nodeID))
-	return leadServer
 }
 
 func getRaftIndex(s *testServer, raftId uint64) (ai, ci, li uint64) {

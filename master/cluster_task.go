@@ -483,7 +483,7 @@ func (c *Cluster) resetMetaPartition(mp *MetaPartition, panicHosts, panicRecorde
 	mp.Status = proto.ReadOnly
 	mp.IsRecover = true
 	mp.PanicHosts = panicHosts
-	mp.PanicRecorders = panicRecorders
+	//mp.PanicRecorders = panicRecorders
 	mp.modifyTime = time.Now().Unix()
 	c.syncUpdateMetaPartition(mp)
 	mp.Unlock()
@@ -622,10 +622,8 @@ func (c *Cluster) forceRemoveMetaRaftPeers(mp *MetaPartition, panicHosts, panicR
 	newPeers = append(newPeers, newRecordersPeers...)
 	log.LogInfof("action[forceRemoveMetaRaftPeers],new peers[%v], old peers[%v], err[%v]", newPeers, mp.Peers, err)
 
-	for _, peer := range newPeers {
-		if err = c.resetMetaPartitionRaftMember(mp, newPeers, peer); err != nil {
-			return
-		}
+	if err = c.resetMetaPartitionRaftMember(mp, newPeers); err != nil {
+		return
 	}
 
 	c.removeMetaPartitionPanicHosts(mp, newPeers, panicHosts)
@@ -685,36 +683,33 @@ func (c *Cluster) removeMetaPartitionPanicRecorders(mp *MetaPartition, newPeers 
 	}
 }
 
-func (c *Cluster) resetMetaPartitionRaftMember(mp *MetaPartition, newPeers []proto.Peer, peer proto.Peer) (err error) {
-	var (
-		metaNode *MetaNode
-		task     *proto.AdminTask
-	)
-	if metaNode, err = c.metaNode(peer.Addr); err != nil {
-		return
-	}
-
+func (c *Cluster) resetMetaPartitionRaftMember(mp *MetaPartition, newPeers []proto.Peer) (err error) {
 	mp.Lock()
 	defer mp.Unlock()
-	if peer.IsRecorder() {
-		task, err = mp.createTaskToResetRaftRecorderMembers(newPeers, metaNode.Addr)
-	} else {
-		task, err = mp.createTaskToResetRaftMembers(newPeers, metaNode.Addr)
-	}
-	if err != nil {
-		return
-	}
-	if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
-		log.LogErrorf("action[resetMetaPartitionRaftMember] vol[%v],meta partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
-		return
-	}
+
 	newHosts := make([]string, 0)
 	newRecorders := make([]string, 0)
 	for _, peer := range newPeers {
+		var (
+			metaNode *MetaNode
+			task     *proto.AdminTask
+		)
+		if metaNode, err = c.metaNode(peer.Addr); err != nil {
+			return
+		}
 		if peer.IsRecorder() {
 			newRecorders = append(newRecorders, peer.Addr)
+			task, err = mp.createTaskToResetRaftRecorderMembers(newPeers, metaNode.Addr)
 		} else {
 			newHosts = append(newHosts, peer.Addr)
+			task, err = mp.createTaskToResetRaftMembers(newPeers, metaNode.Addr)
+		}
+		if err != nil {
+			return
+		}
+		if _, err = metaNode.Sender.syncSendAdminTask(task); err != nil {
+			log.LogErrorf("action[resetMetaPartitionRaftMember] vol[%v],meta partition[%v],err[%v]", mp.volName, mp.PartitionID, err)
+			return
 		}
 	}
 	newLearners := make([]proto.Learner, 0)

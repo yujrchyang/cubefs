@@ -66,6 +66,7 @@ var (
 	temp        = "0123456789abcdefghijklmnopqrstuvwxyz"
 	format_time = "2006-01-02 15:04:05.000"
 
+	maxSizePerMsg	= 32 * raft.KB
 	peers      		= []proto.Peer{{ID: 1}, {ID: 2}, {ID: 3}}
 	recorderPeers	= []proto.Peer{
 		{ID: 1},
@@ -234,7 +235,7 @@ func createRaftServer(nodeId uint64, isLease, clear bool, groupNum int, raftConf
 	config.ReplicateAddr = resolver.allAddrs[nodeId].repl
 	config.Resolver = resolver
 	config.RetainLogs = 0
-	config.MaxSizePerMsg = 32 * raft.KB
+	config.MaxSizePerMsg = uint64(maxSizePerMsg)
 
 	rs, err := raft.NewRaftServer(config)
 	if err != nil {

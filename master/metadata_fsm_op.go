@@ -66,6 +66,8 @@ type clusterValue struct {
 	PoolSizeOfMetaPartitionsInRecover   int32
 	FixTinyDeleteRecordLimit            uint64
 	ClientPkgAddr                       string
+	ClientWriteRetryTimeSec				int64
+	ClientReadRetryTimeSec				int64
 	UmpJmtpAddr                         string
 	UmpJmtpBatch                        uint64
 	EcScrubEnable                       bool
@@ -157,6 +159,8 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		PoolSizeOfMetaPartitionsInRecover:   c.cfg.MetaPartitionsRecoverPoolSize,
 		FixTinyDeleteRecordLimit:            c.dnFixTinyDeleteRecordLimit,
 		ClientPkgAddr:                       c.cfg.ClientPkgAddr,
+		ClientWriteRetryTimeSec: 			 c.cfg.ClientWriteRetryTimeSec,
+		ClientReadRetryTimeSec: 			 c.cfg.ClientReadRetryTimeSec,
 		UmpJmtpAddr:                         c.cfg.UmpJmtpAddr,
 		UmpJmtpBatch:                        c.cfg.UmpJmtpBatch,
 		EcScrubEnable:                       c.EcScrubEnable,
@@ -1130,6 +1134,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 			cv.FixTinyDeleteRecordLimit = 1
 		}
 		c.cfg.ClientPkgAddr = cv.ClientPkgAddr
+		c.cfg.ClientWriteRetryTimeSec = cv.ClientWriteRetryTimeSec
+		c.cfg.ClientReadRetryTimeSec = cv.ClientReadRetryTimeSec
 		c.cfg.UmpJmtpAddr = cv.UmpJmtpAddr
 		c.cfg.UmpJmtpBatch = cv.UmpJmtpBatch
 		c.EcScrubEnable = cv.EcScrubEnable

@@ -5732,6 +5732,21 @@ func (c *Cluster) setClientPkgAddr(addr string) (err error) {
 	return
 }
 
+func (c *Cluster) setClientConfig(writeRetryTimeSec, readRetryTimeSec int64) (err error) {
+	oldWriteRetryTime := c.cfg.ClientWriteRetryTimeSec
+	oldReadRetryTime := c.cfg.ClientReadRetryTimeSec
+	c.cfg.ClientWriteRetryTimeSec = writeRetryTimeSec
+	c.cfg.ClientReadRetryTimeSec = readRetryTimeSec
+	if err = c.syncPutCluster(); err != nil {
+		log.LogErrorf("action[setClientConfig] err[%v]", err)
+		c.cfg.ClientWriteRetryTimeSec = oldWriteRetryTime
+		c.cfg.ClientReadRetryTimeSec = oldReadRetryTime
+		err = proto.ErrPersistenceByRaft
+		return
+	}
+	return
+}
+
 func (c *Cluster) setClusterName(clusterName string) (err error) {
 	if clusterName != "" && c.cfg.ClusterName == c.Name {
 		err = fmt.Errorf("cluster name already set[%s], no need reset", c.Name)

@@ -83,6 +83,11 @@ var raftTestCasesForRecorder = map[string]raftTestRules{
 }
 
 func TestRecorder(t *testing.T) {
+	oldMaxSizePerMsg := maxSizePerMsg
+	maxSizePerMsg = 4 * raft.KB
+	defer func() {
+		maxSizePerMsg = oldMaxSizePerMsg
+	}()
 	leaderDownTests := []string{
 		F2_complete_1,
 		F2_complete_2,

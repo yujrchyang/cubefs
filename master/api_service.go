@@ -3269,7 +3269,7 @@ func (m *Server) manualResetMetaPartition(w http.ResponseWriter, r *http.Request
 		sendErrReply(w, r, newErrHTTPReply(err))
 		return
 	}
-	rstMsg = fmt.Sprintf(proto.AdminResetMetaPartition+" metaPartitionID :%v successfully", partitionID)
+	rstMsg = fmt.Sprintf(proto.AdminManualResetMetaPartition+" metaPartitionID :%v successfully", partitionID)
 	sendOkReply(w, r, newSuccessHTTPReply(rstMsg))
 }
 
@@ -4196,10 +4196,18 @@ func parseConnConfigToUpdateVol(r *http.Request, vol *Vol) (config proto.ConnCon
 	}
 
 	config = proto.ConnConfig{}
+	idleTimeoutSec := vol.ConnConfig.IdleTimeoutSec
 	connTimeoutNs := vol.ConnConfig.ConnectTimeoutNs
 	readTimeoutNs := vol.ConnConfig.ReadTimeoutNs
 	writeTimeoutNs := vol.ConnConfig.WriteTimeoutNs
 
+	idleStr := r.FormValue(volIdleTimeoutKey)
+	if idleStr != "" {
+		idleTimeoutSec, err = strconv.ParseInt(idleStr, 10, 64)
+		if err != nil {
+			return
+		}
+	}
 	connStr := r.FormValue(volConnTimeoutKey)
 	if connStr != "" {
 		connTimeoutNs, err = strconv.ParseInt(connStr, 10, 64)
@@ -4221,6 +4229,7 @@ func parseConnConfigToUpdateVol(r *http.Request, vol *Vol) (config proto.ConnCon
 			return
 		}
 	}
+	config.IdleTimeoutSec = idleTimeoutSec
 	config.ConnectTimeoutNs = connTimeoutNs
 	config.ReadTimeoutNs = readTimeoutNs
 	config.WriteTimeoutNs = writeTimeoutNs
@@ -7252,6 +7261,43 @@ func (m *Server) getClientPkgAddr(w http.ResponseWriter, r *http.Request) {
 	sendOkReply(w, r, newSuccessHTTPReply(m.cluster.cfg.ClientPkgAddr))
 }
 
+func (m *Server) setClientConfig(w http.ResponseWriter, r *http.Request) {
+	var (
+		newWriteRetryTime	int64
+		newReadRetryTime	int64
+		err  				error
+	)
+	metrics := exporter.NewModuleTP(proto.AdminSetClientConfigUmpKey)
+	defer func() { metrics.Set(err) }()
+	if err = r.ParseForm(); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	oldWriteRetryTime := m.cluster.cfg.ClientWriteRetryTimeSec
+	oldReadRetryTime := m.cluster.cfg.ClientReadRetryTimeSec
+	if newWriteRetryTime, err = extractRetryTimeSec(r, clientWriteRetryTimeKey, oldWriteRetryTime); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if newReadRetryTime, err = extractRetryTimeSec(r, clientReadRetryTimeKey, oldReadRetryTime); err != nil {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		return
+	}
+	if oldWriteRetryTime == newWriteRetryTime && oldReadRetryTime == newReadRetryTime {
+		sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("no changes for writeRetryTime-[%v]s readRetryTime-[%v]s", oldWriteRetryTime, oldReadRetryTime)))
+		return
+	}
+	if (newWriteRetryTime < minClientRetryTimeSec && newWriteRetryTime != 0) || (newReadRetryTime < minClientRetryTimeSec && newReadRetryTime != 0) {
+		sendErrReply(w, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: fmt.Sprintf("invalid retry time [write: %v read: %v]s, should be 0 or no less than %v", newWriteRetryTime, newReadRetryTime, minClientRetryTimeSec)})
+		return
+	}
+	if err = m.cluster.setClientConfig(newWriteRetryTime, newReadRetryTime); err != nil {
+		sendErrReply(w, r, newErrHTTPReply(err))
+		return
+	}
+	sendOkReply(w, r, newSuccessHTTPReply(fmt.Sprintf("set client writeRetryTime-[%v]s readRetryTime-[%v]s successfully", newWriteRetryTime, newReadRetryTime)))
+}
+
 func (m *Server) getClientClusterConf(w http.ResponseWriter, r *http.Request) {
 	metrics := exporter.NewModuleTP(proto.AdminGetClientConfUmpKey)
 	defer func() { metrics.Set(nil) }()
@@ -7751,4 +7797,13 @@ func (m *Server) handleHeartbeatTaskPbResponse(w http.ResponseWriter, r *http.Re
 		body: body,
 	}
 	m.cluster.heartbeatPbHandleChan <- task
+}
+
+func extractRetryTimeSec(r *http.Request, paramKey string, defaultValue int64) (retryTimeSec int64, err error) {
+	var value string
+	if value = r.FormValue(paramKey); value == "" {
+		retryTimeSec = defaultValue
+		return
+	}
+	return strconv.ParseInt(value, 10, 64)
 }

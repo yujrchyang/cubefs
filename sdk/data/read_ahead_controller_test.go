@@ -168,6 +168,9 @@ func TestReadAhead_ReadAndWrite(t *testing.T) {
 }
 
 func TestReadAhead_ReadFromBlocks(t *testing.T) {
+	defer func() {
+		log.LogFlush()
+	}()
 	tests := []struct {
 		name                 string
 		extentSize           uint64
@@ -573,12 +576,16 @@ func TestReadAhead_EvictAfterTruncate(t *testing.T) {
 }
 
 func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
-	tests := []struct {
-		name         string
-		writeOff     uint64
-		writeSize    int
-		storeBlocks  []*ReadAheadBlock
-		expectBlocks []uint64
+	defer func() {
+		log.LogFlush()
+	}()
+
+	tests := []struct{
+		name			string
+		writeOff		uint64
+		writeSize		int
+		storeBlocks		[]*ReadAheadBlock
+		expectBlocks	[]uint64
 	}{
 		{
 			name:      "test01",
@@ -745,6 +752,10 @@ func TestReadAhead_EvictBlocksAtOffset(t *testing.T) {
 }
 
 func TestReadAhead_prepareReadAhead(t *testing.T) {
+	defer func() {
+		log.LogFlush()
+	}()
+
 	tests := []struct {
 		name               string
 		windowSize         uint64
@@ -879,6 +890,10 @@ func TestReadAhead_prepareReadAhead(t *testing.T) {
 }
 
 func TestReadAhead_splitReadAheadBlock(t *testing.T) {
+	defer func() {
+		log.LogFlush()
+	}()
+
 	tests := []struct {
 		name              string
 		prepareBlock      *ReadAheadBlock
@@ -1073,6 +1088,10 @@ type readAheadConfigRule struct {
 }
 
 func TestReadAhead_Config(t *testing.T) {
+	defer func() {
+		log.LogFlush()
+	}()
+
 	Remote_Config := "remote"
 	Local_Config := "local"
 	tests := []struct {
