@@ -510,7 +510,7 @@ func (w *Worker) loadVolumeInfo() {
 	}
 }
 
-func (w *Worker) loadCompactVolume_bjguoweilong() {
+func (w *Worker) loadCompactVolume() {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
@@ -563,55 +563,6 @@ func (w *Worker) loadAndStoreCompactVolumes() error {
 	return nil
 }
 
-func (w *Worker) loadCompactVolume() {
-	timer := time.NewTimer(0)
-	for {
-		log.LogDebugf("[loadCompactVolume] compact volume loader is running, workerType(%v), localIp(%v)", w.WorkerType, w.LocalIp)
-		select {
-		case <-timer.C:
-			loader := func() (err error) {
-				metrics := exporter.NewModuleTP(proto.MonitorCompactLoadCompactVolume)
-				defer metrics.Set(err)
-
-				clusterVolumes := make(map[string][]*proto.DataMigVolume)
-				migrationConfigs := loadAllMigrationConfig("", "")
-				for _, vc := range migrationConfigs {
-					var (
-						value interface{}
-						ok    bool
-					)
-					if value, ok = w.masterClients.Load(vc.ClusterName); !ok {
-						continue
-					}
-					mc := value.(*master.MasterClient)
-					var volInfo *proto.SimpleVolView
-					if volInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(vc.VolName); err != nil {
-						continue
-					}
-					dataMigVolume := &proto.DataMigVolume{
-						Name:       vc.VolName,
-						Owner:      volInfo.Owner,
-						CompactTag: convertCompactTag(vc.Compact),
-					}
-					clusterVolumes[vc.ClusterName] = append(clusterVolumes[vc.ClusterName], dataMigVolume)
-				}
-				for cluster, volumes := range clusterVolumes {
-					cvv := proto.NewDataMigVolumeView(cluster, volumes)
-					w.volumeView.Store(cluster, cvv)
-				}
-				return
-			}
-			if err := loader(); err != nil {
-				log.LogErrorf("[loadCompactVolume] compact volume loader has exception, err(%v)", err)
-			}
-			timer.Reset(time.Second * DefaultVolumeLoadDuration)
-		case <-w.StopC:
-			timer.Stop()
-			return
-		}
-	}
-}
-
 func convertCompactTag(compact int8) (tag proto.CompactTag) {
 	if compact == compactEnabled {
 		tag = proto.CompactOpen
@@ -640,7 +591,7 @@ type FileMigrateVolumeView struct {
 	SmartVolumes map[string]*proto.SmartVolume
 }
 
-func (w *Worker) loadSmartVolume_bjguoweilong() {
+func (w *Worker) loadSmartVolume() {
 	timer := time.NewTimer(0)
 	defer timer.Stop()
 
@@ -737,86 +688,6 @@ func (w *Worker) storeVolumeViews(clusterVolumes map[string]map[string]*proto.Sm
 		}
 
 		w.volumeView.Store(cluster, cvv)
-	}
-}
-
-func (w *Worker) loadSmartVolume() {
-	timer := time.NewTimer(0)
-	for {
-		log.LogDebugf("[loadSmartVolume] FileMigrationWorker smart volume loader is running, workerId(%v), workerAddr(%v)",
-			w.WorkerId, w.WorkerAddr)
-		select {
-		case <-timer.C:
-			loader := func() (err error) {
-				metrics := exporter.NewModuleTP(proto.MonitorSmartLoadSmartVolumeInode)
-				defer metrics.Set(err)
-
-				clusterVolumes := make(map[string]map[string]*proto.SmartVolume)
-				volumeConfigs := loadAllMigrationConfig("", "")
-				for _, vc := range volumeConfigs {
-					var (
-						value   interface{}
-						ok      bool
-						mc      *master.MasterClient
-						volInfo *proto.SimpleVolView
-						dpView  *proto.DataPartitionsView
-					)
-					if value, ok = w.masterClients.Load(vc.ClusterName); !ok {
-						continue
-					}
-					mc = value.(*master.MasterClient)
-					if volInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(vc.VolName); err != nil {
-						log.LogErrorf("[GetVolumeSimpleInfo] cluster(%v) vol(%v) err(%v)", vc.ClusterName, vc.VolName, err)
-						continue
-					}
-					if dpView, err = mc.ClientAPI().GetDataPartitions(vc.VolName, nil); err != nil {
-						log.LogErrorf("[GetDataPartitions] cluster(%v) vol(%v) err(%v)", vc.ClusterName, vc.VolName, err)
-						continue
-					}
-					smartVolume := &proto.SmartVolume{
-						ClusterId:      vc.ClusterName,
-						Name:           vc.VolName,
-						Owner:          volInfo.Owner,
-						StoreMode:      volInfo.DefaultStoreMode,
-						Smart:          vc.Smart,
-						SmartRules:     strings.Split(vc.SmartRules, ","),
-						HddDirs:        vc.HddDirs,
-						SsdDirs:        vc.SsdDirs,
-						MigrationBack:  vc.MigrationBack,
-						DataPartitions: dpView.DataPartitions,
-						BoundBucket:    volInfo.BoundBucket,
-					}
-					if smartVolume.BoundBucket == nil {
-						smartVolume.BoundBucket = &proto.BoundBucketInfo{}
-					}
-					if _, ok = clusterVolumes[vc.ClusterName]; !ok {
-						clusterVolumes[vc.ClusterName] = make(map[string]*proto.SmartVolume)
-					}
-					clusterVolumes[vc.ClusterName][vc.VolName] = smartVolume
-				}
-				for cluster, volumes := range clusterVolumes {
-					cvv := &FileMigrateVolumeView{
-						Cluster:      cluster,
-						SmartVolumes: volumes,
-					}
-					for volume, vv := range cvv.SmartVolumes {
-						log.LogInfof("smart info volume:%v vv:%v", volume, vv.SmartRules)
-						if !w.parseLayerPolicy(vv) {
-							delete(cvv.SmartVolumes, volume)
-						}
-					}
-					w.volumeView.Store(cluster, cvv)
-				}
-				return
-			}
-			if err := loader(); err != nil {
-				log.LogErrorf("[loadSmartVolume] FileMigrationWorker smart volume loader has exception, err(%v)", err)
-			}
-			timer.Reset(time.Second * DefaultVolumeLoadDuration)
-		case <-w.StopC:
-			timer.Stop()
-			return
-		}
 	}
 }
 
