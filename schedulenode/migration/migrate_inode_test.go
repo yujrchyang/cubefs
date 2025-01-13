@@ -1201,6 +1201,9 @@ func TestReadAndWriteEkData(t *testing.T) {
 		Extents: extents,
 	}
 	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
+	mpOp.vol.ControlConfig = &ControlConfig{
+		DirectWrite: true,
+	}
 	subTask, _ := NewMigrateInode(mpOp, cmpInode)
 	_ = subTask.Init()
 	_ = subTask.OpenFile()

@@ -171,6 +171,7 @@ func (migInode *MigrateInode) doReadAndWriteTo(ctx context.Context, ek proto.Ext
 		readSize        uint64 = unit.BlockSize
 		buff                   = make([]byte, readSize)
 		writeFileOffset        = fileOffset
+		extentWriteOffset      int
 		readStartOffset uint64
 		totalSize       uint64
 		dp              *data.DataPartition
@@ -203,7 +204,7 @@ func (migInode *MigrateInode) doReadAndWriteTo(ctx context.Context, ek proto.Ext
 
 		if readN > 0 {
 			_, _ = crc.Write(buff[:readN])
-			err = migInode.writeToDataNode(ctx, &dp, &newEk, &firstWrite, &writeFileOffset, buff[:readN], writeTotal)
+			err = migInode.writeToDataNode(ctx, &dp, &newEk, &firstWrite, &writeFileOffset, &extentWriteOffset, buff[:readN], writeTotal)
 			if err != nil {
 				return err
 			}
@@ -230,10 +231,9 @@ func (migInode *MigrateInode) readDataFromS3(ctx context.Context, partitionId, e
 	return
 }
 
-func (migInode *MigrateInode) writeToDataNode(ctx context.Context, dp **data.DataPartition, newEk **proto.ExtentKey, firstWrite *bool, writeFileOffset *uint64, buff []byte, writeTotal *int) error {
+func (migInode *MigrateInode) writeToDataNode(ctx context.Context, dp **data.DataPartition, newEk **proto.ExtentKey, firstWrite *bool, writeFileOffset *uint64, extentWriteOffset *int, buff []byte, writeTotal *int) error {
 	var (
 		writeN            int
-		extentWriteOffset int
 		err               error
 	)
 
@@ -249,11 +249,11 @@ func (migInode *MigrateInode) writeToDataNode(ctx context.Context, dp **data.Dat
 		migInode.newEks = append(migInode.newEks, *newEk)
 		*firstWrite = false
 	} else {
-		writeN, err = migInode.extentClient.SyncWriteToSpecificExtent(ctx, *dp, migInode.inodeInfo.Inode, *writeFileOffset, extentWriteOffset, buff, int((*newEk).ExtentId), migInode.DirectWrite)
+		writeN, err = migInode.extentClient.SyncWriteToSpecificExtent(ctx, *dp, migInode.inodeInfo.Inode, *writeFileOffset, *extentWriteOffset, buff, int((*newEk).ExtentId), migInode.DirectWrite)
 		if err != nil {
 			log.LogWarnf("ReadS3AndWriteToDataNode syncWriteToSpecificExtent ino(%v), err(%v)", migInode.name, err)
 			*dp, writeN, *newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, *writeFileOffset, buff, migInode.DirectWrite)
-			extentWriteOffset = 0
+			*extentWriteOffset = 0
 			if err != nil {
 				return err
 			}
@@ -267,6 +267,7 @@ func (migInode *MigrateInode) writeToDataNode(ctx context.Context, dp **data.Dat
 		}
 	}
 
+	*extentWriteOffset += writeN
 	*writeFileOffset += uint64(writeN)
 	*writeTotal += writeN
 
@@ -607,7 +608,7 @@ func (migInode *MigrateInode) checkNewEkCountValid() (err error) {
 		migEksCnt := migInode.endIndex - migInode.startIndex
 		if len(migInode.newEks) >= migEksCnt {
 			err = fmt.Errorf("ReadAndWriteDataNode new create extent ino(%v) newEks length(%v) is greater than or equal to oldEks length(%v)",
-				migInode.name, len(migInode.newEks), migInode)
+				migInode.name, len(migInode.newEks), migEksCnt)
 		}
 	}
 	return
