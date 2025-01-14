@@ -121,7 +121,6 @@ type clusterValue struct {
 	UnrecoverableDuration               int64
 	TwoZoneHATypePingRule               string
 	DataNodeDisableBlacklist            bool
-	DataNodeDisableAutoDeleteTrash      bool
 	DataNodeTrashKeepTimeSec            uint64
 	FlashNodeReadTimeoutUs              uint64
 	FlashNodeDisableStack               bool
@@ -213,7 +212,6 @@ func newClusterValue(c *Cluster) (cv *clusterValue) {
 		UnrecoverableDuration:               c.cfg.UnrecoverableDuration,
 		TwoZoneHATypePingRule:               c.cfg.TwoZoneHATypePingRule,
 		DataNodeDisableBlacklist:            c.cfg.DataNodeDisableBlacklist,
-		DataNodeDisableAutoDeleteTrash:      c.cfg.DataNodeDisableAutoDeleteTrash,
 		DataNodeTrashKeepTimeSec:            c.cfg.DataNodeTrashKeepTimeSec,
 		FlashNodeReadTimeoutUs:              c.cfg.FlashNodeReadTimeoutUs,
 		FlashNodeDisableStack:               c.cfg.FlashNodeDisableStack,
@@ -1306,12 +1304,8 @@ func (c *Cluster) loadClusterValue() (err error) {
 			atomic.StoreInt64(&c.cfg.UnrecoverableDuration, cv.UnrecoverableDuration)
 		}
 		c.cfg.TwoZoneHATypePingRule = cv.TwoZoneHATypePingRule
-		c.cfg.DataNodeDisableAutoDeleteTrash = cv.DataNodeDisableAutoDeleteTrash
 		c.cfg.DataNodeDisableBlacklist = cv.DataNodeDisableBlacklist
 		c.cfg.DataNodeTrashKeepTimeSec = cv.DataNodeTrashKeepTimeSec
-		if cv.DataNodeTrashKeepTimeSec < minTrashKeepTimeSec {
-			c.cfg.DataNodeTrashKeepTimeSec = defaultTrashKeepTimeSec
-		}
 		c.cfg.FlashNodeReadTimeoutUs = cv.FlashNodeReadTimeoutUs
 		if cv.FlashNodeReadTimeoutUs < minFlashNodeReadTimeoutUs || cv.FlashNodeReadTimeoutUs > maxFlashNodeReadTimeoutUs {
 			c.cfg.FlashNodeReadTimeoutUs = defaultFlashNodeReadTimeoutUs

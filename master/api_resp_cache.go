@@ -237,7 +237,6 @@ func (c *Cluster) buildLimitInfo(volName string) (cInfo *proto.LimitInfo) {
 		DisableClusterCheckDeleteEK:            c.cfg.DisableClusterCheckDeleteEK,
 		DelayMinutesReduceReplicaNum:           c.cfg.delayMinutesReduceReplicaNum,
 		DataNodeDisableBlacklist:               c.cfg.DataNodeDisableBlacklist,
-		DataNodeDisableAutoDeleteTrash:         c.cfg.DataNodeDisableAutoDeleteTrash,
 		DataNodeTrashKeepTimeSec:               c.cfg.DataNodeTrashKeepTimeSec,
 		FlashNodeReadTimeoutUs:                 c.cfg.FlashNodeReadTimeoutUs,
 		FlashNodeDisableStack:                  c.cfg.FlashNodeDisableStack,

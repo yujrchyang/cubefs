@@ -5478,7 +5478,6 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	boolKey := []string{proto.DataSyncWalEnableStateKey, proto.MetaSyncWalEnableStateKey, proto.DisableStrictVolZoneKey,
 		proto.AutoUpPartitionReplicaNumKey, proto.RemoteCacheBoostEnableKey, proto.ClientReqRemoveDupFlagKey, proto.DisableClusterCheckDelEK,
 		proto.DataNodeDisableBlacklistKey,
-		proto.DataNodeDisableAutoDeleteTrashKey,
 		proto.FlashNodeDisableStackKey,
 	}
 	for _, key := range boolKey {

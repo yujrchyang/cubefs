@@ -84,8 +84,6 @@ const (
 	defaultDelayMinutesReduceReplicaNum              int64   = 15
 	defaultRecorderNum                                       = 0
 	defaultMaxConcurrencyForDecommission                     = 10
-	minTrashKeepTimeSec                                      = 10 * 60
-	defaultTrashKeepTimeSec                                  = 3 * 24 * 60 * 60
 	defaultFlashNodeReadTimeoutUs                            = 60 * 1000
 	minFlashNodeReadTimeoutUs                                = 500
 	maxFlashNodeReadTimeoutUs                                = 10 * 1000 * 1000
@@ -191,7 +189,6 @@ type clusterConfig struct {
 	UnrecoverableDuration               int64
 	TwoZoneHATypePingRule               string
 	DataNodeDisableBlacklist            bool
-	DataNodeDisableAutoDeleteTrash      bool
 	DataNodeTrashKeepTimeSec            uint64
 	FlashNodeReadTimeoutUs              uint64
 	FlashNodeDisableStack               bool

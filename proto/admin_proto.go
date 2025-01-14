@@ -329,7 +329,6 @@ const (
 	ReqRecordMaxCountKey             = "volReqRecordMaxCount"
 	PersistenceModeKey               = "persistenceMode"
 	DataNodeDisableBlacklistKey       = "dataNodeDisableBlacklist"
-	DataNodeDisableAutoDeleteTrashKey = "dataNodeDisableAutoDeleteTrash"
 	DataNodeTrashKeepTimeSecKey       = "dataNodeTrashKeepTimeSec"
 	FlashNodeReadTimeoutUsKey         = "flashNodeReadTimeoutUs"
 	FlashNodeDisableStackKey          = "flashNodeDisableStack"
@@ -746,14 +745,11 @@ type LimitInfo struct {
 	TopologyForceFetchIntervalSec int64
 
 	DataNodeDiskReservedRatio      float64
-	DataNodeDisableAutoDeleteTrash bool
-	DataNodeTrashKeepTimeSec       uint64
 	ApiReqBwRateLimitMap           map[uint8]int64
 	DisableClusterCheckDeleteEK    bool
 	DelayMinutesReduceReplicaNum   int64
 	UnrecoverableDuration          int64
 	DataNodeDisableBlacklist       bool
-	DataNodeDisableAutoDeleteTrash bool
 	DataNodeTrashKeepTimeSec       uint64
 	FlashNodeDisableStack          bool
 	FlashNodeReadTimeoutUs         uint64

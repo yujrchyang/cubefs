@@ -3878,11 +3878,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 
 	oldDataNodeTrashKeepTimeSec := c.cfg.DataNodeTrashKeepTimeSec
 	if val, ok := params[proto.DataNodeTrashKeepTimeSecKey]; ok {
-		v := val.(uint64)
-		if v < minTrashKeepTimeSec {
-			err = errors.NewErrorf("parameter %s must be greater than %d", proto.DataNodeTrashKeepTimeSecKey, minTrashKeepTimeSec)
-			return err
-		}
 		atomic.StoreUint64(&c.cfg.DataNodeTrashKeepTimeSec, val.(uint64))
 	}
 
@@ -4054,11 +4049,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DataNodeDisableBlacklist = val.(bool)
 	}
 
-	oldDataNodeDisableAutoDeleteTrash := c.cfg.DataNodeDisableAutoDeleteTrash
-	if val, ok := params[proto.DataNodeDisableAutoDeleteTrashKey]; ok {
-		c.cfg.DataNodeDisableAutoDeleteTrash = val.(bool)
-	}
-
 	oldDisableClusterCheckDelEK := c.cfg.DisableClusterCheckDeleteEK
 	if val, ok := params[proto.DisableClusterCheckDelEK]; ok {
 		c.cfg.DisableClusterCheckDeleteEK = val.(bool)
@@ -4121,7 +4111,6 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DataNodeDiskReservedRatio = oldDataNodeDiskReservedRatio
 		c.cfg.DisableClusterCheckDeleteEK = oldDisableClusterCheckDelEK
 		c.cfg.DataNodeDisableBlacklist = oldDataNodeDisableBlacklist
-		c.cfg.DataNodeDisableAutoDeleteTrash = oldDataNodeDisableAutoDeleteTrash
 		atomic.StoreUint64(&c.cfg.DataNodeTrashKeepTimeSec, oldDataNodeTrashKeepTimeSec)
 		atomic.StoreUint64(&c.cfg.FlashNodeReadTimeoutUs, oldFlashNodeReadTimeoutUs)
 		c.cfg.FlashNodeDisableStack = oldFlashNodeDisableStack
