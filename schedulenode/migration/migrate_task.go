@@ -378,6 +378,10 @@ func (migTask *MigrateTask) getInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err
 
 func (migTask *MigrateTask) getInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigrateDirection, err error) {
 	vol := migTask.vol
+	if vol == nil {
+		err = fmt.Errorf("mig task name(%v) vol should not be nil", migTask.name)
+		return
+	}
 	policies, exist := vol.GetLayerPolicies(vol.ClusterName, vol.Name)
 	if !exist {
 		err = fmt.Errorf("getLayerPolicies does not exist, cluster(%v) volume(%v) mp(%v)", vol.ClusterName, vol.Name, migTask.mpId)

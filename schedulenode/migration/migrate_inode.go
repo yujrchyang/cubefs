@@ -61,6 +61,14 @@ type MigrateInode struct {
 }
 
 func NewMigrateInode(mpOp *MigrateTask, inode *proto.InodeExtents) (inodeOp *MigrateInode, err error) {
+	if mpOp == nil {
+		err = fmt.Errorf("MigrateTask should not be nil")
+		return
+	}
+	if inode == nil {
+		err = fmt.Errorf("InodeExtents should not be nil")
+		return
+	}
 	inodeOp = &MigrateInode{
 		mpOp:           mpOp,
 		vol:            mpOp.vol,
@@ -138,11 +146,15 @@ func (migInode *MigrateInode) Init() (err error) {
 			return
 		}
 	}()
-	if migInode.mpOp.task.TaskType == proto.WorkerTypeCompact {
+	switch migInode.mpOp.task.TaskType {
+	case proto.WorkerTypeCompact:
 		migInode.migDirection = CompactFileMigrate
 		migInode.extentClient = migInode.vol.DataClient
-	} else {
+	case proto.WorkerTypeInodeMigration:
 		err = migInode.initFileMigrate()
+	default:
+		err = fmt.Errorf("task type(%v) invaild", migInode.mpOp.task.TaskType)
+		return
 	}
 	if err != nil || migInode.stage == InodeMigStopped {
 		return
@@ -411,7 +423,7 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToDataNode() (err error) {
 
 	migInode.rwStartTime = time.Now()
 
-	defer migInode.handleError("ReadAndWriteDataNode", &err)
+	defer migInode.handleError("ReadFromDataNodeAndWriteToDataNode", &err)
 
 	fileOffset := migInode.extents[migInode.startIndex].FileOffset
 	totalSize := migInode.extents[migInode.endIndex-1].FileOffset + uint64(migInode.extents[migInode.endIndex-1].Size) - fileOffset
@@ -426,9 +438,9 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToDataNode() (err error) {
 		return err
 	}
 	migInode.migDataCrc = crc.Sum32()
-	log.LogDebugf("ReadAndWriteDataNode ino(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v)", migInode.name, totalSize, writeTotal, migInode.startIndex, migInode.endIndex)
+	log.LogDebugf("ReadFromDataNodeAndWriteToDataNode ino(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v)", migInode.name, totalSize, writeTotal, migInode.startIndex, migInode.endIndex)
 	if totalSize != uint64(writeTotal) {
-		err = fmt.Errorf("ReadAndWriteDataNode compare equal ino(%v) totalSize(%v) but write size(%v)", migInode.name, totalSize, writeTotal)
+		err = fmt.Errorf("ReadFromDataNodeAndWriteToDataNode compare equal ino(%v) totalSize(%v) but write size(%v)", migInode.name, totalSize, writeTotal)
 		return
 	}
 	return
@@ -439,14 +451,14 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 	defer metrics.Set(err)
 
 	if migInode.vol.S3Client == nil {
-		err = fmt.Errorf("ReadDataNodeAndWriteToS3 inode[%v] migDirection[%v] %v", migInode.name, migInode.migDirection, "s3 client is nil")
+		err = fmt.Errorf("ReadFromDataNodeAndWriteToS3 inode[%v] migDirection[%v] %v", migInode.name, migInode.migDirection, "s3 client is nil")
 		log.LogErrorf(err.Error())
 		return
 	}
 
 	migInode.rwStartTime = time.Now()
 
-	defer migInode.handleError("ReadDataNodeAndWriteToS3", &err)
+	defer migInode.handleError("ReadFromDataNodeAndWriteToS3", &err)
 
 	offset := migInode.extents[migInode.startIndex].FileOffset
 	totalSize := migInode.extents[migInode.endIndex-1].FileOffset + uint64(migInode.extents[migInode.endIndex-1].Size) - offset
@@ -471,6 +483,11 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 		return
 	}
 
+	if totalSize != uint64(writeTotal) {
+		err = fmt.Errorf("ReadFromDataNodeAndWriteToS3 compare equal ino(%v) s3Key(%v) totalSize(%v) but write size(%v)", migInode.name, s3Key, totalSize, writeTotal)
+		return
+	}
+
 	newEk := &proto.ExtentKey{
 		FileOffset:   offset,
 		PartitionId:  migInode.extents[migInode.startIndex].PartitionId,
@@ -487,12 +504,8 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 	}
 	migInode.migDataCrc = crc.Sum32()
 
-	log.LogDebugf("ReadDataNodeAndWriteToS3 ino(%v) s3Key(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v) s3Key(%v) newEks(%v)\n",
+	log.LogDebugf("ReadFromDataNodeAndWriteToS3 ino(%v) s3Key(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v) s3Key(%v) newEks(%v)\n",
 		migInode.name, s3Key, totalSize, writeTotal, migInode.startIndex, migInode.endIndex, s3Key, migInode.newEks)
-	if totalSize != uint64(writeTotal) {
-		err = fmt.Errorf("ReadDataNodeAndWriteToS3 compare equal ino(%v) s3Key(%v) totalSize(%v) but write size(%v)", migInode.name, s3Key, totalSize, writeTotal)
-		return
-	}
 
 	return
 }
@@ -502,14 +515,14 @@ func (migInode *MigrateInode) ReadFromS3AndWriteToDataNode() (err error) {
 	defer metrics.Set(err)
 
 	if migInode.vol.S3Client == nil {
-		err = fmt.Errorf("ReadS3AndWriteToDataNode inode[%v] migDirection[%v] %v", migInode.name, migInode.migDirection, "s3 client is nil")
+		err = fmt.Errorf("ReadFromS3AndWriteToDataNode inode[%v] migDirection[%v] %v", migInode.name, migInode.migDirection, "s3 client is nil")
 		log.LogErrorf(err.Error())
 		return
 	}
 
 	migInode.rwStartTime = time.Now()
 
-	defer migInode.handleError("ReadS3AndWriteToDataNode", &err)
+	defer migInode.handleError("ReadFromS3AndWriteToDataNode", &err)
 
 	fileOffset := migInode.extents[migInode.startIndex].FileOffset
 	totalSize := migInode.extents[migInode.endIndex-1].FileOffset + uint64(migInode.extents[migInode.endIndex-1].Size) - fileOffset
@@ -528,10 +541,10 @@ func (migInode *MigrateInode) ReadFromS3AndWriteToDataNode() (err error) {
 	}
 
 	migInode.migDataCrc = crc.Sum32()
-	log.LogDebugf("ReadS3AndWriteToDataNode ino(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v)", migInode.name, totalSize, writeTotal, migInode.startIndex, migInode.endIndex)
+	log.LogDebugf("ReadFromS3AndWriteToDataNode ino(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v)", migInode.name, totalSize, writeTotal, migInode.startIndex, migInode.endIndex)
 
 	if totalSize != uint64(writeTotal) {
-		err = fmt.Errorf("ReadS3AndWriteToDataNode compare equal ino(%v) totalSize(%v) but write size(%v)", migInode.name, totalSize, writeTotal)
+		err = fmt.Errorf("ReadFromS3AndWriteToDataNode compare equal ino(%v) totalSize(%v) but write size(%v)", migInode.name, totalSize, writeTotal)
 		return err
 	}
 

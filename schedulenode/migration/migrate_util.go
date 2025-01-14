@@ -125,14 +125,14 @@ func (migInode *MigrateInode) readAndWriteSmallDataToS3(offset, totalSize uint64
 		return err
 	}
 	if readN <= 0 {
-		return fmt.Errorf("ReadDataNodeAndWriteToS3 read small data from datanode extent ino(%v) s3Key(%v), totalSize(%v), readN(%v), readOffset(%v), readSize(%v)",
+		return fmt.Errorf("readAndWriteSmallDataToS3 read small data from datanode extent ino(%v) s3Key(%v), totalSize(%v), readN(%v), readOffset(%v), readSize(%v)",
 			migInode.name, s3Key, totalSize, readN, offset, totalSize)
 	}
 	if err = migInode.vol.S3Client.PutObject(ctx, migInode.vol.Bucket, s3Key, buff[:readN]); err != nil {
 		return err
 	}
 	chunks[0] = buff[:readN]
-	log.LogDebugf("ReadDataNodeAndWriteToS3 write small data ino(%v) s3Key(%v), totalSize(%v), readN(%v), readOffset(%v), readSize(%v)",
+	log.LogDebugf("readAndWriteSmallDataToS3 write small data ino(%v) s3Key(%v), totalSize(%v), readN(%v), readOffset(%v), readSize(%v)",
 		migInode.name, s3Key, totalSize, readN, offset, readN)
 	return nil
 }
@@ -152,13 +152,13 @@ func (migInode *MigrateInode) readAndWriteLargeDataToS3(offset, totalSize uint64
 			return nil, err
 		}
 		if readN <= 0 {
-			return nil, fmt.Errorf("ReadDataNodeAndWriteToS3 read big data from datanode extent ino(%v) s3Key(%v), totalSize(%v) partIndex(%v), readN(%v), readOffset(%v), readSize(%v)",
+			return nil, fmt.Errorf("readAndWriteLargeDataToS3 read big data from datanode extent ino(%v) s3Key(%v), totalSize(%v) partIndex(%v), readN(%v), readOffset(%v), readSize(%v)",
 				migInode.name, s3Key, totalSize, index, readN, readOffset, readSize)
 		}
 		chunksMutex.Lock()
 		chunks[index] = buff[:readN]
 		chunksMutex.Unlock()
-		log.LogDebugf("ReadDataNodeAndWriteToS3 write big data ino(%v) s3Key(%v), totalSize(%v) partIndex(%v), readN(%v), readOffset(%v), readSize(%v)",
+		log.LogDebugf("readAndWriteLargeDataToS3 write big data ino(%v) s3Key(%v), totalSize(%v) partIndex(%v), readN(%v), readOffset(%v), readSize(%v)",
 			migInode.name, s3Key, totalSize, index, readN, readOffset, readSize)
 		return buff[:readN], nil
 	})
@@ -243,7 +243,7 @@ func (migInode *MigrateInode) writeToDataNode(ctx context.Context, dp **data.Dat
 			return err
 		}
 		if !checkMigDirectionMediumTypeIsMatch(migInode, *dp) {
-			return fmt.Errorf("ReadAndWriteDataNode syncWrite dpId(%v) incorrect medium type, volume(%v) mp(%v) inode(%v) migType(%v)",
+			return fmt.Errorf("writeToDataNode syncWrite dpId(%v) incorrect medium type, volume(%v) mp(%v) inode(%v) migType(%v)",
 				(*dp).PartitionID, migInode.vol.Name, migInode.mpOp.mpId, migInode.inodeInfo.Inode, migInode.migDirection)
 		}
 		migInode.newEks = append(migInode.newEks, *newEk)
@@ -251,7 +251,7 @@ func (migInode *MigrateInode) writeToDataNode(ctx context.Context, dp **data.Dat
 	} else {
 		writeN, err = migInode.extentClient.SyncWriteToSpecificExtent(ctx, *dp, migInode.inodeInfo.Inode, *writeFileOffset, *extentWriteOffset, buff, int((*newEk).ExtentId), migInode.DirectWrite)
 		if err != nil {
-			log.LogWarnf("ReadS3AndWriteToDataNode syncWriteToSpecificExtent ino(%v), err(%v)", migInode.name, err)
+			log.LogWarnf("writeToDataNode syncWriteToSpecificExtent ino(%v), err(%v)", migInode.name, err)
 			*dp, writeN, *newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, *writeFileOffset, buff, migInode.DirectWrite)
 			*extentWriteOffset = 0
 			if err != nil {
