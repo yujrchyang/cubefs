@@ -1838,9 +1838,8 @@ func (s *DataNode) batchRecoverExtents(w http.ResponseWriter, r *http.Request) {
 }
 
 type SwitchCollectionPara struct {
-	DisableBlackList       string `json:"disableBlackList,omitempty"`
-	DisableAutoDeleteTrash string `json:"disableAutoDeleteTrash,omitempty"`
-	TrashKeepTimeSec       string `json:"trashKeepTimeSec,omitempty"`
+	DisableBlackList string `json:"disableBlackList,omitempty"`
+	TrashKeepTimeSec string `json:"trashKeepTimeSec,omitempty"`
 }
 
 func (s *DataNode) setSettings(w http.ResponseWriter, r *http.Request) {
@@ -1879,27 +1878,10 @@ func (s *DataNode) setSettings(w http.ResponseWriter, r *http.Request) {
 			gConnPool.DisableBlackList(isDisable)
 		}
 	}
-	if paras.DisableAutoDeleteTrash != "" {
-		var isDisable bool
-		isDisable, err = strconv.ParseBool(paras.DisableAutoDeleteTrash)
-		if err != nil {
-			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if err = s.settings.Set(SettingKeyDisableAutoDeleteTrash, strconv.FormatBool(isDisable)); err != nil {
-			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-	}
+
 	if paras.TrashKeepTimeSec != "" {
-		var keepTimeSec uint64
-		keepTimeSec, err = strconv.ParseUint(paras.TrashKeepTimeSec, 10, 64)
+		_, err = strconv.ParseUint(paras.TrashKeepTimeSec, 10, 64)
 		if err != nil {
-			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		if keepTimeSec > MinTrashKeepTimeSec {
-			err = fmt.Errorf("keep time can not be less than %d second", MinTrashKeepTimeSec)
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}

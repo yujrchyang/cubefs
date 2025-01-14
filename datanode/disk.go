@@ -1450,17 +1450,14 @@ func (d *Disk) deleteTrashScheduler() {
 				continue
 			}
 
-			// if data settings exist, ignore master setting
-			dn := d.space.dataNode
-			disable, exist := dn.settings.GetBool(SettingKeyDisableAutoDeleteTrash)
-			if exist && disable {
-				log.LogDebugf("action[deleteTrashScheduler] disk(%v) deleteTrashScheduler skipped by data settings", d.Path)
+			keepTimeSec := d.parseKeepTime()
+
+			// disable auto delete trash
+			if keepTimeSec <= proto.TurnOff {
 				continue
 			}
-			if !exist && d.space.disableAutoDeleteTrash {
-				log.LogDebugf("action[deleteTrashScheduler] disk(%v) deleteTrashScheduler skipped by master config", d.Path)
-				continue
-			}
+
+			log.LogDebugf("action[deleteTrashScheduler] disk(%v) keepTimeSec(%v)", d.Path, keepTimeSec)
 
 			avg, err := load.Avg()
 			if err != nil {
@@ -1474,21 +1471,26 @@ func (d *Disk) deleteTrashScheduler() {
 				continue
 			}
 
-			keepTimeSec := d.space.trashKeepTimeSec
-			keepTimeSecStr, exist := dn.settings.Get(SettingsKeyTrashKeepTimeSec)
-			if exist {
-				keepTime, e := strconv.ParseUint(keepTimeSecStr, 10, 64)
-				if e != nil {
-					log.LogErrorf("Disk %v: get host load value failed: %v", d.Path, e)
-				} else {
-					keepTimeSec = keepTime
-				}
-			}
-			log.LogDebugf("action[deleteTrashScheduler] disk(%v) keepTimeSec(%v)", d.Path, keepTimeSec)
-
-			d.deleteTrash(keepTimeSec)
+			d.deleteTrash(uint64(keepTimeSec))
 		}
 	}
+}
+
+func (d *Disk) parseKeepTime() int64 {
+	dn := d.space.dataNode
+	keepTimeSec := d.space.trashKeepTimeSec
+	keepTimeSecData, exist := dn.settings.GetInt64(SettingsKeyTrashKeepTimeSec)
+	if exist {
+		if keepTimeSecData >= proto.TurnOff {
+			keepTimeSec = keepTimeSecData
+		} else {
+			log.LogErrorf("Disk %v, invalid keep time: %v", d.Path, keepTimeSecData)
+		}
+	}
+	if keepTimeSec == 0 {
+		keepTimeSec = DefaultTrashKeepTimeSec
+	}
+	return keepTimeSec
 }
 
 func (d *Disk) deleteTrash(keepTimeSec uint64) uint64 {

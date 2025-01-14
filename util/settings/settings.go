@@ -49,6 +49,15 @@ func (s *KeyValues) GetBool(key string) (bool, bool) {
 	return false, false
 }
 
+func (s *KeyValues) GetInt64(key string) (int64, bool) {
+	if val, ok := s.Get(key); ok {
+		if ret, err := strconv.ParseInt(val, 10, 64); err == nil {
+			return ret, true
+		}
+	}
+	return 0, false
+}
+
 func (s *KeyValues) Del(key string) (prev string, ok bool) {
 	s.Lock()
 	defer s.Unlock()

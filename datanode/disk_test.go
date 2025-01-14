@@ -2,6 +2,8 @@ package datanode
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/util/settings"
+	"github.com/stretchr/testify/assert"
 	atomic2 "go.uber.org/atomic"
 	"os"
 	"path"
@@ -425,4 +427,58 @@ func initDataPartitionUnderFile(partitionId uint64, applyId uint64, dpDir string
 func removeUnderFile(dpDir string) {
 	partitionPath := path.Join(disk.Path, dpDir)
 	_ = os.RemoveAll(partitionPath)
+}
+
+func TestParseTrashKeepTime(t *testing.T) {
+	var settingPath = path.Join(t.TempDir(), DataSettingsFile)
+	var set *settings.KeyValues
+	var err error
+	if set, err = settings.OpenKeyValues(settingPath); err != nil {
+		return
+	}
+	dn := &DataNode{settings: set}
+	space := NewSpaceManager(dn)
+	d := &Disk{space: space}
+
+	testCases := []struct {
+		masterKeepTime int64
+		dataKeepTime   int64
+		expectKeepTime int64
+	}{
+		{
+			masterKeepTime: int64(proto.TurnOff),
+			dataKeepTime:   int64(proto.TurnOff),
+			expectKeepTime: int64(proto.TurnOff),
+		},
+		{
+			masterKeepTime: int64(proto.TurnOff),
+			dataKeepTime:   int64(-1000),
+			expectKeepTime: int64(proto.TurnOff),
+		},
+		{
+			masterKeepTime: 0,
+			dataKeepTime:   int64(-1000),
+			expectKeepTime: DefaultTrashKeepTimeSec,
+		},
+		{
+			masterKeepTime: 0,
+			dataKeepTime:   0,
+			expectKeepTime: DefaultTrashKeepTimeSec,
+		},
+		{
+			masterKeepTime: 0,
+			dataKeepTime:   3 * 24 * 60 * 60,
+			expectKeepTime: 3 * 24 * 60 * 60,
+		},
+	}
+
+	for _, tc := range testCases {
+		space.trashKeepTimeSec = tc.masterKeepTime
+		_ = dn.settings.Set(SettingsKeyTrashKeepTimeSec, fmt.Sprintf("%v", tc.dataKeepTime))
+		assert.Equal(t, tc.expectKeepTime, d.parseKeepTime())
+	}
+
+	space.trashKeepTimeSec = 60 * 60
+	_, _ = dn.settings.Del(SettingsKeyTrashKeepTimeSec)
+	assert.Equal(t, int64(60*60), d.parseKeepTime())
 }

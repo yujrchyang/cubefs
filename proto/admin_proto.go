@@ -750,7 +750,7 @@ type LimitInfo struct {
 	DelayMinutesReduceReplicaNum   int64
 	UnrecoverableDuration          int64
 	DataNodeDisableBlacklist       bool
-	DataNodeTrashKeepTimeSec       uint64
+	DataNodeTrashKeepTimeSec       int64
 	FlashNodeDisableStack          bool
 	FlashNodeReadTimeoutUs         uint64
 }
@@ -1881,3 +1881,7 @@ func GetContextReq(ctx context.Context) interface{} {
 	}
 	return ctx.Value(ContextReq)
 }
+
+const (
+	TurnOff = -1
+)

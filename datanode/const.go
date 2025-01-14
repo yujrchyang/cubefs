@@ -152,9 +152,8 @@ const (
 )
 
 const (
-	SettingKeyDisableBlackList       = "DisableBlackList"
-	SettingKeyDisableAutoDeleteTrash = "DisableAutoDeleteTrash"
-	SettingsKeyTrashKeepTimeSec      = "TrashKeepTimeSec"
+	SettingKeyDisableBlackList  = "DisableBlackList"
+	SettingsKeyTrashKeepTimeSec = "TrashKeepTimeSec"
 )
 
 const (

@@ -359,7 +359,6 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 		s.space.SetConsistencyMode(limitInfo.DataPartitionConsistencyMode)
 		s.space.SetPersistenceMode(limitInfo.PersistenceMode)
 		s.space.SetTrashKeepTimeSec(limitInfo.DataNodeTrashKeepTimeSec)
-		s.space.SetDisableAutoDeleteTrash(limitInfo.DataNodeDisableAutoDeleteTrash)
 		s.space.SetDiskReservedRatio(limitInfo.DataNodeDiskReservedRatio)
 	}
 
@@ -658,8 +657,7 @@ const (
 	DefaultFixTinyDeleteRecordLimitOnDisk = 1
 	DefaultNormalExtentDeleteExpireTime   = 4 * 3600
 	DefaultLazyLoadParallelismPerDisk     = 2
-	DefaultTrashKeepTimeSec               = uint64(3 * 24 * 60 * 60)
-	MinTrashKeepTimeSec                   = uint64(10 * 60)
+	DefaultTrashKeepTimeSec               = int64(3 * 24 * 60 * 60)
 )
 
 var (
@@ -717,7 +715,6 @@ func (s *DataNode) updateNodeBaseInfo() {
 	}
 
 	s.space.SetTrashKeepTimeSec(limitInfo.DataNodeTrashKeepTimeSec)
-	s.space.SetDisableAutoDeleteTrash(limitInfo.DataNodeDisableAutoDeleteTrash)
 	s.space.SetDiskReservedRatio(limitInfo.DataNodeDiskReservedRatio)
 }
 
