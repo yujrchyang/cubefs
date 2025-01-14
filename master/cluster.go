@@ -3878,18 +3878,23 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 
 	oldDataNodeTrashKeepTimeSec := c.cfg.DataNodeTrashKeepTimeSec
 	if val, ok := params[proto.DataNodeTrashKeepTimeSecKey]; ok {
-		atomic.StoreUint64(&c.cfg.DataNodeTrashKeepTimeSec, val.(uint64))
+		v := val.(int64)
+		if v < -1 {
+			err = errors.NewErrorf("parameter %s must be equal or more than -1", proto.DataNodeTrashKeepTimeSecKey)
+			return
+		}
+		atomic.StoreInt64(&c.cfg.DataNodeTrashKeepTimeSec, val.(int64))
 	}
 
 	oldFlashNodeReadTimeoutUs := c.cfg.FlashNodeReadTimeoutUs
 	if val, ok := params[proto.FlashNodeReadTimeoutUsKey]; ok {
 		v := val.(uint64)
 		if v < minFlashNodeReadTimeoutUs {
-			err = errors.NewErrorf("parameter %s must be greater than %d", proto.FlashNodeReadTimeoutUsKey, minFlashNodeReadTimeoutUs)
+			err = errors.NewErrorf("parameter %s must be equal or more than %d", proto.FlashNodeReadTimeoutUsKey, minFlashNodeReadTimeoutUs)
 			return err
 		}
 		if v > maxFlashNodeReadTimeoutUs {
-			err = errors.NewErrorf("parameter %s must be less than %d", proto.FlashNodeReadTimeoutUsKey, maxFlashNodeReadTimeoutUs)
+			err = errors.NewErrorf("parameter %s must be equal or less than %d", proto.FlashNodeReadTimeoutUsKey, maxFlashNodeReadTimeoutUs)
 			return err
 		}
 		atomic.StoreUint64(&c.cfg.FlashNodeReadTimeoutUs, val.(uint64))
@@ -4111,7 +4116,7 @@ func (c *Cluster) setClusterConfig(params map[string]interface{}) (err error) {
 		c.cfg.DataNodeDiskReservedRatio = oldDataNodeDiskReservedRatio
 		c.cfg.DisableClusterCheckDeleteEK = oldDisableClusterCheckDelEK
 		c.cfg.DataNodeDisableBlacklist = oldDataNodeDisableBlacklist
-		atomic.StoreUint64(&c.cfg.DataNodeTrashKeepTimeSec, oldDataNodeTrashKeepTimeSec)
+		atomic.StoreInt64(&c.cfg.DataNodeTrashKeepTimeSec, oldDataNodeTrashKeepTimeSec)
 		atomic.StoreUint64(&c.cfg.FlashNodeReadTimeoutUs, oldFlashNodeReadTimeoutUs)
 		c.cfg.FlashNodeDisableStack = oldFlashNodeDisableStack
 

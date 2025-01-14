@@ -5452,7 +5452,6 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 		proto.MetaRocksDBLogMaxMB, proto.MetaRocksDBWalMemMaxMB, proto.MetaRocksLogReservedDay, proto.MetaRocksDisableFlushWalKey, proto.RocksDBDiskReservedSpaceKey, proto.LogMaxMB,
 		proto.MetaDelEKRecordFileMaxMB, proto.MetaTrashCleanIntervalKey, umpJmtpBatchKey, flashNodeRateKey, flashNodeVolRateKey,
 		proto.MetaNodeDelEKZoneRateLimitKey, proto.MetaNodeDelEKVolRateLimitKey,
-		proto.DataNodeTrashKeepTimeSecKey,
 		proto.FlashNodeReadTimeoutUsKey,
 	}
 	for _, key := range uintKeys {
@@ -5463,7 +5462,9 @@ func parseAndExtractSetNodeInfoParams(r *http.Request) (params map[string]interf
 	intKeys := []string{dpRecoverPoolSizeKey, mpRecoverPoolSizeKey, proto.ClientVolOpRateKey, objectVolActionRateKey, proto.MetaRaftLogSizeKey,
 		proto.MetaRaftLogCapKey, proto.TrashCleanDurationKey, proto.TrashItemCleanMaxCountKey, proto.DeleteMarkDelVolIntervalKey, proto.DpTimeoutCntThreshold,
 		proto.ClientReqRecordReservedCntKey, proto.ClientReqRecordReservedMinKey, proto.RemoteReadConnTimeoutKey, proto.ConnTimeoutMsKey, proto.ReadConnTimeoutMsKey, proto.WriteConnTimeoutMsKey, proto.MetaNodeDumpSnapCountKey,
-		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey, apiReqBwRateLimitKey, persistenceModeKey}
+		proto.TopologyFetchIntervalMinKey, proto.TopologyForceFetchIntervalSecKey, apiReqBwRateLimitKey, persistenceModeKey,
+		proto.DataNodeTrashKeepTimeSecKey,
+	}
 	for _, key := range intKeys {
 		if err = parseIntKey(params, key, r); err != nil {
 			return

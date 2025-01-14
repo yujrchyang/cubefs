@@ -189,7 +189,7 @@ type clusterConfig struct {
 	UnrecoverableDuration               int64
 	TwoZoneHATypePingRule               string
 	DataNodeDisableBlacklist            bool
-	DataNodeTrashKeepTimeSec            uint64
+	DataNodeTrashKeepTimeSec            int64
 	FlashNodeReadTimeoutUs              uint64
 	FlashNodeDisableStack               bool
 }
