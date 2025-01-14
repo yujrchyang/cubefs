@@ -109,6 +109,10 @@ func (s *KeyValues) SetBool(key string, value bool) (err error) {
 	return s.Set(key, strconv.FormatBool(value))
 }
 
+func (s *KeyValues) SetInt64(key string, value int64) (err error) {
+	return s.Set(key, strconv.FormatInt(value, 10))
+}
+
 func (s *KeyValues) persist() error {
 	var err error
 	var bs []byte

@@ -1870,7 +1870,7 @@ func (s *DataNode) setSettings(w http.ResponseWriter, r *http.Request) {
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if err = s.settings.Set(SettingKeyDisableBlackList, strconv.FormatBool(isDisable)); err != nil {
+		if err = s.settings.SetBool(SettingKeyDisableBlackList, isDisable); err != nil {
 			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -1880,12 +1880,13 @@ func (s *DataNode) setSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if paras.TrashKeepTimeSec != "" {
-		_, err = strconv.ParseUint(paras.TrashKeepTimeSec, 10, 64)
+		var keepTime int64
+		keepTime, err = strconv.ParseInt(paras.TrashKeepTimeSec, 10, 64)
 		if err != nil {
 			s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		if err = s.settings.Set(SettingsKeyTrashKeepTimeSec, paras.TrashKeepTimeSec); err != nil {
+		if err = s.settings.SetInt64(SettingsKeyTrashKeepTimeSec, keepTime); err != nil {
 			s.buildFailureResp(w, http.StatusInternalServerError, err.Error())
 			return
 		}
