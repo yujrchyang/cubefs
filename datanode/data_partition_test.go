@@ -953,8 +953,10 @@ func BenchmarkRateLimit(b *testing.B) {
 
 func benchMarkRateLimitByMultiRule(concurrent int, b *testing.B) {
 	var testZone string
-	multirate.InitLimiterManagerWithoutHttp(multirate.ModuleDataNode, testZone, func(volName string) (info *proto.LimitInfo, err error) {
+	var cluster = "test_cluster"
+	multirate.InitLimiterManagerWithoutHttp(cluster, multirate.ModuleDataNode, testZone, func(volName string) (info *proto.LimitInfo, err error) {
 		info = &proto.LimitInfo{
+			Cluster:   cluster,
 			RateLimit: make(map[string]map[string]map[int]proto.AllLimitGroup, 0),
 		}
 		info.RateLimit[multirate.ModuleDataNode] = make(map[string]map[int]proto.AllLimitGroup, 0)

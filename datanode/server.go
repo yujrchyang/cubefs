@@ -176,7 +176,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
 
-	_, err = multirate.InitLimiterManager(multirate.ModuleDataNode, s.zoneName, MasterClient.AdminAPI().GetLimitInfo)
+	_, err = multirate.InitLimiterManager(s.clusterID, multirate.ModuleDataNode, s.zoneName, MasterClient.AdminAPI().GetLimitInfo)
 	if err != nil {
 		return err
 	}

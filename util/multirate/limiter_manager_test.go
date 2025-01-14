@@ -11,6 +11,7 @@ import (
 
 func TestLimiterManager(t *testing.T) {
 	var (
+		cluster            = "default_cluster"
 		zone               = "default"
 		vol                = "ltptest"
 		ratio       uint64 = 80
@@ -20,6 +21,7 @@ func TestLimiterManager(t *testing.T) {
 
 	getLimitInfo := func(volName string) (info *proto.LimitInfo, err error) {
 		info = new(proto.LimitInfo)
+		info.Cluster = cluster
 		info.NetworkFlowRatio = map[string]uint64{
 			ModuleDataNode: ratio,
 		}
@@ -37,7 +39,8 @@ func TestLimiterManager(t *testing.T) {
 		}
 		return
 	}
-	m, _ := newLimiterManager(ModuleDataNode, zone, getLimitInfo, false)
+	m, _ := newLimiterManager(cluster, ModuleDataNode, zone, getLimitInfo, false)
+	// stop auto update limit info
 	m.Stop()
 	ml := m.GetLimiter()
 	property := []Properties{
@@ -64,8 +67,10 @@ func TestLimiterManager(t *testing.T) {
 
 	ratio = 90
 	concurrency = 5
+	speed = getSpeed()
 	getLimitInfo1 := func(volName string) (info *proto.LimitInfo, err error) {
 		info = new(proto.LimitInfo)
+		info.Cluster = cluster
 		info.NetworkFlowRatio = map[string]uint64{
 			ModuleDataNode: ratio,
 		}
@@ -92,9 +97,18 @@ func TestLimiterManager(t *testing.T) {
 		{statTypeCount: rate.Limit(limit[2])},
 	}
 	m.setGetLimitInfoFunc(getLimitInfo1)
-	m.updateLimitInfo()
+	err := m.defaultUpdateLimit()
+	assert.NoError(t, err)
 	check(t, ml, property, expect)
 	assert.Equal(t, concurrency, m.GetConcurrency().Count(int(proto.OpRead)))
+
+	t.Run("force_update_limitInfo1", func(t *testing.T) {
+		limitInfo, err := getLimitInfo1("")
+		assert.NoError(t, err)
+		err = m.forceUpdateLimit(limitInfo)
+		assert.NoError(t, err)
+		check(t, ml, property, expect)
+	})
 }
 
 func check(t *testing.T, ml *MultiLimiter, property []Properties, limit []LimitGroup) {
@@ -103,9 +117,74 @@ func check(t *testing.T, ml *MultiLimiter, property []Properties, limit []LimitG
 		if limit[i].haveLimit() {
 			assert.True(t, ok)
 			r := val.(*Rule)
-			assert.Equal(t, limit[i], r.limit)
+			assert.Equalf(t, limit[i], r.limit, "rule: %v, limit: %v", r.String(), limit[i])
 		} else {
 			assert.False(t, ok)
 		}
 	}
+}
+
+func TestForceUpdateLimit(t *testing.T) {
+	var (
+		cluster             = "default_cluster"
+		zone                = "default_zone"
+		limit               = []int64{1, 2, 3, 4}
+		tConcurrency uint64 = 10
+		getLimitInfo        = func(volName string) (info *proto.LimitInfo, err error) {
+			info = new(proto.LimitInfo)
+			return info, err
+		}
+	)
+	m, _ := newLimiterManager(cluster, ModuleDataNode, zone, getLimitInfo, false)
+	// stop auto update limit info
+	m.Stop()
+	//ml := m.GetLimiter()
+	t.Run("verify_cluster", func(t *testing.T) {
+		err := m.forceUpdateLimit(&proto.LimitInfo{})
+		assert.Error(t, err)
+
+		err = m.forceUpdateLimit(&proto.LimitInfo{
+			Cluster: "fake_cluster",
+		})
+		assert.Error(t, err)
+	})
+
+	t.Run("verify_module", func(t *testing.T) {
+		// empty rate limit
+		err := m.forceUpdateLimit(&proto.LimitInfo{
+			Cluster: cluster,
+			RateLimit: map[string]map[string]map[int]proto.AllLimitGroup{
+				ModuleDataNode: make(map[string]map[int]proto.AllLimitGroup),
+			},
+		})
+		assert.Error(t, err)
+
+		// wrong module
+		err = m.forceUpdateLimit(&proto.LimitInfo{
+			Cluster: cluster,
+			RateLimit: map[string]map[string]map[int]proto.AllLimitGroup{
+				ModuleMetaNode: {
+					ZonePrefix + zone: {
+						int(proto.OpRead):  {indexCountPerDisk: limit[1], indexConcurrency: int64(tConcurrency)},
+						int(proto.OpWrite): {indexCountPerDisk: limit[0]},
+					},
+				},
+			},
+		})
+		assert.Error(t, err)
+
+		// correct
+		err = m.forceUpdateLimit(&proto.LimitInfo{
+			Cluster: cluster,
+			RateLimit: map[string]map[string]map[int]proto.AllLimitGroup{
+				ModuleDataNode: {
+					ZonePrefix + zone: {
+						int(proto.OpRead):  {indexCountPerDisk: limit[1], indexConcurrency: int64(tConcurrency)},
+						int(proto.OpWrite): {indexCountPerDisk: limit[0]},
+					},
+				},
+			},
+		})
+		assert.NoError(t, err)
+	})
 }

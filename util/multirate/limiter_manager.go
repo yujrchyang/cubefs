@@ -2,8 +2,13 @@ package multirate
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"runtime/debug"
 	"strconv"
@@ -29,14 +34,21 @@ const (
 	updateConfigInterval    = 1 * time.Minute
 	defaultNetworkFlowRatio = 90
 
-	speedFile    = "/sys/class/net/%v/speed"
-	bond0        = "bond0"
-	eth0         = "eth0"
-	defaultSpeed = 1250 // 10000 Mb/s
-	minSpeed     = 125  // 1000  Mb/s
+	speedFile                 = "/sys/class/net/%v/speed"
+	bond0                     = "bond0"
+	eth0                      = "eth0"
+	defaultSpeed              = 1250 // 10000 Mb/s
+	minSpeed                  = 125  // 1000  Mb/s
+	forceUpdateSafetyInterval = 10 * time.Minute
 )
 
 type indexType int
+
+const (
+	ForceUpdateLimitInfo = "/forceUpdateLimitInfo"
+
+	authKey = "auth"
+)
 
 const (
 	indexTypeTotal indexType = iota
@@ -81,6 +93,7 @@ var indexNameMap = map[string]int{
 type GetLimitInfoFunc func(volName string) (info *proto.LimitInfo, err error)
 
 type LimiterManager struct {
+	cluster      string
 	module       string
 	zoneName     string
 	getLimitInfo GetLimitInfoFunc
@@ -88,9 +101,11 @@ type LimiterManager struct {
 	mc           *MultiConcurrency
 	stopC        chan struct{}
 	wg           sync.WaitGroup
+	sync.Mutex
 
 	oldOpRateLimitMap    map[int]proto.AllLimitGroup
 	oldVolOpRateLimitMap map[string]map[int]proto.AllLimitGroup
+	forceUpdateTime      time.Time
 }
 
 func HaveLimit(g proto.AllLimitGroup) bool {
@@ -168,15 +183,15 @@ func GetIndexByName(name string) int {
 	return index
 }
 
-func InitLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfoFunc) (lm *LimiterManager, err error) {
-	if lm, err = newLimiterManager(module, zoneName, getLimitInfo, true); err == nil {
+func InitLimiterManager(cluster, module string, zoneName string, getLimitInfo GetLimitInfoFunc) (lm *LimiterManager, err error) {
+	if lm, err = newLimiterManager(cluster, module, zoneName, getLimitInfo, true); err == nil {
 		limiterManager = lm
 	}
 	return
 }
 
-func InitLimiterManagerWithoutHttp(module string, zoneName string, getLimitInfo GetLimitInfoFunc) (lm *LimiterManager, err error) {
-	if lm, err = newLimiterManager(module, zoneName, getLimitInfo, false); err == nil {
+func InitLimiterManagerWithoutHttp(cluster, module string, zoneName string, getLimitInfo GetLimitInfoFunc) (lm *LimiterManager, err error) {
+	if lm, err = newLimiterManager(cluster, module, zoneName, getLimitInfo, false); err == nil {
 		limiterManager = lm
 	}
 	return
@@ -264,8 +279,9 @@ func Stop() {
 	}
 }
 
-func newLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfoFunc, withHttp bool) (*LimiterManager, error) {
+func newLimiterManager(cluster, module, zoneName string, getLimitInfo GetLimitInfoFunc, withHttp bool) (*LimiterManager, error) {
 	m := new(LimiterManager)
+	m.cluster = cluster
 	m.module = module
 	m.zoneName = zoneName
 	m.getLimitInfo = getLimitInfo
@@ -274,11 +290,12 @@ func newLimiterManager(module string, zoneName string, getLimitInfo GetLimitInfo
 	m.stopC = make(chan struct{})
 	m.oldOpRateLimitMap = make(map[int]proto.AllLimitGroup)
 	m.oldVolOpRateLimitMap = make(map[string]map[int]proto.AllLimitGroup)
-	if err := m.updateLimitInfo(); err != nil {
+	if err := m.defaultUpdateLimit(); err != nil {
 		return nil, err
 	}
 	m.wg.Add(1)
 	go m.update()
+	http.HandleFunc(ForceUpdateLimitInfo, m.handleForceUpdateLimitInfo)
 	return m, nil
 }
 
@@ -326,18 +343,51 @@ func (m *LimiterManager) updateWithRecover() (err error) {
 		case <-m.stopC:
 			return
 		case <-ticker.C:
-			m.updateLimitInfo()
+			m.defaultUpdateLimit()
 		}
 	}
 }
 
-func (m *LimiterManager) updateLimitInfo() (err error) {
+func (m *LimiterManager) forceUpdateLimit(limitInfo *proto.LimitInfo) (err error) {
+	m.Lock()
+	defer m.Unlock()
+
+	// verify limit info
+	if m.cluster != limitInfo.Cluster {
+		err = fmt.Errorf("expected cluster(%v), actual cluster(%v)", m.cluster, limitInfo.Cluster)
+		return err
+	}
+	if limitInfo.RateLimit == nil || len(limitInfo.RateLimit) == 0 {
+		err = fmt.Errorf("limit is empty")
+		return
+	}
+	if limitInfo.RateLimit[m.module] == nil || len(limitInfo.RateLimit[m.module]) == 0 {
+		err = fmt.Errorf("module(%v) rate limit not exist", m.module)
+		return
+	}
+
+	m.updateByLimitInfo(limitInfo)
+	m.forceUpdateTime = time.Now()
+	return nil
+}
+
+func (m *LimiterManager) defaultUpdateLimit() (err error) {
+	m.Lock()
+	defer m.Unlock()
+	if time.Since(m.forceUpdateTime) < forceUpdateSafetyInterval {
+		log.LogWarnf("defaultUpdateLimit: last forceUpdateSafety time(%v) interval(%v), skip default update", m.forceUpdateTime, forceUpdateSafetyInterval)
+		return nil
+	}
 	limitInfo, err := m.getLimitInfo("")
 	if err != nil {
 		log.LogWarnf("updateLimitInfo, get limit info err: %s", err.Error())
 		return
 	}
+	m.updateByLimitInfo(limitInfo)
+	return nil
+}
 
+func (m *LimiterManager) updateByLimitInfo(limitInfo *proto.LimitInfo) {
 	ratio := limitInfo.NetworkFlowRatio[m.module]
 	speed := getSpeed() * 1024 * 1024 * int(ratio) / 100
 	rule := NewRule(Properties{{PropertyTypeFlow, FlowNetwork}}, LimitGroup{statTypeInBytes: rate.Limit(speed), statTypeOutBytes: rate.Limit(speed)}, BurstGroup{statTypeInBytes: speed, statTypeOutBytes: speed})
@@ -516,4 +566,82 @@ func getEthSpeed(eth string) int {
 		}
 	}
 	return 0
+}
+
+func (m *LimiterManager) handleForceUpdateLimitInfo(w http.ResponseWriter, r *http.Request) {
+	r.ParseForm()
+	var key string
+	var err error
+	key = r.FormValue("key")
+	if key == "" {
+		err = fmt.Errorf("auth key not found")
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !matchKey(key) {
+		err = fmt.Errorf("invalid auth key")
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	defer r.Body.Close()
+	limitInfo := &proto.LimitInfo{}
+
+	if err = json.Unmarshal(body, limitInfo); err != nil {
+		buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err = m.forceUpdateLimit(limitInfo)
+	if err != nil {
+		buildFailureResp(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	buildSuccessResp(w, http.StatusOK)
+}
+
+func matchKey(key string) bool {
+	return key == generateAuthKey()
+}
+
+func generateAuthKey() string {
+	date := time.Now().Format("2006-01-02 15")
+	h := md5.New()
+	h.Write([]byte(date))
+	cipherStr := h.Sum(nil)
+	return hex.EncodeToString(cipherStr)
+}
+
+func buildSuccessResp(w http.ResponseWriter, data interface{}) {
+	buildJSONResp(w, http.StatusOK, data, "")
+}
+
+func buildFailureResp(w http.ResponseWriter, code int, msg string) {
+	buildJSONResp(w, code, nil, msg)
+}
+
+func buildJSONResp(w http.ResponseWriter, code int, data interface{}, msg string) {
+	var (
+		jsonBody []byte
+		err      error
+	)
+	w.WriteHeader(code)
+	w.Header().Set("Content-Type", "application/json")
+	body := struct {
+		Code int         `json:"code"`
+		Data interface{} `json:"data"`
+		Msg  string      `json:"msg"`
+	}{
+		Code: code,
+		Data: data,
+		Msg:  msg,
+	}
+	if jsonBody, err = json.Marshal(body); err != nil {
+		return
+	}
+	w.Write(jsonBody)
 }
