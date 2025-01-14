@@ -20,10 +20,12 @@ import (
 	"fmt"
 	"io/fs"
 	"io/ioutil"
+	"math"
 	"net"
 	_ "net/http/pprof"
 	"os"
 	"path"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -68,6 +70,7 @@ type MetadataManager interface {
 	GetDumpSnapMPID() []uint64
 	GetStartFailedPartitions() []uint64
 	MetaPartitionCount() int
+	RestoreMetaPartition(metaPartitionDataExpiredDir, metaPartitionRaftExpiredDir string, partitionID uint64) (err error)
 }
 
 // MetadataManagerConfig defines the configures in the metadata manager.
@@ -118,6 +121,13 @@ type MetaNodeVersion struct {
 	Major int64
 	Minor int64
 	Patch int64
+}
+
+type RestorePartitionInfo struct {
+	PartitionID          uint64
+	LastExpiredTimeStamp int64
+	MetaDataDir          string
+	RaftDir              string
 }
 
 func (m *metadataManager) getPacketLabelVals(p *Packet) (labels []string) {
@@ -1088,6 +1098,11 @@ func (m *metadataManager) RangeMonitorData(deal func(data *statistics.MonitorDat
 }
 
 func (m *metadataManager) StartPartition(id uint64) (err error) {
+	if _, ok := m.startFailedPartitions.Load(id); ok {
+		err = errors.NewErrorf("[StartPartition]->partition %v exist in startFailedPartitions", id)
+		return
+	}
+
 	if _, err = m.getPartition(id); err == nil {
 		err = fmt.Errorf("MP[%d] already start", id)
 		return
@@ -1138,6 +1153,15 @@ func (m *metadataManager) StartPartition(id uint64) (err error) {
 		return
 	}
 	partition.(*metaPartition).CreationType = proto.DecommissionedCreateMetaPartition
+
+	m.createMu.Lock()
+	defer m.createMu.Unlock()
+
+	if _, err = m.getPartition(id); err == nil {
+		err = fmt.Errorf("MP[%d] already start", id)
+		return
+	}
+
 	m.attachPartition(id, partition)
 	err = partition.Start()
 	if err != nil {
@@ -1465,6 +1489,187 @@ func (m *metadataManager) expireRecorder(fileName string) {
 			log.LogErrorf("rename file has err:[%s]", tempErr.Error())
 		}
 	}
+}
+
+func (m *metadataManager) restoreMetaPartitions(restoreAll bool, assignedMPs map[uint64]bool) (successMPs, failedMPs []uint64, err error) {
+	var restorePartitions map[uint64]*RestorePartitionInfo
+	restorePartitions, failedMPs, err = m.getMetaPartitionsLastExpiredInfo(restoreAll, assignedMPs)
+	if err != nil {
+		return
+	}
+	for mpid, info := range restorePartitions {
+		if info.RaftDir == "" {
+			failedMPs = append(failedMPs, mpid)
+			continue
+		}
+
+		log.LogInfof("start restore partition, id: %v metaDataDir: %s, raftDir: %s", mpid, info.MetaDataDir, info.RaftDir)
+		err = m.RestoreMetaPartition(info.MetaDataDir, info.RaftDir, mpid)
+		if err != nil {
+			failedMPs = append(failedMPs, mpid)
+		} else {
+			successMPs = append(successMPs, mpid)
+		}
+	}
+	return
+}
+
+func (m *metadataManager) getMetaPartitionsLastExpiredInfo(restoreAll bool, assignedMPs map[uint64]bool) (
+	restorePartitions map[uint64]*RestorePartitionInfo, failedMPs []uint64, err error) {
+	restorePartitions = make(map[uint64]*RestorePartitionInfo, 0)
+	// Format: expired_partition_{ID}_{Timestamp}
+	// Regexp: ^expired_partition_(\d)+_(\d)+$
+	regexpExpiredPartitionDirName := regexp.MustCompile("^expired_partition_(\\d)+_(\\d)+$")
+	var entries []fs.DirEntry
+	entries, err = os.ReadDir(m.rootDir)
+	if err != nil {
+		log.LogErrorf("read meta data dir failed: %v", err)
+		return
+	}
+
+	//考虑存在多个expired partition，且raft和partition目录timestamp时间戳不一致
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		fileName := entry.Name()
+		if !regexpExpiredPartitionDirName.MatchString(fileName) {
+			continue
+		}
+
+		parts := strings.Split(fileName, "_")
+		var mpid uint64
+		var expiredTimestamp int64
+		var raftDir string
+		mpid, err = strconv.ParseUint(parts[2], 10, 64)
+		if err != nil {
+			log.LogErrorf("parse uint %s failed: %v", parts[2], err)
+			failedMPs = append(failedMPs, mpid)
+			continue
+		}
+		if !restoreAll {
+			if _, ok := assignedMPs[mpid]; !ok {
+				continue
+			}
+		}
+
+		newName := strings.Join(parts[1:3], "_")
+		if _, err = os.Stat(path.Join(m.rootDir, newName)); err == nil {
+			//partition_id目录存在,不恢复
+			log.LogErrorf("partition dir %s exist, no need restore", newName)
+			failedMPs = append(failedMPs, mpid)
+			continue
+		}
+
+		expiredTimestamp, err = strconv.ParseInt(parts[3], 10, 64)
+		if err != nil {
+			log.LogErrorf("parse timestamp %v failed, skip restore, error: %v", parts[3], err)
+			failedMPs = append(failedMPs, mpid)
+			continue
+		}
+
+		//需要找最近一次过期的meta data目录
+		if info, ok := restorePartitions[mpid]; ok && info.LastExpiredTimeStamp > expiredTimestamp {
+			continue
+		}
+
+		restorePartitions[mpid] = &RestorePartitionInfo{
+			PartitionID:          mpid,
+			LastExpiredTimeStamp: expiredTimestamp,
+			MetaDataDir:          path.Join(m.rootDir, fileName),
+		}
+
+		raftDir, err = m.getMetaPartitionLastExpiredRaftDir(mpid, expiredTimestamp)
+		if err != nil {
+			log.LogErrorf("get partition %v raft dir failed: %v", mpid, err)
+			failedMPs = append(failedMPs, mpid)
+			continue
+		}
+		restorePartitions[mpid].RaftDir = raftDir
+	}
+	err = nil
+	return
+}
+
+func (m *metadataManager) getMetaPartitionLastExpiredRaftDir(pid uint64, partitionDirExpiredTimestamp int64) (raftDir string, err error) {
+	raftDir = path.Join(m.metaNode.raftDir, ExpiredPartitionPrefix + strconv.FormatUint(pid, 10) + "_" + strconv.FormatInt(partitionDirExpiredTimestamp, 10))
+	if _, err = os.Stat(raftDir); err == nil {
+		return
+	}
+
+	raftDir = path.Join(m.metaNode.raftDir, strconv.FormatUint(pid, 10))
+	if _, err = os.Stat(raftDir); err == nil {
+		//raft目录存在，不恢复
+		err = fmt.Errorf("raft dir %s exist", raftDir)
+		return
+	}
+
+	//找最近一次过期的raft目录
+	var entries []fs.DirEntry
+	entries, err = os.ReadDir(m.metaNode.raftDir)
+	if err != nil {
+		err = fmt.Errorf("read raft dir failed: %v", err)
+		return
+	}
+
+	var lastExpiredTime int64
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		fileName := entry.Name()
+		if !strings.HasPrefix(fileName, ExpiredPartitionPrefix + strconv.FormatUint(pid, 10) + "_") {
+			continue
+		}
+
+		parts := strings.Split(fileName, "_")
+		if len(parts) != 3 {
+			continue
+		}
+		var expireTimestamp int64
+		expireTimestamp, err = strconv.ParseInt(parts[2], 10, 64)
+		if err != nil {
+			continue
+		}
+
+		if expireTimestamp > lastExpiredTime {
+			raftDir = path.Join(m.metaNode.raftDir, entry.Name())
+			lastExpiredTime = expireTimestamp
+		}
+	}
+
+	//判断raft目录的时间戳和当前的间隔，理论上不超过10s，超过10s的也不予恢复，为避免恢复数据错误，需要人工介入
+	//todo: 差值10s？
+	if math.Abs(float64(partitionDirExpiredTimestamp) - float64(lastExpiredTime)) > 10 {
+		err = fmt.Errorf("unexpect raft dir: %s", raftDir)
+		log.LogErrorf("unexpect raft dir %s, partitionID: %v, raftExpiredTime: %v, partitionExpiredTime: %v, diff: %v\n",
+			raftDir, pid, lastExpiredTime, partitionDirExpiredTimestamp, math.Abs(float64(partitionDirExpiredTimestamp) - float64(lastExpiredTime)))
+	}
+	return
+}
+
+func (m *metadataManager) RestoreMetaPartition(metaPartitionDataExpiredDir, metaPartitionRaftExpiredDir string, partitionID uint64) (err error) {
+	partitionIDStr := strconv.FormatUint(partitionID, 10)
+	newMetaDataDir := path.Join(m.rootDir, partitionPrefix + partitionIDStr)
+	newRaftDir := path.Join(m.metaNode.raftDir, partitionIDStr)
+
+	err = os.Rename(metaPartitionDataExpiredDir, newMetaDataDir)
+	if err != nil {
+		return
+	}
+
+	err = os.Rename(metaPartitionRaftExpiredDir, newRaftDir)
+	if err != nil {
+		_ = os.Rename(newMetaDataDir, metaPartitionDataExpiredDir)
+		return
+	}
+
+	err = m.StartPartition(partitionID)
+	if err != nil {
+		log.LogErrorf("start partition failed, partitionID: %v, err: %v\n", partitionID, err)
+		return
+	}
+	return
 }
 
 // NewMetadataManager returns a new metadata manager.

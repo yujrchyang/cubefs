@@ -18,7 +18,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/md5"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash/crc32"
@@ -147,6 +149,8 @@ func (m *MetaNode) registerAPIHandler() (err error) {
 	http.HandleFunc("/truncateRecorderWAL", m.truncateRecorderWALHandler)
 	http.HandleFunc("/checkDirInodeNlink", m.checkDirInodeNLink)
 	http.HandleFunc("/getAllPartitions", m.getAllPartitionsHandler)
+
+	http.HandleFunc("/restorePartitions", m.restoreMetaPartitions)
 	return
 }
 
@@ -3585,5 +3589,73 @@ func (m *MetaNode) getAllPartitionsHandler(w http.ResponseWriter, r *http.Reques
 		return true
 	})
 	resp.Data = allPartitions
+	return
+}
+
+func matchKey(key string) bool {
+	return key == generateAuthKey()
+}
+
+//linux: echo -n '2025-01-14 16' | md5sum | cut -d ' ' -f1
+func generateAuthKey() string {
+	date := time.Now().Format("2006-01-02 15")
+	h := md5.New()
+	h.Write([]byte(date))
+	cipherStr := h.Sum(nil)
+	return hex.EncodeToString(cipherStr)
+}
+
+// restore last expired dir
+//todo: rocksdb, 如果后续rocksdb采用单独的目录需要考虑rocksdb目录下的partition的恢复
+func (s *MetaNode) restoreMetaPartitions(w http.ResponseWriter, r *http.Request) {
+	resp := NewAPIResponse(http.StatusOK, http.StatusText(http.StatusOK))
+	defer func() {
+		data, _ := resp.Marshal()
+		if _, err := w.Write(data); err != nil {
+			log.LogErrorf("[getAllPartitionsInfoHandler] response %s", err)
+		}
+	}()
+
+	var (
+		err         error
+		all         bool
+		successMPs  []uint64
+		failedMPs   []uint64
+	)
+	ids := make(map[uint64]bool)
+	key := r.FormValue("key")
+	if !matchKey(key) {
+		err = fmt.Errorf("auth key not match: %v", key)
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+	idVal := r.FormValue("id")
+	if idVal == "all" {
+		all = true
+	} else {
+		allId := strings.Split(idVal, ",")
+		for _, val := range allId {
+			id, err := strconv.ParseUint(val, 10, 64)
+			if err != nil {
+				continue
+			}
+			ids[id] = true
+		}
+	}
+	successMPs, failedMPs, err = s.metadataManager.(*metadataManager).restoreMetaPartitions(all, ids)
+	if err != nil {
+		resp.Code = http.StatusBadRequest
+		resp.Msg = err.Error()
+		return
+	}
+
+	resp.Data = &struct {
+		SuccessMps []uint64 `json:"successMPs"`
+		FailedMPs  []uint64 `json:"failedMPs"`
+	}{
+		SuccessMps: successMPs,
+		FailedMPs: failedMPs,
+	}
 	return
 }
