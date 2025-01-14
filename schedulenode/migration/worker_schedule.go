@@ -79,135 +79,76 @@ func (w *Worker) createCompactTask(clusterId string, taskNum int64, runningTasks
 		default:
 		}
 	}
-	w.cancelCompactTask(clusterId, compactCloseVols, wns)
+	w.closeCompactTask(clusterId, compactCloseVols, wns)
 	newTasks, err = w.createCompactTaskByVolume(clusterId, compactOpenVols, taskNum, runningTasks)
 	return
 }
 
-func (w *Worker) cancelCompactTask_bjguoweilong(cluster string, vols []*proto.DataMigVolume, wns []*proto.WorkerNode) {
+func (w *Worker) closeCompactTask(cluster string, vols []*proto.DataMigVolume, wns []*proto.WorkerNode) {
 	for _, vol := range vols {
-		log.LogDebugf("CompactWorker CancelMpTask clusterId(%v), vol(%v) wnsLength(%v)", cluster, vol.Name, len(wns))
+		log.LogDebugf("closeCompactTask clusterId(%v), vol(%v) wnsLength(%v)", cluster, vol.Name, len(wns))
 		mpView, err := w.GetMpView(cluster, vol.Name)
 		if err != nil {
-			log.LogErrorf("CompactWorker CancelMpTask GetMpView cluster(%v) volName(%v) err(%v)", cluster, vol.Name, err)
+			log.LogErrorf("closeCompactTask GetMpView cluster(%v) volName(%v) err(%v)", cluster, vol.Name, err)
 			continue
 		}
 
-		workerAddrMap := w.processMpView(cluster, vol, mpView, wns)
-		w.stopCompactTasks(cluster, vol.Name, workerAddrMap)
+		workerAddrMap := w.processMpView(cluster, vol.Name, mpView, wns, proto.WorkerTypeCompact, vol.CompactTag.String())
+		w.stopTasks(cluster, vol.Name, workerAddrMap, CompactStop)
 	}
 }
 
-func (w *Worker) processMpView(cluster string, vol *proto.DataMigVolume, mpView []*proto.MetaPartitionView, wns []*proto.WorkerNode) map[string]struct{} {
+func (w *Worker) processMpView(cluster, volName string, mpView []*proto.MetaPartitionView, wns []*proto.WorkerNode, wt proto.WorkerType, taskInfo string) map[string]struct{} {
 	workerAddrMap := make(map[string]struct{})
 	for _, mp := range mpView {
-		newTask := proto.NewDataTask(proto.WorkerTypeCompact, cluster, vol.Name, 0, mp.PartitionID, vol.CompactTag.String())
+		newTask := proto.NewDataTask(wt, cluster, volName, 0, mp.PartitionID, taskInfo)
 		exist, oldTask, err := w.ContainMPTaskByWorkerNodes(newTask, wns)
 		if err != nil {
-			log.LogErrorf("CompactWorker CancelMpTask ContainMPTaskByWorkerNodes failed, cluster(%v), volume(%v), err(%v)", cluster, vol.Name, err)
+			log.LogErrorf("ContainMPTaskByWorkerNodes failed, cluster(%v), volume(%v), err(%v)", cluster, volName, err)
 			continue
 		}
 		if !exist {
 			continue
 		}
 
-		log.LogDebugf("CancelMpTask oldTask WorkerAddr(%v), task(%v)", oldTask.WorkerAddr, oldTask)
+		log.LogDebugf("processMpView oldTask WorkerAddr(%v), task(%v)", oldTask.WorkerAddr, oldTask)
 		if oldTask.WorkerAddr != "" {
 			workerAddrMap[oldTask.WorkerAddr] = struct{}{}
 		}
 
-		if err := w.UpdateTaskInfo(oldTask.TaskId, vol.CompactTag.String()); err != nil {
-			log.LogErrorf("CompactWorker CancelMpTask UpdateTaskInfo to database failed, cluster(%v), volume(%v), task(%v), err(%v)", cluster, vol.Name, newTask, err)
+		if err = w.UpdateTaskInfo(oldTask.TaskId, taskInfo); err != nil {
+			log.LogErrorf("UpdateTaskInfo to database failed, cluster(%v), volume(%v), task(%v), err(%v)", cluster, volName, newTask, err)
 		}
 	}
 	return workerAddrMap
 }
 
-func (w *Worker) stopCompactTasks(cluster, volName string, workerAddrMap map[string]struct{}) {
+func (w *Worker) stopTasks(cluster, volName string, workerAddrMap map[string]struct{}, reqPath string) {
 	for addr := range workerAddrMap {
-		stopCompactUrl := GenStopUrl(addr, CompactStop, cluster, volName)
-		if err := w.stopCompactTask(stopCompactUrl, cluster, volName); err != nil {
-			log.LogErrorf("CompactWorker CancelMpTask stopCompactTask failed, cluster(%v), volume(%v), stopCompactUrl(%v), err(%v)", cluster, vol.Name, stopCompactUrl, err)
+		stopTaskUrl := GenStopUrl(addr, reqPath, cluster, volName)
+		if err := w.stopTask(stopTaskUrl, cluster, volName); err != nil {
+			log.LogErrorf("stopTasks failed, cluster(%v), volume(%v), stopTaskUrl(%v), err(%v)", cluster, volName, stopTaskUrl, err)
 		}
 	}
 }
 
-func (w *Worker) stopCompactTask(url, cluster, volName string) error {
+func (w *Worker) stopTask(url, cluster, volName string) error {
 	var res *proto.QueryHTTPResult
 	var err error
 	for i := 0; i < RetryDoGetMaxCnt; i++ {
 		if res, err = DoGet(url); err != nil {
-			log.LogErrorf("CompactWorker CancelMpTask doGet failed, cluster(%v), volume(%v), url(%v), err(%v)", cluster, volName, url, err)
+			log.LogErrorf("CancelMpTask doGet failed, cluster(%v), volume(%v), url(%v), err(%v)", cluster, volName, url, err)
 			continue
 		}
 		break
 	}
-	log.LogDebugf("CompactWorker CancelMpTask doGet url(%v), result(%v)", url, res)
+	log.LogDebugf("CancelMpTask doGet url(%v), result(%v)", url, res)
 	return err
 }
 
-func (w *Worker) cancelCompactTask(cluster string, vols []*proto.DataMigVolume, wns []*proto.WorkerNode) {
-	for _, vol := range vols {
-		log.LogDebugf("CompactWorker CancelMpTask clusterId(%v), vol(%v) wnsLength(%v)", cluster, vol.Name, len(wns))
-		mpView, err := w.GetMpView(cluster, vol.Name)
-		if err != nil {
-			log.LogErrorf("CompactWorker CancelMpTask GetMpView cluster(%v) volName(%v) err(%v)", cluster, vol.Name, err)
-			continue
-		}
-		workerAddrMap := make(map[string]struct{}, 0)
-		for _, mp := range mpView {
-			newTask := proto.NewDataTask(proto.WorkerTypeCompact, cluster, vol.Name, 0, mp.PartitionID, vol.CompactTag.String())
-			var exist bool
-			var oldTask *proto.Task
-			if exist, oldTask, err = w.ContainMPTaskByWorkerNodes(newTask, wns); err != nil {
-				log.LogErrorf("CompactWorker CancelMpTask ContainMPTaskByWorkerNodes failed, cluster(%v), volume(%v), err(%v)",
-					cluster, vol.Name, err)
-				continue
-			}
-			if !exist {
-				continue
-			}
-			log.LogDebugf("CancelMpTask oldTask WorkerAddr(%v), task(%v)", oldTask.WorkerAddr, oldTask)
-			if oldTask.WorkerAddr != "" {
-				workerAddrMap[oldTask.WorkerAddr] = struct{}{}
-			}
-
-			if err = w.UpdateTaskInfo(oldTask.TaskId, vol.CompactTag.String()); err != nil {
-				log.LogErrorf("CompactWorker CancelMpTask UpdateTaskInfo to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
-					cluster, vol.Name, newTask, err)
-			}
-		}
-		// call worker node stop compact task
-		for addr := range workerAddrMap {
-			var res *proto.QueryHTTPResult
-			stopCompactUrl := GenStopUrl(addr, CompactStop, cluster, vol.Name)
-			for i := 0; i < RetryDoGetMaxCnt; i++ {
-				if res, err = DoGet(stopCompactUrl); err != nil {
-					log.LogErrorf("CompactWorker CancelMpTask doGet failed, cluster(%v), volume(%v), stopCompactUrl(%v), err(%v)",
-						cluster, vol.Name, stopCompactUrl, err)
-					continue
-				}
-				break
-			}
-			log.LogDebugf("CompactWorker CancelMpTask doGet stopCompactUrl(%v), result(%v)", stopCompactUrl, res)
-		}
-	}
-}
-
 func (w *Worker) createCompactTaskByVolume(cluster string, vols []*proto.DataMigVolume, taskNum int64, runningTasks []*proto.Task) (newTasks []*proto.Task, err error) {
-	sort.Slice(vols, func(i, j int) bool {
-		key1 := workerTypeKey(proto.WorkerTypeCompact, cluster, vols[i].Name)
-		key2 := workerTypeKey(proto.WorkerTypeCompact, cluster, vols[j].Name)
-		var (
-			taskCnt1, taskCnt2 uint64
-		)
-		if v, ok := w.volumeTaskCnt.Load(key1); ok {
-			taskCnt1 = v.(uint64)
-		}
-		if v, ok := w.volumeTaskCnt.Load(key2); ok {
-			taskCnt2 = v.(uint64)
-		}
-		return taskCnt1 < taskCnt2
+	sortVolumesByTaskCountASC(w, proto.WorkerTypeCompact, cluster, vols, func(v *proto.DataMigVolume) string {
+		return v.Name
 	})
 	for _, vol := range vols {
 		log.LogDebugf("CompactWorker CreateTask begin clusterId(%v), volumeName(%v), taskNum(%v), runningTasksLength(%v)", cluster, vol.Name, taskNum, len(runningTasks))
@@ -275,8 +216,9 @@ func (w *Worker) createFileMigrateTask(clusterId string, taskNum int64, runningT
 }
 
 func (w *Worker) createFileMigrateTaskByVolume(workerType proto.WorkerType, cluster string, vols []*proto.SmartVolume, taskNum int64, runningTasks []*proto.Task) (newTasks []*proto.Task, err error) {
-	w.sortVolumesByTaskCountASC(workerType, cluster, vols)
-
+	sortVolumesByTaskCountASC(w, workerType, cluster, vols, func(v *proto.SmartVolume) string {
+		return v.Name
+	})
 	for _, vol := range vols {
 		if len(vol.SmartRules) == 0 {
 			log.LogWarnf("FileMigrationWorker CreateMpTask cluster(%v) volName(%v) verify smartRules is null", cluster, vol.Name)
@@ -318,50 +260,80 @@ func (w *Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView 
 			break
 		}
 		if mp.InodeCount == 0 {
-			if i >= len(mpView)-1 {
-				w.volumeTaskPos.Store(key, uint64(0))
-			} else {
-				w.volumeTaskPos.Store(key, mp.PartitionID)
-			}
+			w.setVolumeTaskPos(i, len(mpView), key, mp.PartitionID, false)
 			continue
 		}
-		if layerPolicies, ok := vol.LayerPolicies[proto.LayerTypeInodeATime]; !ok || len(layerPolicies) == 0 {
+		if !checkLayerPoliciesValid(vol) {
 			break
 		}
-		// recent layer policy
-		newTask := proto.NewDataTask(proto.WorkerTypeInodeMigration, vol.ClusterId, vol.Name, 0, mp.PartitionID, FileMigrateOpen)
-		var exist bool
-		if exist, _, err = w.ContainMPTask(newTask, runningTasks); err != nil || exist {
-			log.LogWarnf("FileMigrationWorker CreateMpTask ContainMPTask failed, cluster(%v), volume(%v) exist(%v), err(%v)",
-				vol.ClusterId, vol.Name, exist, err)
+		var newTask *proto.Task
+		newTask, err = w.CheckAndAddTask(vol.ClusterId, vol.Name, mp.PartitionID, runningTasks, workerType, FileMigrateOpen)
+		if err != nil {
 			continue
 		}
-		var taskId uint64
-		if taskId, err = w.AddTask(newTask); err != nil {
-			log.LogErrorf("FileMigrationWorker CreateMpTask AddTask to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
-				vol.ClusterId, vol.Name, newTask, err)
-			continue
-		}
-		if value, ok := w.volumeTaskCnt.Load(key); ok {
-			w.volumeTaskCnt.Store(key, value.(uint64)+1)
-		} else {
-			w.volumeTaskCnt.Store(key, uint64(1))
-		}
-		if i >= len(mpView)-1 {
-			w.volumeTaskPos.Store(key, uint64(0))
-			// 所有mp创建一轮后设置任务创建时间
-			w.volumeLastTaskTime.Store(key, time.Now().Unix())
-		} else {
-			w.volumeTaskPos.Store(key, mp.PartitionID)
-		}
-		newTask.TaskId = taskId
+		w.setVolumeTaskCnt(key)
+		w.setVolumeTaskPos(i, len(mpView), key, mp.PartitionID, true)
 		volumeTaskNum++
 		newTasks = append(newTasks, newTask)
 		if int64(len(newTasks)) >= taskNum {
-			return
+			break
 		}
 	}
 	return
+}
+
+func (w *Worker) setVolumeTaskPos(index, mpLen int, workerTypeKey string, curPartitionId uint64, isSetVolumeLastTaskTime bool) {
+	if index >= mpLen-1 {
+		w.volumeTaskPos.Store(workerTypeKey, uint64(0))
+		if isSetVolumeLastTaskTime {
+			// 所有mp创建一轮后设置任务创建时间
+			w.volumeLastTaskTime.Store(workerTypeKey, time.Now().Unix())
+		}
+	} else {
+		w.volumeTaskPos.Store(workerTypeKey, curPartitionId)
+	}
+}
+
+func (w *Worker) setVolumeTaskCnt(workerTypeKey string) {
+	if value, ok := w.volumeTaskCnt.Load(workerTypeKey); ok {
+		w.volumeTaskCnt.Store(workerTypeKey, value.(uint64)+1)
+	} else {
+		w.volumeTaskCnt.Store(workerTypeKey, uint64(1))
+	}
+}
+
+func checkLayerPoliciesValid(vol *proto.SmartVolume) bool {
+	layerPolicies, ok := vol.LayerPolicies[proto.LayerTypeInodeATime]
+	if !ok {
+		return false
+	}
+	if len(layerPolicies) == 0 {
+		return false
+	}
+	return true
+}
+
+func (w *Worker) CheckAndAddTask(cluster, volName string, mpId uint64, runningTasks []*proto.Task, wt proto.WorkerType, taskInfo string) (task *proto.Task, err error) {
+	newTask := proto.NewDataTask(wt, cluster, volName, 0, mpId, taskInfo)
+	var exist bool
+	exist, _, err = w.ContainMPTask(newTask, runningTasks)
+	if err != nil {
+		log.LogWarnf("CheckAndAddTask ContainMPTask failed, cluster(%v), volume(%v) exist(%v), err(%v)",
+			cluster, volName, exist, err)
+		return
+	}
+	if exist {
+		err = fmt.Errorf("CheckAndAddTask task(%v) exist", task)
+		return
+	}
+	var taskId uint64
+	if taskId, err = w.AddTask(newTask); err != nil {
+		log.LogErrorf("CheckAndAddTask to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
+			cluster, volName, newTask, err)
+		return
+	}
+	newTask.TaskId = taskId
+	return newTask, nil
 }
 
 func (w *Worker) checkCanCreateTask(key string) (canCreate bool) {
@@ -389,7 +361,7 @@ func (w *Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMigV
 	if !w.checkCanCreateTask(key) {
 		return
 	}
-	for i, mp := range mpView {
+	for index, mp := range mpView {
 		var mpId uint64 = 0
 		if value, ok := w.volumeTaskPos.Load(key); ok {
 			mpId = value.(uint64)
@@ -401,39 +373,16 @@ func (w *Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMigV
 			break
 		}
 		if mp.InodeCount == 0 {
-			if i >= len(mpView)-1 {
-				w.volumeTaskPos.Store(key, uint64(0))
-			} else {
-				w.volumeTaskPos.Store(key, mp.PartitionID)
-			}
+			w.setVolumeTaskPos(index, len(mpView), key, mp.PartitionID, false)
 			continue
 		}
-		newTask := proto.NewDataTask(workerType, cluster, vol.Name, 0, mp.PartitionID, vol.CompactTag.String())
-		var exist bool
-		if exist, _, err = w.ContainMPTask(newTask, runningTasks); err != nil || exist {
-			log.LogWarnf("CompactWorker CreateMpTask ContainMPTask failed, cluster(%v), volume(%v) exist(%v), err(%v)",
-				cluster, vol.Name, exist, err)
+		var newTask *proto.Task
+		newTask, err = w.CheckAndAddTask(cluster, vol.Name, mp.PartitionID, runningTasks, workerType, vol.CompactTag.String())
+		if err != nil {
 			continue
 		}
-		var taskId uint64
-		if taskId, err = w.AddTask(newTask); err != nil {
-			log.LogErrorf("CompactWorker CreateMpTask AddTask to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
-				cluster, vol.Name, newTask, err)
-			continue
-		}
-		if value, ok := w.volumeTaskCnt.Load(key); ok {
-			w.volumeTaskCnt.Store(key, value.(uint64)+1)
-		} else {
-			w.volumeTaskCnt.Store(key, uint64(1))
-		}
-		if i >= len(mpView)-1 {
-			w.volumeTaskPos.Store(key, uint64(0))
-			// 所有mp创建一轮后设置任务创建时间
-			w.volumeLastTaskTime.Store(key, time.Now().Unix())
-		} else {
-			w.volumeTaskPos.Store(key, mp.PartitionID)
-		}
-		newTask.TaskId = taskId
+		w.setVolumeTaskCnt(key)
+		w.setVolumeTaskPos(index, len(mpView), key, mp.PartitionID, true)
 		volumeTaskNum++
 		newTasks = append(newTasks, newTask)
 		if int64(len(newTasks)) >= taskNum {
@@ -495,50 +444,42 @@ func (w *Worker) filterSoonCloseFileMigrateVols(clusterId string, fileMigrateVol
 
 func (w *Worker) CloseFileMigrateTask(cluster string, vols []string, wns []*proto.WorkerNode) {
 	for _, volName := range vols {
-		log.LogDebugf("FileMigrationWorker CancelMpTask clusterId(%v), vol(%v) wnsLength(%v)", cluster, volName, len(wns))
+		log.LogDebugf("CloseFileMigrateTask clusterId(%v), vol(%v) wnsLength(%v)", cluster, volName, len(wns))
 		mpView, err := w.GetMpView(cluster, volName)
 		if err != nil {
-			log.LogErrorf("FileMigrationWorker CancelMpTask GetMpView cluster(%v) volName(%v) err(%v)", cluster, volName, err)
+			log.LogErrorf("CloseFileMigrateTask GetMpView cluster(%v) volName(%v) err(%v)", cluster, volName, err)
 			continue
 		}
-		workerAddrMap := make(map[string]struct{}, 0)
-		for _, mp := range mpView {
-			newTask := proto.NewDataTask(proto.WorkerTypeInodeMigration, cluster, volName, 0, mp.PartitionID, FileMigrateClose)
-			var exist bool
-			var oldTask *proto.Task
-			if exist, oldTask, err = w.ContainMPTaskByWorkerNodes(newTask, wns); err != nil {
-				log.LogErrorf("FileMigrationWorker CancelMpTask ContainMPTaskByWorkerNodes failed, cluster(%v), volume(%v), err(%v)",
-					cluster, volName, err)
-				continue
-			}
-			if !exist {
-				continue
-			}
-			log.LogDebugf("FileMigrationWorker CancelMpTask oldTask WorkerAddr(%v), task(%v)", oldTask.WorkerAddr, oldTask)
-			if oldTask.WorkerAddr != "" {
-				workerAddrMap[oldTask.WorkerAddr] = struct{}{}
-			}
-
-			if err = w.UpdateTaskInfo(oldTask.TaskId, FileMigrateClose); err != nil {
-				log.LogErrorf("FileMigrationWorker CancelMpTask UpdateTaskInfo to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
-					cluster, volName, newTask, err)
-			}
-		}
+		workerAddrMap := w.processMpView(cluster, volName, mpView, wns, proto.WorkerTypeInodeMigration, FileMigrateClose)
 		// call worker node stop file migrate task
-		for addr := range workerAddrMap {
-			var res *proto.QueryHTTPResult
-			stopFileMigrateUrl := GenStopUrl(addr, FileMigrateStop, cluster, volName)
-			for i := 0; i < RetryDoGetMaxCnt; i++ {
-				if res, err = DoGet(stopFileMigrateUrl); err != nil {
-					log.LogErrorf("FileMigrationWorker CancelMpTask doGet failed, cluster(%v), volume(%v), stopFileMigrateUrl(%v), err(%v)",
-						cluster, volName, stopFileMigrateUrl, err)
-					continue
-				}
-				break
-			}
-			log.LogDebugf("FileMigrationWorker CancelMpTask doGet stopFileMigrateUrl(%v), result(%v)", stopFileMigrateUrl, res)
+		w.stopTasks(cluster, volName, workerAddrMap, FileMigrateStop)
+	}
+}
+
+func (w *Worker) processFileMigrateMpView(cluster, volName string, mpView []*proto.MetaPartitionView, wns []*proto.WorkerNode) map[string]struct{} {
+	workerAddrMap := make(map[string]struct{})
+	for _, mp := range mpView {
+		newTask := proto.NewDataTask(proto.WorkerTypeInodeMigration, cluster, volName, 0, mp.PartitionID, FileMigrateClose)
+		exist, oldTask, err := w.ContainMPTaskByWorkerNodes(newTask, wns)
+		if err != nil {
+			log.LogErrorf("FileMigrationWorker CancelMpTask ContainMPTaskByWorkerNodes failed, cluster(%v), volume(%v), err(%v)",
+				cluster, volName, err)
+			continue
+		}
+		if !exist {
+			continue
+		}
+		log.LogDebugf("FileMigrationWorker CancelMpTask oldTask WorkerAddr(%v), task(%v)", oldTask.WorkerAddr, oldTask)
+		if oldTask.WorkerAddr != "" {
+			workerAddrMap[oldTask.WorkerAddr] = struct{}{}
+		}
+
+		if err = w.UpdateTaskInfo(oldTask.TaskId, FileMigrateClose); err != nil {
+			log.LogErrorf("FileMigrationWorker CancelMpTask UpdateTaskInfo to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
+				cluster, volName, newTask, err)
 		}
 	}
+	return workerAddrMap
 }
 
 func (w *Worker) parseConfig(cfg *config.Config) (err error) {
@@ -827,10 +768,10 @@ func (w *Worker) GetCreatorDuration() int {
 	return w.WorkerConfig.TaskCreatePeriod
 }
 
-func (w *Worker) sortVolumesByTaskCountASC(workerType proto.WorkerType, cluster string, vols []*proto.SmartVolume) {
+func sortVolumesByTaskCountASC[T any](w *Worker, workerType proto.WorkerType, cluster string, vols []T, getVolName func(T) string) {
 	sort.Slice(vols, func(i, j int) bool {
-		key1 := workerTypeKey(workerType, cluster, vols[i].Name)
-		key2 := workerTypeKey(workerType, cluster, vols[j].Name)
+		key1 := workerTypeKey(workerType, cluster, getVolName(vols[i]))
+		key2 := workerTypeKey(workerType, cluster, getVolName(vols[j]))
 		var (
 			taskCnt1, taskCnt2 uint64
 		)
