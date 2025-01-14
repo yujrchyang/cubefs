@@ -37,7 +37,12 @@ const (
 )
 
 const (
-	ConsumeTask    = "ConsumeTask"
-	RunMpTask      = "RunMpTask"
-	RunInodeTask   = "RunInodeTask"
+	ConsumeTask  = "ConsumeTask"
+	RunMpTask    = "RunMpTask"
+	RunInodeTask = "RunInodeTask"
+)
+
+const (
+	MetaMergeFailed       = "meta merge failed"
+	DeleteOldExtentFailed = "delete old extent failed"
 )

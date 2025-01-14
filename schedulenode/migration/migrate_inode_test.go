@@ -2110,3 +2110,17 @@ func TestMigrateInode_checkEkSegmentHasCubeFSExtent(t *testing.T) {
 		t.Fatal("Expected no CubeFSExtent, got CubeFSExtent")
 	}
 }
+
+func TestIsNotUnlockExtentErr(t *testing.T) {
+	err := fmt.Errorf("normal err")
+	assert.False(t, isNotUnlockExtentErr(err))
+
+	err = fmt.Errorf("%v, err", MetaMergeFailed)
+	assert.True(t, isNotUnlockExtentErr(err))
+
+	err = fmt.Errorf("%v, err", DeleteOldExtentFailed)
+	assert.True(t, isNotUnlockExtentErr(err))
+
+	err = nil
+	assert.False(t, isNotUnlockExtentErr(err))
+}

@@ -118,10 +118,19 @@ func (migInode *MigrateInode) RunOnce() (finished bool, err error) {
 			err = migInode.LockExtents()
 		case CheckCanMigrate:
 			err = migInode.checkCanMigrate()
+			if err != nil {
+				migInode.UnlockExtents()
+			}
 		case ReadAndWriteEkData:
 			err = migInode.ReadAndWriteData()
+			if err != nil {
+				migInode.UnlockExtents()
+			}
 		case MetaMergeExtents:
 			err = migInode.MetaMergeExtents()
+			if !isNotUnlockExtentErr(err) {
+				migInode.UnlockExtents()
+			}
 		case InodeMigStopped:
 			migInode.MigTaskCloseStream()
 			finished = true
@@ -133,6 +142,10 @@ func (migInode *MigrateInode) RunOnce() (finished bool, err error) {
 		migInode.UpdateTime()
 	}
 	return
+}
+
+func isNotUnlockExtentErr(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), MetaMergeFailed) || strings.Contains(err.Error(), DeleteOldExtentFailed))
 }
 
 func (migInode *MigrateInode) Init() (err error) {
@@ -375,7 +388,6 @@ func (migInode *MigrateInode) checkCanMigrate() (err error) {
 
 	defer func() {
 		if err != nil {
-			migInode.UnlockExtents()
 			migInode.MigTaskCloseStream()
 			migInode.DealActionErr(InodeCheckInodeFailedCode, err)
 			log.LogErrorf("checkCanMigrate inode[%v] %v:%v", migInode.name, InodeCheckInodeFailed, err.Error())
@@ -553,7 +565,6 @@ func (migInode *MigrateInode) ReadFromS3AndWriteToDataNode() (err error) {
 
 func (migInode *MigrateInode) handleError(action string, err *error) {
 	if *err != nil {
-		migInode.UnlockExtents()
 		migInode.MigTaskCloseStream()
 		migInode.DealActionErr(InodeReadFailedCode, *err)
 		log.LogErrorf("%v inode[%v] %v:%v", action, migInode.name, InodeReadAndWriteFailed, (*err).Error())
@@ -584,59 +595,54 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 		migInode.stage = LookupEkSegment
 	}()
 	if !migInode.compareReplicasInodeEksEqual() {
-		migInode.UnlockExtents()
 		err = fmt.Errorf("unequal extensions between mp[%v] inode[%v] replicas", migInode.mpOp.mpId, migInode.inodeInfo.Inode)
 		return
 	}
-	// 检查迁移的extent是否可以删除
 	if ok, canDeleteExtentKeys := migInode.checkMigExtentCanDelete(migEks); !ok {
-		migInode.UnlockExtents()
 		err = fmt.Errorf("checkMigExtentCanDelete ino:%v rawEks length:%v delEks length:%v rawEks(%v) canDeleteExtentKeys(%v)", migInode.name, len(migEks), len(canDeleteExtentKeys), migEks, canDeleteExtentKeys)
 		return
 	}
-	var (
-		beforeReplicateDataCRC []uint32
-		afterReplicateDataCRC  []uint32
-	)
-	beforeReplicateDataCRC, afterReplicateDataCRC, err = migInode.getMigBeforeAfterDataCRC(migEks, newEks)
+
+	beforeReplicateDataCRC, afterReplicateDataCRC, err := migInode.getMigBeforeAfterDataCRC(migEks, newEks)
 	if err != nil {
-		migInode.UnlockExtents()
 		return
 	}
-	// sdk读数据crc、副本迁移前的数据crc、新写数据crc之间比对
+
 	if err = migInode.checkReplicaCRCValid(beforeReplicateDataCRC, afterReplicateDataCRC); err != nil {
-		migInode.UnlockExtents()
 		return
 	}
 	// 读写的时间 超过（锁定时间-预留时间），放弃修改ek链
 	consumedTime := time.Since(migInode.rwStartTime)
 	if consumedTime >= maxConsumeTime*time.Second {
-		migInode.UnlockExtents()
-		migInode.stage = LookupEkSegment
-		log.LogWarnf("before MetaMergeExtents ino(%v) has been consumed time(%v) readRange(%v:%v), but maxConsumeTime(%v)",
+		msg := fmt.Sprintf("before MetaMergeExtents ino(%v) has been consumed time(%v) readRange(%v:%v), but maxConsumeTime(%v)",
 			migInode.name, consumedTime, migInode.startIndex, migInode.endIndex, maxConsumeTime*time.Second)
+		err = fmt.Errorf(msg)
 		return
 	}
 	err = migInode.vol.MetaClient.InodeMergeExtents_ll(context.Background(), migInode.inodeInfo.Inode, migEks, newEks, proto.FileMigMergeEk)
 	if err != nil {
-		// merge fail, delete new create extents
-		//migInode.deleteNewExtents(copyNewEks)
+		// meta merge failed, do not unlock extent
+		err = fmt.Errorf("%v, err:%v", MetaMergeFailed, err)
 		return
 	}
-	// merge success, delete old extents
+
 	err = migInode.deleteOldExtents(migEks)
-	if err == nil {
-		migInode.UnlockExtents()
-	} else {
-		warnMsg := fmt.Sprintf("migration cluster(%v) volume(%v) mp(%v) inode(%v) workerIp(%v) delete old extents fail",
-			migInode.vol.ClusterName, migInode.vol.Name, migInode.mpOp.mpId, migInode.inodeInfo.Inode, localIp)
-		exporter.WarningBySpecialUMPKey(fmt.Sprintf("%v_%v_warning", proto.RoleDataMigWorker, "deleteOldExtents"), warnMsg)
-		log.LogErrorf("%v migEks(%v) newEks(%v) err(%v)", warnMsg, migEks, newEks, err)
+	if err != nil {
+		migInode.deleteOldExtentsFailedAlarm(err, migEks, newEks)
+		// merge success, but delete old extents failed, do not unlock extent
+		err = fmt.Errorf("%v, err:%v", DeleteOldExtentFailed, err)
 	}
 	log.LogDebugf("InodeMergeExtents_ll success ino(%v) oldEks(%v) newEks(%v)", migInode.name, migEks, newEks)
 	migInode.addInodeMigrateLog(migEks, newEks)
 	migInode.SummaryStatisticsInfo(newEks)
 	return
+}
+
+func (migInode *MigrateInode) deleteOldExtentsFailedAlarm(err error, migEks, newEks []proto.ExtentKey) {
+	warnMsg := fmt.Sprintf("migration cluster(%v) volume(%v) mp(%v) inode(%v) workerIp(%v) delete old extents fail",
+		migInode.vol.ClusterName, migInode.vol.Name, migInode.mpOp.mpId, migInode.inodeInfo.Inode, localIp)
+	exporter.WarningBySpecialUMPKey(fmt.Sprintf("%v_%v_warning", proto.RoleDataMigWorker, "deleteOldExtents"), warnMsg)
+	log.LogErrorf("%v migEks(%v) newEks(%v) err(%v)", warnMsg, migEks, newEks, err)
 }
 
 func (migInode *MigrateInode) compareReplicasInodeEksEqual() bool {
