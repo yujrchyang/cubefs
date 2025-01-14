@@ -84,6 +84,68 @@ func (w *Worker) createCompactTask(clusterId string, taskNum int64, runningTasks
 	return
 }
 
+func (w *Worker) cancelCompactTask_bjguoweilong(cluster string, vols []*proto.DataMigVolume, wns []*proto.WorkerNode) {
+	for _, vol := range vols {
+		log.LogDebugf("CompactWorker CancelMpTask clusterId(%v), vol(%v) wnsLength(%v)", cluster, vol.Name, len(wns))
+		mpView, err := w.GetMpView(cluster, vol.Name)
+		if err != nil {
+			log.LogErrorf("CompactWorker CancelMpTask GetMpView cluster(%v) volName(%v) err(%v)", cluster, vol.Name, err)
+			continue
+		}
+
+		workerAddrMap := w.processMpView(cluster, vol, mpView, wns)
+		w.stopCompactTasks(cluster, vol.Name, workerAddrMap)
+	}
+}
+
+func (w *Worker) processMpView(cluster string, vol *proto.DataMigVolume, mpView []*proto.MetaPartitionView, wns []*proto.WorkerNode) map[string]struct{} {
+	workerAddrMap := make(map[string]struct{})
+	for _, mp := range mpView {
+		newTask := proto.NewDataTask(proto.WorkerTypeCompact, cluster, vol.Name, 0, mp.PartitionID, vol.CompactTag.String())
+		exist, oldTask, err := w.ContainMPTaskByWorkerNodes(newTask, wns)
+		if err != nil {
+			log.LogErrorf("CompactWorker CancelMpTask ContainMPTaskByWorkerNodes failed, cluster(%v), volume(%v), err(%v)", cluster, vol.Name, err)
+			continue
+		}
+		if !exist {
+			continue
+		}
+
+		log.LogDebugf("CancelMpTask oldTask WorkerAddr(%v), task(%v)", oldTask.WorkerAddr, oldTask)
+		if oldTask.WorkerAddr != "" {
+			workerAddrMap[oldTask.WorkerAddr] = struct{}{}
+		}
+
+		if err := w.UpdateTaskInfo(oldTask.TaskId, vol.CompactTag.String()); err != nil {
+			log.LogErrorf("CompactWorker CancelMpTask UpdateTaskInfo to database failed, cluster(%v), volume(%v), task(%v), err(%v)", cluster, vol.Name, newTask, err)
+		}
+	}
+	return workerAddrMap
+}
+
+func (w *Worker) stopCompactTasks(cluster, volName string, workerAddrMap map[string]struct{}) {
+	for addr := range workerAddrMap {
+		stopCompactUrl := GenStopUrl(addr, CompactStop, cluster, volName)
+		if err := w.stopCompactTask(stopCompactUrl, cluster, volName); err != nil {
+			log.LogErrorf("CompactWorker CancelMpTask stopCompactTask failed, cluster(%v), volume(%v), stopCompactUrl(%v), err(%v)", cluster, vol.Name, stopCompactUrl, err)
+		}
+	}
+}
+
+func (w *Worker) stopCompactTask(url, cluster, volName string) error {
+	var res *proto.QueryHTTPResult
+	var err error
+	for i := 0; i < RetryDoGetMaxCnt; i++ {
+		if res, err = DoGet(url); err != nil {
+			log.LogErrorf("CompactWorker CancelMpTask doGet failed, cluster(%v), volume(%v), url(%v), err(%v)", cluster, volName, url, err)
+			continue
+		}
+		break
+	}
+	log.LogDebugf("CompactWorker CancelMpTask doGet url(%v), result(%v)", url, res)
+	return err
+}
+
 func (w *Worker) cancelCompactTask(cluster string, vols []*proto.DataMigVolume, wns []*proto.WorkerNode) {
 	for _, vol := range vols {
 		log.LogDebugf("CompactWorker CancelMpTask clusterId(%v), vol(%v) wnsLength(%v)", cluster, vol.Name, len(wns))
