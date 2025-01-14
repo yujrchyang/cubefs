@@ -832,7 +832,6 @@ func TestDoStreamExtentFixRepairOnFollowerDisk(t *testing.T) {
 
 func createDataPartition(partitionId, normalExtentCount uint64, baseDir string, t *testing.T) (dp *DataPartition) {
 	var (
-		ctx = context.Background()
 		err error
 	)
 	if err = os.MkdirAll(baseDir, os.ModePerm); err != nil {
@@ -854,7 +853,7 @@ func createDataPartition(partitionId, normalExtentCount uint64, baseDir string, 
 		if err = dp.extentStore.Create(extentID, 0, true); err != nil {
 			t.Fatalf("extent store create normal extent err:%v", err)
 		}
-		if err = dp.extentStore.Write(ctx, extentID, 0, size, data, crc, storage.AppendWriteType, false); err != nil {
+		if err = dp.extentStore.Write(extentID, 0, size, data, crc, storage.AppendWriteType, false); err != nil {
 			t.Fatalf("extent store write normal extent err:%v", err)
 		}
 	}
@@ -881,7 +880,6 @@ func initDataPartition(rootDir string, partitionID uint64, isCreatePartition boo
 		partitionSize:           partitionSize,
 		replicas:                []string{host, host, host},
 		repairPropC:             make(chan struct{}, 1),
-		updateVolInfoPropC:      make(chan struct{}, 1),
 		stopC:                   make(chan bool, 0),
 		stopRaftC:               make(chan uint64, 0),
 		snapshot:                make([]*proto.File, 0),

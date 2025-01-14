@@ -142,7 +142,7 @@ func TestExtentStore_PlaybackTinyDelete(t *testing.T) {
 	for i := 0; i < testTinyFileCount; i++ {
 		off := int64(i * PageSize)
 		size := int64(testTinyFileSize)
-		if err = store.Write(context.Background(), testTinyExtentID, off, size,
+		if err = store.Write(testTinyExtentID, off, size,
 			tinyFileData[:testTinyFileSize], testFileDataCrc, AppendWriteType, false); err != nil {
 			t.Fatalf("prepare tiny data [index: %v, off: %v, size: %v] failed: %v", i, off, size, err)
 		}
@@ -260,7 +260,7 @@ func TestExtentStore_UsageOnConcurrentModification(t *testing.T) {
 						return
 					default:
 					}
-					if err = storage.Write(context.Background(), extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
+					if err = storage.Write(extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
 						err = nil
 						break
 					}
@@ -510,7 +510,7 @@ func initExtentStorage(t *testing.T, extentSize int64, storePath string, extentN
 		_ = storage.Create(extentID, uint64(testInode), true)
 		var offset int64 = 0
 		for offset+dataSize <= extentSize {
-			if err = storage.Write(context.Background(), extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
+			if err = storage.Write(extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
 				err = nil
 				break
 			}
@@ -779,7 +779,7 @@ func TestConcurrencyTrashExtents(t *testing.T) {
 				_ = storage.Create(extentID, uint64(testInode), true)
 				var offset int64 = 0
 				for offset+dataSize <= extentSize {
-					if err = storage.Write(context.Background(), extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
+					if err = storage.Write(extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
 						err = nil
 						break
 					}
@@ -989,7 +989,7 @@ func TestBatchDeleteAndTrashDeleteConcurrency(t *testing.T) {
 				_ = storage.Create(extentID, uint64(testInode), true)
 				var offset int64 = 0
 				for offset+dataSize <= extentSize {
-					if err = storage.Write(context.Background(), extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
+					if err = storage.Write(extentID, offset, dataSize, data, dataCRC, AppendWriteType, false); err != nil {
 						err = nil
 						break
 					}
