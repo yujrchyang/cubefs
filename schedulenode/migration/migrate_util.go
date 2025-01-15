@@ -65,7 +65,8 @@ func getCandidateMediumType(migInode *MigrateInode, srcMediumType string, ek pro
 }
 
 func isValidExtent(ek proto.ExtentKey, srcMediumType, candidateMediumType string) bool {
-	return !proto.IsTinyExtent(ek.ExtentId) && ((srcMediumType == NoneMediumType && ek.CRC == uint32(proto.CubeFSExtent)) || candidateMediumType == srcMediumType)
+	//return !proto.IsTinyExtent(ek.ExtentId) && ((srcMediumType == NoneMediumType && ek.CRC == uint32(proto.CubeFSExtent)) || candidateMediumType == srcMediumType)
+	return (srcMediumType == NoneMediumType && ek.CRC == uint32(proto.CubeFSExtent)) || candidateMediumType == srcMediumType
 }
 
 func checkForHole(migInode *MigrateInode, i, start, end int) error {
@@ -83,14 +84,19 @@ func validateEkSegment(migInode *MigrateInode, start, end int) error {
 	if fileOffset, hasHole := migInode.checkEkSegmentHasHole(start, end); hasHole {
 		return fmt.Errorf("checkEkSegmentHasHole ino:%v fileOffset:%v migDirection:%v has a hole", migInode.name, fileOffset, migInode.migDirection)
 	}
-	if tinyExtentId, hasTinyExtent := migInode.checkEkSegmentHasTinyExtent(start, end); hasTinyExtent {
-		return fmt.Errorf("checkEkSegmentHasTinyExtent ino:%v tinyExtentId:%v migDirection:%v can't have tiny extent", migInode.name, tinyExtentId, migInode.migDirection)
-	}
+	// datanode已经禁止tiny extent挖洞后，禁止原地覆盖写
+	//if tinyExtentId, hasTinyExtent := migInode.checkEkSegmentHasTinyExtent(start, end); hasTinyExtent {
+	//	return fmt.Errorf("checkEkSegmentHasTinyExtent ino:%v tinyExtentId:%v migDirection:%v can't have tiny extent", migInode.name, tinyExtentId, migInode.migDirection)
+	//}
 	if migInode.migDirection != ReverseS3FileMigrate && migInode.checkEkSegmentHasS3Extent(start, end) {
 		return fmt.Errorf("checkEkSegmentHasS3Extent ino:%v ek start:%v end:%v migDirection:%v can't have s3 extent", migInode.name, start, end, migInode.migDirection)
 	}
 	if migInode.migDirection == ReverseS3FileMigrate && migInode.checkEkSegmentHasCubeFSExtent(start, end) {
 		return fmt.Errorf("checkEkSegmentHasCubeFSExtent ino:%v ek start:%v end:%v migDirection:%v can't have cubeFS extent", migInode.name, start, end, migInode.migDirection)
+	}
+	// 如果是迁入s3，ek链中必须有normal extent
+	if migInode.migDirection == S3FileMigrate && !migInode.checkEkSegmentHasNormalExtent(start, end) {
+		return fmt.Errorf("checkEkSegmentHasNormalExtent ino:%v ek start:%v end:%v migDirection:%v has no normal extent", migInode.name, start, end, migInode.migDirection)
 	}
 	return nil
 }
@@ -596,6 +602,16 @@ func (migInode *MigrateInode) checkEkSegmentHasCubeFSExtent(start, end int) (has
 	for _, ek := range migInode.extents[start:end] {
 		if ek.CRC == uint32(proto.CubeFSExtent) {
 			hasCubeFSExtent = true
+			return
+		}
+	}
+	return
+}
+
+func (migInode *MigrateInode) checkEkSegmentHasNormalExtent(start, end int) (hasNormalExtent bool) {
+	for _, ek := range migInode.extents[start:end] {
+		if !proto.IsTinyExtent(ek.ExtentId) {
+			hasNormalExtent = true
 			return
 		}
 	}

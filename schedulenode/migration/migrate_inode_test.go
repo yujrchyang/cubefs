@@ -434,7 +434,7 @@ func TestLookupEkHddMigDirection(t *testing.T) {
 	assert.Equal(t, 4, inodeOperation.endIndex)
 }
 
-func TestLookupEkSegmentNoTinyExtent(t *testing.T) {
+func TestLookupEkSegment(t *testing.T) {
 	inodeOperation := new(MigrateInode)
 	inodeOperation.migDirection = SSDToHDDFileMigrate
 	inodeOperation.vol = &VolumeInfo{
@@ -474,14 +474,14 @@ func TestLookupEkSegmentNoTinyExtent(t *testing.T) {
 		assert.FailNow(t, err.Error())
 	}
 	assert.Equal(t, LockExtents, inodeOperation.stage)
-	assert.Equal(t, 1, inodeOperation.startIndex)
-	assert.Equal(t, 2, inodeOperation.endIndex)
+	assert.Equal(t, 0, inodeOperation.startIndex)
+	assert.Equal(t, 4, inodeOperation.endIndex)
 	if err := inodeOperation.LookupEkSegment(); err != nil {
 		assert.FailNow(t, err.Error())
 	}
 	assert.Equal(t, LockExtents, inodeOperation.stage)
-	assert.Equal(t, 3, inodeOperation.startIndex)
-	assert.Equal(t, 6, inodeOperation.endIndex)
+	assert.Equal(t, 4, inodeOperation.startIndex)
+	assert.Equal(t, 7, inodeOperation.endIndex)
 	if err := inodeOperation.LookupEkSegment(); err != nil {
 		assert.FailNow(t, err.Error())
 	}
@@ -725,14 +725,14 @@ func TestCheckS3CrcValid(t *testing.T) {
 		name     string
 		fileSize int
 	}{
-		//{"1M", size1M},
-		//{"2M", size1M * 2},
-		//{"5M", size5M},
-		//{"6M", size5M + size1M},
-		//{"128M", size128M},
-		//{"129M", size128M + size1M},
+		{"1M", size1M},
+		{"2M", size1M * 2},
+		{"5M", size5M},
+		{"6M", size5M + size1M},
+		{"128M", size128M},
+		{"129M", size128M + size1M},
 		{"512M", size512M},
-		//{"1024M", size512M * 2},
+		{"1024M", size512M * 2},
 	}
 
 	for _, tt := range tests {
@@ -773,7 +773,10 @@ func readDatanodeWriteS3(fileSize int, t *testing.T) {
 		assert.FailNow(t, err.Error())
 	}
 	_ = subTask.OpenFile()
-	for i := range subTask.extents {
+	for i, ek := range subTask.extents {
+		if proto.IsTinyExtent(ek.ExtentId) {
+			continue
+		}
 		subTask.startIndex = i
 		subTask.endIndex = i + 1
 		err := subTask.ReadFromDataNodeAndWriteToS3()
@@ -789,11 +792,11 @@ func readDatanodeWriteS3(fileSize int, t *testing.T) {
 		for i, ek := range subTask.newEks {
 			newEks[i] = *ek
 		}
-		assert.Equal(t, migEks[0].FileOffset, newEks[i].FileOffset)
-		assert.Equal(t, migEks[0].PartitionId, newEks[i].PartitionId)
-		assert.Equal(t, migEks[0].ExtentId, newEks[i].ExtentId)
-		assert.Equal(t, migEks[0].Size, newEks[i].Size)
-		newReplicaCrc, err := subTask.getS3DataCRC([]proto.ExtentKey{newEks[i]})
+		assert.Equal(t, migEks[0].FileOffset, newEks[len(newEks)-1].FileOffset)
+		assert.Equal(t, migEks[0].PartitionId, newEks[len(newEks)-1].PartitionId)
+		assert.Equal(t, migEks[0].ExtentId, newEks[len(newEks)-1].ExtentId)
+		assert.Equal(t, migEks[0].Size, newEks[len(newEks)-1].Size)
+		newReplicaCrc, err := subTask.getS3DataCRC([]proto.ExtentKey{newEks[len(newEks)-1]})
 		if err != nil {
 			assert.FailNow(t, err.Error())
 		}
@@ -1955,9 +1958,9 @@ func TestMigrateInode_LookupEkSegment(t *testing.T) {
 
 	// 测试 extents 为空
 	migInode.extents = []proto.ExtentKey{}
-	migInode.LookupEkSegment()
 	migInode.migDirection = SSDToHDDFileMigrate
 	migInode.lastMigEkIndex = 0
+	migInode.LookupEkSegment()
 	assert.Equal(t, migInode.stage, InodeMigStopped)
 
 	// 测试 extents 中有空洞
@@ -2111,6 +2114,41 @@ func TestMigrateInode_checkEkSegmentHasCubeFSExtent(t *testing.T) {
 	}
 }
 
+func TestMigrateInode_checkEkSegmentHasNormalExtent(t *testing.T) {
+	mpOp := &MigrateTask{
+		vol: &VolumeInfo{
+			Name: "testVol",
+			ControlConfig: &ControlConfig{
+				DirectWrite: true,
+			},
+			VolId: 1,
+		},
+	}
+	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 100, CRC: uint32(proto.CubeFSExtent)},
+	}}
+	migInode, _ := NewMigrateInode(mpOp, inode)
+
+	// 测试有normal extent的情况
+	hasNormalExtent := migInode.checkEkSegmentHasCubeFSExtent(0, 3)
+	if !hasNormalExtent {
+		t.Fatal("Expected normal extent, got no normal extent")
+	}
+
+	// 测试没有normal extent的情况
+	migInode.extents = []proto.ExtentKey{
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 7, CRC: uint32(proto.CubeFSExtent)},
+	}
+	hasNormalExtent = migInode.checkEkSegmentHasCubeFSExtent(0, 3)
+	if hasNormalExtent {
+		t.Fatal("Expected no normal extent, got normal extent")
+	}
+}
+
 func TestIsNotUnlockExtentErr(t *testing.T) {
 	err := fmt.Errorf("normal err")
 	assert.False(t, isNotUnlockExtentErr(err))
@@ -2123,4 +2161,35 @@ func TestIsNotUnlockExtentErr(t *testing.T) {
 
 	err = nil
 	assert.False(t, isNotUnlockExtentErr(err))
+}
+
+func TestMigrateInode_findEkSegmentFirstNormalExtent(t *testing.T) {
+	migInode := &MigrateInode{
+		extents: []proto.ExtentKey{
+			{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 7, CRC: uint32(proto.CubeFSExtent)},
+		},
+	}
+
+	// 不存在normal extent，应该返回err
+	migInode.startIndex, migInode.endIndex = 0, 3
+	extent, err := migInode.findEkSegmentFirstNormalExtent()
+	assert.Error(t, err)
+
+	migInode = &MigrateInode{
+		extents: []proto.ExtentKey{
+			{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 1024, Size: 1024, PartitionId: 9, ExtentId: 100, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 7, CRC: uint32(proto.CubeFSExtent)},
+			{FileOffset: 1024, Size: 1024, PartitionId: 10, ExtentId: 101, CRC: uint32(proto.CubeFSExtent)},
+		},
+	}
+
+	// 存在normal extent
+	migInode.startIndex, migInode.endIndex = 0, 3
+	extent, err = migInode.findEkSegmentFirstNormalExtent()
+	assert.NoError(t, err)
+	assert.Equal(t, extent.PartitionId, uint64(9))
+	assert.Equal(t, extent.ExtentId, uint64(100))
 }

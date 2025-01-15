@@ -478,7 +478,16 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 	minBlockSize := 5 * unit.MB
 	partCount := int(math.Ceil(float64(totalSize) / float64(minBlockSize)))
 	chunks := make([][]byte, partCount)
-	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.vol.VolId, migInode.inodeInfo.Inode, migInode.extents[migInode.startIndex].PartitionId, migInode.extents[migInode.startIndex].ExtentId)
+
+	// 使用ek链片段中的第一个normal extent创建s3 extentKey
+	normalExtent, err := migInode.findEkSegmentFirstNormalExtent()
+	if err != nil {
+		err = fmt.Errorf("ReadFromDataNodeAndWriteToS3 find normal extent ino(%v) readRange(%v:%v) err(%v)",
+			migInode.name, migInode.startIndex, migInode.endIndex, err)
+		return
+	}
+
+	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.vol.VolId, migInode.inodeInfo.Inode, normalExtent.PartitionId, normalExtent.ExtentId)
 
 	if totalSize <= uint64(minBlockSize) {
 		if err = migInode.readAndWriteSmallDataToS3(offset, totalSize, s3Key, chunks); err != nil {
@@ -496,14 +505,15 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 	}
 
 	if totalSize != uint64(writeTotal) {
-		err = fmt.Errorf("ReadFromDataNodeAndWriteToS3 compare equal ino(%v) s3Key(%v) totalSize(%v) but write size(%v)", migInode.name, s3Key, totalSize, writeTotal)
+		err = fmt.Errorf("ReadFromDataNodeAndWriteToS3 compare equal ino(%v) s3Key(%v) totalSize(%v) but write size(%v)",
+			migInode.name, s3Key, totalSize, writeTotal)
 		return
 	}
 
 	newEk := &proto.ExtentKey{
 		FileOffset:   offset,
-		PartitionId:  migInode.extents[migInode.startIndex].PartitionId,
-		ExtentId:     migInode.extents[migInode.startIndex].ExtentId,
+		PartitionId:  normalExtent.PartitionId,
+		ExtentId:     normalExtent.ExtentId,
 		ExtentOffset: 0,
 		Size:         uint32(totalSize),
 		CRC:          uint32(proto.S3Extent),
@@ -520,6 +530,16 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 		migInode.name, s3Key, totalSize, writeTotal, migInode.startIndex, migInode.endIndex, s3Key, migInode.newEks)
 
 	return
+}
+
+func (migInode *MigrateInode) findEkSegmentFirstNormalExtent() (normalExtent proto.ExtentKey, err error) {
+	migEks := migInode.extents[migInode.startIndex:migInode.endIndex]
+	for _, ek := range migEks {
+		if !proto.IsTinyExtent(ek.ExtentId) {
+			return ek, nil
+		}
+	}
+	return proto.ExtentKey{}, fmt.Errorf("normal extent does not exist")
 }
 
 func (migInode *MigrateInode) ReadFromS3AndWriteToDataNode() (err error) {
