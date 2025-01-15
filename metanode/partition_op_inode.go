@@ -578,7 +578,7 @@ func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorReset
 		return fmt.Errorf("mp[%v] with error cursor reset mode[%v]", mp.config.PartitionId, req.CursorResetType)
 	}
 
-	if req.NewCursor <= maxIno || req.NewCursor > mp.config.End {
+	if (req.NewCursor != mp.config.End && req.NewCursor <= maxIno) || req.NewCursor > mp.config.End {
 		log.LogInfof("mp[%v] req ino[%d] is out of max[%d]~end[%d]",
 			mp.config.PartitionId, req.NewCursor, maxIno, mp.config.End)
 		return fmt.Errorf("mp[%v] req ino[%d] is out of max[%d]~end[%d]", mp.config.PartitionId, req.NewCursor, maxIno, mp.config.End)

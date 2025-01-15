@@ -19,7 +19,7 @@ func LocateInode(inode uint64, client *master.MasterClient, vol string) (leader 
 		return "", 0, err
 	}
 	for _, mp := range mps {
-		if inode >= mp.Start && inode < mp.End {
+		if inode >= mp.Start && inode <= mp.End {
 			leader = mp.LeaderAddr
 			mpID = mp.PartitionID
 			break

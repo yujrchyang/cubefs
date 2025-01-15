@@ -283,21 +283,8 @@ func (mp *metaPartition) getTrashDaysByVol(vol string) (days int32) {
 }
 
 func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
-	for {
-		if mp.config.TrashRemainingDays > -1 {
-			break
-		}
-
-		mp.config.TrashRemainingDays = mp.getTrashDaysByVol(mp.config.VolName)
-		if mp.config.TrashRemainingDays == -1 {
-			log.LogWarnf("[startUpdateTrashDaysScheduler], Vol: %v, PartitionID: %v", mp.config.VolName, mp.config.PartitionId)
-			time.Sleep(time.Second)
-			continue
-		}
-		break
-	}
-	ticker := time.NewTicker(intervalToUpdateVolTrashExpires)
 	go func(stopC chan bool) {
+		ticker := time.NewTicker(intervalToUpdateVolTrashExpires)
 		for {
 			select {
 			case <-stopC:
@@ -309,6 +296,7 @@ func (mp *metaPartition) startUpdatePartitionConfigScheduler() {
 				}
 				volTopo := mp.topoManager.GetVolume(mp.config.VolName)
 				if volTopo.Config() == nil {
+					log.LogErrorf("get vol config failed, partitionID: %v, vol: %s", mp.config.PartitionId, mp.config.VolName)
 					continue
 				}
 				conf := volTopo.Config()
