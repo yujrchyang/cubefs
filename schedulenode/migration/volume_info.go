@@ -37,25 +37,25 @@ const (
 
 type VolumeInfo struct {
 	sync.RWMutex
-	Name               string
-	VolId              uint64
-	ClusterName        string
-	State              uint32
-	LastUpdate         int64
-	RunningMpIds       map[uint64]struct{}
-	RunningInodes      map[uint64]struct{}
-	RunningInoCnt      uint32
-	ControlConfig      *ControlConfig
-	MetaClient         *meta.MetaWrapper
-	DataClient         *data.ExtentClient
-	NormalDataClient   *data.ExtentClient
-	S3Client           *s3.S3Client
-	Bucket             string
-	GetLayerPolicies   func(cluster, volName string) (layerPolicies []interface{}, exist bool)
-	GetDpMediumType    func(cluster, volName string, dpId uint64) (mediumType string)
-	GetMigrationConfig func(cluster, volName string) (volumeConfig proto.MigrationConfig)
-	inodeFilter        sync.Map
-	stopC              chan struct{}
+	Name                 string
+	VolId                uint64
+	ClusterName          string
+	State                uint32
+	LastUpdate           int64
+	RunningMpIds         map[uint64]struct{}
+	RunningInodes        map[uint64]struct{}
+	RunningInoCnt        uint32
+	ControlConfig        *ControlConfig
+	MetaClient           *meta.MetaWrapper
+	WriteToHddDataClient *data.ExtentClient // 选择HDD的dp写数据
+	DataClient           *data.ExtentClient // 写数据不区分介质
+	S3Client             *s3.S3Client
+	Bucket               string
+	GetLayerPolicies     func(cluster, volName string) (layerPolicies []interface{}, exist bool)
+	GetDpMediumType      func(cluster, volName string, dpId uint64) (mediumType string)
+	GetMigrationConfig   func(cluster, volName string) (volumeConfig proto.MigrationConfig)
+	inodeFilter          sync.Map
+	stopC                chan struct{}
 }
 
 func NewVolumeInfo(clusterName, volName string, nodes []string, mcc *ControlConfig, extentClientType data.ExtentClientType,
@@ -76,11 +76,7 @@ func NewVolumeInfo(clusterName, volName string, nodes []string, mcc *ControlConf
 	if err = vol.Init(nodes, extentClientType); err != nil {
 		return
 	}
-	if extentClientType == data.Smart {
-		vol.updateInodeFilter()
-		go vol.refreshMigrationConfig()
-		err = vol.createNormalExtentClient(volName, nodes)
-	}
+
 	log.LogDebugf("new volume info cluster(%v) volume(%v) extentClientType(%v)", clusterName, volName, extentClientType)
 	return
 }
@@ -95,15 +91,23 @@ func (vol *VolumeInfo) Init(nodes []string, extentClientType data.ExtentClientTy
 	if vol.MetaClient, err = meta.NewMetaWrapper(metaConfig); err != nil {
 		return
 	}
-	if err = vol.initTargetClient(nodes, extentClientType); err != nil {
+	if err = vol.initTargetClient(nodes); err != nil {
 		vol.MetaClient.Close()
 		return
+	}
+	if err = vol.createExtentClient(vol.Name, nodes); err != nil {
+		vol.MetaClient.Close()
+		return
+	}
+	if extentClientType == data.Smart {
+		vol.updateInodeFilter()
+		go vol.refreshMigrationConfig()
 	}
 	vol.State = VolInit
 	return
 }
 
-func (vol *VolumeInfo) initTargetClient(nodes []string, extentClientType data.ExtentClientType) (err error) {
+func (vol *VolumeInfo) initTargetClient(nodes []string) (err error) {
 	migConfig := vol.GetMigrationConfig(vol.ClusterName, vol.Name)
 	vol.VolId = migConfig.VolId
 	if strings.Contains(migConfig.SmartRules, proto.MediumS3Name) {
@@ -115,7 +119,7 @@ func (vol *VolumeInfo) initTargetClient(nodes []string, extentClientType data.Ex
 			err = fmt.Errorf("migConfig cluster(%v) volume(%v) s3 config region(%v) endpoint(%v) accessKey(%v) secretKey(%v) is invaild",
 				vol.ClusterName, vol.Name, migConfig.Region, migConfig.Endpoint, migConfig.AccessKey, migConfig.SecretKey)
 		}
-	} else {
+	} else if strings.Contains(migConfig.SmartRules, proto.MediumHDDName){
 		log.LogDebugf("init hdd client")
 		var extentConfig = &data.ExtentConfig{
 			Volume:              vol.Name,
@@ -127,17 +131,14 @@ func (vol *VolumeInfo) initTargetClient(nodes []string, extentClientType data.Ex
 			OnTruncate:          vol.MetaClient.Truncate,
 			OnInodeMergeExtents: vol.MetaClient.InodeMergeExtents_ll,
 			MetaWrapper:         vol.MetaClient,
-			ExtentClientType:    extentClientType,
+			ExtentClientType:    data.Smart,
 		}
-		if vol.DataClient, err = data.NewExtentClient(extentConfig, nil); err != nil {
-			return
-		}
+		vol.WriteToHddDataClient, err = data.NewExtentClient(extentConfig, nil)
 	}
 	return
 }
 
-// 作为回迁移写数据的客户端
-func (vol *VolumeInfo) createNormalExtentClient(volName string, nodes []string) (err error) {
+func (vol *VolumeInfo) createExtentClient(volName string, nodes []string) (err error) {
 	var extentConfig = &data.ExtentConfig{
 		Volume:              volName,
 		Masters:             nodes,
@@ -149,12 +150,7 @@ func (vol *VolumeInfo) createNormalExtentClient(volName string, nodes []string) 
 		OnInodeMergeExtents: vol.MetaClient.InodeMergeExtents_ll,
 		MetaWrapper:         vol.MetaClient,
 	}
-	var normalExtentClient *data.ExtentClient
-	if normalExtentClient, err = data.NewExtentClient(extentConfig, nil); err != nil {
-		vol.MetaClient.Close()
-		return
-	}
-	vol.NormalDataClient = normalExtentClient
+	vol.DataClient, err = data.NewExtentClient(extentConfig, nil)
 	return
 }
 
@@ -165,11 +161,11 @@ func (vol *VolumeInfo) ReleaseResource() {
 	if err := vol.DataClient.Close(context.Background()); err != nil {
 		log.LogErrorf("vol[%s-%s] close data wrapper failed:%s", vol.ClusterName, vol.Name, err.Error())
 	}
-	if vol.NormalDataClient == nil {
+	if vol.WriteToHddDataClient == nil {
 		return
 	}
-	if err := vol.NormalDataClient.Close(context.Background()); err != nil {
-		log.LogErrorf("vol[%s-%s] close normalDataClient data wrapper failed:%s", vol.ClusterName, vol.Name, err.Error())
+	if err := vol.WriteToHddDataClient.Close(context.Background()); err != nil {
+		log.LogErrorf("vol[%s-%s] close HddDataClient data wrapper failed:%s", vol.ClusterName, vol.Name, err.Error())
 	}
 	close(vol.stopC)
 }

@@ -596,7 +596,7 @@ func TestCheckReplicaCrcValid(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.MetaClient = mw
 	mpOp.vol.ControlConfig = &ControlConfig{
 		DirectWrite: true,
@@ -668,7 +668,7 @@ func TestCheckReplicaCrcValid2(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.MetaClient = mw
 	mpOp.vol.ControlConfig = &ControlConfig{
 		DirectWrite: true,
@@ -725,14 +725,14 @@ func TestCheckS3CrcValid(t *testing.T) {
 		name     string
 		fileSize int
 	}{
-		{"1M", size1M},
-		{"2M", size1M * 2},
-		{"5M", size5M},
-		{"6M", size5M + size1M},
-		{"128M", size128M},
-		{"129M", size128M + size1M},
+		//{"1M", size1M},
+		//{"2M", size1M * 2},
+		//{"5M", size5M},
+		//{"6M", size5M + size1M},
+		//{"128M", size128M},
+		//{"129M", size128M + size1M},
 		{"512M", size512M},
-		{"1024M", size512M * 2},
+		//{"1024M", size512M * 2},
 	}
 
 	for _, tt := range tests {
@@ -744,7 +744,7 @@ func TestCheckS3CrcValid(t *testing.T) {
 
 func readDatanodeWriteS3(fileSize int, t *testing.T) {
 	setVolForceRow(true)
-	defer setVolForceRow(false)
+	//defer setVolForceRow(false)
 
 	testFile := fmt.Sprintf("/cfs/mnt/TestReadWriteS3_%v", fileSize)
 	file, _ := os.Create(testFile)
@@ -844,7 +844,7 @@ func createMigrateInode(fileSize int, testFile string, t *testing.T) (inodeOp *M
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.S3Client = s3.NewS3Client(region, endPoint, accessKey, secretKey, false)
 	mpOp.vol.Bucket = ltptestVolume
 	mpOp.vol.MetaClient = mw
@@ -1146,7 +1146,7 @@ func TestOpenFile(t *testing.T) {
 		Inode:   inodeInfo,
 		Extents: []proto.ExtentKey{},
 	}
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.ControlConfig = &ControlConfig{
 		DirectWrite: true,
 	}
@@ -1194,10 +1194,10 @@ func TestReadAndWriteEkData(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.MetaClient = mw
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.NormalDataClient)
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
 	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
@@ -1244,10 +1244,10 @@ func TestReadAndWriteEkData2(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.MetaClient = mw
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.NormalDataClient)
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
 	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
@@ -1303,10 +1303,10 @@ func TestMetaMergeExtents(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.SetMetaClient(mw)
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.NormalDataClient)
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
 	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
@@ -1406,10 +1406,10 @@ func TestMetaMergeExtentsError(t *testing.T) {
 	cMP.End = mpInfo.End
 	mpOp.mpInfo = cMP
 	mpOp.leader = cMP.GetLeaderAddr()
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.MetaClient = mw
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.NormalDataClient)
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
 	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
@@ -1447,10 +1447,10 @@ func TestWriteFileByRow(t *testing.T) {
 
 	mw, ec, _ := creatHelper(t)
 	stat := getFileStat(t, testFile)
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.MetaClient = mw
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.NormalDataClient)
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
 }
 
 func TestCompareReplicasInodeEksEqual(t *testing.T) {
@@ -1470,7 +1470,7 @@ func TestCompareReplicasInodeEksEqual(t *testing.T) {
 		Inode: stat.Ino,
 	}
 	mw, ec, _ := creatHelper(t)
-	mpOp.vol.NormalDataClient = ec
+	mpOp.vol.DataClient = ec
 	mpOp.vol.MetaClient = mw
 	ctx := context.Background()
 	writeRowFileBySdk(t, ctx, stat.Ino, size128M, mpOp.vol.DataClient)

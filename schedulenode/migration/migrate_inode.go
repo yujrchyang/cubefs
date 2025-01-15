@@ -212,19 +212,19 @@ func (migInode *MigrateInode) initFileMigrate() (err error) {
 	isMigBack := migConfig.MigrationBack == migrationBack
 	switch migInode.migDirection {
 	case SSDToHDDFileMigrate:
-		migInode.extentClient = migInode.vol.DataClient
+		migInode.extentClient = migInode.vol.WriteToHddDataClient // 读，只写HDD dp
 	case HDDToSSDFileMigrate:
 		if isMigBack {
-			migInode.extentClient = migInode.vol.NormalDataClient
+			migInode.extentClient = migInode.vol.DataClient // 读，只写SSD dp
 		} else {
 			// do not migrate back, stop
 			migInode.stage = InodeMigStopped
 		}
 	case S3FileMigrate:
-		migInode.extentClient = migInode.vol.NormalDataClient
+		migInode.extentClient = migInode.vol.DataClient // 只使用读
 	case ReverseS3FileMigrate:
 		if isMigBack {
-			migInode.extentClient = migInode.vol.NormalDataClient
+			migInode.extentClient = migInode.vol.DataClient // 只使用写
 		} else {
 			// do not migrate back, stop
 			migInode.stage = InodeMigStopped
