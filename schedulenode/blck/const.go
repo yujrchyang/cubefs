@@ -22,10 +22,11 @@ var (
 )
 
 type DataPartitionView struct {
-	VolName   string                    `json:"volName"`
-	ID        uint64                    `json:"id"`
-	Files     []storage.ExtentInfoBlock `json:"extents"`
-	FileCount int                       `json:"fileCount"`
+	VolName      string                    `json:"volName"`
+	ID           uint64                    `json:"id"`
+	Files        []storage.ExtentInfoBlock `json:"extents"`
+	FileCount    int                       `json:"fileCount"`
+	IsFinishLoad bool                      `json:"isFinishLoad"`
 }
 
 type ExtentInfo struct {

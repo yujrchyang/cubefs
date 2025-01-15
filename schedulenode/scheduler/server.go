@@ -13,6 +13,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/migration"
 	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
 	"github.com/cubefs/cubefs/schedulenode/smart"
+	tinyblck "github.com/cubefs/cubefs/schedulenode/tinyblockcheck"
 	"github.com/cubefs/cubefs/sdk/hbase"
 	"github.com/cubefs/cubefs/sdk/mysql"
 	"github.com/cubefs/cubefs/util/config"
@@ -177,6 +178,7 @@ func (s *ScheduleNode) registerHandler() {
 	http.HandleFunc(ScheduleNodeAPIConfigDelete, s.deleteScheduleConfig)
 	http.HandleFunc(ScheduleNodeAPIConfigSelect, s.selectScheduleConfig)
 	http.HandleFunc(ScheduleNodeAPIMigrateUsing, s.selectMigrateThresholdUsing)
+	http.HandleFunc(ScheduleNodeAPIHandleCheckRule, s.handleCheckRuleTable)
 }
 
 func (s *ScheduleNode) identityMonitor() {
@@ -284,8 +286,12 @@ func doShutdown(server common.Server) {
 func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	// load all running worker types
 	wt := make([]proto.WorkerType, 0)
-	wt = append(wt, proto.WorkerTypeSmartVolume)
-	wt = append(wt, proto.WorkerTypeCompact)
+	if cfg.GetBool(config.ConfigKeyEnableSmartVol) {
+		wt = append(wt, proto.WorkerTypeSmartVolume)
+	}
+	if cfg.GetBool(config.ConfigKeyEnableCompact) {
+		wt = append(wt, proto.WorkerTypeCompact)
+	}
 	if cfg.GetBool(config.ConfigKeyEnableFsCheck) {
 		wt = append(wt, proto.WorkerTypeFSCheck)
 	}
@@ -301,21 +307,30 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 	if cfg.GetBool(config.ConfigKeyEnableCrcWorker) {
 		wt = append(wt, proto.WorkerTypeCheckCrc)
 	}
-	wt = append(wt, proto.WorkerTypeInodeMigration)
+	if cfg.GetBool(config.ConfigKeyEnableInodeMigrate) {
+		wt = append(wt, proto.WorkerTypeInodeMigration)
+	}
+	if cfg.GetBool(config.ConfigKeyEnableTinyBlockCheck) {
+		wt = append(wt, proto.WorkerTypeTinyBlockCheck)
+	}
 	s.workerTypes = wt
 
-	var smartVolumeWorker *smart.SmartVolumeWorker
-	if smartVolumeWorker, err = smart.NewSmartVolumeWorkerForScheduler(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create smart volume worker failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableSmartVol) {
+		var smartVolumeWorker *smart.SmartVolumeWorker
+		if smartVolumeWorker, err = smart.NewSmartVolumeWorkerForScheduler(cfg); err != nil {
+			log.LogErrorf("[registerWorker] create smart volume worker failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
 	}
-	s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
-	var compactWorker *migration.Worker
-	if compactWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeCompact); err != nil {
-		log.LogErrorf("[registerWorker] create compact worker failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableCompact) {
+		var compactWorker *migration.Worker
+		if compactWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeCompact); err != nil {
+			log.LogErrorf("[registerWorker] create compact worker failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeCompact, compactWorker)
 	}
-	s.workers.Store(proto.WorkerTypeCompact, compactWorker)
 	if cfg.GetBool(config.ConfigKeyEnableCrcWorker) {
 		var crcWorker *crcworker.CrcWorker
 		if crcWorker, err = crcworker.NewCrcWorkerForScheduler(); err != nil {
@@ -324,36 +339,54 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		}
 		s.workers.Store(proto.WorkerTypeCheckCrc, crcWorker)
 	}
-	var fsckTaskSchedule *fsck.FSCheckTaskSchedule
-	if fsckTaskSchedule, err = fsck.NewFSCheckTaskSchedule(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create fsck task schedule failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableFsCheck) {
+		var fsckTaskSchedule *fsck.FSCheckTaskSchedule
+		if fsckTaskSchedule, err = fsck.NewFSCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
+			log.LogErrorf("[registerWorker] create fsck task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeFSCheck, fsckTaskSchedule)
 	}
-	s.workers.Store(proto.WorkerTypeFSCheck, fsckTaskSchedule)
-	var blckTaskSchedule *blck.BlockCheckTaskSchedule
-	if blckTaskSchedule, err = blck.NewBlockCheckTaskSchedule(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create blck task schedule failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableBlockCheck) {
+		var blckTaskSchedule *blck.BlockCheckTaskSchedule
+		if blckTaskSchedule, err = blck.NewBlockCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
+			log.LogErrorf("[registerWorker] create blck task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeBlockCheck, blckTaskSchedule)
 	}
-	s.workers.Store(proto.WorkerTypeBlockCheck, blckTaskSchedule)
-	var mdckTaskSchedule *mdck.MetaDataCheckTaskSchedule
-	if mdckTaskSchedule, err = mdck.NewMetaDataCheckTaskSchedule(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create mdck task schedule failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableMetaDataCheck) {
+		var mdckTaskSchedule *mdck.MetaDataCheckTaskSchedule
+		if mdckTaskSchedule, err = mdck.NewMetaDataCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
+			log.LogErrorf("[registerWorker] create mdck task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeMetaDataCrcCheck, mdckTaskSchedule)
 	}
-	s.workers.Store(proto.WorkerTypeMetaDataCrcCheck, mdckTaskSchedule)
-	var normalExtentCheckTaskSchedule *normalextentcheck.NormalExtentCheckTaskSchedule
-	if normalExtentCheckTaskSchedule, err = normalextentcheck.NewNormalExtentCheckTaskSchedule(cfg); err != nil {
-		log.LogErrorf("[registerWorker] create normal extent check task schedule failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableNormalEKCheck) {
+		var normalExtentCheckTaskSchedule *normalextentcheck.NormalExtentCheckTaskSchedule
+		if normalExtentCheckTaskSchedule, err = normalextentcheck.NewNormalExtentCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
+			log.LogErrorf("[registerWorker] create normal extent check task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeNormalExtentMistakeDelCheck, normalExtentCheckTaskSchedule)
 	}
-	s.workers.Store(proto.WorkerTypeNormalExtentMistakeDelCheck, normalExtentCheckTaskSchedule)
-	var fileMigrationWorker *migration.Worker
-	if fileMigrationWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeInodeMigration); err != nil {
-		log.LogErrorf("[registerWorker] create file migration worker failed, err(%v)", err)
-		return
+	if cfg.GetBool(config.ConfigKeyEnableInodeMigrate) {
+		var fileMigrationWorker *migration.Worker
+		if fileMigrationWorker, err = migration.NewWorkerForScheduler(cfg, proto.WorkerTypeInodeMigration); err != nil {
+			log.LogErrorf("[registerWorker] create file migration worker failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeInodeMigration, fileMigrationWorker)
 	}
-	s.workers.Store(proto.WorkerTypeInodeMigration, fileMigrationWorker)
+	if cfg.GetBool(config.ConfigKeyEnableTinyBlockCheck) {
+		var tinyBlckTaskSchedule *tinyblck.TinyBlockCheckTaskSchedule
+		if tinyBlckTaskSchedule, err = tinyblck.NewTinyBlockCheckTaskSchedule(cfg, s.storeClusterTask); err != nil {
+			log.LogErrorf("[registerWorker] create blck task schedule failed, err(%v)", err)
+			return
+		}
+		s.workers.Store(proto.WorkerTypeTinyBlockCheck, tinyBlckTaskSchedule)
+	}
 	return
 }
 
@@ -432,6 +465,14 @@ func (s *ScheduleNode) storeTasks(wt proto.WorkerType, tasks []*proto.Task) {
 		}
 	}
 }
+
+func (s *ScheduleNode) storeClusterTask(wt proto.WorkerType, cluster string, task *proto.Task) {
+	s.taskLock.Lock()
+	defer s.taskLock.Unlock()
+	key := flowControlKey(wt, proto.FlowTypeCluster, cluster)
+	s.tasks[key] = append(s.tasks[key], task)
+}
+
 
 func (s *ScheduleNode) storeClusterTasks(wt proto.WorkerType, cluster string, newTasks []*proto.Task) {
 	s.taskLock.Lock()
@@ -680,6 +721,14 @@ func (s *ScheduleNode) startTaskCreator() {
 					dr = DefaultWorkerDuration
 				}
 				go s.taskCreator(proto.WorkerTypeInodeMigration, dr, fmw.CreateTask)
+			case proto.WorkerTypeTinyBlockCheck:
+				tinyBlckTaskSchedule := value.(*tinyblck.TinyBlockCheckTaskSchedule)
+				dr := tinyBlckTaskSchedule.GetCreatorDuration()
+				if dr <= 0 {
+					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
+					dr = DefaultWorkerDuration
+				}
+				go s.taskCreator(proto.WorkerTypeTinyBlockCheck, dr, tinyBlckTaskSchedule.CreateTask)
 			default:
 				log.LogWarnf("[startTaskCreator] unknown worker type, workerType(%v)", wt)
 			}
@@ -822,6 +871,14 @@ func (s *ScheduleNode) taskManager() {
 	}
 }
 
+func isScheduleCheckTask(wt proto.WorkerType) bool {
+	if wt == proto.WorkerTypeFSCheck || wt == proto.WorkerTypeBlockCheck || wt == proto.WorkerTypeNormalExtentMistakeDelCheck ||
+		wt == proto.WorkerTypeTinyExtentPunchHoleCheck || wt == proto.WorkerTypeMetaDataCrcCheck || wt == proto.WorkerTypeExtentDoubleAllocateCheck {
+		return true
+	}
+	return false
+}
+
 func (s *ScheduleNode) exceptionTaskManager() {
 	timer := time.NewTimer(0)
 	for {
@@ -865,6 +922,11 @@ func (s *ScheduleNode) exceptionTaskManager() {
 							log.LogErrorf("[exceptionTaskManager] move tasks to history failed, taskType(%v), longExcTasks(%v), err(%v)", proto.WorkerTypeToName(wt), longExcTasks, err)
 							continue
 						}
+					}
+
+					if isScheduleCheckTask(wt) {
+						//skip handle not modify too long task for schedule check task
+						continue
 					}
 
 					// select not modified tasks for a long time, task is regarded as failed if not be modified in 24 hours
@@ -1011,7 +1073,7 @@ func (s *ScheduleNode) getWorkerMaxTaskNums(wt proto.WorkerType, workerAddr stri
 			taskNum = DefaultWorkerMaxTaskNumCrcWorker
 		case proto.WorkerTypeFSCheck:
 			taskNum = DefaultWorkerMaxTaskNumFSCheck
-		case proto.WorkerTypeBlockCheck, proto.WorkerTypeNormalExtentMistakeDelCheck:
+		case proto.WorkerTypeBlockCheck, proto.WorkerTypeNormalExtentMistakeDelCheck, proto.WorkerTypeTinyBlockCheck:
 			taskNum = DefaultWorkerMaxTaskNumBlockCheck
 		case proto.WorkerTypeMetaDataCrcCheck:
 			taskNum = DefaultWorkerMaxTaskNumMDCheck
@@ -1210,6 +1272,8 @@ func getDefaultFlowControlValue(wt proto.WorkerType) int64 {
 		return math.MaxInt64
 	case proto.WorkerTypeInodeMigration:
 		return DefaultFlowControlFileMig
+	case proto.WorkerTypeTinyBlockCheck:
+		return math.MaxInt64
 	default:
 		log.LogErrorf("[getDefaultFlowControlValue] invalid worker type, workerType(%v)", wt)
 		return 0

@@ -16,6 +16,8 @@ import (
 )
 
 const (
+	CheckRuleTableName = "normal_ek_check_rules"
+
 	checkResultTitle = "<tr><th width>卷名</th><th width>InodeID</th><th width>DP ID</th><th width>Extent ID</th>" +
 	"<th width>ExtentOffset</th><th width>Size</th></tr>"
 	checkFailedResultTitle = "<tr><th width>卷名</th><th width>检查失败原因</th></tr>"
@@ -60,10 +62,12 @@ type NormalExtentCheckTaskSchedule struct {
 	port          string
 	masterAddr    map[string][]string
 	mcw           map[string]*master.MasterClient
+	storeTaskFunc func(workerType proto.WorkerType, clusterName string, task *proto.Task)
 	mcwRWMutex    sync.RWMutex
 }
 
-func NewNormalExtentCheckTaskSchedule(cfg *config.Config) (normalExtentCheckTaskSchedule *NormalExtentCheckTaskSchedule, err error) {
+func NewNormalExtentCheckTaskSchedule(cfg *config.Config, storeFunc func(workerType proto.WorkerType, clusterName string,
+	task *proto.Task)) (normalExtentCheckTaskSchedule *NormalExtentCheckTaskSchedule, err error) {
 	normalExtentCheckTaskSchedule = &NormalExtentCheckTaskSchedule{}
 	if err = normalExtentCheckTaskSchedule.parseConfig(cfg); err != nil {
 		log.LogErrorf("[NewNormalExtentCheckTaskSchedule] parse config info failed, error(%v)", err)
@@ -73,6 +77,7 @@ func NewNormalExtentCheckTaskSchedule(cfg *config.Config) (normalExtentCheckTask
 		log.LogErrorf("[NewNormalExtentCheckTaskSchedule] init compact worker failed, error(%v)", err)
 		return
 	}
+	normalExtentCheckTaskSchedule.storeTaskFunc = storeFunc
 	go normalExtentCheckTaskSchedule.UpdateNotifyMembers()
 	return
 }
@@ -248,37 +253,46 @@ func (s *NormalExtentCheckTaskSchedule) CreateSubTask(clusterID string, runningT
 	}
 	masterClient := s.mcw[clusterID]
 
-	var checkRules []*proto.CheckRule
-	checkRules, err = mysql.SelectCheckRule(int(s.WorkerType), clusterID)
+	var vols []*proto.VolInfo
+	vols, err = masterClient.AdminAPI().ListVols("")
 	if err != nil {
 		return
 	}
-	ruleMap := make(map[string]string, len(checkRules))
-	for _, rule := range checkRules {
-		ruleMap[rule.RuleType] = rule.RuleValue
+
+	var checkRules []*proto.CheckRule
+	checkRules, err = mysql.SelectCheckRule(CheckRuleTableName, clusterID)
+	if err != nil {
+		return
 	}
 
 	var needCheckVols []string
-	checkAll, checkVolumes, skipVolumes := common.ParseCheckAllRules(ruleMap)
+	checkAll, checkVolumes, enableCheckOwners, disableCheckOwners, skipVolumes := common.ParseCheckAllRules(checkRules)
 	if checkAll {
-		var vols []*proto.VolInfo
-		vols, err = masterClient.AdminAPI().ListVols("")
-		if err != nil {
-			return
-		}
 		for _, vol := range vols {
 			if _, ok = skipVolumes[vol.Name]; ok {
+				continue
+			}
+			if _, ok = disableCheckOwners[vol.Owner]; ok {
 				continue
 			}
 			needCheckVols = append(needCheckVols, vol.Name)
 		}
 	} else {
-		for volName := range checkVolumes {
-			needCheckVols = append(needCheckVols, volName)
+		needCheckVols = append(needCheckVols, checkVolumes...)
+		if len(enableCheckOwners) != 0 {
+			for _, vol := range vols {
+				if _, ok = enableCheckOwners[vol.Owner]; !ok {
+					continue
+				}
+				needCheckVols = append(needCheckVols, vol.Name)
+			}
 		}
 	}
 
 	for _, volName := range needCheckVols {
+		if volName == "" {
+			continue
+		}
 		newTask := proto.NewDataTask(proto.WorkerTypeNormalExtentMistakeDelCheck, clusterID, volName, 0, 0, "")
 		if alreadyExist, _, _ := s.ContainTask(newTask, runningTasks); alreadyExist {
 			log.LogInfof("NormalExtentCheckTaskSchedule CreateSubTask cluster(%v) volume(%v) task(%v) already exist",
@@ -294,7 +308,7 @@ func (s *NormalExtentCheckTaskSchedule) CreateSubTask(clusterID string, runningT
 		}
 
 		newTask.TaskId = taskId
-		newTasks = append(newTasks, newTask)
+		s.storeTaskFunc(s.WorkerType, clusterID, newTask)
 	}
 	return
 }

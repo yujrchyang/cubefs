@@ -8,9 +8,15 @@ import (
 	"github.com/cubefs/cubefs/sdk/mysql"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
+	"strings"
 	"sync"
 	"time"
 )
+
+const (
+	CheckRuleTableName = "mdck_check_rules"
+)
+
 
 type MetaDataCheckTaskSchedule struct {
 	sync.RWMutex
@@ -18,10 +24,12 @@ type MetaDataCheckTaskSchedule struct {
 	port          string
 	masterAddr    map[string][]string
 	mcw           map[string]*master.MasterClient
+	storeTaskFunc func(workerType proto.WorkerType, clusterName string, task *proto.Task)
 	mcwRWMutex    sync.RWMutex
 }
 
-func NewMetaDataCheckTaskSchedule(cfg *config.Config) (mdckTaskSchedule *MetaDataCheckTaskSchedule, err error) {
+func NewMetaDataCheckTaskSchedule(cfg *config.Config, storeFunc func(workerType proto.WorkerType, clusterName string,
+	task *proto.Task)) (mdckTaskSchedule *MetaDataCheckTaskSchedule, err error) {
 	mdckTaskSchedule = &MetaDataCheckTaskSchedule{}
 	if err = mdckTaskSchedule.parseConfig(cfg); err != nil {
 		log.LogErrorf("[NewMetaDataCheckTaskSchedule] parse config info failed, error(%v)", err)
@@ -31,6 +39,7 @@ func NewMetaDataCheckTaskSchedule(cfg *config.Config) (mdckTaskSchedule *MetaDat
 		log.LogErrorf("[NewMetaDataCheckTaskSchedule] init meta data check task schedule failed, error(%v)", err)
 		return
 	}
+	mdckTaskSchedule.storeTaskFunc = storeFunc
 	return
 }
 
@@ -65,7 +74,18 @@ func (mdckTaskSchedule *MetaDataCheckTaskSchedule) initMetaDataCheckTaskSchedule
 
 	mdckTaskSchedule.mcw = make(map[string]*master.MasterClient)
 	for cluster, addresses := range mdckTaskSchedule.masterAddr {
-		mdckTaskSchedule.mcw[cluster] = master.NewMasterClient(addresses, false)
+		isDBBack := false
+		for _, addr := range addresses {
+			if strings.Contains(addr, "cn.chubaofs-seqwrite") || strings.Contains(addr, "dbbak") {
+				isDBBack = true
+				break
+			}
+		}
+		if isDBBack {
+			mdckTaskSchedule.mcw[cluster] = master.NewMasterClientForDbBackCluster(addresses, false)
+		} else {
+			mdckTaskSchedule.mcw[cluster] = master.NewMasterClient(addresses, false)
+		}
 	}
 
 	if err = mysql.InitMysqlClient(mdckTaskSchedule.MysqlConfig); err != nil {
@@ -89,37 +109,46 @@ func (mdckTaskSchedule *MetaDataCheckTaskSchedule) CreateTask(clusterID string, 
 		return
 	}
 	masterClient := mdckTaskSchedule.mcw[clusterID]
-	var checkRules []*proto.CheckRule
-	checkRules, err = mysql.SelectCheckRule(int(mdckTaskSchedule.WorkerType), clusterID)
+	var vols []*proto.VolInfo
+	vols, err = masterClient.AdminAPI().ListVols("")
 	if err != nil {
 		return
 	}
-	ruleMap := make(map[string]string, len(checkRules))
-	for _, rule := range checkRules {
-		ruleMap[rule.RuleType] = rule.RuleValue
+
+	var checkRules []*proto.CheckRule
+	checkRules, err = mysql.SelectCheckRule(CheckRuleTableName, clusterID)
+	if err != nil {
+		return
 	}
 
 	var needCheckVols []string
-	checkAll, checkVolumes, skipVolumes := common.ParseCheckAllRules(ruleMap)
+	checkAll, checkVolumes, enableCheckOwners, disableCheckOwners, skipVolumes := common.ParseCheckAllRules(checkRules)
 	if checkAll {
-		var vols []*proto.VolInfo
-		vols, err = masterClient.AdminAPI().ListVols("")
-		if err != nil {
-			return
-		}
 		for _, vol := range vols {
 			if _, ok = skipVolumes[vol.Name]; ok {
+				continue
+			}
+			if _, ok = disableCheckOwners[vol.Owner]; ok {
 				continue
 			}
 			needCheckVols = append(needCheckVols, vol.Name)
 		}
 	} else {
-		for volName := range checkVolumes {
-			needCheckVols = append(needCheckVols, volName)
+		needCheckVols = append(needCheckVols, checkVolumes...)
+		if len(enableCheckOwners) != 0 {
+			for _, vol := range vols {
+				if _, ok = enableCheckOwners[vol.Owner]; !ok {
+					continue
+				}
+				needCheckVols = append(needCheckVols, vol.Name)
+			}
 		}
 	}
 
 	for _, volName := range needCheckVols {
+		if volName == "" {
+			continue
+		}
 		newTask := proto.NewDataTask(proto.WorkerTypeMetaDataCrcCheck, clusterID, volName, 0, 0, "")
 		if alreadyExist, _, _ := mdckTaskSchedule.ContainTask(newTask, runningTasks); alreadyExist {
 			continue
@@ -138,7 +167,7 @@ func (mdckTaskSchedule *MetaDataCheckTaskSchedule) CreateTask(clusterID string, 
 		}
 
 		newTask.TaskId = taskId
-		newTasks = append(newTasks, newTask)
+		mdckTaskSchedule.storeTaskFunc(mdckTaskSchedule.WorkerType, clusterID, newTask)
 	}
 	return
 }

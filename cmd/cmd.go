@@ -33,6 +33,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/rebalance"
 	"github.com/cubefs/cubefs/schedulenode/scheduler"
 	"github.com/cubefs/cubefs/schedulenode/smart"
+	tinyblck "github.com/cubefs/cubefs/schedulenode/tinyblockcheck"
 	syslog "log"
 	"net"
 	"net/http"
@@ -254,6 +255,9 @@ func run() error {
 	case proto.RoleDataMig:
 		server = migration.NewDataMigrationServer()
 		module = proto.ModuleDataMig
+	case proto.RoleTinyBlockCheck:
+		server = tinyblck.NewTinyBLockCheckWorker()
+		module = proto.ModuleTinyBlockCheck
 	default:
 		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: role mismatch: %v", role))
 		return fmt.Errorf("unknown role: %v", role)

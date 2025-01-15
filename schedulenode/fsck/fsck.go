@@ -182,13 +182,8 @@ func (fsckWorker *FSCheckWorker) updateCheckRule() {
 			clustersID := fsckWorker.clustersID()
 
 			for _, clusterID := range clustersID {
-				var checkRules []*proto.CheckRule
-				checkRules, _ = mysql.SelectCheckRule(int(fsckWorker.WorkerType), clusterID)
-				ruleMap := make(map[string]string, len(checkRules))
-				for _, rule := range checkRules {
-					ruleMap[rule.RuleType] = rule.RuleValue
-				}
-				rules := scheduleCommon.ParseSpecialOwnerRules(ruleMap)
+				checkRules, _ := mysql.SelectCheckRule(CheckRuleTableName, clusterID)
+				rules := scheduleCommon.ParseSpecialOwnerRules(checkRules)
 				if len(rules) == 0 {
 					continue
 				}

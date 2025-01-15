@@ -8,8 +8,13 @@ import (
 	"github.com/cubefs/cubefs/sdk/mysql"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/log"
+	"strings"
 	"sync"
 	"time"
+)
+
+const (
+	CheckRuleTableName = "fsck_check_rules"
 )
 
 type FSCheckTaskSchedule struct {
@@ -18,10 +23,12 @@ type FSCheckTaskSchedule struct {
 	port          string
 	masterAddr    map[string][]string
 	mcw           map[string]*master.MasterClient
+	storeTaskFunc func(workerType proto.WorkerType, clusterName string, task *proto.Task)
 	mcwRWMutex    sync.RWMutex
 }
 
-func NewFSCheckTaskSchedule(cfg *config.Config) (fsckTaskSchedule *FSCheckTaskSchedule, err error) {
+func NewFSCheckTaskSchedule(cfg *config.Config, storeFunc func(workerType proto.WorkerType, clusterName string,
+	task *proto.Task)) (fsckTaskSchedule *FSCheckTaskSchedule, err error) {
 	fsckTaskSchedule = &FSCheckTaskSchedule{}
 	if err = fsckTaskSchedule.parseConfig(cfg); err != nil {
 		log.LogErrorf("[NewFSCheckTaskSchedule] parse config info failed, error(%v)", err)
@@ -31,6 +38,7 @@ func NewFSCheckTaskSchedule(cfg *config.Config) (fsckTaskSchedule *FSCheckTaskSc
 		log.LogErrorf("[NewFSCheckTaskSchedule] init compact worker failed, error(%v)", err)
 		return
 	}
+	fsckTaskSchedule.storeTaskFunc = storeFunc
 	return
 }
 
@@ -65,7 +73,18 @@ func (fsckTaskSchedule *FSCheckTaskSchedule) initFSCheckTaskScheduler() (err err
 
 	fsckTaskSchedule.mcw = make(map[string]*master.MasterClient)
 	for cluster, addresses := range fsckTaskSchedule.masterAddr {
-		fsckTaskSchedule.mcw[cluster] = master.NewMasterClient(addresses, false)
+		isDBBack := false
+		for _, addr := range addresses {
+			if strings.Contains(addr, "cn.chubaofs-seqwrite") || strings.Contains(addr, "dbbak") {
+				isDBBack = true
+				break
+			}
+		}
+		if isDBBack {
+			fsckTaskSchedule.mcw[cluster] = master.NewMasterClientForDbBackCluster(addresses, false)
+		} else {
+			fsckTaskSchedule.mcw[cluster] = master.NewMasterClient(addresses, false)
+		}
 	}
 
 	if err = mysql.InitMysqlClient(fsckTaskSchedule.MysqlConfig); err != nil {
@@ -79,7 +98,8 @@ func (fsckTaskSchedule *FSCheckTaskSchedule) GetCreatorDuration() int {
 	return fsckTaskSchedule.WorkerConfig.TaskCreatePeriod
 }
 
-func (fsckTaskSchedule *FSCheckTaskSchedule) CreateTask(clusterID string, taskNum int64, runningTasks []*proto.Task, wns []*proto.WorkerNode) (newTasks []*proto.Task, err error) {
+func (fsckTaskSchedule *FSCheckTaskSchedule) CreateTask(clusterID string, taskNum int64, runningTasks []*proto.Task,
+	wns []*proto.WorkerNode) (newTasks []*proto.Task, err error) {
 	fsckTaskSchedule.RLock()
 	defer fsckTaskSchedule.RUnlock()
 
@@ -90,39 +110,48 @@ func (fsckTaskSchedule *FSCheckTaskSchedule) CreateTask(clusterID string, taskNu
 	}
 	masterClient := fsckTaskSchedule.mcw[clusterID]
 
-	var checkRules []*proto.CheckRule
-	checkRules, err = mysql.SelectCheckRule(int(fsckTaskSchedule.WorkerType), clusterID)
+	var vols []*proto.VolInfo
+	vols, err = masterClient.AdminAPI().ListVols("")
 	if err != nil {
 		return
 	}
-	ruleMap := make(map[string]string, len(checkRules))
-	for _, rule := range checkRules {
-		ruleMap[rule.RuleType] = rule.RuleValue
+
+	var checkRules []*proto.CheckRule
+	checkRules, err = mysql.SelectCheckRule(CheckRuleTableName, clusterID)
+	if err != nil {
+		return
 	}
 
 	var needCheckVols []string
-	checkAll, checkVolumes, skipVolumes := common.ParseCheckAllRules(ruleMap)
+	checkAll, checkVolumes, enableCheckOwners, disableCheckOwners, skipVolumes := common.ParseCheckAllRules(checkRules)
 	if checkAll {
-		var vols []*proto.VolInfo
-		vols, err = masterClient.AdminAPI().ListVols("")
-		if err != nil {
-			return
-		}
 		for _, vol := range vols {
 			if _, ok = skipVolumes[vol.Name]; ok {
+				continue
+			}
+			if _, ok = disableCheckOwners[vol.Owner]; ok {
 				continue
 			}
 			needCheckVols = append(needCheckVols, vol.Name)
 		}
 	} else {
-		for volName := range checkVolumes {
-			needCheckVols = append(needCheckVols, volName)
+		needCheckVols = append(needCheckVols, checkVolumes...)
+		if len(enableCheckOwners) != 0 {
+			for _, vol := range vols {
+				if _, ok = enableCheckOwners[vol.Owner]; !ok {
+					continue
+				}
+				needCheckVols = append(needCheckVols, vol.Name)
+			}
 		}
 	}
 
-	specialOwnerRule := common.ParseSpecialOwnerRules(ruleMap)
+	specialOwnerRule := common.ParseSpecialOwnerRules(checkRules)
 
 	for _, volName := range needCheckVols {
+		if volName == "" {
+			continue
+		}
 		newTask := proto.NewDataTask(proto.WorkerTypeFSCheck, clusterID, volName, 0, 0, "")
 		if alreadyExist, _, _ := fsckTaskSchedule.ContainTask(newTask, runningTasks); alreadyExist {
 			log.LogDebugf("fsckTaskSchedule CreateTask %s %s fsck task already exist", clusterID, volName)
@@ -156,7 +185,7 @@ func (fsckTaskSchedule *FSCheckTaskSchedule) CreateTask(clusterID string, taskNu
 		}
 
 		newTask.TaskId = taskId
-		newTasks = append(newTasks, newTask)
+		fsckTaskSchedule.storeTaskFunc(fsckTaskSchedule.WorkerType, clusterID, newTask)
 	}
 	return
 }

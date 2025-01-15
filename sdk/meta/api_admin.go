@@ -570,7 +570,8 @@ func (mc *MetaHttpClient) GetExtentKeyByDelInodeId(metaPartitionId, inode uint64
 	result = new(proto.GetExtentsResponse)
 	if len(data) == 0 {
 		result.Extents = make([]proto.ExtentKey, 0)
-		log.LogInfof("[getExtentKeyByInodeId] inode:%v not exist", inode)
+		log.LogDebugf("[getExtentKeyByInodeId] host: %s, partition: %v, inode:%v not exist",
+			mc.host, metaPartitionId, inode)
 		return
 	}
 
@@ -585,6 +586,9 @@ func (mc *MetaHttpClient) GetExtentKeyByDelInodeId(metaPartitionId, inode uint64
 func (mc *MetaHttpClient) GetMetaDataCrcSum(pid uint64) (r *proto.MetaDataCRCSumInfo, err error) {
 	req := newAPIRequest(http.MethodGet, "/getMetaDataCrcSum")
 	req.params["pid"] = fmt.Sprintf("%v", pid)
+	if proto.IsDbBack || mc.isDBBack {
+		req.params["skipCalcMTime"] = "true"
+	}
 	var data []byte
 	data, err = mc.serveRequest(req)
 	if err != nil {
@@ -602,6 +606,9 @@ func (mc *MetaHttpClient) GetMetaDataCrcSum(pid uint64) (r *proto.MetaDataCRCSum
 func (mc *MetaHttpClient) GetInodesCrcSum(pid uint64) (result *proto.InodesCRCSumInfo, err error) {
 	req := newAPIRequest(http.MethodGet, "/getInodesCrcSum")
 	req.params["pid"] = fmt.Sprintf("%v", pid)
+	if proto.IsDbBack || mc.isDBBack {
+		req.params["skipCalcMTime"] = "true"
+	}
 	var respData []byte
 	respData, err = mc.serveRequest(req)
 	if err != nil {
@@ -621,6 +628,9 @@ func (mc *MetaHttpClient) GetInodesCrcSum(pid uint64) (result *proto.InodesCRCSu
 func (mc *MetaHttpClient) GetDelInodesCrcSum(pid uint64) (result *proto.InodesCRCSumInfo, err error) {
 	req := newAPIRequest(http.MethodGet, "/getDelInodesCrcSum")
 	req.params["pid"] = fmt.Sprintf("%v", pid)
+	if proto.IsDbBack || mc.isDBBack {
+		req.params["skipCalcMTime"] = "true"
+	}
 	var respData []byte
 	respData, err = mc.serveRequest(req)
 	if err != nil {

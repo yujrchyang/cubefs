@@ -1,4 +1,4 @@
-package blck
+package tinyblck
 
 import (
 	"github.com/cubefs/cubefs/proto"
@@ -14,10 +14,10 @@ import (
 )
 
 const (
-	CheckRuleTableName = "blck_check_rules"
+	CheckRuleTableName = "tiny_blck_check_rules"
 )
 
-type BlockCheckTaskSchedule struct {
+type TinyBlockCheckTaskSchedule struct {
 	sync.RWMutex
 	worker.BaseWorker
 	port          string
@@ -27,9 +27,9 @@ type BlockCheckTaskSchedule struct {
 	mcwRWMutex    sync.RWMutex
 }
 
-func NewBlockCheckTaskSchedule(cfg *config.Config, storeFunc func(workerType proto.WorkerType, clusterName string,
-	task *proto.Task)) (blckTaskSchedule *BlockCheckTaskSchedule, err error) {
-	blckTaskSchedule = &BlockCheckTaskSchedule{}
+func NewTinyBlockCheckTaskSchedule(cfg *config.Config, storeFunc func(workerType proto.WorkerType, clusterName string,
+	task *proto.Task)) (blckTaskSchedule *TinyBlockCheckTaskSchedule, err error) {
+	blckTaskSchedule = &TinyBlockCheckTaskSchedule{}
 	if err = blckTaskSchedule.parseConfig(cfg); err != nil {
 		log.LogErrorf("[NewBlockCheckTaskSchedule] parse config info failed, error(%v)", err)
 		return
@@ -42,8 +42,8 @@ func NewBlockCheckTaskSchedule(cfg *config.Config, storeFunc func(workerType pro
 	return
 }
 
-func (blckTaskSchedule *BlockCheckTaskSchedule) parseConfig(cfg *config.Config) (err error) {
-	err = blckTaskSchedule.ParseBaseConfig(cfg)
+func (s *TinyBlockCheckTaskSchedule) parseConfig(cfg *config.Config) (err error) {
+	err = s.ParseBaseConfig(cfg)
 	if err != nil {
 		return
 	}
@@ -62,17 +62,17 @@ func (blckTaskSchedule *BlockCheckTaskSchedule) parseConfig(cfg *config.Config) 
 		}
 		masters[clusterName] = addresses
 	}
-	blckTaskSchedule.masterAddr = masters
-	blckTaskSchedule.port = blckTaskSchedule.Port
+	s.masterAddr = masters
+	s.port = s.Port
 	return
 }
 
-func (blckTaskSchedule *BlockCheckTaskSchedule) initBlockTaskScheduler() (err error) {
-	blckTaskSchedule.WorkerType = proto.WorkerTypeBlockCheck
-	blckTaskSchedule.TaskChan = make(chan *proto.Task, worker.DefaultTaskChanLength)
+func (s *TinyBlockCheckTaskSchedule) initBlockTaskScheduler() (err error) {
+	s.WorkerType = proto.WorkerTypeBlockCheck
+	s.TaskChan = make(chan *proto.Task, worker.DefaultTaskChanLength)
 
-	blckTaskSchedule.mcw = make(map[string]*master.MasterClient)
-	for cluster, addresses := range blckTaskSchedule.masterAddr {
+	s.mcw = make(map[string]*master.MasterClient)
+	for cluster, addresses := range s.masterAddr {
 		isDBBack := false
 		for _, addr := range addresses {
 			if strings.Contains(addr, "cn.chubaofs-seqwrite") || strings.Contains(addr, "dbbak") {
@@ -81,22 +81,22 @@ func (blckTaskSchedule *BlockCheckTaskSchedule) initBlockTaskScheduler() (err er
 			}
 		}
 		if isDBBack {
-			blckTaskSchedule.mcw[cluster] = master.NewMasterClientForDbBackCluster(addresses, false)
+			s.mcw[cluster] = master.NewMasterClientForDbBackCluster(addresses, false)
 		} else {
-			blckTaskSchedule.mcw[cluster] = master.NewMasterClient(addresses, false)
+			s.mcw[cluster] = master.NewMasterClient(addresses, false)
 		}
 		//blckTaskSchedule.mcw[cluster] = master.NewMasterClient(addresses, false)
 	}
 
-	if err = mysql.InitMysqlClient(blckTaskSchedule.MysqlConfig); err != nil {
+	if err = mysql.InitMysqlClient(s.MysqlConfig); err != nil {
 		log.LogErrorf("[initBlockTaskScheduler] init mysql client failed, error(%v)", err)
 		return
 	}
 	return
 }
 
-func (blckTaskSchedule *BlockCheckTaskSchedule) GetCreatorDuration() int {
-	return blckTaskSchedule.WorkerConfig.TaskCreatePeriod
+func (s *TinyBlockCheckTaskSchedule) GetCreatorDuration() int {
+	return s.WorkerConfig.TaskCreatePeriod
 }
 
 func isMetaOutVolume(volName string) bool {
@@ -107,16 +107,16 @@ func isMetaOutVolume(volName string) bool {
 	return false
 }
 
-func (blckTaskSchedule *BlockCheckTaskSchedule) CreateTask(clusterID string, taskNum int64, runningTasks []*proto.Task, wns []*proto.WorkerNode) (newTasks []*proto.Task, err error) {
-	blckTaskSchedule.RLock()
-	defer blckTaskSchedule.RUnlock()
+func (s *TinyBlockCheckTaskSchedule) CreateTask(clusterID string, taskNum int64, runningTasks []*proto.Task, wns []*proto.WorkerNode) (newTasks []*proto.Task, err error) {
+	s.RLock()
+	defer s.RUnlock()
 
-	_, ok := blckTaskSchedule.mcw[clusterID]
+	_, ok := s.mcw[clusterID]
 	if !ok {
-		log.LogInfof("BlockCheckTaskSchedule CreateTask:cluster %s not exist", clusterID)
+		log.LogInfof("TinyBlockCheckTaskSchedule CreateTask:cluster %s not exist", clusterID)
 		return
 	}
-	masterClient := blckTaskSchedule.mcw[clusterID]
+	masterClient := s.mcw[clusterID]
 
 	var vols []*proto.VolInfo
 	vols, err = masterClient.AdminAPI().ListVols("")
@@ -132,6 +132,8 @@ func (blckTaskSchedule *BlockCheckTaskSchedule) CreateTask(clusterID string, tas
 
 	var needCheckVols []string
 	checkAll, checkVolumes, enableCheckOwners, disableCheckOwners, skipVolumes := common.ParseCheckAllRules(checkRules)
+	log.LogDebugf("TinyBlockCheckTaskSchedule volCount: %v, checkAll %v, checkVolumes: %v, enableCheckOwners: %v, disableCheckOwners: %v, skipVolumes: %v",
+		len(vols), checkAll, checkVolumes, enableCheckOwners, disableCheckOwners, skipVolumes)
 	if checkAll {
 		for _, vol := range vols {
 			if _, ok = skipVolumes[vol.Name]; ok {
@@ -153,30 +155,33 @@ func (blckTaskSchedule *BlockCheckTaskSchedule) CreateTask(clusterID string, tas
 			}
 		}
 	}
+	log.LogDebugf("TinyBlockCheckTaskSchedule needCheckVols: %v", needCheckVols)
 
 	for _, volName := range needCheckVols {
 		if volName == "" {
 			continue
 		}
-		newTask := proto.NewDataTask(proto.WorkerTypeBlockCheck, clusterID, volName, 0, 0, "")
-		if alreadyExist, _, _ := blckTaskSchedule.ContainTask(newTask, runningTasks); alreadyExist {
+		newTask := proto.NewDataTask(proto.WorkerTypeTinyBlockCheck, clusterID, volName, 0, 0, "")
+		if alreadyExist, _, _ := s.ContainTask(newTask, runningTasks); alreadyExist {
 			continue
 		}
 
-		latestFinishedTime := blckTaskSchedule.GetLatestFinishedTime(newTask)
+		latestFinishedTime := s.GetLatestFinishedTime(newTask)
 		if time.Since(latestFinishedTime) < DefaultCheckInterval {
 			continue
 		}
 
 		var taskId uint64
-		if taskId, err = blckTaskSchedule.AddTask(newTask); err != nil {
-			log.LogErrorf("BlockCheckTaskSchedule CreateTask AddTask to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
+		if taskId, err = s.AddTask(newTask); err != nil {
+			log.LogErrorf("TinyBlockCheckTaskSchedule CreateTask AddTask to database failed, cluster(%v), volume(%v), task(%v), err(%v)",
 				clusterID, volName, newTask, err)
 			continue
 		}
+		log.LogDebugf("TinyBlockCheckTaskSchedule CreateTask AddTask to database, cluster(%v), volume(%v), taskID(%v)",
+			clusterID, volName, taskId)
 
 		newTask.TaskId = taskId
-		blckTaskSchedule.storeTaskFunc(blckTaskSchedule.WorkerType, clusterID, newTask)
+		s.storeTaskFunc(s.WorkerType, clusterID, newTask)
 	}
 	return
 }

@@ -103,6 +103,7 @@ const (
 	WorkerTypeTinyExtentPunchHoleCheck
 	WorkerTypeMetaDataCrcCheck
 	WorkerTypeExtentDoubleAllocateCheck
+	WorkerTypeTinyBlockCheck
 )
 
 var workerTypeMap = map[WorkerType]string{
@@ -116,6 +117,7 @@ var workerTypeMap = map[WorkerType]string{
 	WorkerTypeBlockCheck:                  "blockCheck",
 	WorkerTypeNormalExtentMistakeDelCheck: "normalEKCheck",
 	WorkerTypeMetaDataCrcCheck:            "metaDataCheck",
+	WorkerTypeTinyBlockCheck:              "tinyBlockCheck",
 }
 
 func WorkerTypeToName(wt WorkerType) string {
