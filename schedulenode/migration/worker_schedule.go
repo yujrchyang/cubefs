@@ -554,6 +554,7 @@ func (w *Worker) loadAndStoreCompactVolumes() error {
 			Name:       vc.VolName,
 			Owner:      volInfo.Owner,
 			CompactTag: convertCompactTag(vc.Compact),
+			VolId:      volInfo.ID,
 		}
 		clusterVolumes[vc.ClusterName] = append(clusterVolumes[vc.ClusterName], dataMigVolume)
 	}

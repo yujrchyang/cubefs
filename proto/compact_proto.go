@@ -2,6 +2,7 @@ package proto
 
 type DataMigVolume struct {
 	Name       string
+	VolId      uint64
 	Owner      string
 	Status     uint8
 	TotalSize  uint64

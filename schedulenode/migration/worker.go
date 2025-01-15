@@ -309,7 +309,7 @@ func (w *Worker) checkVolumeInfo(cluster, volume string, clientType data.ExtentC
 	case data.Normal:
 		getInodeATimePolicies = nil
 		getDpMediumType = nil
-		getMigrationConfig = nil
+		getMigrationConfig = w.getMigrationConfig
 	case data.Smart:
 		getInodeATimePolicies = w.getInodeATimePolicies
 		getDpMediumType = w.getDpMediumType
@@ -367,28 +367,45 @@ func (w *Worker) getInodeATimePolicies(cluster, volName string) (layerPolicies [
 	return
 }
 
-func (w *Worker) getMigrationConfig(cluster, volName string) (volumeConfig proto.MigrationConfig) {
+func (w *Worker) getMigrationConfig(cluster, volName string) (migConfig proto.MigrationConfig) {
 	value, ok := w.volumeView.Load(cluster)
 	if !ok {
 		return
 	}
-	volViews := value.(*FileMigrateVolumeView)
-	if sv, has := volViews.SmartVolumes[volName]; has {
-		volumeConfig = proto.MigrationConfig{
-			Smart:         sv.Smart,
-			SmartRules:    strings.Join(sv.SmartRules, ","),
-			HddDirs:       sv.HddDirs,
-			SsdDirs:       sv.SsdDirs,
-			MigrationBack: sv.MigrationBack,
-			Region:        sv.BoundBucket.Region,
-			Endpoint:      sv.BoundBucket.EndPoint,
-			AccessKey:     sv.BoundBucket.AccessKey,
-			SecretKey:     sv.BoundBucket.SecretAccessKey,
-			Bucket:        sv.BoundBucket.BucketName,
-			VolId:         sv.VolId,
+	switch volViews := value.(type) {
+	case *FileMigrateVolumeView:
+		if sv, has := volViews.SmartVolumes[volName]; has {
+			migConfig = convertMigrationConfig(sv)
+		}
+	case *proto.DataMigVolumeView:
+		for _, volume := range volViews.DataMigVolumes {
+			if volume.Name != volName {
+				continue
+			}
+			migConfig = proto.MigrationConfig{
+				VolId: volume.VolId,
+			}
+			break
 		}
 	}
 	return
+}
+
+func convertMigrationConfig(sv *proto.SmartVolume) proto.MigrationConfig {
+	migConfig := proto.MigrationConfig{
+		Smart:         sv.Smart,
+		SmartRules:    strings.Join(sv.SmartRules, ","),
+		HddDirs:       sv.HddDirs,
+		SsdDirs:       sv.SsdDirs,
+		MigrationBack: sv.MigrationBack,
+		Region:        sv.BoundBucket.Region,
+		Endpoint:      sv.BoundBucket.EndPoint,
+		AccessKey:     sv.BoundBucket.AccessKey,
+		SecretKey:     sv.BoundBucket.SecretAccessKey,
+		Bucket:        sv.BoundBucket.BucketName,
+		VolId:         sv.VolId,
+	}
+	return migConfig
 }
 
 func (w *Worker) getMigrationSwitch(cluster, volName string) (migSwitch bool) {
