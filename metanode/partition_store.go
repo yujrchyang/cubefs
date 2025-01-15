@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
+	"github.com/cubefs/cubefs/sdk/s3"
 	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
@@ -655,12 +656,18 @@ func (mp *metaPartition) updateMetaConfByMetaConfSnap(newMetaConf *MetaPartition
 	oldPeers := mp.config.Peers
 	oldLearner := mp.config.Learners
 	oldRecorders := mp.config.Recorders
+	oldBoundBucketInfo := mp.config.BoundBucketInfo
 	atomic.StoreUint64(&mp.config.Start, newMetaConf.Start)
 	atomic.StoreUint64(&mp.config.End, newMetaConf.End)
 	atomic.StoreUint64(&mp.config.Cursor, newMetaConf.Cursor)
 	mp.config.Peers = newMetaConf.Peers
 	mp.config.Learners = newMetaConf.Learners
 	mp.config.Recorders = newMetaConf.Recorders
+	if newMetaConf.BoundBucketInfo != nil && mp.config.BoundBucketInfo == nil {
+		mp.config.BoundBucketInfo = newMetaConf.BoundBucketInfo
+		mp.s3Client = s3.NewS3Client(mp.config.BoundBucketInfo.Region, mp.config.BoundBucketInfo.EndPoint,
+			mp.config.BoundBucketInfo.AccessKey, mp.config.BoundBucketInfo.SecretAccessKey, false)
+	}
 	defer func() {
 		if err != nil {
 			atomic.StoreUint64(&mp.config.Start, oldStart)
@@ -669,6 +676,7 @@ func (mp *metaPartition) updateMetaConfByMetaConfSnap(newMetaConf *MetaPartition
 			mp.config.Peers = oldPeers
 			mp.config.Learners = oldLearner
 			mp.config.Recorders = oldRecorders
+			mp.config.BoundBucketInfo = oldBoundBucketInfo
 		}
 	}()
 	if err = mp.config.checkMeta(); err != nil {
@@ -1157,4 +1165,36 @@ func (mp *metaPartition) storeBitMapAllocatorInfo(rootDir string, sm *storeMsg) 
 		mp.config.PartitionId, mp.config.VolName, crcV)
 	return
 
+}
+
+func (mp *metaPartition) updateBoundBucketInfo(bucketInfo *proto.BoundBucketInfo) (err error) {
+	mp.confUpdateMutex.Lock()
+	defer mp.confUpdateMutex.Unlock()
+
+	if proto.IsSameBucket(mp.config.BoundBucketInfo, bucketInfo) && mp.s3Client != nil {
+		return
+	}
+
+	oldBucketInfo := mp.config.BoundBucketInfo
+	defer func() {
+		if err != nil {
+			mp.config.BoundBucketInfo = oldBucketInfo
+		}
+	}()
+	mp.config.BoundBucketInfo = bucketInfo
+	if err = mp.config.checkMeta(); err != nil {
+		err = errors.NewErrorf("[persistMetadata] checkMeta->%s", err.Error())
+		return
+	}
+
+	if err = mp.config.persist(); err != nil {
+		err = errors.NewErrorf("[persistMetadata] config persist->%s", err.Error())
+		return
+	}
+
+	if !proto.IsSameS3Config(oldBucketInfo, bucketInfo) {
+		mp.s3Client = s3.NewS3Client(mp.config.BoundBucketInfo.Region, mp.config.BoundBucketInfo.EndPoint,
+			mp.config.BoundBucketInfo.AccessKey, mp.config.BoundBucketInfo.SecretAccessKey, false)
+	}
+	return
 }

@@ -108,7 +108,7 @@ func TestS3API_BatchDeleteObjects(t *testing.T) {
 		keys = append(keys, key)
 	}
 
-	_ = s3Client.BatchDeleteObject(ctx, bucketName, keys)
+	_, _ = s3Client.BatchDeleteObject(ctx, bucketName, keys)
 	fmt.Printf("batch delete objects %s finised\n", keys)
 	for _, key = range keys {
 		exist, err = s3Client.HeadObject(ctx, bucketName, key)

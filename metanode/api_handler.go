@@ -3406,7 +3406,7 @@ func (m *MetaNode) createInodeForTest(w http.ResponseWriter, r *http.Request) {
 		resp.Msg = fmt.Sprintf("marshal inode failed: %v", err)
 		return
 	}
-	createInoResp, err := partition.submit(p.Ctx(), opFSMCreateInode, p.RemoteWithReqID(), val, nil)
+	createInoResp, err := partition.submit(p.Ctx(), opFSMCreateInode, p.RemoteWithReqID(), val, false)
 	if err != nil {
 		resp.Code = http.StatusInternalServerError
 		resp.Msg = fmt.Sprintf("submit create inode failed: %v", err)

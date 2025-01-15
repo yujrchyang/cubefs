@@ -17,7 +17,6 @@ package metanode
 import (
 	"context"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/s3"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/multirate"
 	"github.com/cubefs/cubefs/util/topology"
@@ -206,20 +205,33 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context,
 		}(partitionID, extents)
 	}
 
+	allDeleteFailedS3Keys := make([]string, 0)
 	for partitionID, extents := range partitionS3TypeDeleteExtents {
 		wg.Add(1)
 		go func(partitionID uint64, extents []*proto.MetaDelExtentKey) {
-			for _, ek := range extents {
-				if proto.ExtentType(ek.CRC) != proto.S3Extent {
-					continue
+			for {
+				start := 0
+				end := start + 1000 //每次删除的ek个数不超过1000
+				if end > len(extents) {
+					end = len(extents)
 				}
-				perr := mp.doDeleteS3Object(context.Background(), ek)
+				//todo:是否需要限速
+				deleteFailedKeys, perr := mp.doBatchDeleteS3Object(ctx, extents[start:end])
 				lock.Lock()
 				s3TypeExtentsDeleteOccurErrors[partitionID] = perr
 				lock.Unlock()
 				if perr != nil {
 					break
 				}
+				if len(deleteFailedKeys) != 0 {
+					lock.Lock()
+					allDeleteFailedS3Keys = append(allDeleteFailedS3Keys, deleteFailedKeys...)
+					lock.Unlock()
+				}
+				if end == len(extents) {
+					break
+				}
+				start = end
 			}
 			wg.Done()
 		}(partitionID, extents)
@@ -250,6 +262,16 @@ func (mp *metaPartition) batchDeleteExtentsByPartition(ctx context.Context,
 			log.LogWarnf("deleteInode metaPartition(%v) Inode(%v) ek(%v) delete error(%v)",mp.config.PartitionId,
 				ek.InodeIDInner, ek, perr)
 		}
+	}
+
+	for _, deletedFailedKey := range allDeleteFailedS3Keys {
+		ek, perr := proto.ParseExtentKeyByS3Key(deletedFailedKey)
+		if perr != nil {
+			continue
+		}
+		mp.freeLaterInodes[ek.InodeIDInner] = 0
+		log.LogWarnf("deleteInode metaPartition(%v) Inode(%v) ek(%v) delete error(%v)",mp.config.PartitionId,
+			ek.InodeIDInner, ek, perr)
 	}
 
 	for _, inode := range allInodes {
@@ -448,7 +470,7 @@ func (mp *metaPartition) syncToRaftFollowersFreeInode(ctx context.Context, hasDe
 		return
 	}
 	//_, err = mp.submit(opFSMInternalDeleteInode, hasDeleteInodes)
-	_, err = mp.submit(ctx, opFSMInternalCleanDeletedInode, "", hasDeleteInodes, nil)
+	_, err = mp.submit(ctx, opFSMInternalCleanDeletedInode, localAddr, hasDeleteInodes, false)
 
 	return
 }
@@ -629,9 +651,42 @@ func (mp *metaPartition) doDeleteS3Object(ctx context.Context, ext *proto.MetaDe
 		log.LogErrorf(err.Error())
 		return
 	}
+
+	if mp.config.VolID == 0 {
+		err = fmt.Errorf("vol id is 0, partitionID: %v, volumeName: %s", mp.config.PartitionId, mp.config.VolName)
+		return
+	}
+
 	if mp.s3Client == nil {
-		mp.s3Client = s3.NewS3Client(mp.config.BoundBucketInfo.Region, mp.config.BoundBucketInfo.EndPoint,
-			mp.config.BoundBucketInfo.AccessKey, mp.config.BoundBucketInfo.SecretAccessKey, false)
+		//todo: alarm
+		err = fmt.Errorf("s3 client is nil, partitionID: %v, bucketInfo: %v", mp.config.PartitionId, mp.config.BoundBucketInfo)
+		log.LogErrorf(err.Error())
+		return
+	}
+
+	key := proto.GenS3Key(mp.manager.metaNode.clusterId, mp.config.VolName, mp.config.VolID, ext.InodeId, ext.PartitionId, ext.ExtentId)
+	err = mp.s3Client.DeleteObject(ctx, bucketName, key)
+	if err != nil {
+		log.LogErrorf("delete object failed, bucket: %s, key: %s, err: %v", bucketName, key, err)
+		return
+	}
+	return
+}
+
+func (mp *metaPartition) doBatchDeleteS3Object(ctx context.Context, exts []*proto.MetaDelExtentKey) (deleteFaileKeys []string, err error) {
+	if mp.config.BoundBucketInfo == nil {
+		//todo: alarm
+		err = fmt.Errorf("related bucket not exsit, partitionID: %v", mp.config.PartitionId)
+		log.LogErrorf(err.Error())
+		return
+	}
+
+	bucketName := mp.config.BoundBucketInfo.BucketName
+	if bucketName == "" {
+		//todo: alarm
+		err = fmt.Errorf("related bucket not exsit, partitionID: %v", mp.config.PartitionId)
+		log.LogErrorf(err.Error())
+		return
 	}
 
 	if mp.config.VolID == 0 {
@@ -639,10 +694,22 @@ func (mp *metaPartition) doDeleteS3Object(ctx context.Context, ext *proto.MetaDe
 		return
 	}
 
-	key := proto.GenS3Key(mp.manager.metaNode.clusterId, mp.config.VolName, mp.config.VolID, ext.InodeId, ext.PartitionId, ext.ExtentId)
-	err = mp.s3Client.DeleteObject(context.Background(), bucketName, key)
+	if mp.s3Client == nil {
+		//todo: alarm
+		err = fmt.Errorf("s3 client is nil, partitionID: %v, bucketInfo: %v", mp.config.PartitionId, mp.config.BoundBucketInfo)
+		log.LogErrorf(err.Error())
+		return
+	}
+
+	keys := make([]string, 0, len(exts))
+	for _, ext := range exts {
+		keys = append(keys, proto.GenS3Key(mp.manager.metaNode.clusterId, mp.config.VolName, mp.config.VolID, ext.InodeId,
+			ext.PartitionId, ext.ExtentId))
+	}
+
+	deleteFaileKeys, err = mp.s3Client.BatchDeleteObject(ctx, bucketName, keys)
 	if err != nil {
-		log.LogErrorf("delete object failed, bucket: %s, key: %s, err: %v", bucketName, key, err)
+		log.LogErrorf("delete object failed, bucket: %s, keys: %s, err: %v", bucketName, keys, err)
 		return
 	}
 	return

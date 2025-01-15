@@ -2330,7 +2330,7 @@ func innerTestCalcInodeAndDelInodeSize(t *testing.T, storeMode proto.StoreMode) 
 	for _, inode := range needCleanDelInodes {
 		bufSlice = append(bufSlice, inode.MarshalKey()...)
 	}
-	if _, err = mp.submit(context.Background(), opFSMInternalCleanDeletedInode, "", bufSlice, nil); err != nil {
+	if _, err = mp.submit(context.Background(), opFSMInternalCleanDeletedInode, localAddr, bufSlice, false); err != nil {
 		t.Error(err)
 		t.FailNow()
 	}

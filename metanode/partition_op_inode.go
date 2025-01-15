@@ -102,7 +102,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err = mp.submit(p.Ctx(), opFSMCreateInode, p.RemoteWithReqID(), val, nil)
+	resp, err = mp.submit(p.Ctx(), opFSMCreateInode, p.RemoteWithReqID(), val, false)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -185,11 +185,11 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet) (err error) {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+	trashEnable := true
 	if req.NoTrash || mp.isTrashDisable() {
-		r, err = mp.submit(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val, clientReq)
-	} else {
-		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val, clientReq)
+		trashEnable = false
 	}
+	r, err = mp.submitWithRequestInfo(p.Ctx(), opFSMUnlinkInode, p.RemoteWithReqID(), val, trashEnable, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -223,11 +223,11 @@ func (mp *metaPartition) UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet) (er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+	trashEnable := true
 	if req.NoTrash || mp.isTrashDisable() {
-		r, err = mp.submit(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val, nil)
-	} else {
-		r, err = mp.submitTrash(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val, nil)
+		trashEnable = false
 	}
+	r, err = mp.submit(p.Ctx(), opFSMUnlinkInodeBatch, p.RemoteWithReqID(), val, trashEnable)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -417,7 +417,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err = mp.submit(p.Ctx(), opFSMCreateLinkInode, p.RemoteWithReqID(), val, clientReq)
+	resp, err = mp.submitWithRequestInfo(p.Ctx(), opFSMCreateLinkInode, p.RemoteWithReqID(), val, false, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -447,11 +447,11 @@ func (mp *metaPartition) EvictInode(req *EvictInodeReq, p *Packet) (err error) {
 		return
 	}
 
+	trashEnable := true
 	if req.NoTrash || mp.isTrashDisable() {
-		resp, err = mp.submit(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val, nil)
-	} else {
-		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val, nil)
+		trashEnable = false
 	}
+	resp, err = mp.submit(p.Ctx(), opFSMEvictInode, p.RemoteWithReqID(), val, trashEnable)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -482,11 +482,11 @@ func (mp *metaPartition) EvictInodeBatch(req *BatchEvictInodeReq, p *Packet) (er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+	trashEnable := true
 	if req.NoTrash || mp.isTrashDisable() {
-		resp, err = mp.submit(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val, nil)
-	} else {
-		resp, err = mp.submitTrash(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val, nil)
+		trashEnable = false
 	}
+	resp, err = mp.submit(p.Ctx(), opFSMEvictInodeBatch, p.RemoteWithReqID(), val, trashEnable)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -516,7 +516,7 @@ func (mp *metaPartition) SetAttr(req *SetattrRequest, reqData []byte, p *Packet)
 		return
 	}
 
-	resp, err = mp.submit(p.Ctx(), opFSMSetAttr, p.RemoteWithReqID(), reqData, clientReqInfo)
+	resp, err = mp.submitWithRequestInfo(p.Ctx(), opFSMSetAttr, p.RemoteWithReqID(), reqData, false, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -540,7 +540,7 @@ func (mp *metaPartition) DeleteInode(req *proto.DeleteInodeRequest, p *Packet) (
 
 	var bytes = make([]byte, 8)
 	binary.BigEndian.PutUint64(bytes, req.Inode)
-	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInode, p.RemoteWithReqID(), bytes, nil)
+	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInode, p.RemoteWithReqID(), bytes, false)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -617,7 +617,7 @@ func (mp *metaPartition) CursorReset(ctx context.Context, req *proto.CursorReset
 	if _, ok := mp.IsLeader(); !ok {
 		return fmt.Errorf("this node is not leader, can not execute this op")
 	}
-	resp, err := mp.submit(ctx, opFSMCursorReset, "", data, nil)
+	resp, err := mp.submit(ctx, opFSMCursorReset, localAddr, data, false)
 	if err != nil {
 		return err
 	}
@@ -644,7 +644,7 @@ func (mp *metaPartition) DeleteInodeBatch(req *proto.DeleteInodeBatchRequest, p 
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInodeBatch, p.RemoteWithReqID(), encoded, nil)
+	_, err = mp.submit(p.Ctx(), opFSMInternalDeleteInodeBatch, p.RemoteWithReqID(), encoded, false)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

@@ -182,7 +182,8 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 					timer.Reset(intervalToPersistData)
 					continue
 				}
-				if _, err := mp.submit(context.Background(), opFSMStoreTick, "", nil, nil); err != nil {
+				var data []byte
+				if _, err := mp.submit(context.Background(), opFSMStoreTick, localAddr, data, false); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 					if _, ok := mp.IsLeader(); ok {
 						timer.Reset(intervalToPersistData)
@@ -195,7 +196,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				}
 				cursorBuf := make([]byte, 8)
 				binary.BigEndian.PutUint64(cursorBuf, mp.config.Cursor)
-				if _, err := mp.submit(context.Background(), opFSMSyncCursor, "", cursorBuf, nil); err != nil {
+				if _, err := mp.submit(context.Background(), opFSMSyncCursor, localAddr, cursorBuf, false); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerCursor.Reset(intervalToSyncCursor)
@@ -209,7 +210,7 @@ func (mp *metaPartition) startSchedule(curIndex uint64) {
 				evictTimestamp := mp.reqRecords.GetEvictTimestamp(reservedTime, reservedMaxCount)
 				evictTimestampBuff := make([]byte, 8)
 				binary.BigEndian.PutUint64(evictTimestampBuff, uint64(evictTimestamp))
-				if _, err := mp.submit(context.Background(), opFSMSyncEvictReqRecords, "", evictTimestampBuff, nil); err != nil {
+				if _, err := mp.submit(context.Background(), opFSMSyncEvictReqRecords, localAddr, evictTimestampBuff, false); err != nil {
 					log.LogErrorf("[startSchedule] raft submit: %s", err.Error())
 				}
 				timerSyncReqRecordsEvictTimestamp.Reset(intervalToSyncEvictReqRecords)

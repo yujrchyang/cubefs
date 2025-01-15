@@ -54,7 +54,7 @@ func (mp *metaPartition) ExtentAppend(req *proto.AppendExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentsAdd, p.RemoteWithReqID(), val, clientReqInfo)
+	resp, err := mp.submitWithRequestInfo(p.Ctx(), opFSMExtentsAdd, p.RemoteWithReqID(), val, false, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -92,7 +92,7 @@ func (mp *metaPartition) ExtentInsert(req *proto.InsertExtentKeyRequest, p *Pack
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentsInsert, p.RemoteWithReqID(), val, clientReqInfo)
+	resp, err := mp.submitWithRequestInfo(p.Ctx(), opFSMExtentsInsert, p.RemoteWithReqID(), val, false, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -176,7 +176,7 @@ func (mp *metaPartition) ExtentsTruncate(req *ExtentsTruncateReq, p *Packet) (er
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentTruncate, p.RemoteWithReqID(), val, clientReqInfo)
+	resp, err := mp.submitWithRequestInfo(p.Ctx(), opFSMExtentTruncate, p.RemoteWithReqID(), val, false, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -217,7 +217,7 @@ func (mp *metaPartition) BatchExtentAppend(req *proto.AppendExtentKeysRequest, p
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMExtentsAdd, p.RemoteWithReqID(), val, clientReqInfo)
+	resp, err := mp.submitWithRequestInfo(p.Ctx(), opFSMExtentsAdd, p.RemoteWithReqID(), val, false, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -292,7 +292,7 @@ func (mp *metaPartition) FileMigMergeExtents(req *proto.InodeMergeExtentsRequest
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMFileMigExtentMerge, p.RemoteWithReqID(), val, clientReqInfo)
+	resp, err := mp.submitWithRequestInfo(p.Ctx(), opFSMFileMigExtentMerge, p.RemoteWithReqID(), val, false, clientReqInfo)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

@@ -19,7 +19,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/s3"
 	"os"
 	"path"
 	"strings"
@@ -55,7 +54,7 @@ func (mp *metaPartition) initInode(ino *Inode) {
 
 			ctx := context.Background()
 			// put first root inode
-			resp, err := mp.submit(ctx, opFSMCreateInode, "", data, nil)
+			resp, err := mp.submit(ctx, opFSMCreateInode, localAddr, data, false)
 			if err != nil {
 				log.LogFatalf("[initInode] raft sync: %s", err.Error())
 			}
@@ -582,24 +581,4 @@ func (mp *metaPartition) fsmCorrectInodesAndDelInodesTotalSize(req *proto.Correc
 		log.LogDebugf("fsmCorrectInodesAndDelInodesTotalSize, correct delInodes total size partitionID: %v, changeSize: %v",
 			mp.config.PartitionId, delInodesTotalSize-delInodesOldTotalSize)
 	}()
-}
-
-func (mp *metaPartition) fsmBoundS3Bucket(bucketInfo *proto.BoundBucketInfo) (status uint8, err error) {
-	defer func() {
-		if err != nil {
-			log.LogErrorf("fsmBoundS3Bucket failed:%v", err.Error())
-			status = proto.OpDiskErr
-		}
-	}()
-	mp.config.BoundBucketInfo = bucketInfo
-	//todo:多并发以及资源消耗问题
-	mp.s3Client = s3.NewS3Client(bucketInfo.Region, bucketInfo.EndPoint, bucketInfo.AccessKey,
-		bucketInfo.SecretAccessKey, false)
-
-	if err = mp.config.persist(); err != nil {
-		err = errors.NewErrorf("[persistConf] config persist->%s", err.Error())
-		return
-	}
-	status = proto.OpOk
-	return
 }

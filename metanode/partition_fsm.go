@@ -399,7 +399,12 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = json.Unmarshal(msg.V, bucketInfo); err != nil {
 			return
 		}
-		resp, _ = mp.fsmBoundS3Bucket(bucketInfo)
+		if err = mp.updateBoundBucketInfo(bucketInfo); err != nil {
+			log.LogErrorf("fsm bound bucket failed:%v", err.Error())
+			resp = proto.OpDiskErr
+			return
+		}
+		resp = proto.OpOk
 	}
 
 	return
@@ -1213,7 +1218,7 @@ func (mp *metaPartition) initWaitApplyCompleteCtx() {
 		mp.config.PartitionId, mp.applyID, mp.lastValidIndexOnLeaderChange, mp.waitCtx != nil)
 }
 
-func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, data []byte, reqInfo *RequestInfo) (resp interface{}, err error) {
+func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, data []byte, trashEnable bool) (resp interface{}, err error) {
 
 	item := NewMetaItem(0, nil, nil)
 	item.Op = op
@@ -1222,8 +1227,7 @@ func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, dat
 	}
 	item.From = from
 	item.Timestamp = time.Now().UnixNano() / 1000
-	item.TrashEnable = false
-	item.ReqInfo = reqInfo
+	item.TrashEnable = trashEnable
 
 	// only record the first time
 	atomic.CompareAndSwapInt64(&mp.lastSubmit, 0, time.Now().Unix())
@@ -1241,7 +1245,7 @@ func (mp *metaPartition) submit(ctx context.Context, op uint32, from string, dat
 	return
 }
 
-func (mp *metaPartition) submitTrash(ctx context.Context, op uint32, from string, data []byte, clientReqInfo *RequestInfo) (resp interface{}, err error) {
+func (mp *metaPartition) submitWithRequestInfo(ctx context.Context, op uint32, from string, data []byte, trashEnable bool, reqInfo *RequestInfo) (resp interface{}, err error) {
 
 	item := NewMetaItem(0, nil, nil)
 	item.Op = op
@@ -1250,16 +1254,22 @@ func (mp *metaPartition) submitTrash(ctx context.Context, op uint32, from string
 	}
 	item.From = from
 	item.Timestamp = time.Now().UnixNano() / 1000
-	item.TrashEnable = true
-	item.ReqInfo = clientReqInfo
+	item.TrashEnable = trashEnable
+	item.ReqInfo = reqInfo
+
+	// only record the first time
+	atomic.CompareAndSwapInt64(&mp.lastSubmit, 0, time.Now().Unix())
+
 	cmd, err := item.MarshalJson()
 	if err != nil {
+		atomic.StoreInt64(&mp.lastSubmit, 0)
 		return
 	}
 
 	// submit to the raft store
 	resp, err = mp.raftPartition.Submit(cmd, raftproto.AckTypeApplied)
 
+	atomic.StoreInt64(&mp.lastSubmit, 0)
 	return
 }
 

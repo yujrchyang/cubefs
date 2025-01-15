@@ -216,7 +216,7 @@ func (mp *metaPartition) putExtend(ctx context.Context, op uint32, remote string
 	if marshaled, err = extend.Bytes(); err != nil {
 		return
 	}
-	resp, err = mp.submit(ctx, op, remote, marshaled, clientReqInfo)
+	resp, err = mp.submitWithRequestInfo(ctx, op, remote, marshaled, false, clientReqInfo)
 	return
 }
 

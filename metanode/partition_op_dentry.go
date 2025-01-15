@@ -68,7 +68,7 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	if err != nil {
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMCreateDentry, p.RemoteWithReqID(), val, clientReq)
+	resp, err := mp.submitWithRequestInfo(p.Ctx(), opFSMCreateDentry, p.RemoteWithReqID(), val, false, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -105,11 +105,11 @@ func (mp *metaPartition) DeleteDentry(req *DeleteDentryReq, p *Packet) (err erro
 		return
 	}
 	var r interface{}
+	trashEnable := true
 	if req.NoTrash || mp.isTrashDisable() {
-		r, err = mp.submit(p.Ctx(), opFSMDeleteDentry, p.RemoteWithReqID(), val, clientReq)
-	} else {
-		r, err = mp.submitTrash(p.Ctx(), opFSMDeleteDentry, p.RemoteWithReqID(), val, clientReq)
+		trashEnable = false
 	}
+	r, err = mp.submitWithRequestInfo(p.Ctx(), opFSMDeleteDentry, p.RemoteWithReqID(), val, trashEnable, clientReq)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return
@@ -148,11 +148,11 @@ func (mp *metaPartition) DeleteDentryBatch(req *BatchDeleteDentryReq, p *Packet)
 		return
 	}
 	var r interface{}
+	trashEnable := true
 	if req.NoTrash || mp.isTrashDisable() {
-		r, err = mp.submit(p.Ctx(), opFSMDeleteDentryBatch, p.RemoteWithReqID(), val, nil)
-	} else {
-		r, err = mp.submitTrash(p.Ctx(), opFSMDeleteDentryBatch, p.RemoteWithReqID(), val, nil)
+		trashEnable = false
 	}
+	r, err = mp.submit(p.Ctx(), opFSMDeleteDentryBatch, p.RemoteWithReqID(), val, trashEnable)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -241,7 +241,7 @@ func (mp *metaPartition) UpdateDentry(req *UpdateDentryReq, p *Packet) (err erro
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
-	resp, err := mp.submit(p.Ctx(), opFSMUpdateDentry, p.RemoteWithReqID(), val, nil)
+	resp, err := mp.submit(p.Ctx(), opFSMUpdateDentry, p.RemoteWithReqID(), val, false)
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return

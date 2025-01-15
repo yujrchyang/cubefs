@@ -355,7 +355,7 @@ func (mp *metaPartition) syncDelExtentsToFollowers(extDeletedCursor uint64, retr
 			return err
 		}
 	}
-	if _, err = mp.submit(context.Background(), opFSMExtentDelSyncV2, "", buf.Bytes(), nil); err != nil {
+	if _, err = mp.submit(context.Background(), opFSMExtentDelSyncV2, localAddr, buf.Bytes(), false); err != nil {
 		return err
 	}
 

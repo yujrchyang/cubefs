@@ -6512,11 +6512,16 @@ func (c *Cluster) boundS3BucketForVol(volName string, bucketInfo *proto.BoundBuc
 		return
 	}
 
+	parallelCh := make(chan struct{}, 10)
 	errCh = make(chan error, len(vol.MetaPartitions))
 	for _, mp := range vol.MetaPartitions {
+		parallelCh <- struct{}{}
 		wg.Add(1)
 		go func(mp *MetaPartition) {
-			defer wg.Done()
+			defer func() {
+				<- parallelCh
+				wg.Done()
+			}()
 			if errTmp := c.syncBoundS3BucketToMetaNode(mp, bucketInfo); errTmp != nil {
 				log.LogErrorf("send bound s3 bucket failed, volName: %s, bucketInfo: %v, partitionID: %v, err: %v",
 					volName, bucketInfo, mp.PartitionID, err)

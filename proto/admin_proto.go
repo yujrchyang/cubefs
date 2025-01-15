@@ -1796,7 +1796,7 @@ type BoundS3BucketToMetaNodeRequest struct {
 }
 
 func IsSameBucket(oldBucketInfo, newBucketInfo *BoundBucketInfo) bool {
-	if oldBucketInfo == nil {
+	if oldBucketInfo == nil || newBucketInfo == nil {
 		return false
 	}
 	if oldBucketInfo.BucketName == newBucketInfo.BucketName && oldBucketInfo.Region == newBucketInfo.Region &&

@@ -109,7 +109,7 @@ type MetaPartitionConfig struct {
 	RocksLogReVersedCnt  uint64 `json:"rocks_log_re_versed_cnt"`
 	RocksWalTTL          uint64 `json:"rocks_wal_ttl"`
 
-	PersistenceMode proto.PersistenceMode `json:"persistence_mode"`
+	PersistenceMode proto.PersistenceMode  `json:"persistence_mode"`
 	BoundBucketInfo *proto.BoundBucketInfo `json:"bound_bucket"`
 }
 
@@ -1205,7 +1205,7 @@ func (mp *metaPartition) freezeBitmapAllocator() {
 	data := make([]byte, 16)
 	binary.BigEndian.PutUint64(data[:8], uint64(freezeTime))
 	binary.BigEndian.PutUint64(data[8:], uint64(activeTime))
-	if _, err = mp.submit(context.Background(), opFSMFreezeBitmapAllocator, "", data, nil); err != nil {
+	if _, err = mp.submit(context.Background(), opFSMFreezeBitmapAllocator, localAddr, data, false); err != nil {
 		log.LogErrorf("freezeBitmapAllocator partitionID(%v) submit raft cmd failed:%v", mp.config.PartitionId, err)
 	}
 	log.LogDebugf("freezeBitmapAllocator submit freeze allocator cmd success, partitionID: %v", mp.config.PartitionId)
@@ -1215,7 +1215,7 @@ func (mp *metaPartition) freezeBitmapAllocator() {
 func (mp *metaPartition) updateBitmapAllocatorActiveTime(newActiveTime int64) {
 	data := make([]byte, 8)
 	binary.BigEndian.PutUint64(data[:8], uint64(newActiveTime))
-	if _, err := mp.submit(context.Background(), opFSMUpdateActiveTime, "", data, nil); err != nil {
+	if _, err := mp.submit(context.Background(), opFSMUpdateActiveTime, localAddr, data, false); err != nil {
 		log.LogErrorf("submit update allocator active time failed, partitionID: %v, err: %v", mp.config.PartitionId,
 			err)
 	}
@@ -1245,7 +1245,8 @@ func (mp *metaPartition) activeBitmapAllocator() {
 		return
 	}
 
-	if _, err := mp.submit(context.Background(), opFSMActiveBitmapAllocator, "", nil, nil); err != nil {
+	var data []byte
+	if _, err := mp.submit(context.Background(), opFSMActiveBitmapAllocator, localAddr, data, false); err != nil {
 		log.LogErrorf("submit active allocator raft cmd failed, partitionID: %v, err: %v", mp.config.PartitionId, err)
 		return
 	}
@@ -1423,7 +1424,7 @@ func (mp *metaPartition) UpdatePartition(ctx context.Context, req *UpdatePartiti
 		resp.Result = err.Error()
 		return
 	}
-	r, err := mp.submit(ctx, opFSMUpdatePartition, "", reqData, nil)
+	r, err := mp.submit(ctx, opFSMUpdatePartition, localAddr, reqData, false)
 	if err != nil {
 		resp.Status = proto.TaskFailed
 		resp.Result = err.Error()
@@ -1441,7 +1442,7 @@ func (mp *metaPartition) UpdatePartition(ctx context.Context, req *UpdatePartiti
 }
 
 func (mp *metaPartition) DecommissionPartition(ctx context.Context, req []byte) (err error) {
-	_, err = mp.submit(ctx, opFSMDecommissionPartition, "", req, nil)
+	_, err = mp.submit(ctx, opFSMDecommissionPartition, localAddr, req, false)
 	return
 }
 
@@ -1982,7 +1983,7 @@ func (mp *metaPartition) CorrectInodesAndDelInodesTotalSize(ctx context.Context,
 		err = fmt.Errorf("not leader")
 		return
 	}
-	_, err = mp.submit(ctx, opFSMCorrectInodesAndDelInodesTotalSize, "", data, nil)
+	_, err = mp.submit(ctx, opFSMCorrectInodesAndDelInodesTotalSize, localAddr, data, false)
 	if err != nil {
 		return
 	}
@@ -2187,7 +2188,7 @@ func (mp *metaPartition) BoundBucket(ctx context.Context, req *proto.BoundS3Buck
 	if err != nil {
 		return
 	}
-	r, err := mp.submit(ctx, opFSMBoundS3Bucket, "", reqData, nil)
+	r, err := mp.submit(ctx, opFSMBoundS3Bucket, mp.manager.metaNode.localAddr, reqData, false)
 	if err != nil {
 		return
 	}

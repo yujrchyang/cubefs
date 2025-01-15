@@ -20,6 +20,8 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -63,6 +65,30 @@ func (t ExtentType) String() string {
 
 func GenS3Key(cluster, volume string, volId, inodeId, partitionId, extentId uint64) string {
 	return fmt.Sprintf("/cubefs_%v/%v_%v/%v/%v/%v", cluster, volume, volId, inodeId, partitionId, extentId)
+}
+
+func ParseExtentKeyByS3Key(key string) (ek *MetaDelExtentKey, err error) {
+	parts := strings.Split(key, "/")
+	if len(parts) != 5 {
+		err = fmt.Errorf("unexpect key %s", key)
+		return
+	}
+	ek = new(MetaDelExtentKey)
+	ek.InodeId, err = strconv.ParseUint(parts[2], 10, 64)
+	if err != nil {
+		return
+	}
+
+	ek.PartitionId, err = strconv.ParseUint(parts[3], 10, 64)
+	if err != nil {
+		return
+	}
+
+	ek.ExtentId, err = strconv.ParseUint(parts[4], 10, 64)
+	if err != nil {
+		return
+	}
+	return
 }
 
 // ExtentKey defines the extent key struct.

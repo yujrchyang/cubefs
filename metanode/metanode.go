@@ -47,6 +47,7 @@ var (
 	configTotalMem       uint64
 	serverPort           string
 	ProcessUsedMem       uint64
+	localAddr            string
 )
 
 // The MetaNode manages the dentry and inode information of the meta partitions on a meta node.
@@ -404,6 +405,7 @@ func (m *MetaNode) register() (err error) {
 		log.LogErrorf("MetaNode register verify local ip failed: %v", err)
 		return
 	}
+	localAddr = m.localAddr
 	return
 }
 

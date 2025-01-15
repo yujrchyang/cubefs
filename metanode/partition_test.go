@@ -561,3 +561,10 @@ func TestMetaPartition_checkDirInodeNlink(t *testing.T) {
 	}
 
 }
+
+func TestNullBytes(t *testing.T) {
+	var data []byte = nil
+	if data == nil {
+
+	}
+}

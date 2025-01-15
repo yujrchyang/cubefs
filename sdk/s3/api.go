@@ -184,7 +184,7 @@ func (c *S3Client) DeleteObject(ctx context.Context, bucketName, key string) (er
 	return
 }
 
-func (c *S3Client) BatchDeleteObject(ctx context.Context, bucketName string, keys []string) (err error) {
+func (c *S3Client) BatchDeleteObject(ctx context.Context, bucketName string, keys []string) (deleteFailedKeys []string, err error) {
 	if len(keys) == 0 {
 		return
 	}
@@ -196,7 +196,8 @@ func (c *S3Client) BatchDeleteObject(ctx context.Context, bucketName string, key
 		})
 	}
 
-	_, err = c.s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
+	var deleteObjectsResult *s3.DeleteObjectsOutput
+	deleteObjectsResult, err = c.s3Client.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 		Bucket: aws.String(bucketName),
 		Delete: &types.Delete{
 			Objects: objectsToDelete,
@@ -204,6 +205,9 @@ func (c *S3Client) BatchDeleteObject(ctx context.Context, bucketName string, key
 	})
 	if err != nil {
 		log.LogErrorf("BatchDeleteObject delete objects failed, bucket: %s, keys: %s, err: %v", bucketName, keys, err)
+	}
+	for _, deleteFailed := range deleteObjectsResult.Errors {
+		deleteFailedKeys = append(deleteFailedKeys, *deleteFailed.Key)
 	}
 	return
 }
