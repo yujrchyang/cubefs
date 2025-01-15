@@ -3,8 +3,8 @@ package xbp
 import "testing"
 
 const (
-	TestAPIUser         = "cfs_test" //API用户 需要申请 + 添加到对应的流程中
-	TestAPISign         = "6f5e35bf05"
+	TestAPIUser         = "" //API用户 需要申请 + 添加到对应的流程中
+	TestAPISign         = ""
 	TestDomain          = "xbp-api-pre.jd.com" //预发环境域名
 	TestTicketProcessId = 1435
 )
