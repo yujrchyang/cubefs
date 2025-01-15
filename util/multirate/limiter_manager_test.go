@@ -3,6 +3,7 @@ package multirate
 import (
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/stretchr/testify/assert"
@@ -64,6 +65,18 @@ func TestLimiterManager(t *testing.T) {
 	}
 	check(t, ml, property, expect)
 	assert.Equal(t, concurrency, m.GetConcurrency().Count(int(proto.OpRead)))
+
+	assert.False(t, time.Since(m.forceUpdateTime) < forceUpdateSafetyInterval)
+	t.Run("force_update_limitInfo", func(t *testing.T) {
+		limitInfo, err := getLimitInfo("")
+		assert.NoError(t, err)
+		err = m.forceUpdateLimit(limitInfo)
+		assert.NoError(t, err)
+		check(t, ml, property, expect)
+	})
+
+	assert.True(t, time.Since(m.forceUpdateTime) < forceUpdateSafetyInterval)
+	m.forceUpdateTime = time.Now().Add(-forceUpdateSafetyInterval)
 
 	ratio = 90
 	concurrency = 5
