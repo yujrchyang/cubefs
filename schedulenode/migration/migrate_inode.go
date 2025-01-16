@@ -479,7 +479,8 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 	partCount := int(math.Ceil(float64(totalSize) / float64(minBlockSize)))
 	chunks := make([][]byte, partCount)
 
-	// 使用ek链片段中的第一个normal extent创建s3 extentKey
+	// 使用ek链片段中的第一个normalExtent创建s3 extentKey
+	// 如果不存在normalExtent，借助datanode创建一个并且删除掉
 	normalExtent, exist := migInode.findEkSegmentFirstNormalExtent()
 	if !exist {
 		log.LogWarnf("ReadFromDataNodeAndWriteToS3 did not find normal extent ino(%v) readRange(%v:%v) migEks(%v)",

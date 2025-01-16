@@ -31,6 +31,7 @@ const (
 	clusterName   = "chubaofs01"
 	ltptestVolume = "ltptest"
 	ltptestMaster = "192.168.0.11:17010,192.168.0.12:17010,192.168.0.13:17010"
+	dnProf        = 17320
 	size1M        = 1 * 1024 * 1024
 	size5M        = 5 * 1024 * 1024
 	size10M       = 10 * 1024 * 1024
@@ -2204,8 +2205,9 @@ func TestCreateNormalExtent(t *testing.T) {
 	if len(dpView.DataPartitions) == 0 {
 		t.FailNow()
 	}
+	var inode uint64 = 1
 	partitionId := dpView.DataPartitions[0].PartitionID
-	extID, err := createNormalExtent(mc, ltptestVolume, partitionId, 1)
+	extID, err := createNormalExtent(mc, ltptestVolume, partitionId, inode)
 	if err != nil {
 		assert.NoError(t, err)
 		return
@@ -2213,4 +2215,19 @@ func TestCreateNormalExtent(t *testing.T) {
 	if extID == 0 || proto.IsTinyExtent(extID) {
 		assert.FailNowf(t, "extentId invalid", "%v", extID)
 	}
+	eks := []proto.ExtentKey{
+		{PartitionId: partitionId, ExtentId: extID},
+	}
+	err = retryDeleteExtents(mc, ltptestVolume, partitionId, eks, inode)
+	if err != nil {
+		assert.NoError(t, err)
+		return
+	}
+	dpHost := fmt.Sprintf("%v:%v", strings.Split(dpView.DataPartitions[0].Hosts[0], ":")[0], dnProf)
+	dataClient := http_client.NewDataClient(dpHost, false)
+	extentInfo, err := dataClient.GetExtentInfo(partitionId, extID)
+	if err == nil {
+		assert.Error(t, err)
+	}
+	assert.Nil(t, extentInfo)
 }
