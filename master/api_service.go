@@ -375,8 +375,8 @@ func (m *Server) getLimitInfo(w http.ResponseWriter, r *http.Request) {
 		data             []byte
 		err              error
 	)
-	vol := r.FormValue(nameKey)
-	noCacheStr := r.FormValue(forceKey)
+	vol := r.FormValue(proto.NameKey)
+	noCacheStr := r.FormValue(proto.ForceKey)
 	noCache, _ := strconv.ParseBool(noCacheStr)
 	if noCache {
 		m.getLimitInfoNoCache(w, r, vol)
@@ -5249,7 +5249,7 @@ func extractTest(r *http.Request) (test bool, err error) {
 
 func extractForce(r *http.Request) (force bool, err error) {
 	var value string
-	if value = r.FormValue(forceKey); value == "" {
+	if value = r.FormValue(proto.ForceKey); value == "" {
 		force = false
 		return
 	}

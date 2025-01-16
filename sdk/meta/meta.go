@@ -120,7 +120,7 @@ type MetaWrapper struct {
 	ac              *authSDK.AuthClient
 	conns           *connpool.ConnectPool
 	connConfig      *proto.ConnConfig
-	retryTimeSec	int64
+	retryTimeSec    int64
 
 	volNotExistCount  int32
 	crossRegionHAType proto.CrossRegionHAType
@@ -422,14 +422,18 @@ func (mw *MetaWrapper) startUpdateLimiterConfigWithRecover() (err error) {
 		case <-mw.closeCh:
 			return
 		case <-timer.C:
-			mw.updateLimiterConfig()
+			mw.updateLimiterConfig(false)
 			timer.Reset(updateConfigTicket)
 		}
 	}
 }
 
-func (mw *MetaWrapper) updateLimiterConfig() {
-	limitInfo, err := mw.mc.AdminAPI().GetLimitInfo(mw.volname)
+func (mw *MetaWrapper) updateLimiterConfig(noCache bool) {
+	getLimitInfoFunc := mw.mc.AdminAPI().GetLimitInfo
+	if noCache {
+		getLimitInfoFunc = mw.mc.AdminAPI().GetLimitInfoNoCache
+	}
+	limitInfo, err := getLimitInfoFunc(mw.volname)
 	if err != nil {
 		log.LogWarnf("meta: updateLimiterConfig vol(%v) err(%s)", mw.volname, err.Error())
 		return

@@ -14,7 +14,7 @@ import (
 func Test_TruncateWithoutOpen(t *testing.T) {
 	testName := "Test_TruncateWithoutOpen"
 	testPath := fmt.Sprintf("/cfs/mnt/%s", testName)
-	mw.Create_ll(nil, proto.RootIno, testName, 0666, 0, 0, nil)
+	create(testName)
 	size := int64(123)
 	err := os.Truncate(testPath, size)
 	assert.Nil(t, err)
@@ -37,9 +37,10 @@ func Test_Flock(t *testing.T) {
 	data, _ := json.Marshal(flock)
 	err := xattr.Set(path, proto.XATTR_FLOCK, data)
 	assert.Nil(t, err)
+	os.RemoveAll(path + "/d1")
 	err = os.Mkdir(path+"/d1", 0666)
 	assert.Nil(t, err)
-	f, err := os.Create(path + "/d1/f1")
+	f, err := osCreate(path + "/d1/f1")
 	_, err = f.Write([]byte("abc"))
 	assert.Nil(t, err)
 	f.Close()

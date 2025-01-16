@@ -4,11 +4,13 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cubefs/cubefs/client/cache"
+	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/sdk/meta"
 	"github.com/cubefs/cubefs/util/log"
@@ -78,6 +80,16 @@ func creatExtentClient() (mw *meta.MetaWrapper, ec *data.ExtentClient, err error
 		fmt.Printf("NewExtentClient failed: err(%v), vol(%v)", err, ltptestVolume)
 	}
 	return
+}
+
+func create(name string) (*proto.InodeInfo, error) {
+	mw.Delete_ll(ctx, proto.RootIno, name, false)
+	return mw.Create_ll(ctx, proto.RootIno, name, 0644, 0, 0, nil)
+}
+
+func osCreate(path string) (*os.File, error) {
+	os.Remove(path)
+	return os.Create(path)
 }
 
 func calcAuthKey(key string) (authKey string) {

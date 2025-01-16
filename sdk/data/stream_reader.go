@@ -132,6 +132,10 @@ func (s *Streamer) GetExtents(ctx context.Context) error {
 	return s.extents.Refresh(ctx, s.inode, s.client.getExtents, false)
 }
 
+func (s *Streamer) RefreshExtentsNoModifyAccessTime(ctx context.Context) error {
+	return s.extents.Refresh(ctx, s.inode, s.client.getExtentsNoModifyAccessTime, false)
+}
+
 func (s *Streamer) ForceRefreshExtentsCache(ctx context.Context) error {
 	return s.extents.Refresh(ctx, s.inode, s.client.getExtents, true)
 }

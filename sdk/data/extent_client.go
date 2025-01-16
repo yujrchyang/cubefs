@@ -102,30 +102,31 @@ func init() {
 }
 
 type ExtentConfig struct {
-	Volume              string
-	Masters             []string
-	FollowerRead        bool
-	NearRead            bool
-	ReadRate            int64
-	WriteRate           int64
-	TinySize            int
-	ExtentSize          int
-	AutoFlush           bool
-	UpdateExtentsOnRead bool
-	UseLastExtent       bool
-	OnInodeGet          InodeGetFunc
-	OnInsertExtentKey   InsertExtentKeyFunc
-	OnGetExtents        GetExtentsFunc
-	OnTruncate          TruncateFunc
-	OnEvictIcache       EvictIcacheFunc
-	OnPutIcache         PutIcacheFunc
-	OnInodeMergeExtents InodeMergeExtentsFunc
-	MetaWrapper         *meta.MetaWrapper
-	StreamerSegCount    int64
-	ExtentClientType    ExtentClientType
-	ReadAheadMemMB      int64
-	ReadAheadWindowMB   int64
-	EnableMonitor       bool
+	Volume                         string
+	Masters                        []string
+	FollowerRead                   bool
+	NearRead                       bool
+	ReadRate                       int64
+	WriteRate                      int64
+	TinySize                       int
+	ExtentSize                     int
+	AutoFlush                      bool
+	UpdateExtentsOnRead            bool
+	UseLastExtent                  bool
+	OnInodeGet                     InodeGetFunc
+	OnInsertExtentKey              InsertExtentKeyFunc
+	OnGetExtents                   GetExtentsFunc
+	OnGetExtentsNoModifyAccessTime GetExtentsFunc
+	OnTruncate                     TruncateFunc
+	OnEvictIcache                  EvictIcacheFunc
+	OnPutIcache                    PutIcacheFunc
+	OnInodeMergeExtents            InodeMergeExtentsFunc
+	MetaWrapper                    *meta.MetaWrapper
+	StreamerSegCount               int64
+	ExtentClientType               ExtentClientType
+	ReadAheadMemMB                 int64
+	ReadAheadWindowMB              int64
+	EnableMonitor                  bool
 }
 
 // ExtentClient defines the struct of the extent client.
@@ -144,14 +145,15 @@ type ExtentClient struct {
 	dpTimeoutCntThreshold int
 	dpConsistencyMode     proto.ConsistencyMode
 
-	dataWrapper     *Wrapper
-	metaWrapper     *meta.MetaWrapper
-	inodeGet        InodeGetFunc
-	insertExtentKey InsertExtentKeyFunc
-	getExtents      GetExtentsFunc
-	truncate        TruncateFunc
-	evictIcache     EvictIcacheFunc //May be null, must check before using
-	putIcache       PutIcacheFunc   //May be null, must check before using
+	dataWrapper                  *Wrapper
+	metaWrapper                  *meta.MetaWrapper
+	inodeGet                     InodeGetFunc
+	insertExtentKey              InsertExtentKeyFunc
+	getExtents                   GetExtentsFunc
+	getExtentsNoModifyAccessTime GetExtentsFunc
+	truncate                     TruncateFunc
+	evictIcache                  EvictIcacheFunc //May be null, must check before using
+	putIcache                    PutIcacheFunc   //May be null, must check before using
 
 	followerRead bool
 
@@ -211,6 +213,7 @@ func NewExtentClient(config *ExtentConfig, dataState *DataState) (client *Extent
 	client.streamerConcurrentMap = InitConcurrentStreamerMap(config.StreamerSegCount)
 	client.insertExtentKey = config.OnInsertExtentKey
 	client.getExtents = config.OnGetExtents
+	client.getExtentsNoModifyAccessTime = config.OnGetExtentsNoModifyAccessTime
 	client.truncate = config.OnTruncate
 	client.evictIcache = config.OnEvictIcache
 	client.putIcache = config.OnPutIcache
@@ -333,6 +336,14 @@ func (client *ExtentClient) RefreshExtentsCache(ctx context.Context, inode uint6
 		return nil
 	}
 	return s.GetExtents(ctx)
+}
+
+func (client *ExtentClient) RefreshExtentsCacheNoModifyAccessTime(ctx context.Context, inode uint64) error {
+	s := client.GetStreamer(inode)
+	if s == nil {
+		return nil
+	}
+	return s.RefreshExtentsNoModifyAccessTime(ctx)
 }
 
 func (client *ExtentClient) ForceRefreshExtentsCache(ctx context.Context, inode uint64) error {
@@ -659,7 +670,8 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 				!strings.Contains(err.Error(), proto.GetResultMsg(proto.OpNotExistErr))) {
 			break
 		}
-		if err = s.GetExtents(ctx); err != nil {
+		if getExtentsErr := s.GetExtents(ctx); getExtentsErr != nil {
+			err = getExtentsErr
 			return
 		}
 		log.LogWarnf("Retry read after refresh extent keys: ino(%v) offset(%v) size(%v) result size(%v) hasHole(%v) err(%v)",
@@ -737,7 +749,7 @@ func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 		retryHosts         map[string]bool
 		dataPort, metaPort string
 	)
-	client.updateConfig()
+	client.updateConfig(false)
 	timer := time.NewTicker(updateConfigTicker)
 	defer timer.Stop()
 
@@ -753,7 +765,7 @@ func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 			return
 
 		case <-timer.C:
-			client.updateConfig()
+			client.updateConfig(false)
 			retryHosts = client.retryHostsPingTime(retryHosts, dataPort, metaPort)
 
 		case <-refreshHostLatency.C:
@@ -764,8 +776,12 @@ func (client *ExtentClient) startUpdateConfigWithRecover() (err error) {
 	}
 }
 
-func (client *ExtentClient) updateConfig() {
-	limitInfo, err := client.masterClient.AdminAPI().GetLimitInfo(client.dataWrapper.volName)
+func (client *ExtentClient) updateConfig(noCache bool) {
+	getLimitInfoFunc := client.masterClient.AdminAPI().GetLimitInfo
+	if noCache {
+		getLimitInfoFunc = client.masterClient.AdminAPI().GetLimitInfoWithNoCache
+	}
+	limitInfo, err := getLimitInfoFunc(client.dataWrapper.volName)
 	if err != nil {
 		log.LogWarnf("[updateConfig] %s", err.Error())
 		return

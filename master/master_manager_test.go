@@ -2,13 +2,13 @@ package master
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"net/http"
 	"testing"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/raftstore"
+	"github.com/stretchr/testify/assert"
 	rproto "github.com/tiglabs/raft/proto"
 )
 
@@ -92,7 +92,7 @@ func snapshotTest(t *testing.T) {
 func TestSnapshotWithClusterName(t *testing.T) {
 	defer func() {
 		reqURL := fmt.Sprintf("%v%v?%s=%s",
-			hostAddr, proto.AdminSetClusterName, forceKey, "true")
+			hostAddr, proto.AdminSetClusterName, proto.ForceKey, "true")
 		process(reqURL, t)
 	}()
 	var err error

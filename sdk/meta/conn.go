@@ -226,7 +226,7 @@ func (mw *MetaWrapper) sendToMetaPartition(ctx context.Context, mp *MetaPartitio
 	failedAddr = addr
 	for i := 0; i < SendRetryLimit; i++ {
 		for j, addr = range mp.Members {
-			if addr == failedAddr {
+			if i == 0 && addr == failedAddr {
 				continue
 			}
 			resp, needCheck, err = mw.sendToHost(ctx, mp, req, addr)
