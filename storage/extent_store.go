@@ -1561,6 +1561,9 @@ func (s *ExtentStore) AutoComputeExtentCrc() {
 	sort.Sort(ExtentInfoArr(needUpdateCrcExtents))
 	for _, ei := range needUpdateCrcExtents {
 		e, err := s.ExtentWithHeader(ei)
+		if err != nil {
+			continue
+		}
 		extentCrc, err := e.autoComputeExtentCrc()
 		if err != nil {
 			continue
