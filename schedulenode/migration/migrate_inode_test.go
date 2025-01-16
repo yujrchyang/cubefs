@@ -2132,7 +2132,7 @@ func TestMigrateInode_checkEkSegmentHasNormalExtent(t *testing.T) {
 	migInode, _ := NewMigrateInode(mpOp, inode)
 
 	// 测试有normal extent的情况
-	hasNormalExtent := migInode.checkEkSegmentHasCubeFSExtent(0, 3)
+	hasNormalExtent := migInode.checkEkSegmentHasNormalExtent(0, 3)
 	if !hasNormalExtent {
 		t.Fatal("Expected normal extent, got no normal extent")
 	}
@@ -2143,7 +2143,7 @@ func TestMigrateInode_checkEkSegmentHasNormalExtent(t *testing.T) {
 		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
 		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 7, CRC: uint32(proto.CubeFSExtent)},
 	}
-	hasNormalExtent = migInode.checkEkSegmentHasCubeFSExtent(0, 3)
+	hasNormalExtent = migInode.checkEkSegmentHasNormalExtent(0, 3)
 	if hasNormalExtent {
 		t.Fatal("Expected no normal extent, got normal extent")
 	}
