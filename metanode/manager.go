@@ -26,6 +26,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -487,7 +488,7 @@ func (m *metadataManager) MetaPartitionCount() int {
 func (m *metadataManager) syncMetaPartitionsRocksDBWalLog() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf("sync rocks db wal log panic, %v", r)
+			log.LogErrorf("sync rocks db wal log panic, %v, stack info : \n%s", r, string(debug.Stack()))
 			exporter.WarningAppendKey(PanicBackGroundKey, "sync rocks db wal log panic")
 		}
 	}()
@@ -558,7 +559,7 @@ func (m *metadataManager) doCheckNoLeaderPartitionsSchedule() {
 func (m *metadataManager) checkNoLeaderPartitions() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf("check no leader partitions panic, %v", r)
+			log.LogErrorf("check no leader partitions panic, %v, stack info : \n%s", r, string(debug.Stack()))
 			exporter.WarningAppendKey(PanicBackGroundKey, "check no leader partitions panic")
 		}
 	}()
@@ -610,7 +611,7 @@ func (m *metadataManager) cleanOldDeleteEKRecordFileSchedule() {
 func (m *metadataManager) doCleanOldDeleteEKRecordFile() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf("clean del ek record file panic, %v", r)
+			log.LogErrorf("clean del ek record file panic, %v, stack info : \n%s", r, string(debug.Stack()))
 			exporter.WarningAppendKey(PanicBackGroundKey, "clean del ek record file panic")
 		}
 	}()

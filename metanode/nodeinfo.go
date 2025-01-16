@@ -1,6 +1,7 @@
 package metanode
 
 import (
+	"runtime/debug"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -265,6 +266,9 @@ func (m *MetaNode) updateRaftParamFromLocal(logSize, logCap int) {
 }
 
 func (m *MetaNode) updateSyncWALOnUnstableEnableState(enableState bool) {
+	if m.raftStore == nil {
+		return
+	}
 	if m.raftStore.IsSyncWALOnUnstable() == enableState {
 		return
 	}
@@ -432,7 +436,7 @@ func (m *MetaNode) stopUpdateNodeInfo() {
 func (m *MetaNode) updateDeleteLimitInfo() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf("update node info panic, recover: %v", r)
+			log.LogErrorf("update node info panic, recover: %v, stack info : \n%s", r, string(debug.Stack()))
 			exporter.WarningAppendKey(PanicBackGroundKey, "update node info panic")
 		}
 	}()
@@ -477,7 +481,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 func (m *MetaNode) updateClusterMap() {
 	defer func() {
 		if r := recover(); r != nil {
-			log.LogErrorf("update node info panic, recover: %v", r)
+			log.LogErrorf("update node info panic, recover: %v, stack info : \n%s", r, string(debug.Stack()))
 			exporter.WarningAppendKey(PanicBackGroundKey, "update node info panic")
 		}
 	}()
