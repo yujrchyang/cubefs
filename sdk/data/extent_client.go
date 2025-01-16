@@ -665,10 +665,10 @@ func (client *ExtentClient) Read(ctx context.Context, inode uint64, data []byte,
 
 	for i := 0; i < maxReadRetryLimit; i++ {
 		read, hasHole, err = s.read(ctx, data, offset, size)
-		// todo 如果读s3不存在，也要重新拉ek重试（考虑到回迁的情况）。看一下s3报的是什么错，也要重试
 		if err == nil ||
 			(!strings.Contains(err.Error(), proto.ExtentNotFoundError.Error()) &&
-				!strings.Contains(err.Error(), proto.GetResultMsg(proto.OpNotExistErr))) {
+				!strings.Contains(err.Error(), proto.GetResultMsg(proto.OpNotExistErr)) &&
+				!strings.Contains(err.Error(), proto.ErrExternalS3NotFoundError.Error())) {
 			break
 		}
 		if getExtentsErr := s.GetExtents(ctx); getExtentsErr != nil {

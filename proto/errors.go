@@ -113,6 +113,7 @@ var (
 	ErrVolNameIsEmpty            = errors.New("vol name is empty")
 	ErrFlashGroupIsEmpty         = errors.New("flash group is empty")
 	ErrLimitInfoIsNotCached      = errors.New("limit info  is not cached")
+	ErrExternalS3NotFoundError   = errors.New("external s3 does not exist")
 )
 
 // http response error code and error message definitions

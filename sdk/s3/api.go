@@ -137,7 +137,6 @@ func (c *S3Client) GetObject(ctx context.Context, bucketName, key string, offset
 	var getObjectOutput *s3.GetObjectOutput
 	getObjectOutput, err = c.s3Client.GetObject(ctx, getObjectInput)
 	if err != nil {
-		log.LogErrorf("")
 		return
 	}
 	defer getObjectOutput.Body.Close()

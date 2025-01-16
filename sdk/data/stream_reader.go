@@ -19,11 +19,13 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/sdk/common"
 	"github.com/cubefs/cubefs/sdk/flash"
+	"github.com/cubefs/cubefs/util/errors"
 	"github.com/cubefs/cubefs/util/exporter"
 	"github.com/cubefs/cubefs/util/log"
 	"golang.org/x/net/context"
@@ -341,14 +343,17 @@ func (s *Streamer) readFromDataNode(ctx context.Context, req *ExtentRequest, off
 func (s *Streamer) readFromS3(ctx context.Context, req *ExtentRequest) (readBytes int, err error) {
 	s3Key := proto.GenS3Key(s.client.dataWrapper.clusterName, s.client.dataWrapper.volName, s.client.dataWrapper.volID, s.inode, req.ExtentKey.PartitionId, req.ExtentKey.ExtentId)
 	s3Offset := req.FileOffset - req.ExtentKey.FileOffset + req.ExtentKey.ExtentOffset
-	s3Client := s.client.dataWrapper.externalS3Client
-	bucketName := s.client.dataWrapper.externalS3BucketName.ToString()
+	s3Client, bucketName := s.client.dataWrapper.getExternalS3Client()
 	if s3Client == nil || bucketName == "" {
-		// todo 重新拉取一下重试？
-		err = fmt.Errorf("s3 client or bucket not init")
+		log.LogWarnf("ino(%v) req(%v) get s3 client failed, bucketName(%v)", s.inode, req, bucketName)
+		err = proto.ErrExternalS3NotFoundError
 		return
 	}
 	if readBytes, err = s3Client.GetObject(ctx, bucketName, s3Key, s3Offset, uint64(req.Size), req.Data); err != nil {
+		log.LogWarnf("ino(%v) req(%v) GetObject err: %v, s3[bucket(%v) key(%v) off(%v) size(%v)]", s.inode, req, err, bucketName, s3Key, s3Offset, req.Size)
+		if strings.Contains(err.Error(), "StatusCode: 404") {
+			err = errors.Trace(err, proto.ErrExternalS3NotFoundError.Error())
+		}
 		return
 	}
 	if readBytes < req.Size {

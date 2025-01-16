@@ -796,18 +796,7 @@ func verifyLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, offset i
 	if err1 != err2 || n1 != n2 {
 		return fmt.Errorf("read file off(%v) size(%v) cfs(%v %v) local(%v %v)", offset, size, n2, err2, n1, err1)
 	}
-	incorrectBegin, incorrectEnd := n1, -1
-	for j := 0; j < n1; j++ {
-		if readLocalData[j] != readCFSData[j] {
-			if incorrectBegin > j {
-				incorrectBegin = j
-			}
-			if incorrectEnd < j {
-				incorrectEnd = j
-			}
-		}
-	}
-	if incorrectEnd != -1 {
+	if incorrectBegin, incorrectEnd, isSame := isSameData(readLocalData, readCFSData, n1); !isSame {
 		return fmt.Errorf("read offset(%v) size(%v) cfs(%v %v) local(%v %v) incorrect(%v~%v)\n",
 			offset, size, n2, err2, n1, err1, incorrectBegin, incorrectEnd)
 	}
@@ -821,4 +810,26 @@ func truncateLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, trunca
 		return fmt.Errorf("truncate file ino(%v) to size(%v) err(%v)", inoID, truncateSize, err)
 	}
 	return nil
+}
+
+func isSameData(expectData, actualData []byte, dataSize int) (incorrectBegin, incorrectEnd int, isSame bool) {
+	if len(expectData) != dataSize || len(actualData) != dataSize {
+		return
+	}
+	incorrectBegin, incorrectEnd = dataSize, -1
+	for j := 0; j < dataSize; j++ {
+		if expectData[j] != actualData[j] {
+			if incorrectBegin > j {
+				incorrectBegin = j
+			}
+			if incorrectEnd < j {
+				incorrectEnd = j
+			}
+		}
+	}
+	if incorrectEnd != -1 {
+		return
+	}
+	isSame = true
+	return
 }

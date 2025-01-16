@@ -51,6 +51,7 @@ const (
 	RefreshHostLatencyInterval       = time.Hour
 	defaultTwoZoneHTypePingRule      = "400"
 	externalS3MaxAttempts			 = 100
+	externalS3ConfigGetCount		 = 30
 )
 
 type hostStatus struct {
@@ -1309,8 +1310,22 @@ func (w *Wrapper) updateExternalS3Client(bucketInfo *proto.BoundBucketInfo) {
 			bucketInfo.GetAccessKey(), bucketInfo.GetSecretAccessKey(), false, externalS3MaxAttempts, s3.RetryModeStandard)
 		w.externalS3Client = newS3Client
 		log.LogInfof("update external s3 client: %v", bucketInfo)
-		// todo 如果更新时候正赶上读取？看看返回什么错误码重试下？
 	}
+}
+
+func (w *Wrapper) getExternalS3Client() (s3Client *s3.S3Client, bucketName string) {
+	for i := 0; i < externalS3ConfigGetCount; i++ {
+		s3Client = w.externalS3Client
+		bucketName = w.externalS3BucketName.ToString()
+		if s3Client != nil && bucketName != "" {
+			return
+		}
+		// 如果没有从master拉取到s3配置信息，等待周期性拉取
+		time.Sleep(10 * time.Second)
+		msg := fmt.Sprintf("get s3 client failed, bucketName(%v)", bucketName)
+		common.HandleUmpAlarm(w.clusterName, w.volName, "getExternalS3Client", msg)
+	}
+	return
 }
 
 func distanceFromLocal(b string) int {
