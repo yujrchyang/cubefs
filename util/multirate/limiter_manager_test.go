@@ -40,7 +40,7 @@ func TestLimiterManager(t *testing.T) {
 		}
 		return
 	}
-	m, _ := newLimiterManager(cluster, ModuleDataNode, zone, getLimitInfo, false)
+	m, _ := newLimiterManager(cluster, ModuleDataNode, zone, getLimitInfo, true)
 	// stop auto update limit info
 	m.Stop()
 	ml := m.GetLimiter()

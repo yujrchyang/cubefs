@@ -295,7 +295,9 @@ func newLimiterManager(cluster, module, zoneName string, getLimitInfo GetLimitIn
 	}
 	m.wg.Add(1)
 	go m.update()
-	http.HandleFunc(ForceUpdateLimitInfo, m.handleForceUpdateLimitInfo)
+	if withHttp {
+		http.HandleFunc(ForceUpdateLimitInfo, m.handleForceUpdateLimitInfo)
+	}
 	return m, nil
 }
 
