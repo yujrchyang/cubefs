@@ -3,6 +3,7 @@ package migration
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/common"
 	"hash"
 	"hash/crc32"
 	"io"
@@ -95,9 +96,9 @@ func validateEkSegment(migInode *MigrateInode, start, end int) error {
 		return fmt.Errorf("checkEkSegmentHasCubeFSExtent ino:%v ek start:%v end:%v migDirection:%v can't have cubeFS extent", migInode.name, start, end, migInode.migDirection)
 	}
 	// 如果是迁入s3，ek链中必须有normal extent
-	if migInode.migDirection == S3FileMigrate && !migInode.checkEkSegmentHasNormalExtent(start, end) {
-		return fmt.Errorf("checkEkSegmentHasNormalExtent ino:%v ek start:%v end:%v migDirection:%v has no normal extent", migInode.name, start, end, migInode.migDirection)
-	}
+	//if migInode.migDirection == S3FileMigrate && !migInode.checkEkSegmentHasNormalExtent(start, end) {
+	//	return fmt.Errorf("checkEkSegmentHasNormalExtent ino:%v ek start:%v end:%v migDirection:%v has no normal extent", migInode.name, start, end, migInode.migDirection)
+	//}
 	return nil
 }
 
@@ -708,22 +709,9 @@ func retryDeleteExtents(mc *master.MasterClient, volume string, partitionId uint
 }
 
 func deleteExtents(mc *master.MasterClient, volume string, partitionId uint64, eks []proto.ExtentKey, inodeId uint64) (err error) {
-	var partition *proto.DataPartitionInfo
-	partition, err = mc.AdminAPI().GetDataPartition(volume, partitionId)
-	if err != nil {
-		err = errors.NewErrorf("get data partition:%v, err:%v", partitionId, err)
-		return
-	}
-	var (
-		conn *net.TCPConn
-	)
-	conn, err = gConnPool.GetConnect(partition.Hosts[0])
+	conn, partition, err := getPartitionAndHostConn(mc, volume, partitionId)
 	defer func() {
-		if err != nil {
-			gConnPool.PutConnect(conn, true)
-		} else {
-			gConnPool.PutConnect(conn, false)
-		}
+		recycleHostConn(err, conn)
 	}()
 	if err != nil {
 		err = errors.NewErrorf("get conn from pool partition:%v, err:%v", partitionId, err)
@@ -763,4 +751,61 @@ func deleteExtents(mc *master.MasterClient, volume string, partitionId uint64, e
 		err = errors.NewErrorf("deleteExtents %v response: %v", packet.GetUniqueLogId(), packet.GetResultMsg())
 	}
 	return
+}
+
+func createNormalExtent(mc *master.MasterClient, volume string, partitionId uint64, inodeId uint64) (extID uint64, err error) {
+	conn, partition, err := getPartitionAndHostConn(mc, volume, partitionId)
+	defer func() {
+		recycleHostConn(err, conn)
+	}()
+	if err != nil {
+		err = errors.NewErrorf("get conn from pool partition:%v, err:%v", partitionId, err)
+		return
+	}
+	allHosts := partition.Hosts
+	reqPacket := common.NewCreateExtentPacket(context.Background(), partition.PartitionID, allHosts, 0, inodeId)
+	if err = reqPacket.WriteToConn(conn, proto.WriteDeadlineTime); err != nil {
+		err = errors.NewErrorf("creatNormalExtent write to dataNode uniqueLogId(%v) hosts(%v) reqPacket(%v) err(%v)",
+			reqPacket.GetUniqueLogId(), allHosts, reqPacket, err)
+		return
+	}
+	replyPacket := new(common.Packet)
+	if err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime*10); err != nil {
+		err = errors.NewErrorf("creatNormalExtent read response from dataNode uniqueLogId(%v) hosts(%v) replyPacket(%v) err(%v)",
+			replyPacket.GetUniqueLogId(), allHosts, replyPacket, err)
+		return
+	}
+	if !replyPacket.IsValidWriteReply(reqPacket) {
+		err = errors.NewErrorf("creatNormalExtent mismatch packet reqPacket(%v) and replyPacket(%v) host(%v)", reqPacket, replyPacket, allHosts)
+		return
+	}
+	if replyPacket.ResultCode != proto.OpOk {
+		err = errors.NewErrorf("creatNormalExtent ResultCode NOK reqPacket(%v) host(%v) ResultCode(%v)",
+			reqPacket, allHosts, replyPacket.GetResultMsg())
+		return 0, err
+	}
+	extID = replyPacket.ExtentID
+	if extID <= 0 {
+		err = errors.New(fmt.Sprintf("creatNormalExtent illegal extID(%v) from (%v)", extID, allHosts))
+		return
+	}
+	return extID, nil
+}
+
+func getPartitionAndHostConn(mc *master.MasterClient, volume string, partitionId uint64) (conn *net.TCPConn, partition *proto.DataPartitionInfo, err error) {
+	partition, err = mc.AdminAPI().GetDataPartition(volume, partitionId)
+	if err != nil {
+		err = errors.NewErrorf("get data partition:%v, err:%v", partitionId, err)
+		return
+	}
+	conn, err = gConnPool.GetConnect(partition.Hosts[0])
+	return
+}
+
+func recycleHostConn(err error, conn *net.TCPConn) {
+	if err != nil {
+		gConnPool.PutConnect(conn, true)
+	} else {
+		gConnPool.PutConnect(conn, false)
+	}
 }

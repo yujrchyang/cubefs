@@ -2174,8 +2174,8 @@ func TestMigrateInode_findEkSegmentFirstNormalExtent(t *testing.T) {
 
 	// 不存在normal extent，应该返回err
 	migInode.startIndex, migInode.endIndex = 0, 3
-	extent, err := migInode.findEkSegmentFirstNormalExtent()
-	assert.Error(t, err)
+	extent, exist := migInode.findEkSegmentFirstNormalExtent()
+	assert.False(t, exist)
 
 	migInode = &MigrateInode{
 		extents: []proto.ExtentKey{
@@ -2188,8 +2188,29 @@ func TestMigrateInode_findEkSegmentFirstNormalExtent(t *testing.T) {
 
 	// 存在normal extent
 	migInode.startIndex, migInode.endIndex = 0, 3
-	extent, err = migInode.findEkSegmentFirstNormalExtent()
-	assert.NoError(t, err)
+	extent, exist = migInode.findEkSegmentFirstNormalExtent()
+	assert.True(t, exist)
 	assert.Equal(t, extent.PartitionId, uint64(9))
 	assert.Equal(t, extent.ExtentId, uint64(100))
+}
+
+func TestCreateNormalExtent(t *testing.T) {
+	mc := master.NewMasterClient(strings.Split(ltptestMaster, ","), false)
+	dpView, err := mc.ClientAPI().GetDataPartitions(ltptestVolume, nil)
+	if err != nil {
+		assert.NoError(t, err)
+		return
+	}
+	if len(dpView.DataPartitions) == 0 {
+		t.FailNow()
+	}
+	partitionId := dpView.DataPartitions[0].PartitionID
+	extID, err := createNormalExtent(mc, ltptestVolume, partitionId, 1)
+	if err != nil {
+		assert.NoError(t, err)
+		return
+	}
+	if extID == 0 || proto.IsTinyExtent(extID) {
+		assert.FailNowf(t, "extentId invalid", "%v", extID)
+	}
 }

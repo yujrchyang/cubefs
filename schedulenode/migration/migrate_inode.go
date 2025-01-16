@@ -296,7 +296,7 @@ func (migInode *MigrateInode) LookupEkSegment() (err error) {
 	}
 
 	migInode.searchMaxExtentIndex(start, &end)
-	if err := validateEkSegment(migInode, start, end); err != nil {
+	if err = validateEkSegment(migInode, start, end); err != nil {
 		return err
 	}
 
@@ -480,11 +480,14 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 	chunks := make([][]byte, partCount)
 
 	// 使用ek链片段中的第一个normal extent创建s3 extentKey
-	normalExtent, err := migInode.findEkSegmentFirstNormalExtent()
-	if err != nil {
-		err = fmt.Errorf("ReadFromDataNodeAndWriteToS3 find normal extent ino(%v) readRange(%v:%v) err(%v)",
-			migInode.name, migInode.startIndex, migInode.endIndex, err)
-		return
+	normalExtent, exist := migInode.findEkSegmentFirstNormalExtent()
+	if !exist {
+		log.LogWarnf("ReadFromDataNodeAndWriteToS3 did not find normal extent ino(%v) readRange(%v:%v) migEks(%v)",
+			migInode.name, migInode.startIndex, migInode.endIndex, migInode.extents[migInode.startIndex:migInode.endIndex])
+		normalExtent, err = migInode.createAndDeleteNormalExtentForGenS3Key()
+		if err != nil {
+			return
+		}
 	}
 
 	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.vol.VolId, migInode.inodeInfo.Inode, normalExtent.PartitionId, normalExtent.ExtentId)
@@ -532,14 +535,39 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 	return
 }
 
-func (migInode *MigrateInode) findEkSegmentFirstNormalExtent() (normalExtent proto.ExtentKey, err error) {
+func (migInode *MigrateInode) createAndDeleteNormalExtentForGenS3Key() (normalExtent proto.ExtentKey, err error) {
+	partitionId :=  migInode.extents[migInode.startIndex].PartitionId
+	extID, err := createNormalExtent(migInode.mpOp.mc, migInode.vol.Name, partitionId, migInode.inodeInfo.Inode)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("create normal extent partitionId(%v) extentId(%v)", partitionId, extID)
+	// creat extent successfully and delete this extent
+	eks := []proto.ExtentKey{
+		{PartitionId: partitionId, ExtentId: extID},
+	}
+	err = retryDeleteExtents(migInode.mpOp.mc, migInode.vol.Name, partitionId, eks, migInode.inodeInfo.Inode)
+	if err != nil {
+		// delete failed, no impact on migration
+		log.LogWarnf("deleteNormalExtent ino(%v) partitionId(%v) extentKeys(%v) err(%v)", migInode.name, partitionId, eks, err)
+		err = nil
+	}
+	normalExtent.PartitionId = partitionId
+	normalExtent.ExtentId = extID
+	return
+}
+
+func (migInode *MigrateInode) findEkSegmentFirstNormalExtent() (normalExtent proto.ExtentKey, exist bool) {
 	migEks := migInode.extents[migInode.startIndex:migInode.endIndex]
 	for _, ek := range migEks {
+		if ek.ExtentId == 0 {
+			continue
+		}
 		if !proto.IsTinyExtent(ek.ExtentId) {
-			return ek, nil
+			return ek, true
 		}
 	}
-	return proto.ExtentKey{}, fmt.Errorf("normal extent does not exist")
+	return proto.ExtentKey{}, false
 }
 
 func (migInode *MigrateInode) ReadFromS3AndWriteToDataNode() (err error) {
