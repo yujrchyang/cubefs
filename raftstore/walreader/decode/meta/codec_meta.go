@@ -399,6 +399,18 @@ func (decoder *MetadataCommandDecoder) DecodeCommand(command []byte) (values com
 			inodes = append(inodes, binary.BigEndian.Uint64(inodeData))
 		}
 		columnValAttrs.SetValue(fmt.Sprintf("RecoverDeletedInodes: %v", inodes))
+	case metadataOpFSMBatchCleanDeletedInode:
+		var batch metanode.FSMDeletedINodeBatch
+		if batch, err = metanode.FSMDeletedINodeBatchUnmarshal(opKVData.V); err != nil {
+			return
+		}
+		columnValOp.SetValue("BatchCleanDeleteInode")
+		inodes := make([]uint64, 0, len(batch))
+		for _, deletedInode := range batch {
+			inodeData, _ := deletedInode.Marshal()
+			inodes = append(inodes, binary.BigEndian.Uint64(inodeData))
+		}
+		columnValAttrs.SetValue(fmt.Sprintf("CleanDeletedInodes: %v", inodes))
 	default:
 		columnValOp.SetValue(strconv.Itoa(int(opKVData.Op)))
 		columnValAttrs.SetValue("N/A")
