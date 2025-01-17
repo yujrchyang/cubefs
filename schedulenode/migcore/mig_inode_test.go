@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"github.com/cubefs/cubefs/sdk/s3"
 	"hash/crc32"
 	"io"
 	"os"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/cubefs/cubefs/sdk/s3"
 
 	util_sdk "github.com/cubefs/cubefs/cli/cmd/util/sdk"
 	"github.com/cubefs/cubefs/proto"
@@ -62,14 +63,14 @@ func NewMockTask(localIp string, task *proto.Task, masterClient *master.MasterCl
 	return
 }
 
-func (m *MockTask) GetInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigrateDirection, err error) {
+func (m *MockTask) GetInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigDirection, err error) {
 	return
 }
 func (m *MockTask) GetInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err error) {
 	return
 }
 
-func (m *MockTask) UpdateStatisticsInfo(info MigrateRecord) {
+func (m *MockTask) UpdateStatisticsInfo(info MigRecord) {
 }
 
 func (m *MockTask) GetTaskType() proto.WorkerType {
@@ -198,7 +199,7 @@ var clusterInfo = &ClusterInfo{
 }
 
 func TestGetSSSDEkSegment(t *testing.T) {
-	inodeOperation := new(MigrateInode)
+	inodeOperation := new(MigInode)
 	inodeOperation.migDirection = SSDToHDDFileMigrate
 	inodeOperation.vol = &VolumeInfo{
 		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
@@ -266,7 +267,7 @@ func TestGetSSSDEkSegment(t *testing.T) {
 }
 
 func TestLookupMaxSegment(t *testing.T) {
-	inodeOperation := new(MigrateInode)
+	inodeOperation := new(MigInode)
 	inodeOperation.migDirection = CompactFileMigrate
 	inodeOperation.vol = &VolumeInfo{
 		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
@@ -318,7 +319,7 @@ func TestLookupMaxSegment(t *testing.T) {
 }
 
 func TestLookupEkS3MigDirection(t *testing.T) {
-	inodeOperation := new(MigrateInode)
+	inodeOperation := new(MigInode)
 	inodeOperation.migDirection = S3FileMigrate
 	inodeOperation.vol = &VolumeInfo{
 		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
@@ -395,7 +396,7 @@ func TestLookupEkS3MigDirection(t *testing.T) {
 }
 
 func TestLookupEkHddMigDirection(t *testing.T) {
-	inodeOperation := new(MigrateInode)
+	inodeOperation := new(MigInode)
 	inodeOperation.migDirection = SSDToHDDFileMigrate
 	inodeOperation.vol = &VolumeInfo{
 		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
@@ -461,7 +462,7 @@ func TestLookupEkHddMigDirection(t *testing.T) {
 }
 
 func TestLookupEkSegment(t *testing.T) {
-	inodeOperation := new(MigrateInode)
+	inodeOperation := new(MigInode)
 	inodeOperation.migDirection = SSDToHDDFileMigrate
 	inodeOperation.vol = &VolumeInfo{
 		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
@@ -873,7 +874,7 @@ func readDatanodeWriteS3(fileSize int, t *testing.T) {
 	}
 }
 
-func createMigrateInode(fileSize int, testFile string, t *testing.T) (inodeOp *MigrateInode) {
+func createMigrateInode(fileSize int, testFile string, t *testing.T) (inodeOp *MigInode) {
 	mw, ec, _ := creatHelper(t)
 	stat := getFileStat(t, testFile)
 	inodeInfo := &proto.InodeInfo{
@@ -924,7 +925,7 @@ func createMigrateInode(fileSize int, testFile string, t *testing.T) (inodeOp *M
 }
 
 func TestDeleteOldExtents(t *testing.T) {
-	inodeOperation := &MigrateInode{
+	inodeOperation := &MigInode{
 		inodeInfo: &proto.InodeInfo{
 			Inode: 10,
 		},
@@ -993,7 +994,7 @@ func TestCalcCmpExtents(t *testing.T) {
 	}
 	// mpId uint64, inode *proto.InodeExtents, vol *CompactVolumeInfo
 	var (
-		inodeOperation *MigrateInode
+		inodeOperation *MigInode
 		err            error
 	)
 	task := &proto.Task{
@@ -1022,9 +1023,9 @@ func TestCalcCmpExtents(t *testing.T) {
 			results[index][1] == inodeOperation.endIndex &&
 			results[index][2] == int(inodeOperation.stage)) {
 			fmt.Printf("TestCalcCmpExtents result mismatch, startIndex:endIndex:stage expect:%v,%v,%v, actual:%v,%v,%v\n",
-				results[index][0], results[index][1], migrateInodeStage(results[index][2]), inodeOperation.startIndex, inodeOperation.endIndex, inodeOperation.stage)
+				results[index][0], results[index][1], MigInodeStage(results[index][2]), inodeOperation.startIndex, inodeOperation.endIndex, inodeOperation.stage)
 			t.Fatalf("TestCalcCmpExtents result mismatch, startIndex:endIndex:stage expect:%v,%v,%v, actual:%v,%v,%v",
-				results[index][0], results[index][1], migrateInodeStage(results[index][2]), inodeOperation.startIndex, inodeOperation.endIndex, inodeOperation.stage)
+				results[index][0], results[index][1], MigInodeStage(results[index][2]), inodeOperation.startIndex, inodeOperation.endIndex, inodeOperation.stage)
 		}
 		index++
 		if inodeOperation.stage == InodeMigStopped {
@@ -1581,7 +1582,7 @@ func TestCompareReplicasInodeEksEqual(t *testing.T) {
 
 func TestInitExtentMaxIndex(t *testing.T) {
 	items := [][]uint64{{1, 1}, {1, 1}, {2, 1}, {9, 10}, {1, 1}, {2, 1}, {3, 1}, {9, 10}, {7, 6}}
-	migInode := &MigrateInode{
+	migInode := &MigInode{
 		extentMaxIndex: make(map[string]int),
 	}
 	for _, item := range items {
@@ -1600,7 +1601,7 @@ func TestInitExtentMaxIndex(t *testing.T) {
 
 func TestSearchMaxExtentIndex(t *testing.T) {
 	items := [][]uint64{{1, 1}, {1, 1}, {2, 1}, {9, 10}, {1, 1}, {2, 1}, {3, 1}, {9, 10}, {7, 6}}
-	migInode := &MigrateInode{
+	migInode := &MigInode{
 		extentMaxIndex: make(map[string]int),
 	}
 	for _, item := range items {
@@ -1641,7 +1642,7 @@ func TestSearchMaxExtentIndex(t *testing.T) {
 
 func TestCheckEkSegmentHasHole(t *testing.T) {
 	items := [][]uint64{{1, 1}, {2, 2}, {4, 1}, {9, 10}, {19, 1}, {20, 1}, {22, 5}, {27, 10}, {37, 6}}
-	migInode := &MigrateInode{}
+	migInode := &MigInode{}
 	for _, item := range items {
 		migInode.extents = append(migInode.extents, proto.ExtentKey{
 			FileOffset: item[0],
@@ -1676,7 +1677,7 @@ func TestCheckEkSegmentHasHole(t *testing.T) {
 
 func TestCheckEkSegmentHasTinyExtent(t *testing.T) {
 	items := []uint64{100, 101, 105, 200, 300, 60, 900, 35}
-	migInode := &MigrateInode{}
+	migInode := &MigInode{}
 	for _, item := range items {
 		migInode.extents = append(migInode.extents, proto.ExtentKey{
 			ExtentId: item,
@@ -1713,7 +1714,7 @@ func TestCheckEkSegmentHasTinyExtent(t *testing.T) {
 }
 
 func TestCheckEkSegmentHasS3Extent(t *testing.T) {
-	migInode := &MigrateInode{}
+	migInode := &MigInode{}
 	extentCnt := 10
 	s3Index1 := 5
 	s3Index2 := 9
@@ -1747,7 +1748,7 @@ func TestCheckEkSegmentHasS3Extent(t *testing.T) {
 
 func TestGetDelExtentKeys(t *testing.T) {
 	items := [][]uint64{{1, 1}, {1, 1}, {2, 1}, {9, 10}, {1, 1}, {2, 1}, {3, 1}, {9, 10}, {7, 6}}
-	migInode := &MigrateInode{
+	migInode := &MigInode{
 		extentMaxIndex: make(map[string]int),
 	}
 	for _, item := range items {
@@ -2247,7 +2248,7 @@ func TestIsNotUnlockExtentErr(t *testing.T) {
 }
 
 func TestMigrateInode_findEkSegmentFirstNormalExtent(t *testing.T) {
-	migInode := &MigrateInode{
+	migInode := &MigInode{
 		extents: []proto.ExtentKey{
 			{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
 			{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
@@ -2260,7 +2261,7 @@ func TestMigrateInode_findEkSegmentFirstNormalExtent(t *testing.T) {
 	extent, exist := migInode.findEkSegmentFirstNormalExtent()
 	assert.False(t, exist)
 
-	migInode = &MigrateInode{
+	migInode = &MigInode{
 		extents: []proto.ExtentKey{
 			{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
 			{FileOffset: 1024, Size: 1024, PartitionId: 9, ExtentId: 100, CRC: uint32(proto.CubeFSExtent)},

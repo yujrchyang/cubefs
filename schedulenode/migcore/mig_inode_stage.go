@@ -1,9 +1,9 @@
 package migration
 
-type migrateInodeStage uint32
+type MigInodeStage uint32
 
 const (
-	Init migrateInodeStage = iota
+	Init MigInodeStage = iota
 	OpenFile
 	LookupEkSegment
 	LockExtents
@@ -13,7 +13,7 @@ const (
 	InodeMigStopped
 )
 
-func (s migrateInodeStage) String() string {
+func (s MigInodeStage) String() string {
 	switch s {
 	case Init:
 		return "Init"

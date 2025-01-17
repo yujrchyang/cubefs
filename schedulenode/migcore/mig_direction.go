@@ -1,9 +1,9 @@
 package migration
 
-type MigrateDirection uint8
+type MigDirection uint8
 
 const (
-	NoneFileMigrate MigrateDirection = iota
+	NoneFileMigrate MigDirection = iota
 	SSDToHDDFileMigrate
 	HDDToSSDFileMigrate
 	CompactFileMigrate
@@ -16,7 +16,7 @@ const (
 	NoneMediumType = "none"
 )
 
-func (m MigrateDirection) String() string {
+func (m MigDirection) String() string {
 	switch m {
 	case NoneFileMigrate:
 		return "NoneFileMigrate"

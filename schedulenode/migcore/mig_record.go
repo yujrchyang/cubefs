@@ -1,6 +1,6 @@
 package migration
 
-type MigrateRecord struct {
+type MigRecord struct {
 	MigCnt      uint64
 	MigInodeCnt uint64
 	MigEkCnt    uint64

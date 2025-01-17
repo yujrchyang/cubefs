@@ -6,9 +6,9 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 )
 
-type Task interface {
-	UpdateStatisticsInfo(info MigrateRecord)
-	GetInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigrateDirection, err error)
+type MigTask interface {
+	UpdateStatisticsInfo(info MigRecord)
+	GetInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigDirection, err error)
 	GetInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err error)
 	GetTaskType() proto.WorkerType
 	GetTaskId() uint64
