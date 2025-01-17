@@ -1679,12 +1679,29 @@ func (s *ExtentStore) CheckHole(extent uint64, offset, size int64) (crossHole bo
 	if !proto.IsTinyExtent(extent) {
 		return false, nil
 	}
-	var newOff, newEnd int64
-	newOff, newEnd, err = s.TinyExtentAvaliOffset(extent, offset)
-	if err != nil {
+	var e *Extent
+	ei, _ := s.getExtentInfoByExtentID(extent)
+	if e, err = s.ExtentWithHeader(ei); err != nil {
 		return
 	}
-	if newOff > offset || newEnd < offset+size {
+	if offset+size > e.dataSize {
+		return false, NewParameterMismatchErr(fmt.Sprintf("offset=%v size=%v", offset, size))
+	}
+
+	start := offset
+	if start%(unit.KB*4) > 0 {
+		start = start - (start % (unit.KB * 4))
+	}
+	var holeOffset int64
+	holeOffset, err = e.tinyExtentSeekHole(start)
+	if err != nil {
+		//读到文件末尾未发现空洞
+		if strings.Contains(err.Error(), syscall.ENXIO.Error()) {
+			return false, nil
+		}
+		return false, err
+	}
+	if holeOffset < offset+size {
 		return true, nil
 	}
 	return false, nil

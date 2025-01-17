@@ -783,6 +783,16 @@ func (e *Extent) tinyExtentAvaliOffset(offset int64) (newOffset, newEnd int64, e
 	return
 }
 
+func (e *Extent) tinyExtentSeekHole(offset int64) (holeOffset int64, err error) {
+	e.Lock()
+	defer e.Unlock()
+	holeOffset, err = e.file.Seek(offset, SEEK_HOLE)
+	if err != nil {
+		return
+	}
+	return
+}
+
 func (e *Extent) tinyExtentAvaliAndHoleOffset(offset int64) (dataOffset, holeOffset int64, err error) {
 	e.Lock()
 	defer e.Unlock()
