@@ -10,7 +10,7 @@ import (
 )
 
 func init() {
-	log.InitLog("/tmp/cfs/sdk/master/Logs", "test", log.DebugLevel, nil)
+	log.InitLog("/cfs/log", "unittest", log.DebugLevel, nil)
 }
 
 func TestDataPartitionAPI(t *testing.T) {

@@ -51,6 +51,10 @@ func init() {
 		vol: vol,
 		mc:  master.NewMasterClient(strings.Split(ltptestMaster, ","), false),
 	}
+	_, err = log.InitLog("/cfs/log", "unittest", log.DebugLevel, nil)
+	if err != nil {
+		panic(fmt.Sprintf("init log in /cfs/log failed"))
+	}
 }
 
 func getInodeATimePolicies(cluster, volName string) (layerPolicies []interface{}, exist bool) {

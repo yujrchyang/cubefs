@@ -1574,7 +1574,7 @@ func TestSetNodeInfoHandler(t *testing.T) {
 	if !assert.Equalf(t, uint64(deleteRecord), server.cluster.dnFixTinyDeleteRecordLimit, "set fixTinyDeleteRecordKey to %v failed", deleteRecord) {
 		return
 	}
-	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reqURL = fmt.Sprintf("%v%v?force=true", hostAddr, proto.AdminGetLimitInfo)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
 
@@ -1589,7 +1589,7 @@ func TestSetDeleteMarkDelVolInterval(t *testing.T) {
 	interval := 2 * 60 * 60
 	reqURL := fmt.Sprintf("%v%v?%v=%v", hostAddr, proto.AdminSetNodeInfo, proto.DeleteMarkDelVolIntervalKey, interval)
 	process(reqURL, t)
-	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reqURL = fmt.Sprintf("%v%v?force=true", hostAddr, proto.AdminGetLimitInfo)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
 
@@ -1601,7 +1601,7 @@ func TestSetDeleteMarkDelVolInterval(t *testing.T) {
 	interval = 10
 	reqURL = fmt.Sprintf("%v%v?%v=%v", hostAddr, proto.AdminSetNodeInfo, proto.DeleteMarkDelVolIntervalKey, interval)
 	processWithError(reqURL, t)
-	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reqURL = fmt.Sprintf("%v%v?force=true", hostAddr, proto.AdminGetLimitInfo)
 	reply = processReturnRawReply(reqURL, t)
 	limitInfo = &proto.LimitInfo{}
 
@@ -2204,7 +2204,7 @@ func TestSetReadDirLimitNum(t *testing.T) {
 	if !assert.Equalf(t, uint64(readDirLimitNum), server.cluster.cfg.MetaNodeReadDirLimitNum, "set readDirLimitNum to %v failed", readDirLimitNum) {
 		return
 	}
-	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reqURL = fmt.Sprintf("%v%v?force=true", hostAddr, proto.AdminGetLimitInfo)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
 	err := json.Unmarshal(reply.Data, limitInfo)
@@ -2220,7 +2220,7 @@ func TestSetDataNodeRepairTaskCountZoneLimit(t *testing.T) {
 	if !assert.Equalf(t, limitNum, server.cluster.cfg.DataNodeRepairTaskCountZoneLimit[zone], "set zone:%v DataNodeRepairTaskCountZoneLimit to %v failed", zone, limitNum) {
 		return
 	}
-	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reqURL = fmt.Sprintf("%v%v?force=true", hostAddr, proto.AdminGetLimitInfo)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
 	err := json.Unmarshal(reply.Data, limitInfo)
@@ -2229,7 +2229,7 @@ func TestSetDataNodeRepairTaskCountZoneLimit(t *testing.T) {
 }
 
 func TestSetDataNodeRepairTaskLimit(t *testing.T) {
-	limitInfoReqURL := fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	limitInfoReqURL := fmt.Sprintf("%v%v?force=true", hostAddr, proto.AdminGetLimitInfo)
 	reply := processReturnRawReply(limitInfoReqURL, t)
 	limitInfo := &proto.LimitInfo{}
 	err := json.Unmarshal(reply.Data, limitInfo)
@@ -3089,7 +3089,7 @@ func TestSetMonitorTime(t *testing.T) {
 			summarySecond, server.cluster.cfg.MonitorSummarySec, reportSecond, server.cluster.cfg.MonitorReportSec)
 		return
 	}
-	reqURL = fmt.Sprintf("%v%v", hostAddr, proto.AdminGetLimitInfo)
+	reqURL = fmt.Sprintf("%v%v?force=true", hostAddr, proto.AdminGetLimitInfo)
 	fmt.Println(reqURL)
 	reply := processReturnRawReply(reqURL, t)
 	limitInfo := &proto.LimitInfo{}
