@@ -1,4 +1,4 @@
-package migration
+package migcore
 
 import (
 	"encoding/json"
@@ -24,20 +24,20 @@ import (
 	"golang.org/x/net/context"
 )
 
-func (migInode *MigInode) DealActionErr(errCode int, err error) {
+func (mi *MigInode) DealActionErr(errCode int, err error) {
 	if err == nil {
 		return
 	}
-	migInode.statisticsInfo.MigErrCode = errCode
-	migInode.statisticsInfo.MigErrCnt += 1
-	migInode.statisticsInfo.MigErrMsg = err.Error()
+	mi.statisticsInfo.MigErrCode = errCode
+	mi.statisticsInfo.MigErrCnt += 1
+	mi.statisticsInfo.MigErrMsg = err.Error()
 	return
 }
 
-func (migInode *MigInode) initExtentMaxIndex() {
-	for i, ek := range migInode.extents {
+func (mi *MigInode) initExtentMaxIndex() {
+	for i, ek := range mi.extents {
 		key := dpIdExtentIdKey(ek.PartitionId, ek.ExtentId)
-		migInode.extentMaxIndex[key] = i
+		mi.extentMaxIndex[key] = i
 	}
 }
 
@@ -103,77 +103,77 @@ func validateEkSegment(migInode *MigInode, start, end int) error {
 	return nil
 }
 
-func (migInode *MigInode) searchMaxExtentIndex(start int, end *int) {
-	if *end < len(migInode.extents) {
+func (mi *MigInode) searchMaxExtentIndex(start int, end *int) {
+	if *end < len(mi.extents) {
 		maxIndex := 0
-		for _, ek := range migInode.extents[start:*end] {
+		for _, ek := range mi.extents[start:*end] {
 			key := dpIdExtentIdKey(ek.PartitionId, ek.ExtentId)
-			index := migInode.extentMaxIndex[key]
+			index := mi.extentMaxIndex[key]
 			if index > maxIndex {
 				maxIndex = index
 			}
 		}
 		if maxIndex >= *end {
-			log.LogDebugf("extentMaxIndex ino:%v before reset start:%v end:%v maxIndex:%v", migInode.name, start, *end, maxIndex)
+			log.LogDebugf("extentMaxIndex ino:%v before reset start:%v end:%v maxIndex:%v", mi.name, start, *end, maxIndex)
 			*end = maxIndex + 1
-			migInode.lastMigEkIndex = *end
+			mi.lastMigEkIndex = *end
 		} else {
-			log.LogDebugf("extentMaxIndex ino:%v after reset start:%v end:%v maxIndex:%v", migInode.name, start, *end, maxIndex)
+			log.LogDebugf("extentMaxIndex ino:%v after reset start:%v end:%v maxIndex:%v", mi.name, start, *end, maxIndex)
 			return
 		}
-		migInode.searchMaxExtentIndex(start, end)
+		mi.searchMaxExtentIndex(start, end)
 	}
 }
 
-func (migInode *MigInode) readAndWriteSmallDataToS3(offset, totalSize uint64, s3Key string, chunks [][]byte) error {
+func (mi *MigInode) readAndWriteSmallDataToS3(offset, totalSize uint64, s3Key string, chunks [][]byte) error {
 	ctx := context.Background()
 	buff := make([]byte, totalSize)
-	readN, _, err := migInode.extentClient.Read(ctx, migInode.inodeInfo.Inode, buff, offset, int(totalSize))
+	readN, _, err := mi.extentClient.Read(ctx, mi.inodeInfo.Inode, buff, offset, int(totalSize))
 	if err != nil && err != io.EOF {
 		return err
 	}
 	if readN <= 0 {
 		return fmt.Errorf("readAndWriteSmallDataToS3 read small data from datanode extent ino(%v) s3Key(%v), totalSize(%v), readN(%v), readOffset(%v), readSize(%v)",
-			migInode.name, s3Key, totalSize, readN, offset, totalSize)
+			mi.name, s3Key, totalSize, readN, offset, totalSize)
 	}
-	if err = migInode.vol.S3Client.PutObject(ctx, migInode.vol.Bucket, s3Key, buff[:readN]); err != nil {
+	if err = mi.vol.S3Client.PutObject(ctx, mi.vol.Bucket, s3Key, buff[:readN]); err != nil {
 		return err
 	}
 	chunks[0] = buff[:readN]
 	log.LogDebugf("readAndWriteSmallDataToS3 write small data ino(%v) s3Key(%v), totalSize(%v), readN(%v), readOffset(%v), readSize(%v)",
-		migInode.name, s3Key, totalSize, readN, offset, readN)
+		mi.name, s3Key, totalSize, readN, offset, readN)
 	return nil
 }
 
-func (migInode *MigInode) readAndWriteLargeDataToS3(offset, totalSize uint64, minBlockSize, partCount int, s3Key string, chunks [][]byte) error {
+func (mi *MigInode) readAndWriteLargeDataToS3(offset, totalSize uint64, minBlockSize, partCount int, s3Key string, chunks [][]byte) error {
 	ctx := context.Background()
 	chunksMutex := sync.Mutex{}
-	err := migInode.vol.S3Client.UploadByPart(ctx, migInode.vol.Bucket, s3Key, partCount, UploadByPartNumOfParallel, func(index int) (data []byte, err error) {
+	err := mi.vol.S3Client.UploadByPart(ctx, mi.vol.Bucket, s3Key, partCount, UploadByPartNumOfParallel, func(index int) (data []byte, err error) {
 		readSize := minBlockSize
 		if index == partCount-1 {
 			readSize = int(totalSize - uint64(index*minBlockSize))
 		}
 		readOffset := offset + uint64(index*minBlockSize)
 		buff := make([]byte, readSize)
-		readN, _, err := migInode.extentClient.Read(ctx, migInode.inodeInfo.Inode, buff, readOffset, readSize)
+		readN, _, err := mi.extentClient.Read(ctx, mi.inodeInfo.Inode, buff, readOffset, readSize)
 		if err != nil && err != io.EOF {
 			return nil, err
 		}
 		if readN <= 0 {
 			return nil, fmt.Errorf("readAndWriteLargeDataToS3 read big data from datanode extent ino(%v) s3Key(%v), totalSize(%v) partIndex(%v), readN(%v), readOffset(%v), readSize(%v)",
-				migInode.name, s3Key, totalSize, index, readN, readOffset, readSize)
+				mi.name, s3Key, totalSize, index, readN, readOffset, readSize)
 		}
 		chunksMutex.Lock()
 		chunks[index] = buff[:readN]
 		chunksMutex.Unlock()
 		log.LogDebugf("readAndWriteLargeDataToS3 write big data ino(%v) s3Key(%v), totalSize(%v) partIndex(%v), readN(%v), readOffset(%v), readSize(%v)",
-			migInode.name, s3Key, totalSize, index, readN, readOffset, readSize)
+			mi.name, s3Key, totalSize, index, readN, readOffset, readSize)
 		return buff[:readN], nil
 	})
 	return err
 }
 
-func (migInode *MigInode) doReadAndWriteTo(ctx context.Context, ek proto.ExtentKey, fileOffset uint64, size uint64, crc hash.Hash32, writeTotal *int) error {
+func (mi *MigInode) doReadAndWriteTo(ctx context.Context, ek proto.ExtentKey, fileOffset uint64, size uint64, crc hash.Hash32, writeTotal *int) error {
 	var (
 		firstWrite               = true
 		readSize          uint64 = unit.BlockSize
@@ -186,7 +186,7 @@ func (migInode *MigInode) doReadAndWriteTo(ctx context.Context, ek proto.ExtentK
 		newEk             *proto.ExtentKey
 	)
 
-	switch migInode.migDirection {
+	switch mi.migDirection {
 	case ReverseS3FileMigrate:
 		readStartOffset, totalSize = ek.ExtentOffset, uint64(ek.Size)
 	default:
@@ -205,14 +205,14 @@ func (migInode *MigInode) doReadAndWriteTo(ctx context.Context, ek proto.ExtentK
 			readSize = remainingSize
 		}
 
-		readN, err := migInode.readData(ctx, ek, readOffset, readSize, buff)
+		readN, err := mi.readData(ctx, ek, readOffset, readSize, buff)
 		if err != nil {
 			return err
 		}
 
 		if readN > 0 {
 			_, _ = crc.Write(buff[:readN])
-			err = migInode.writeToDataNode(ctx, &dp, &newEk, &firstWrite, &writeFileOffset, &extentWriteOffset, buff[:readN], writeTotal)
+			err = mi.writeToDataNode(ctx, &dp, &newEk, &firstWrite, &writeFileOffset, &extentWriteOffset, buff[:readN], writeTotal)
 			if err != nil {
 				return err
 			}
@@ -224,49 +224,49 @@ func (migInode *MigInode) doReadAndWriteTo(ctx context.Context, ek proto.ExtentK
 	return nil
 }
 
-func (migInode *MigInode) readData(ctx context.Context, ek proto.ExtentKey, readOffset, readSize uint64, buff []byte) (readN int, err error) {
-	if migInode.migDirection == ReverseS3FileMigrate {
-		readN, err = migInode.readDataFromS3(ctx, ek.PartitionId, ek.ExtentId, readOffset, readSize, buff)
+func (mi *MigInode) readData(ctx context.Context, ek proto.ExtentKey, readOffset, readSize uint64, buff []byte) (readN int, err error) {
+	if mi.migDirection == ReverseS3FileMigrate {
+		readN, err = mi.readDataFromS3(ctx, ek.PartitionId, ek.ExtentId, readOffset, readSize, buff)
 	} else {
-		readN, _, err = migInode.extentClient.Read(ctx, migInode.inodeInfo.Inode, buff, readOffset, int(readSize))
+		readN, _, err = mi.extentClient.Read(ctx, mi.inodeInfo.Inode, buff, readOffset, int(readSize))
 	}
 	return
 }
 
-func (migInode *MigInode) readDataFromS3(ctx context.Context, partitionId, extentId, readOffset, readSize uint64, buff []byte) (readN int, err error) {
-	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.vol.VolId, migInode.inodeInfo.Inode, partitionId, extentId)
-	readN, err = migInode.vol.S3Client.GetObject(ctx, migInode.vol.Bucket, s3Key, readOffset, readSize, buff)
+func (mi *MigInode) readDataFromS3(ctx context.Context, partitionId, extentId, readOffset, readSize uint64, buff []byte) (readN int, err error) {
+	s3Key := proto.GenS3Key(mi.vol.ClusterName, mi.vol.Name, mi.vol.VolId, mi.inodeInfo.Inode, partitionId, extentId)
+	readN, err = mi.vol.S3Client.GetObject(ctx, mi.vol.Bucket, s3Key, readOffset, readSize, buff)
 	return
 }
 
-func (migInode *MigInode) writeToDataNode(ctx context.Context, dp **data.DataPartition, newEk **proto.ExtentKey, firstWrite *bool, writeFileOffset *uint64, extentWriteOffset *int, buff []byte, writeTotal *int) error {
+func (mi *MigInode) writeToDataNode(ctx context.Context, dp **data.DataPartition, newEk **proto.ExtentKey, firstWrite *bool, writeFileOffset *uint64, extentWriteOffset *int, buff []byte, writeTotal *int) error {
 	var (
 		writeN int
 		err    error
 	)
 
 	if *firstWrite {
-		*dp, writeN, *newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, *writeFileOffset, buff, migInode.DirectWrite)
+		*dp, writeN, *newEk, err = mi.extentClient.SyncWrite(ctx, mi.inodeInfo.Inode, *writeFileOffset, buff, mi.DirectWrite)
 		if err != nil {
 			return err
 		}
-		if !checkMigDirectionMediumTypeIsMatch(migInode, *dp) {
+		if !checkMigDirectionMediumTypeIsMatch(mi, *dp) {
 			return fmt.Errorf("writeToDataNode syncWrite dpId(%v) incorrect medium type, volume(%v) mp(%v) inode(%v) migType(%v)",
-				(*dp).PartitionID, migInode.vol.Name, migInode.task.GetMpId(), migInode.inodeInfo.Inode, migInode.migDirection)
+				(*dp).PartitionID, mi.vol.Name, mi.task.GetMpId(), mi.inodeInfo.Inode, mi.migDirection)
 		}
-		migInode.newEks = append(migInode.newEks, *newEk)
+		mi.newEks = append(mi.newEks, *newEk)
 		*firstWrite = false
 	} else {
-		writeN, err = migInode.extentClient.SyncWriteToSpecificExtent(ctx, *dp, migInode.inodeInfo.Inode, *writeFileOffset, *extentWriteOffset, buff, int((*newEk).ExtentId), migInode.DirectWrite)
+		writeN, err = mi.extentClient.SyncWriteToSpecificExtent(ctx, *dp, mi.inodeInfo.Inode, *writeFileOffset, *extentWriteOffset, buff, int((*newEk).ExtentId), mi.DirectWrite)
 		if err != nil {
-			log.LogWarnf("writeToDataNode syncWriteToSpecificExtent ino(%v), err(%v)", migInode.name, err)
-			*dp, writeN, *newEk, err = migInode.extentClient.SyncWrite(ctx, migInode.inodeInfo.Inode, *writeFileOffset, buff, migInode.DirectWrite)
+			log.LogWarnf("writeToDataNode syncWriteToSpecificExtent ino(%v), err(%v)", mi.name, err)
+			*dp, writeN, *newEk, err = mi.extentClient.SyncWrite(ctx, mi.inodeInfo.Inode, *writeFileOffset, buff, mi.DirectWrite)
 			*extentWriteOffset = 0
 			if err != nil {
 				return err
 			}
-			migInode.newEks = append(migInode.newEks, *newEk)
-			err = migInode.checkNewEkCountValid()
+			mi.newEks = append(mi.newEks, *newEk)
+			err = mi.checkNewEkCountValid()
 			if err != nil {
 				return err
 			}
@@ -282,34 +282,34 @@ func (migInode *MigInode) writeToDataNode(ctx context.Context, dp **data.DataPar
 	return nil
 }
 
-func (migInode *MigInode) getMigBeforeAfterDataCRC(migEks, newEks []proto.ExtentKey) (oldReplicateDataCRC, newReplicateDataCRC []uint32, err error) {
-	switch migInode.migDirection {
+func (mi *MigInode) getMigBeforeAfterDataCRC(migEks, newEks []proto.ExtentKey) (oldReplicateDataCRC, newReplicateDataCRC []uint32, err error) {
+	switch mi.migDirection {
 	case HDDToSSDFileMigrate, SSDToHDDFileMigrate, CompactFileMigrate:
-		if oldReplicateDataCRC, err = migInode.getReplicaDataCRC(migEks); err != nil {
+		if oldReplicateDataCRC, err = mi.getReplicaDataCRC(migEks); err != nil {
 			return
 		}
-		if newReplicateDataCRC, err = migInode.getReplicaDataCRC(newEks); err != nil {
+		if newReplicateDataCRC, err = mi.getReplicaDataCRC(newEks); err != nil {
 			return
 		}
 	case S3FileMigrate:
-		if oldReplicateDataCRC, err = migInode.getReplicaDataCRC(migEks); err != nil {
+		if oldReplicateDataCRC, err = mi.getReplicaDataCRC(migEks); err != nil {
 			return
 		}
-		if newReplicateDataCRC, err = migInode.getS3DataCRC(newEks); err != nil {
+		if newReplicateDataCRC, err = mi.getS3DataCRC(newEks); err != nil {
 			return
 		}
 	case ReverseS3FileMigrate:
-		if oldReplicateDataCRC, err = migInode.getS3DataCRC(migEks); err != nil {
+		if oldReplicateDataCRC, err = mi.getS3DataCRC(migEks); err != nil {
 			return
 		}
-		if newReplicateDataCRC, err = migInode.getReplicaDataCRC(newEks); err != nil {
+		if newReplicateDataCRC, err = mi.getReplicaDataCRC(newEks); err != nil {
 			return
 		}
 	}
 	return
 }
 
-func (migInode *MigInode) getReplicaDataCRC(extentKeys []proto.ExtentKey) (replicateCrc []uint32, err error) {
+func (mi *MigInode) getReplicaDataCRC(extentKeys []proto.ExtentKey) (replicateCrc []uint32, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			stack := make([]byte, 1024*8)
@@ -337,7 +337,7 @@ func (migInode *MigInode) getReplicaDataCRC(extentKeys []proto.ExtentKey) (repli
 				readSize = remainingSize
 			}
 
-			allReplicateEkData, err = migInode.extentClient.ReadExtentAllHost(context.Background(), migInode.inodeInfo.Inode, ek, int(readOffset), int(readSize))
+			allReplicateEkData, err = mi.extentClient.ReadExtentAllHost(context.Background(), mi.inodeInfo.Inode, ek, int(readOffset), int(readSize))
 			if err != nil && err != io.EOF {
 				return nil, err
 			}
@@ -351,7 +351,7 @@ func (migInode *MigInode) getReplicaDataCRC(extentKeys []proto.ExtentKey) (repli
 
 			if len(allReplicateEkData) != len(replicateHash32) {
 				return nil, fmt.Errorf("getReplicaDataCRC inode:%v readOffset:%v readSize:%v, allReplicateEkData length is %v but replicateHash32 length is %v err:%v",
-					migInode.name, readOffset, readSize, len(allReplicateEkData), len(replicateHash32), err)
+					mi.name, readOffset, readSize, len(allReplicateEkData), len(replicateHash32), err)
 			}
 
 			for i, d := range allReplicateEkData {
@@ -372,7 +372,7 @@ func (migInode *MigInode) getReplicaDataCRC(extentKeys []proto.ExtentKey) (repli
 	return
 }
 
-func (migInode *MigInode) getS3DataCRC(extentKeys []proto.ExtentKey) (s3DataCrc []uint32, err error) {
+func (mi *MigInode) getS3DataCRC(extentKeys []proto.ExtentKey) (s3DataCrc []uint32, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			stack := make([]byte, 1024*8)
@@ -394,10 +394,10 @@ func (migInode *MigInode) getS3DataCRC(extentKeys []proto.ExtentKey) (s3DataCrc 
 			if remainingSize < readSize {
 				readSize = remainingSize
 			}
-			s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.vol.VolId, migInode.inodeInfo.Inode, ek.PartitionId, ek.ExtentId)
+			s3Key := proto.GenS3Key(mi.vol.ClusterName, mi.vol.Name, mi.vol.VolId, mi.inodeInfo.Inode, ek.PartitionId, ek.ExtentId)
 			buff := make([]byte, readSize)
 			var readN int
-			readN, err = migInode.vol.S3Client.GetObject(context.Background(), migInode.vol.Bucket, s3Key, readOffset, readSize, buff)
+			readN, err = mi.vol.S3Client.GetObject(context.Background(), mi.vol.Bucket, s3Key, readOffset, readSize, buff)
 			if err != nil {
 				return
 			}
@@ -413,69 +413,69 @@ func (migInode *MigInode) getS3DataCRC(extentKeys []proto.ExtentKey) (s3DataCrc 
 	return
 }
 
-func (migInode *MigInode) checkReplicaCRCValid(oldReplicateCrc, newReplicateCrc []uint32) (err error) {
-	switch migInode.migDirection {
+func (mi *MigInode) checkReplicaCRCValid(oldReplicateCrc, newReplicateCrc []uint32) (err error) {
+	switch mi.migDirection {
 	case S3FileMigrate:
 		if len(oldReplicateCrc) <= 1 {
-			err = fmt.Errorf("old replicate count is %v migDirection:%v", len(oldReplicateCrc), migInode.migDirection)
+			err = fmt.Errorf("old replicate count is %v migDirection:%v", len(oldReplicateCrc), mi.migDirection)
 			return err
 		}
 		if len(newReplicateCrc) == 0 {
-			err = fmt.Errorf("new replicate count is %v migDirection:%v", len(newReplicateCrc), migInode.migDirection)
+			err = fmt.Errorf("new replicate count is %v migDirection:%v", len(newReplicateCrc), mi.migDirection)
 			return err
 		}
 	case ReverseS3FileMigrate:
 		if len(oldReplicateCrc) == 0 {
-			err = fmt.Errorf("old replicate count is %v migDirection:%v", len(oldReplicateCrc), migInode.migDirection)
+			err = fmt.Errorf("old replicate count is %v migDirection:%v", len(oldReplicateCrc), mi.migDirection)
 			return err
 		}
 		if len(newReplicateCrc) <= 1 {
-			err = fmt.Errorf("new replicate count is %v migDirection:%v", len(newReplicateCrc), migInode.migDirection)
+			err = fmt.Errorf("new replicate count is %v migDirection:%v", len(newReplicateCrc), mi.migDirection)
 			return err
 		}
 	default:
 		if len(oldReplicateCrc) <= 1 {
-			err = fmt.Errorf("old replicate count is %v migDirection:%v", len(oldReplicateCrc), migInode.migDirection)
+			err = fmt.Errorf("old replicate count is %v migDirection:%v", len(oldReplicateCrc), mi.migDirection)
 			return err
 		}
 		if len(newReplicateCrc) <= 1 {
-			err = fmt.Errorf("new replicate count is %v migDirection:%v", len(newReplicateCrc), migInode.migDirection)
+			err = fmt.Errorf("new replicate count is %v migDirection:%v", len(newReplicateCrc), mi.migDirection)
 			return err
 		}
 	}
 	oldCrc0 := oldReplicateCrc[0]
 	for i := 1; i < len(oldReplicateCrc); i++ {
 		if oldReplicateCrc[i] != oldCrc0 {
-			err = fmt.Errorf("old replicate crc no equal migDirection:%v crc0:%v crc%v:%v", migInode.migDirection, oldCrc0, i, oldReplicateCrc[i])
+			err = fmt.Errorf("old replicate crc no equal migDirection:%v crc0:%v crc%v:%v", mi.migDirection, oldCrc0, i, oldReplicateCrc[i])
 			return err
 		}
 	}
-	if oldCrc0 != migInode.migDataCrc {
-		err = fmt.Errorf("old replicate and migDataCrc are not equal migDirection:%v replciateCrc:%v migDataCrc:%v", migInode.migDirection, oldReplicateCrc, migInode.migDataCrc)
+	if oldCrc0 != mi.migDataCrc {
+		err = fmt.Errorf("old replicate and migDataCrc are not equal migDirection:%v replciateCrc:%v migDataCrc:%v", mi.migDirection, oldReplicateCrc, mi.migDataCrc)
 		return err
 	}
 	newCrc0 := newReplicateCrc[0]
 	for i := 1; i < len(newReplicateCrc); i++ {
 		if newReplicateCrc[i] != newCrc0 {
-			err = fmt.Errorf("new replicate crc no equal migDirection:%v crc0:%v crc%v:%v", migInode.migDirection, newCrc0, i, newReplicateCrc[i])
+			err = fmt.Errorf("new replicate crc no equal migDirection:%v crc0:%v crc%v:%v", mi.migDirection, newCrc0, i, newReplicateCrc[i])
 			return err
 		}
 	}
-	if newCrc0 != migInode.migDataCrc {
-		err = fmt.Errorf("new replicate and migDataCrc are not equal migDirection:%v replciateCrc:%v migDataCrc:%v", migInode.migDirection, newReplicateCrc, migInode.migDataCrc)
+	if newCrc0 != mi.migDataCrc {
+		err = fmt.Errorf("new replicate and migDataCrc are not equal migDirection:%v replciateCrc:%v migDataCrc:%v", mi.migDirection, newReplicateCrc, mi.migDataCrc)
 		return err
 	}
 	return nil
 }
 
-func (migInode *MigInode) deleteOldExtents(extentKeys []proto.ExtentKey) (err error) {
-	if migInode.migDirection == ReverseS3FileMigrate {
+func (mi *MigInode) deleteOldExtents(extentKeys []proto.ExtentKey) (err error) {
+	if mi.migDirection == ReverseS3FileMigrate {
 		return
 	}
 	// 检查这些extentKey是否还在后面还未迁移的ek中
-	canDeleteExtentKeys := migInode.getDelExtentKeys(extentKeys)
+	canDeleteExtentKeys := mi.getDelExtentKeys(extentKeys)
 	if len(extentKeys) != len(canDeleteExtentKeys) {
-		log.LogWarnf("deleteOldExtents warn ino:%v rawEks length:%v delEks length:%v rawEks(%v) canDeleteExtentKeys(%v)", migInode.name, len(extentKeys), len(canDeleteExtentKeys), extentKeys, canDeleteExtentKeys)
+		log.LogWarnf("deleteOldExtents warn ino:%v rawEks length:%v delEks length:%v rawEks(%v) canDeleteExtentKeys(%v)", mi.name, len(extentKeys), len(canDeleteExtentKeys), extentKeys, canDeleteExtentKeys)
 	}
 	var (
 		dpIdEksMap = make(map[uint64][]proto.ExtentKey)
@@ -485,35 +485,35 @@ func (migInode *MigInode) deleteOldExtents(extentKeys []proto.ExtentKey) (err er
 		dpIdEksMap[dpId] = append(dpIdEksMap[dpId], metaDelExtentKey)
 	}
 	for dpId, eks := range dpIdEksMap {
-		err = retryDeleteExtents(migInode.task.GetMasterClient(), migInode.vol.Name, dpId, eks, migInode.inodeInfo.Inode)
+		err = retryDeleteExtents(mi.task.GetMasterClient(), mi.vol.Name, dpId, eks, mi.inodeInfo.Inode)
 		if err != nil {
-			log.LogErrorf("deleteOldExtents ino:%v partitionId:%v extentKeys:%v err:%v", migInode.name, dpId, eks, err)
+			log.LogErrorf("deleteOldExtents ino:%v partitionId:%v extentKeys:%v err:%v", mi.name, dpId, eks, err)
 			return
 		}
-		log.LogInfof("deleteOldExtents ino:%v partitionId:%v extentKeys:%v success", migInode.name, dpId, eks)
+		log.LogInfof("deleteOldExtents ino:%v partitionId:%v extentKeys:%v success", mi.name, dpId, eks)
 	}
 	return
 }
 
-func (migInode *MigInode) getInodeInfo() (inodeInfo *proto.InodeInfo, err error) {
-	ipPort := fmt.Sprintf("%v:%v", strings.Split(migInode.task.GetMpLeader(), ":")[0], migInode.task.GetProfPort())
+func (mi *MigInode) getInodeInfo() (inodeInfo *proto.InodeInfo, err error) {
+	ipPort := fmt.Sprintf("%v:%v", strings.Split(mi.task.GetMpLeader(), ":")[0], mi.task.GetProfPort())
 	metaHttpClient := meta.NewMetaHttpClient(ipPort, false)
-	inodeInfo, err = metaHttpClient.GetInodeInfo(migInode.task.GetMpId(), migInode.inodeInfo.Inode)
+	inodeInfo, err = metaHttpClient.GetInodeInfo(mi.task.GetMpId(), mi.inodeInfo.Inode)
 	return
 }
 
-func (migInode *MigInode) getDelExtentKeys(extentKeys []proto.ExtentKey) []proto.ExtentKey {
+func (mi *MigInode) getDelExtentKeys(extentKeys []proto.ExtentKey) []proto.ExtentKey {
 	extentKeyMap := make(map[string][]proto.ExtentKey)
 	for _, ek := range extentKeys {
 		key := dpIdExtentIdKey(ek.PartitionId, ek.ExtentId)
 		extentKeyMap[key] = append(extentKeyMap[key], ek)
 	}
 	cannotDeleteExtentMap := make(map[string]bool)
-	for _, ek := range migInode.extents[:migInode.startIndex] {
+	for _, ek := range mi.extents[:mi.startIndex] {
 		key := dpIdExtentIdKey(ek.PartitionId, ek.ExtentId)
 		cannotDeleteExtentMap[key] = true
 	}
-	for _, ek := range migInode.extents[migInode.endIndex:] {
+	for _, ek := range mi.extents[mi.endIndex:] {
 		key := dpIdExtentIdKey(ek.PartitionId, ek.ExtentId)
 		cannotDeleteExtentMap[key] = true
 	}
@@ -526,7 +526,7 @@ func (migInode *MigInode) getDelExtentKeys(extentKeys []proto.ExtentKey) []proto
 	return canDeleteExtentKeys
 }
 
-func (migInode *MigInode) addInodeMigrateLog(oldEks, newEks []proto.ExtentKey) {
+func (mi *MigInode) addInodeMigrateLog(oldEks, newEks []proto.ExtentKey) {
 	var err error
 	defer func() {
 		if r := recover(); r != nil {
@@ -548,29 +548,29 @@ func (migInode *MigInode) addInodeMigrateLog(oldEks, newEks []proto.ExtentKey) {
 	if newEksByte, err = json.Marshal(newEks); err != nil {
 		return
 	}
-	err = mysql.AddInodeMigrateLog(migInode.task.GetRawTask(), migInode.inodeInfo.Inode, string(oldEksByte), string(newEksByte), len(oldEks), len(newEks))
+	err = mysql.AddInodeMigrateLog(mi.task.GetRawTask(), mi.inodeInfo.Inode, string(oldEksByte), string(newEksByte), len(oldEks), len(newEks))
 	return
 }
 
-func (migInode *MigInode) SummaryStatisticsInfo(newEks []proto.ExtentKey) {
-	migInode.statisticsInfo.MigCnt += 1
-	migInode.statisticsInfo.MigEkCnt += uint64(migInode.endIndex - migInode.startIndex)
-	migInode.statisticsInfo.NewEkCnt += uint64(len(newEks))
+func (mi *MigInode) SummaryStatisticsInfo(newEks []proto.ExtentKey) {
+	mi.statisticsInfo.MigCnt += 1
+	mi.statisticsInfo.MigEkCnt += uint64(mi.endIndex - mi.startIndex)
+	mi.statisticsInfo.NewEkCnt += uint64(len(newEks))
 	var migSize uint32
 	for _, newEk := range newEks {
 		migSize += newEk.Size
 	}
-	migInode.statisticsInfo.MigSize += uint64(migSize)
+	mi.statisticsInfo.MigSize += uint64(migSize)
 }
 
-func (migInode *MigInode) checkEkSegmentHasHole(start, end int) (fileOffset uint64, hasHold bool) {
+func (mi *MigInode) checkEkSegmentHasHole(start, end int) (fileOffset uint64, hasHold bool) {
 	if end-start <= 1 {
 		return 0, false
 	}
-	for i, ek := range migInode.extents[start:end] {
+	for i, ek := range mi.extents[start:end] {
 		if i < end-start-1 {
-			if ek.FileOffset+uint64(ek.Size) < migInode.extents[i+1].FileOffset {
-				fileOffset = migInode.extents[i+1].FileOffset
+			if ek.FileOffset+uint64(ek.Size) < mi.extents[i+1].FileOffset {
+				fileOffset = mi.extents[i+1].FileOffset
 				hasHold = true
 				return
 			}
@@ -579,8 +579,8 @@ func (migInode *MigInode) checkEkSegmentHasHole(start, end int) (fileOffset uint
 	return
 }
 
-func (migInode *MigInode) checkEkSegmentHasTinyExtent(start, end int) (tinyExtentId uint64, hasTinyExtent bool) {
-	for _, ek := range migInode.extents[start:end] {
+func (mi *MigInode) checkEkSegmentHasTinyExtent(start, end int) (tinyExtentId uint64, hasTinyExtent bool) {
+	for _, ek := range mi.extents[start:end] {
 		if proto.IsTinyExtent(ek.ExtentId) {
 			tinyExtentId = ek.ExtentId
 			hasTinyExtent = true
@@ -590,8 +590,8 @@ func (migInode *MigInode) checkEkSegmentHasTinyExtent(start, end int) (tinyExten
 	return
 }
 
-func (migInode *MigInode) checkEkSegmentHasS3Extent(start, end int) (hasS3Extent bool) {
-	for _, ek := range migInode.extents[start:end] {
+func (mi *MigInode) checkEkSegmentHasS3Extent(start, end int) (hasS3Extent bool) {
+	for _, ek := range mi.extents[start:end] {
 		if ek.CRC == uint32(proto.S3Extent) {
 			hasS3Extent = true
 			return
@@ -600,8 +600,8 @@ func (migInode *MigInode) checkEkSegmentHasS3Extent(start, end int) (hasS3Extent
 	return
 }
 
-func (migInode *MigInode) checkEkSegmentHasCubeFSExtent(start, end int) (hasCubeFSExtent bool) {
-	for _, ek := range migInode.extents[start:end] {
+func (mi *MigInode) checkEkSegmentHasCubeFSExtent(start, end int) (hasCubeFSExtent bool) {
+	for _, ek := range mi.extents[start:end] {
 		if ek.CRC == uint32(proto.CubeFSExtent) {
 			hasCubeFSExtent = true
 			return
@@ -610,8 +610,8 @@ func (migInode *MigInode) checkEkSegmentHasCubeFSExtent(start, end int) (hasCube
 	return
 }
 
-func (migInode *MigInode) checkEkSegmentHasNormalExtent(start, end int) (hasNormalExtent bool) {
-	for _, ek := range migInode.extents[start:end] {
+func (mi *MigInode) checkEkSegmentHasNormalExtent(start, end int) (hasNormalExtent bool) {
+	for _, ek := range mi.extents[start:end] {
 		if !proto.IsTinyExtent(ek.ExtentId) {
 			hasNormalExtent = true
 			return
@@ -620,13 +620,13 @@ func (migInode *MigInode) checkEkSegmentHasNormalExtent(start, end int) (hasNorm
 	return
 }
 
-func (migInode *MigInode) checkNewEkCountValid() (err error) {
-	switch migInode.migDirection {
+func (mi *MigInode) checkNewEkCountValid() (err error) {
+	switch mi.migDirection {
 	case CompactFileMigrate:
-		migEksCnt := migInode.endIndex - migInode.startIndex
-		if len(migInode.newEks) >= migEksCnt {
+		migEksCnt := mi.endIndex - mi.startIndex
+		if len(mi.newEks) >= migEksCnt {
 			err = fmt.Errorf("ReadAndWriteDataNode new create extent ino(%v) newEks length(%v) is greater than or equal to oldEks length(%v)",
-				migInode.name, len(migInode.newEks), migEksCnt)
+				mi.name, len(mi.newEks), migEksCnt)
 		}
 	}
 	return
@@ -644,36 +644,36 @@ func checkMigDirectionMediumTypeIsMatch(migInode *MigInode, dp *data.DataPartiti
 	return false
 }
 
-func (migInode *MigInode) checkMigExtentCanDelete(migEks []proto.ExtentKey) (ok bool, canDeleteExtentKeys []proto.ExtentKey) {
-	canDeleteExtentKeys = migInode.getDelExtentKeys(migEks)
+func (mi *MigInode) checkMigExtentCanDelete(migEks []proto.ExtentKey) (ok bool, canDeleteExtentKeys []proto.ExtentKey) {
+	canDeleteExtentKeys = mi.getDelExtentKeys(migEks)
 	if len(migEks) == len(canDeleteExtentKeys) {
 		ok = true
 	}
 	return
 }
 
-func (migInode *MigInode) setInodeAttrMaxTime() (err error) {
+func (mi *MigInode) setInodeAttrMaxTime() (err error) {
 	var (
 		wg                                          sync.WaitGroup
 		mu                                          sync.Mutex
 		inodeInfoViews                              []*proto.InodeInfo
-		members                                     = migInode.task.GetMpInfo().Members
+		members                                     = mi.task.GetMpInfo().Members
 		maxAccessTime, maxModifyTime, maxCreateTime proto.CubeFSTime
 	)
 	for _, member := range members {
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
-			ipPort := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], migInode.task.GetProfPort())
+			ipPort := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], mi.task.GetProfPort())
 			metaHttpClient := meta.NewMetaHttpClient(ipPort, false)
-			inodeInfoView, errInternal := metaHttpClient.GetInodeInfo(migInode.task.GetMpId(), migInode.inodeInfo.Inode)
+			inodeInfoView, errInternal := metaHttpClient.GetInodeInfo(mi.task.GetMpId(), mi.inodeInfo.Inode)
 			if errInternal == nil && inodeInfoView != nil {
 				mu.Lock()
 				inodeInfoViews = append(inodeInfoViews, inodeInfoView)
 				mu.Unlock()
 			} else {
 				err = errInternal
-				log.LogErrorf("GetInodeInfo mpId(%v) ino(%v) err(%v)", migInode.task.GetMpId(), migInode.inodeInfo.Inode, errInternal)
+				log.LogErrorf("GetInodeInfo mpId(%v) ino(%v) err(%v)", mi.task.GetMpId(), mi.inodeInfo.Inode, errInternal)
 			}
 		}(member)
 	}
@@ -692,9 +692,9 @@ func (migInode *MigInode) setInodeAttrMaxTime() (err error) {
 			maxCreateTime = inodeInfoView.CreateTime
 		}
 	}
-	migInode.inodeInfo.AccessTime = maxAccessTime
-	migInode.inodeInfo.ModifyTime = maxModifyTime
-	migInode.inodeInfo.CreateTime = maxCreateTime
+	mi.inodeInfo.AccessTime = maxAccessTime
+	mi.inodeInfo.ModifyTime = maxModifyTime
+	mi.inodeInfo.CreateTime = maxCreateTime
 	return
 }
 

@@ -1,4 +1,4 @@
-package migration
+package migcore
 
 import (
 	"crypto/md5"
@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 )
 
 var (
@@ -95,4 +96,36 @@ func GenStopUrl(ipPort, path, cluster, vol string) string {
 	url := fmt.Sprintf("http://%v%v?%v=%v&%v=%v",
 		ipPort, path, ClusterKey, cluster, VolNameKey, vol)
 	return url
+}
+
+func TimeStampAgo(inodeInfo *proto.InodeInfo, policyInodeATime *proto.LayerPolicyInodeATime) bool {
+	return int64(inodeInfo.AccessTime) < policyInodeATime.TimeValue &&
+		int64(inodeInfo.ModifyTime) < policyInodeATime.TimeValue
+}
+
+func DaysAgo(inodeInfo *proto.InodeInfo, policyInodeATime *proto.LayerPolicyInodeATime) bool {
+	return time.Now().Unix()-int64(inodeInfo.AccessTime) > policyInodeATime.TimeValue*24*60*60 &&
+		time.Now().Unix()-int64(inodeInfo.ModifyTime) > policyInodeATime.TimeValue*24*60*60
+}
+
+func SecondsAgo(inodeInfo *proto.InodeInfo, policyInodeATime *proto.LayerPolicyInodeATime) bool {
+	return time.Now().Unix()-int64(inodeInfo.AccessTime) > policyInodeATime.TimeValue &&
+		time.Now().Unix()-int64(inodeInfo.ModifyTime) > policyInodeATime.TimeValue
+}
+
+func ConvertMigrateDirection(policyInodeATime *proto.LayerPolicyInodeATime, isToColdMedium bool) (migDir MigDirection) {
+	if policyInodeATime.TargetMedium == proto.MediumHDD {
+		if isToColdMedium {
+			migDir = SSDToHDDFileMigrate
+		} else {
+			migDir = HDDToSSDFileMigrate
+		}
+	} else if policyInodeATime.TargetMedium == proto.MediumS3 {
+		if isToColdMedium {
+			migDir = S3FileMigrate
+		} else {
+			migDir = ReverseS3FileMigrate
+		}
+	}
+	return
 }

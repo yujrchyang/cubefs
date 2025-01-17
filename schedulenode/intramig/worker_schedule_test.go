@@ -1,4 +1,4 @@
-package intraMigration
+package intramig
 
 import (
 	"strings"

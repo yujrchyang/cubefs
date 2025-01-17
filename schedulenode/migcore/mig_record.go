@@ -1,4 +1,4 @@
-package migration
+package migcore
 
 type MigRecord struct {
 	MigCnt      uint64

@@ -1,4 +1,4 @@
-package migration
+package migcore
 
 import (
 	"fmt"
@@ -67,8 +67,8 @@ type MigInode struct {
 }
 
 func NewMigrateInode(task MigTask, inode *proto.InodeExtents) (inodeOp *MigInode, err error) {
-	if task.GetVol() == nil {
-		err = fmt.Errorf("VolumeInfo should not be nil")
+	if task == nil {
+		err = fmt.Errorf("task should not be nil")
 		return
 	}
 	if inode == nil {
@@ -95,59 +95,59 @@ func NewMigrateInode(task MigTask, inode *proto.InodeExtents) (inodeOp *MigInode
 	return
 }
 
-func (i *MigInode) RunOnce() (finished bool, err error) {
+func (mi *MigInode) RunOnce() (finished bool, err error) {
 	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, RunInodeTask))
 	defer metrics.Set(err)
 
 	defer func() {
-		i.vol.DelInodeRunningCnt(i.inodeInfo.Inode)
+		mi.vol.DelInodeRunningCnt(mi.inodeInfo.Inode)
 	}()
-	if !i.vol.AddInodeRunningCnt(i.inodeInfo.Inode) {
+	if !mi.vol.AddInodeRunningCnt(mi.inodeInfo.Inode) {
 		return
 	}
 	defer func() {
-		i.vol.UpdateVolLastTime()
-		i.task.UpdateStatisticsInfo(i.statisticsInfo)
+		mi.vol.UpdateVolLastTime()
+		mi.task.UpdateStatisticsInfo(mi.statisticsInfo)
 	}()
 	for err == nil {
-		if !i.vol.IsRunning() {
-			log.LogDebugf("inode fileMigrate stop because vol(%v) be stopped, ino(%v) inode.stage(%v)", i.vol.Name, i.name, i.stage)
-			i.stage = InodeMigStopped
+		if !mi.vol.IsRunning() {
+			log.LogDebugf("inode fileMigrate stop because vol(%v) be stopped, ino(%v) inode.stage(%v)", mi.vol.Name, mi.name, mi.stage)
+			mi.stage = InodeMigStopped
 		}
-		log.LogDebugf("inode runonce taskType(%v) ino(%v) inode.stage(%v) startEndIndex(%v:%v)", i.task.GetTaskType(), i.name, i.stage, i.startIndex, i.endIndex)
-		switch i.stage {
+		log.LogDebugf("inode runonce taskType(%v) ino(%v) inode.stage(%v) startEndIndex(%v:%v)", mi.task.GetTaskType(), mi.name, mi.stage, mi.startIndex, mi.endIndex)
+		switch mi.stage {
 		case Init:
-			err = i.Init()
+			err = mi.Init()
 		case OpenFile:
-			err = i.OpenFile()
+			err = mi.OpenFile()
 		case LookupEkSegment:
-			err = i.LookupEkSegment()
+			err = mi.LookupEkSegment()
 		case LockExtents:
-			err = i.LockExtents()
+			err = mi.LockExtents()
 		case CheckCanMigrate:
-			err = i.checkCanMigrate()
+			err = mi.checkCanMigrate()
 			if err != nil {
-				i.UnlockExtents()
+				mi.UnlockExtents()
 			}
 		case ReadAndWriteEkData:
-			err = i.ReadAndWriteData()
+			err = mi.ReadAndWriteData()
 			if err != nil {
-				i.UnlockExtents()
+				mi.UnlockExtents()
 			}
 		case MetaMergeExtents:
-			err = i.MetaMergeExtents()
+			err = mi.MetaMergeExtents()
 			if !isNotUnlockExtentErr(err) {
-				i.UnlockExtents()
+				mi.UnlockExtents()
 			}
 		case InodeMigStopped:
-			i.MigTaskCloseStream()
+			mi.MigTaskCloseStream()
 			finished = true
 			return
 		default:
 			err = nil
 			return
 		}
-		i.UpdateTime()
+		mi.UpdateTime()
 	}
 	return
 }
@@ -156,119 +156,119 @@ func isNotUnlockExtentErr(err error) bool {
 	return err != nil && (strings.Contains(err.Error(), MetaMergeFailed) || strings.Contains(err.Error(), DeleteOldExtentFailed))
 }
 
-func (i *MigInode) Init() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, i.stage.String()))
+func (mi *MigInode) Init() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()))
 	defer metrics.Set(err)
 
 	defer func() {
 		if err != nil {
-			log.LogErrorf("Init inode[%v] %v:%v", i.name, InodeInitTaskFailed, err.Error())
-			i.DealActionErr(InodeInitTaskCode, err)
+			log.LogErrorf("Init inode[%v] %v:%v", mi.name, InodeInitTaskFailed, err.Error())
+			mi.DealActionErr(InodeInitTaskCode, err)
 			return
 		}
 	}()
-	switch i.task.GetTaskType() {
+	switch mi.task.GetTaskType() {
 	case proto.WorkerTypeCompact:
-		i.migDirection = CompactFileMigrate
-		i.extentClient = i.vol.DataClient
+		mi.migDirection = CompactFileMigrate
+		mi.extentClient = mi.vol.DataClient
 	case proto.WorkerTypeInodeMigration:
-		err = i.initFileMigrate()
+		err = mi.initFileMigrate()
 	default:
-		err = fmt.Errorf("task type(%v) invaild", i.task.GetTaskType())
+		err = fmt.Errorf("task type(%v) invaild", mi.task.GetTaskType())
 		return
 	}
-	if err != nil || i.stage == InodeMigStopped {
+	if err != nil || mi.stage == InodeMigStopped {
 		return
 	}
-	i.initExtentMaxIndex()
-	i.lastMigEkIndex = 0
-	i.stage = OpenFile
-	log.LogDebugf("[inode fileMigrate] init task success ino(%v)", i.name)
+	mi.initExtentMaxIndex()
+	mi.lastMigEkIndex = 0
+	mi.stage = OpenFile
+	log.LogDebugf("[inode fileMigrate] init task success ino(%v)", mi.name)
 	return
 }
 
-func (migInode *MigInode) OpenFile() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
+func (mi *MigInode) OpenFile() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()))
 	defer metrics.Set(err)
 
 	defer func() {
 		if err != nil {
-			log.LogErrorf("OpenFile inode[%v] %v:%v", migInode.name, InodeOpenFailed, err.Error())
-			migInode.DealActionErr(InodeOpenFailedCode, err)
+			log.LogErrorf("OpenFile inode[%v] %v:%v", mi.name, InodeOpenFailed, err.Error())
+			mi.DealActionErr(InodeOpenFailedCode, err)
 			return
 		}
-		log.LogDebugf("[inode fileMigrate] open file success ino(%v)", migInode.name)
-		migInode.stage = LookupEkSegment
+		log.LogDebugf("[inode fileMigrate] open file success ino(%v)", mi.name)
+		mi.stage = LookupEkSegment
 	}()
-	if err = migInode.extentClient.OpenStream(migInode.inodeInfo.Inode, false, false); err != nil {
+	if err = mi.extentClient.OpenStream(mi.inodeInfo.Inode, false, false); err != nil {
 		return
 	}
-	if err = migInode.extentClient.RefreshExtentsCache(context.Background(), migInode.inodeInfo.Inode); err != nil {
-		migInode.MigTaskCloseStream()
+	if err = mi.extentClient.RefreshExtentsCache(context.Background(), mi.inodeInfo.Inode); err != nil {
+		mi.MigTaskCloseStream()
 	}
 	return
 }
 
-func (migInode *MigInode) initFileMigrate() (err error) {
-	if migInode.migDirection, err = migInode.task.GetInodeMigDirection(migInode.inodeInfo); err != nil {
+func (mi *MigInode) initFileMigrate() (err error) {
+	if mi.migDirection, err = mi.task.GetInodeMigDirection(mi.inodeInfo); err != nil {
 		return
 	}
-	if err = migInode.setInodeAttrMaxTime(); err != nil {
+	if err = mi.setInodeAttrMaxTime(); err != nil {
 		return
 	}
-	migConfig := migInode.vol.GetMigrationConfig(migInode.vol.ClusterName, migInode.vol.Name)
+	migConfig := mi.vol.GetMigrationConfig(mi.vol.ClusterName, mi.vol.Name)
 	isMigBack := migConfig.MigrationBack == migrationBack
-	switch migInode.migDirection {
+	switch mi.migDirection {
 	case SSDToHDDFileMigrate:
-		migInode.extentClient = migInode.vol.WriteToHddDataClient // 读，只写HDD dp
+		mi.extentClient = mi.vol.WriteToHddDataClient // 读，只写HDD dp
 	case HDDToSSDFileMigrate:
 		if isMigBack {
-			migInode.extentClient = migInode.vol.DataClient // 读，只写SSD dp
+			mi.extentClient = mi.vol.DataClient // 读，只写SSD dp
 		} else {
 			// do not migrate back, stop
-			migInode.stage = InodeMigStopped
+			mi.stage = InodeMigStopped
 		}
 	case S3FileMigrate:
-		migInode.extentClient = migInode.vol.DataClient // 只使用读
+		mi.extentClient = mi.vol.DataClient // 只使用读
 	case ReverseS3FileMigrate:
 		if isMigBack {
-			migInode.extentClient = migInode.vol.DataClient // 只使用写
+			mi.extentClient = mi.vol.DataClient // 只使用写
 		} else {
 			// do not migrate back, stop
-			migInode.stage = InodeMigStopped
+			mi.stage = InodeMigStopped
 		}
 	default:
-		migInode.stage = InodeMigStopped
+		mi.stage = InodeMigStopped
 	}
 	return
 }
 
-func (migInode *MigInode) LookupEkSegment() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
+func (mi *MigInode) LookupEkSegment() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()))
 	defer metrics.Set(err)
 
 	defer func() {
 		if err != nil {
-			log.LogErrorf("LookupEkSegment inode[%v] %v:%v", migInode.name, InodeLookupEkFailed, err.Error())
-			migInode.MigTaskCloseStream()
-			migInode.DealActionErr(InodeLookupEkCode, err)
+			log.LogErrorf("LookupEkSegment inode[%v] %v:%v", mi.name, InodeLookupEkFailed, err.Error())
+			mi.MigTaskCloseStream()
+			mi.DealActionErr(InodeLookupEkCode, err)
 		}
-		handleCompactFileMigrate(migInode)
+		handleCompactFileMigrate(mi)
 	}()
 
-	srcMediumType := getSrcMediumType(migInode.migDirection)
+	srcMediumType := getSrcMediumType(mi.migDirection)
 	if srcMediumType == "" {
-		err = fmt.Errorf("migrate direction invalid(%v)", migInode.migDirection)
+		err = fmt.Errorf("migrate direction invalid(%v)", mi.migDirection)
 		return err
 	}
 
 	start, end, migSize, migCnt, findFirstSSd := 0, 0, uint64(0), uint64(0), false
-	for i := migInode.lastMigEkIndex; i < len(migInode.extents); i++ {
-		migInode.lastMigEkIndex = i + 1
-		ek := migInode.extents[i]
+	for i := mi.lastMigEkIndex; i < len(mi.extents); i++ {
+		mi.lastMigEkIndex = i + 1
+		ek := mi.extents[i]
 
-		candidateMediumType := getCandidateMediumType(migInode, srcMediumType, ek)
-		log.LogDebugf("lookup inode(%v) srcMediumType(%v) candidateMediumType(%v) ek(%v)", migInode.name, srcMediumType, candidateMediumType, ek)
+		candidateMediumType := getCandidateMediumType(mi, srcMediumType, ek)
+		log.LogDebugf("lookup inode(%v) srcMediumType(%v) candidateMediumType(%v) ek(%v)", mi.name, srcMediumType, candidateMediumType, ek)
 
 		if !isValidExtent(ek, srcMediumType, candidateMediumType) {
 			if start < end {
@@ -283,7 +283,7 @@ func (migInode *MigInode) LookupEkSegment() (err error) {
 		}
 
 		end = i + 1
-		if err := checkForHole(migInode, i, start, end); err != nil {
+		if err := checkForHole(mi, i, start, end); err != nil {
 			return err
 		}
 
@@ -291,7 +291,7 @@ func (migInode *MigInode) LookupEkSegment() (err error) {
 		migSize += uint64(ek.Size)
 		if migSize > uint64(limitSize*1024*1024) {
 			end--
-			migInode.lastMigEkIndex--
+			mi.lastMigEkIndex--
 			migCnt--
 			migSize -= uint64(ek.Size)
 			break
@@ -299,23 +299,23 @@ func (migInode *MigInode) LookupEkSegment() (err error) {
 	}
 
 	if end == 0 {
-		migInode.stage = InodeMigStopped
+		mi.stage = InodeMigStopped
 		return
 	}
 
-	migInode.searchMaxExtentIndex(start, &end)
-	if err = validateEkSegment(migInode, start, end); err != nil {
+	mi.searchMaxExtentIndex(start, &end)
+	if err = validateEkSegment(mi, start, end); err != nil {
 		return err
 	}
 
-	migInode.startIndex = start
-	migInode.endIndex = end
+	mi.startIndex = start
+	mi.endIndex = end
 
-	if migInode.startIndex >= migInode.endIndex {
-		migInode.stage = InodeMigStopped
+	if mi.startIndex >= mi.endIndex {
+		mi.stage = InodeMigStopped
 	} else {
-		migInode.stage = LockExtents
-		log.LogDebugf("LookupEkSegment ino:%v startIndex:%v endIndex:%v migType:%v", migInode.name, migInode.startIndex, migInode.endIndex, migInode.migDirection)
+		mi.stage = LockExtents
+		log.LogDebugf("LookupEkSegment ino:%v startIndex:%v endIndex:%v migType:%v", mi.name, mi.startIndex, mi.endIndex, mi.migDirection)
 	}
 
 	return
@@ -334,154 +334,154 @@ func handleCompactFileMigrate(migInode *MigInode) {
 	}
 }
 
-func (migInode *MigInode) LockExtents() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
+func (mi *MigInode) LockExtents() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()))
 	defer metrics.Set(err)
 
 	defer func() {
 		if err != nil {
-			log.LogErrorf("LockExtents inode[%v] %v:%v", migInode.name, InodeLockExtentFailed, err.Error())
-			migInode.MigTaskCloseStream()
-			migInode.DealActionErr(InodeLockExtentFailedCode, err)
+			log.LogErrorf("LockExtents inode[%v] %v:%v", mi.name, InodeLockExtentFailed, err.Error())
+			mi.MigTaskCloseStream()
+			mi.DealActionErr(InodeLockExtentFailedCode, err)
 			return
 		}
 	}()
-	if migInode.migDirection == ReverseS3FileMigrate {
+	if mi.migDirection == ReverseS3FileMigrate {
 		// 从s3回迁到datanode不需要加锁
-		migInode.stage = CheckCanMigrate
+		mi.stage = CheckCanMigrate
 		return
 	}
-	willLockedEks := migInode.extents[migInode.startIndex:migInode.endIndex]
-	err = migInode.extentClient.LockExtent(context.Background(), willLockedEks, lockTime)
-	log.LogInfof("LockExtents inode[%v] willLockedEks:%v lockTime:%v err:%v", migInode.name, willLockedEks, lockTime, err)
+	willLockedEks := mi.extents[mi.startIndex:mi.endIndex]
+	err = mi.extentClient.LockExtent(context.Background(), willLockedEks, lockTime)
+	log.LogInfof("LockExtents inode[%v] willLockedEks:%v lockTime:%v err:%v", mi.name, willLockedEks, lockTime, err)
 	if err == nil {
 		// extent锁定后延迟
 		time.Sleep(afterLockSleepTime * time.Second)
-		migInode.stage = CheckCanMigrate
+		mi.stage = CheckCanMigrate
 	}
 	return
 }
 
-func (migInode *MigInode) UnlockExtents() {
+func (mi *MigInode) UnlockExtents() {
 	var err error
 	defer func() {
 		if err != nil {
-			log.LogErrorf("UnlockExtents inode[%v] %v:%v", migInode.name, InodeUnlockExtentFailed, err.Error())
-			migInode.DealActionErr(InodeLockExtentFailedCode, err)
+			log.LogErrorf("UnlockExtents inode[%v] %v:%v", mi.name, InodeUnlockExtentFailed, err.Error())
+			mi.DealActionErr(InodeLockExtentFailedCode, err)
 			return
 		}
 	}()
-	if migInode.migDirection == ReverseS3FileMigrate {
+	if mi.migDirection == ReverseS3FileMigrate {
 		return
 	}
-	willUnlockedEks := migInode.extents[migInode.startIndex:migInode.endIndex]
+	willUnlockedEks := mi.extents[mi.startIndex:mi.endIndex]
 	for i := 0; i < retryUnlockExtentCnt; i++ {
-		if err = migInode.extentClient.UnlockExtent(context.Background(), willUnlockedEks); err != nil {
+		if err = mi.extentClient.UnlockExtent(context.Background(), willUnlockedEks); err != nil {
 			continue
 		}
 		break
 	}
-	log.LogInfof("UnlockExtents inode[%v] willUnlockedEks:%v err:%v", migInode.name, willUnlockedEks, err)
+	log.LogInfof("UnlockExtents inode[%v] willUnlockedEks:%v err:%v", mi.name, willUnlockedEks, err)
 	return
 }
 
-func (migInode *MigInode) checkCanMigrate() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
+func (mi *MigInode) checkCanMigrate() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()))
 	defer metrics.Set(err)
 
-	if migInode.task.GetTaskType() != proto.WorkerTypeInodeMigration {
-		migInode.stage = ReadAndWriteEkData
+	if mi.task.GetTaskType() != proto.WorkerTypeInodeMigration {
+		mi.stage = ReadAndWriteEkData
 		return
 	}
 
 	defer func() {
 		if err != nil {
-			migInode.MigTaskCloseStream()
-			migInode.DealActionErr(InodeCheckInodeFailedCode, err)
-			log.LogErrorf("checkCanMigrate inode[%v] %v:%v", migInode.name, InodeCheckInodeFailed, err.Error())
+			mi.MigTaskCloseStream()
+			mi.DealActionErr(InodeCheckInodeFailedCode, err)
+			log.LogErrorf("checkCanMigrate inode[%v] %v:%v", mi.name, InodeCheckInodeFailed, err.Error())
 			return
 		}
-		migInode.stage = ReadAndWriteEkData
+		mi.stage = ReadAndWriteEkData
 	}()
 	var (
 		inodeInfo    *proto.InodeInfo
 		migDirection MigDirection
 	)
-	if inodeInfo, err = migInode.getInodeInfo(); err != nil {
+	if inodeInfo, err = mi.getInodeInfo(); err != nil {
 		return
 	}
-	if err = migInode.task.GetInodeInfoMaxTime(inodeInfo); err != nil {
+	if err = mi.task.GetInodeInfoMaxTime(inodeInfo); err != nil {
 		return
 	}
-	if migDirection, err = migInode.task.GetInodeMigDirection(inodeInfo); err != nil {
+	if migDirection, err = mi.task.GetInodeMigDirection(inodeInfo); err != nil {
 		return
 	}
-	if migDirection != migInode.migDirection {
-		err = fmt.Errorf("inode cannot migrate, because different migrate direction init migDirection:%v now migDirection:%v atime:%v mtime:%v", migInode.migDirection, migDirection, inodeInfo.AccessTime, inodeInfo.ModifyTime)
+	if migDirection != mi.migDirection {
+		err = fmt.Errorf("inode cannot migrate, because different migrate direction init migDirection:%v now migDirection:%v atime:%v mtime:%v", mi.migDirection, migDirection, inodeInfo.AccessTime, inodeInfo.ModifyTime)
 		return
 	}
 	return
 }
 
-func (migInode *MigInode) ReadAndWriteData() (err error) {
-	switch migInode.migDirection {
+func (mi *MigInode) ReadAndWriteData() (err error) {
+	switch mi.migDirection {
 	case SSDToHDDFileMigrate, HDDToSSDFileMigrate, CompactFileMigrate:
-		err = migInode.ReadFromDataNodeAndWriteToDataNode()
+		err = mi.ReadFromDataNodeAndWriteToDataNode()
 	case S3FileMigrate:
-		err = migInode.ReadFromDataNodeAndWriteToS3()
+		err = mi.ReadFromDataNodeAndWriteToS3()
 	case ReverseS3FileMigrate:
-		err = migInode.ReadFromS3AndWriteToDataNode()
+		err = mi.ReadFromS3AndWriteToDataNode()
 	default:
-		err = fmt.Errorf("migrate direction:%v invalid", migInode.migDirection)
+		err = fmt.Errorf("migrate direction:%v invalid", mi.migDirection)
 	}
 	return
 }
 
-func (migInode *MigInode) ReadFromDataNodeAndWriteToDataNode() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
+func (mi *MigInode) ReadFromDataNodeAndWriteToDataNode() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()))
 	defer metrics.Set(err)
 
-	migInode.rwStartTime = time.Now()
+	mi.rwStartTime = time.Now()
 
-	defer migInode.handleError("ReadFromDataNodeAndWriteToDataNode", &err)
+	defer mi.handleError("ReadFromDataNodeAndWriteToDataNode", &err)
 
-	fileOffset := migInode.extents[migInode.startIndex].FileOffset
-	totalSize := migInode.extents[migInode.endIndex-1].FileOffset + uint64(migInode.extents[migInode.endIndex-1].Size) - fileOffset
+	fileOffset := mi.extents[mi.startIndex].FileOffset
+	totalSize := mi.extents[mi.endIndex-1].FileOffset + uint64(mi.extents[mi.endIndex-1].Size) - fileOffset
 
 	var (
 		writeTotal int
 		crc        = crc32.NewIEEE()
 		ctx        = context.Background()
 	)
-	err = migInode.doReadAndWriteTo(ctx, proto.ExtentKey{}, fileOffset, totalSize, crc, &writeTotal)
+	err = mi.doReadAndWriteTo(ctx, proto.ExtentKey{}, fileOffset, totalSize, crc, &writeTotal)
 	if err != nil {
 		return err
 	}
-	migInode.migDataCrc = crc.Sum32()
-	log.LogDebugf("ReadFromDataNodeAndWriteToDataNode ino(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v)", migInode.name, totalSize, writeTotal, migInode.startIndex, migInode.endIndex)
+	mi.migDataCrc = crc.Sum32()
+	log.LogDebugf("ReadFromDataNodeAndWriteToDataNode ino(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v)", mi.name, totalSize, writeTotal, mi.startIndex, mi.endIndex)
 	if totalSize != uint64(writeTotal) {
-		err = fmt.Errorf("ReadFromDataNodeAndWriteToDataNode compare equal ino(%v) totalSize(%v) but write size(%v)", migInode.name, totalSize, writeTotal)
+		err = fmt.Errorf("ReadFromDataNodeAndWriteToDataNode compare equal ino(%v) totalSize(%v) but write size(%v)", mi.name, totalSize, writeTotal)
 		return
 	}
 	return
 }
 
-func (migInode *MigInode) ReadFromDataNodeAndWriteToS3() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()+"_s3"))
+func (mi *MigInode) ReadFromDataNodeAndWriteToS3() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()+"_s3"))
 	defer metrics.Set(err)
 
-	if migInode.vol.S3Client == nil {
-		err = fmt.Errorf("ReadFromDataNodeAndWriteToS3 inode[%v] migDirection[%v] %v", migInode.name, migInode.migDirection, "s3 client is nil")
+	if mi.vol.S3Client == nil {
+		err = fmt.Errorf("ReadFromDataNodeAndWriteToS3 inode[%v] migDirection[%v] %v", mi.name, mi.migDirection, "s3 client is nil")
 		log.LogErrorf(err.Error())
 		return
 	}
 
-	migInode.rwStartTime = time.Now()
+	mi.rwStartTime = time.Now()
 
-	defer migInode.handleError("ReadFromDataNodeAndWriteToS3", &err)
+	defer mi.handleError("ReadFromDataNodeAndWriteToS3", &err)
 
-	offset := migInode.extents[migInode.startIndex].FileOffset
-	totalSize := migInode.extents[migInode.endIndex-1].FileOffset + uint64(migInode.extents[migInode.endIndex-1].Size) - offset
+	offset := mi.extents[mi.startIndex].FileOffset
+	totalSize := mi.extents[mi.endIndex-1].FileOffset + uint64(mi.extents[mi.endIndex-1].Size) - offset
 
 	minBlockSize := 5 * unit.MB
 	partCount := int(math.Ceil(float64(totalSize) / float64(minBlockSize)))
@@ -489,36 +489,36 @@ func (migInode *MigInode) ReadFromDataNodeAndWriteToS3() (err error) {
 
 	// 使用ek链片段中的第一个normalExtent创建s3 extentKey
 	// 如果不存在normalExtent，借助datanode创建一个并且删除掉
-	normalExtent, exist := migInode.findEkSegmentFirstNormalExtent()
+	normalExtent, exist := mi.findEkSegmentFirstNormalExtent()
 	if !exist {
 		log.LogWarnf("ReadFromDataNodeAndWriteToS3 did not find normal extent ino(%v) readRange(%v:%v) migEks(%v)",
-			migInode.name, migInode.startIndex, migInode.endIndex, migInode.extents[migInode.startIndex:migInode.endIndex])
-		normalExtent, err = migInode.createAndDeleteNormalExtentForGenS3Key()
+			mi.name, mi.startIndex, mi.endIndex, mi.extents[mi.startIndex:mi.endIndex])
+		normalExtent, err = mi.createAndDeleteNormalExtentForGenS3Key()
 		if err != nil {
 			return
 		}
 	}
 
-	s3Key := proto.GenS3Key(migInode.vol.ClusterName, migInode.vol.Name, migInode.vol.VolId, migInode.inodeInfo.Inode, normalExtent.PartitionId, normalExtent.ExtentId)
+	s3Key := proto.GenS3Key(mi.vol.ClusterName, mi.vol.Name, mi.vol.VolId, mi.inodeInfo.Inode, normalExtent.PartitionId, normalExtent.ExtentId)
 
 	if totalSize <= uint64(minBlockSize) {
-		if err = migInode.readAndWriteSmallDataToS3(offset, totalSize, s3Key, chunks); err != nil {
+		if err = mi.readAndWriteSmallDataToS3(offset, totalSize, s3Key, chunks); err != nil {
 			return
 		}
 	} else {
-		if err = migInode.readAndWriteLargeDataToS3(offset, totalSize, minBlockSize, partCount, s3Key, chunks); err != nil {
+		if err = mi.readAndWriteLargeDataToS3(offset, totalSize, minBlockSize, partCount, s3Key, chunks); err != nil {
 			return
 		}
 	}
 
 	var writeTotal int64
-	if writeTotal, err = migInode.vol.S3Client.GetObjectContentLength(context.Background(), migInode.vol.Bucket, s3Key); err != nil {
+	if writeTotal, err = mi.vol.S3Client.GetObjectContentLength(context.Background(), mi.vol.Bucket, s3Key); err != nil {
 		return
 	}
 
 	if totalSize != uint64(writeTotal) {
 		err = fmt.Errorf("ReadFromDataNodeAndWriteToS3 compare equal ino(%v) s3Key(%v) totalSize(%v) but write size(%v)",
-			migInode.name, s3Key, totalSize, writeTotal)
+			mi.name, s3Key, totalSize, writeTotal)
 		return
 	}
 
@@ -530,23 +530,23 @@ func (migInode *MigInode) ReadFromDataNodeAndWriteToS3() (err error) {
 		Size:         uint32(totalSize),
 		CRC:          uint32(proto.S3Extent),
 	}
-	migInode.newEks = append(migInode.newEks, newEk)
+	mi.newEks = append(mi.newEks, newEk)
 
 	crc := crc32.NewIEEE()
 	for _, chunk := range chunks {
 		_, _ = crc.Write(chunk)
 	}
-	migInode.migDataCrc = crc.Sum32()
+	mi.migDataCrc = crc.Sum32()
 
 	log.LogDebugf("ReadFromDataNodeAndWriteToS3 ino(%v) s3Key(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v) s3Key(%v) newEks(%v)\n",
-		migInode.name, s3Key, totalSize, writeTotal, migInode.startIndex, migInode.endIndex, s3Key, migInode.newEks)
+		mi.name, s3Key, totalSize, writeTotal, mi.startIndex, mi.endIndex, s3Key, mi.newEks)
 
 	return
 }
 
-func (migInode *MigInode) createAndDeleteNormalExtentForGenS3Key() (normalExtent proto.ExtentKey, err error) {
-	partitionId := migInode.extents[migInode.startIndex].PartitionId
-	extID, err := createNormalExtent(migInode.task.GetMasterClient(), migInode.vol.Name, partitionId, migInode.inodeInfo.Inode)
+func (mi *MigInode) createAndDeleteNormalExtentForGenS3Key() (normalExtent proto.ExtentKey, err error) {
+	partitionId := mi.extents[mi.startIndex].PartitionId
+	extID, err := createNormalExtent(mi.task.GetMasterClient(), mi.vol.Name, partitionId, mi.inodeInfo.Inode)
 	if err != nil {
 		return
 	}
@@ -555,10 +555,10 @@ func (migInode *MigInode) createAndDeleteNormalExtentForGenS3Key() (normalExtent
 	eks := []proto.ExtentKey{
 		{PartitionId: partitionId, ExtentId: extID},
 	}
-	err = retryDeleteExtents(migInode.task.GetMasterClient(), migInode.vol.Name, partitionId, eks, migInode.inodeInfo.Inode)
+	err = retryDeleteExtents(mi.task.GetMasterClient(), mi.vol.Name, partitionId, eks, mi.inodeInfo.Inode)
 	if err != nil {
 		// delete failed, no impact on migration
-		log.LogWarnf("deleteNormalExtent ino(%v) partitionId(%v) extentKeys(%v) err(%v)", migInode.name, partitionId, eks, err)
+		log.LogWarnf("deleteNormalExtent ino(%v) partitionId(%v) extentKeys(%v) err(%v)", mi.name, partitionId, eks, err)
 		err = nil
 	}
 	normalExtent.PartitionId = partitionId
@@ -566,8 +566,8 @@ func (migInode *MigInode) createAndDeleteNormalExtentForGenS3Key() (normalExtent
 	return
 }
 
-func (migInode *MigInode) findEkSegmentFirstNormalExtent() (normalExtent proto.ExtentKey, exist bool) {
-	migEks := migInode.extents[migInode.startIndex:migInode.endIndex]
+func (mi *MigInode) findEkSegmentFirstNormalExtent() (normalExtent proto.ExtentKey, exist bool) {
+	migEks := mi.extents[mi.startIndex:mi.endIndex]
 	for _, ek := range migEks {
 		if ek.ExtentId == 0 {
 			continue
@@ -579,22 +579,22 @@ func (migInode *MigInode) findEkSegmentFirstNormalExtent() (normalExtent proto.E
 	return proto.ExtentKey{}, false
 }
 
-func (migInode *MigInode) ReadFromS3AndWriteToDataNode() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()+"_reverseS3"))
+func (mi *MigInode) ReadFromS3AndWriteToDataNode() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()+"_reverseS3"))
 	defer metrics.Set(err)
 
-	if migInode.vol.S3Client == nil {
-		err = fmt.Errorf("ReadFromS3AndWriteToDataNode inode[%v] migDirection[%v] %v", migInode.name, migInode.migDirection, "s3 client is nil")
+	if mi.vol.S3Client == nil {
+		err = fmt.Errorf("ReadFromS3AndWriteToDataNode inode[%v] migDirection[%v] %v", mi.name, mi.migDirection, "s3 client is nil")
 		log.LogErrorf(err.Error())
 		return
 	}
 
-	migInode.rwStartTime = time.Now()
+	mi.rwStartTime = time.Now()
 
-	defer migInode.handleError("ReadFromS3AndWriteToDataNode", &err)
+	defer mi.handleError("ReadFromS3AndWriteToDataNode", &err)
 
-	fileOffset := migInode.extents[migInode.startIndex].FileOffset
-	totalSize := migInode.extents[migInode.endIndex-1].FileOffset + uint64(migInode.extents[migInode.endIndex-1].Size) - fileOffset
+	fileOffset := mi.extents[mi.startIndex].FileOffset
+	totalSize := mi.extents[mi.endIndex-1].FileOffset + uint64(mi.extents[mi.endIndex-1].Size) - fileOffset
 
 	var (
 		writeTotal int
@@ -602,127 +602,128 @@ func (migInode *MigInode) ReadFromS3AndWriteToDataNode() (err error) {
 		ctx        = context.Background()
 	)
 
-	for _, ek := range migInode.extents[migInode.startIndex:migInode.endIndex] {
-		err = migInode.doReadAndWriteTo(ctx, ek, fileOffset, uint64(ek.Size), crc, &writeTotal)
+	for _, ek := range mi.extents[mi.startIndex:mi.endIndex] {
+		err = mi.doReadAndWriteTo(ctx, ek, fileOffset, uint64(ek.Size), crc, &writeTotal)
 		if err != nil {
 			return err
 		}
 	}
 
-	migInode.migDataCrc = crc.Sum32()
-	log.LogDebugf("ReadFromS3AndWriteToDataNode ino(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v)", migInode.name, totalSize, writeTotal, migInode.startIndex, migInode.endIndex)
+	mi.migDataCrc = crc.Sum32()
+	log.LogDebugf("ReadFromS3AndWriteToDataNode ino(%v) totalSize(%v) writeTotal(%v) readRange(%v:%v)", mi.name, totalSize, writeTotal, mi.startIndex, mi.endIndex)
 
 	if totalSize != uint64(writeTotal) {
-		err = fmt.Errorf("ReadFromS3AndWriteToDataNode compare equal ino(%v) totalSize(%v) but write size(%v)", migInode.name, totalSize, writeTotal)
+		err = fmt.Errorf("ReadFromS3AndWriteToDataNode compare equal ino(%v) totalSize(%v) but write size(%v)", mi.name, totalSize, writeTotal)
 		return err
 	}
 
 	return nil
 }
 
-func (migInode *MigInode) handleError(action string, err *error) {
+func (mi *MigInode) handleError(action string, err *error) {
 	if *err != nil {
-		migInode.MigTaskCloseStream()
-		migInode.DealActionErr(InodeReadFailedCode, *err)
-		log.LogErrorf("%v inode[%v] %v:%v", action, migInode.name, InodeReadAndWriteFailed, (*err).Error())
+		mi.MigTaskCloseStream()
+		mi.DealActionErr(InodeReadFailedCode, *err)
+		log.LogErrorf("%v inode[%v] %v:%v", action, mi.name, InodeReadAndWriteFailed, (*err).Error())
 		return
 	}
-	migInode.stage = MetaMergeExtents
+	mi.stage = MetaMergeExtents
 }
 
-func (migInode *MigInode) MetaMergeExtents() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
+func (mi *MigInode) MetaMergeExtents() (err error) {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()))
 	defer metrics.Set(err)
 
 	var (
-		migEks = migInode.extents[migInode.startIndex:migInode.endIndex]
-		newEks = make([]proto.ExtentKey, len(migInode.newEks))
+		migEks = mi.extents[mi.startIndex:mi.endIndex]
+		newEks = make([]proto.ExtentKey, len(mi.newEks))
 	)
-	for i, ek := range migInode.newEks {
+	for i, ek := range mi.newEks {
 		newEks[i] = *ek
 	}
-	migInode.newEks = nil
+	mi.newEks = nil
 	defer func() {
 		if err != nil {
-			log.LogErrorf("inode[%v] %v:%v", migInode.name, InodeMergeFailed, err.Error())
-			migInode.MigTaskCloseStream()
-			migInode.DealActionErr(InodeMergeFailedCode, err)
+			log.LogErrorf("inode[%v] %v:%v", mi.name, InodeMergeFailed, err.Error())
+			mi.MigTaskCloseStream()
+			mi.DealActionErr(InodeMergeFailedCode, err)
 			return
 		}
-		migInode.stage = LookupEkSegment
+		mi.stage = LookupEkSegment
 	}()
-	if !migInode.compareReplicasInodeEksEqual() {
-		err = fmt.Errorf("unequal extensions between mp[%v] inode[%v] replicas", migInode.mpId, migInode.inodeInfo.Inode)
+	if !mi.compareReplicasInodeEksEqual() {
+		err = fmt.Errorf("unequal extensions between mp[%v] inode[%v] replicas", mi.mpId, mi.inodeInfo.Inode)
 		return
 	}
-	if ok, canDeleteExtentKeys := migInode.checkMigExtentCanDelete(migEks); !ok {
-		err = fmt.Errorf("checkMigExtentCanDelete ino:%v rawEks length:%v delEks length:%v rawEks(%v) canDeleteExtentKeys(%v)", migInode.name, len(migEks), len(canDeleteExtentKeys), migEks, canDeleteExtentKeys)
+	if ok, canDeleteExtentKeys := mi.checkMigExtentCanDelete(migEks); !ok {
+		err = fmt.Errorf("checkMigExtentCanDelete ino:%v rawEks length:%v delEks length:%v rawEks(%v) canDeleteExtentKeys(%v)", mi.name, len(migEks), len(canDeleteExtentKeys), migEks, canDeleteExtentKeys)
 		return
 	}
 
-	beforeReplicateDataCRC, afterReplicateDataCRC, err := migInode.getMigBeforeAfterDataCRC(migEks, newEks)
+	beforeReplicateDataCRC, afterReplicateDataCRC, err := mi.getMigBeforeAfterDataCRC(migEks, newEks)
 	if err != nil {
 		return
 	}
 
-	if err = migInode.checkReplicaCRCValid(beforeReplicateDataCRC, afterReplicateDataCRC); err != nil {
+	if err = mi.checkReplicaCRCValid(beforeReplicateDataCRC, afterReplicateDataCRC); err != nil {
 		return
 	}
 	// 读写的时间 超过（锁定时间-预留时间），放弃修改ek链
-	consumedTime := time.Since(migInode.rwStartTime)
+	consumedTime := time.Since(mi.rwStartTime)
 	if consumedTime >= maxConsumeTime*time.Second {
 		msg := fmt.Sprintf("before MetaMergeExtents ino(%v) has been consumed time(%v) readRange(%v:%v), but maxConsumeTime(%v)",
-			migInode.name, consumedTime, migInode.startIndex, migInode.endIndex, maxConsumeTime*time.Second)
+			mi.name, consumedTime, mi.startIndex, mi.endIndex, maxConsumeTime*time.Second)
 		err = fmt.Errorf(msg)
 		return
 	}
-	err = migInode.vol.MetaClient.InodeMergeExtents_ll(context.Background(), migInode.inodeInfo.Inode, migEks, newEks, proto.FileMigMergeEk)
+	err = mi.vol.MetaClient.InodeMergeExtents_ll(context.Background(), mi.inodeInfo.Inode, migEks, newEks, proto.FileMigMergeEk)
 	if err != nil {
 		// meta merge failed, do not unlock extent
 		err = fmt.Errorf("%v, err:%v", MetaMergeFailed, err)
 		return
 	}
 
-	err = migInode.deleteOldExtents(migEks)
+	err = mi.deleteOldExtents(migEks)
 	if err != nil {
-		migInode.deleteOldExtentsFailedAlarm(err, migEks, newEks)
+		mi.deleteOldExtentsFailedAlarm(err, migEks, newEks)
 		// merge success, but delete old extents failed, do not unlock extent
 		err = fmt.Errorf("%v, err:%v", DeleteOldExtentFailed, err)
 	}
-	log.LogDebugf("InodeMergeExtents_ll success ino(%v) oldEks(%v) newEks(%v)", migInode.name, migEks, newEks)
-	migInode.addInodeMigrateLog(migEks, newEks)
-	migInode.SummaryStatisticsInfo(newEks)
+	log.LogDebugf("InodeMergeExtents_ll success ino(%v) oldEks(%v) newEks(%v)", mi.name, migEks, newEks)
+	mi.addInodeMigrateLog(migEks, newEks)
+	mi.SummaryStatisticsInfo(newEks)
 	return
 }
 
-func (migInode *MigInode) deleteOldExtentsFailedAlarm(err error, migEks, newEks []proto.ExtentKey) {
+func (mi *MigInode) deleteOldExtentsFailedAlarm(err error, migEks, newEks []proto.ExtentKey) {
 	warnMsg := fmt.Sprintf("migration cluster(%v) volume(%v) mp(%v) inode(%v) workerIp(%v) delete old extents fail",
-		migInode.vol.ClusterName, migInode.vol.Name, migInode.mpId, migInode.inodeInfo.Inode, migInode.task.GetLocalIp())
+		mi.vol.ClusterName, mi.vol.Name, mi.mpId, mi.inodeInfo.Inode, mi.task.GetLocalIp())
 	exporter.WarningBySpecialUMPKey(fmt.Sprintf("%v_%v_warning", proto.RoleDataMigWorker, "deleteOldExtents"), warnMsg)
 	log.LogErrorf("%v migEks(%v) newEks(%v) err(%v)", warnMsg, migEks, newEks, err)
 }
 
-func (migInode *MigInode) compareReplicasInodeEksEqual() bool {
+func (mi *MigInode) compareReplicasInodeEksEqual() bool {
 	var (
 		wg           sync.WaitGroup
 		mu           sync.Mutex
 		inodeExtents []*proto.GetExtentsResponse
-		members      = migInode.task.GetMpInfo().Members
+		members      = mi.task.GetMpInfo().Members
 	)
 
 	for _, member := range members {
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
-			ipPort := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], migInode.task.GetProfPort())
+			ipPort := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], mi.task.GetProfPort())
 			metaHttpClient := meta.NewMetaHttpClient(ipPort, false)
-			getExtentsResp, err := metaHttpClient.GetExtentKeyByInodeId(migInode.mpId, migInode.inodeInfo.Inode)
+			getExtentsResp, err := metaHttpClient.GetExtentKeyByInodeId(mi.mpId, mi.inodeInfo.Inode)
 			if err == nil && getExtentsResp != nil {
 				mu.Lock()
 				inodeExtents = append(inodeExtents, getExtentsResp)
 				mu.Unlock()
 			} else {
-				log.LogErrorf("GetExtentsNoModifyAccessTime ino(%v) err(%v)", migInode.name, err)
+				fmt.Printf("getExtentsResp:%v\n", err)
+				log.LogErrorf("GetExtentsNoModifyAccessTime ino(%v) err(%v)", mi.name, err)
 			}
 		}(member)
 	}
@@ -744,15 +745,15 @@ func (migInode *MigInode) compareReplicasInodeEksEqual() bool {
 	return true
 }
 
-func (migInode *MigInode) MigTaskCloseStream() {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
+func (mi *MigInode) MigTaskCloseStream() {
+	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, mi.stage.String()))
 	defer metrics.Set(nil)
 
-	if migInode.extentClient == nil {
+	if mi.extentClient == nil {
 		return
 	}
-	if err := migInode.extentClient.CloseStream(context.Background(), migInode.inodeInfo.Inode); err != nil {
-		log.LogErrorf("MigTaskCloseStream ino(%v) err(%v)", migInode.name, err)
+	if err := mi.extentClient.CloseStream(context.Background(), mi.inodeInfo.Inode); err != nil {
+		log.LogErrorf("MigTaskCloseStream ino(%v) err(%v)", mi.name, err)
 	}
 }
 
@@ -760,13 +761,13 @@ func dpIdExtentIdKey(partitionId, extentId uint64) string {
 	return fmt.Sprintf("%v#%v", partitionId, extentId)
 }
 
-func (migInode *MigInode) UpdateTime() {
-	if time.Now().Unix()-migInode.lastUpdateTime > 10*60 {
-		if updateErr := mysql.UpdateTaskUpdateTime(migInode.task.GetTaskId()); updateErr != nil {
+func (mi *MigInode) UpdateTime() {
+	if time.Now().Unix()-mi.lastUpdateTime > 10*60 {
+		if updateErr := mysql.UpdateTaskUpdateTime(mi.task.GetTaskId()); updateErr != nil {
 			if !strings.Contains(updateErr.Error(), "affected rows less then one") {
-				log.LogErrorf("UpdateTaskUpdateTime to mysql failed, tasks(%v), err(%v)", migInode.task, updateErr)
+				log.LogErrorf("UpdateTaskUpdateTime to mysql failed, tasks(%v), err(%v)", mi.task, updateErr)
 			}
 		}
-		migInode.lastUpdateTime = time.Now().Unix()
+		mi.lastUpdateTime = time.Now().Unix()
 	}
 }

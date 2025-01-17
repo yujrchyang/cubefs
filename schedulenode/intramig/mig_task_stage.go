@@ -1,9 +1,9 @@
-package intraMigration
+package intramig
 
-type MigrateTaskStage uint8
+type MigTaskStage uint8
 
 const (
-	GetMPInfo MigrateTaskStage = iota
+	GetMPInfo MigTaskStage = iota
 	GetMNProfPort
 	ListAllIno
 	GetInodes
@@ -11,7 +11,7 @@ const (
 	Stopped
 )
 
-func (s MigrateTaskStage) String() string {
+func (s MigTaskStage) String() string {
 	switch s {
 	case GetMPInfo:
 		return "GetMPInfo"

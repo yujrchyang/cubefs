@@ -1,4 +1,4 @@
-package migration
+package migcore
 
 import (
 	"crypto/md5"
@@ -64,6 +64,40 @@ func NewMockTask(localIp string, task *proto.Task, masterClient *master.MasterCl
 }
 
 func (m *MockTask) GetInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigDirection, err error) {
+	vol := m.GetVol()
+	policies, exist := vol.GetLayerPolicies(vol.ClusterName, vol.Name)
+	if !exist {
+		err = fmt.Errorf("getLayerPolicies does not exist, cluster(%v) volume(%v)", vol.ClusterName, vol.Name)
+		return
+	}
+	for _, policy := range policies {
+		policyInodeATime, ok := policy.(*proto.LayerPolicyInodeATime)
+		if !ok {
+			err = fmt.Errorf("getLayerPolicies is invalid, cluster(%v) volume(%v)", vol.ClusterName, vol.Name)
+			break
+		}
+		if policyInodeATime.TimeType == proto.InodeAccessTimeTypeTimestamp {
+			isToColdMedium := TimeStampAgo(inodeInfo, policyInodeATime)
+			migDir = ConvertMigrateDirection(policyInodeATime, isToColdMedium)
+			if isToColdMedium {
+				break
+			}
+		}
+		if policyInodeATime.TimeType == proto.InodeAccessTimeTypeDays {
+			isToColdMedium := DaysAgo(inodeInfo, policyInodeATime)
+			migDir = ConvertMigrateDirection(policyInodeATime, isToColdMedium)
+			if isToColdMedium {
+				break
+			}
+		}
+		if policyInodeATime.TimeType == proto.InodeAccessTimeTypeSec {
+			isToColdMedium := SecondsAgo(inodeInfo, policyInodeATime)
+			migDir = ConvertMigrateDirection(policyInodeATime, isToColdMedium)
+			if isToColdMedium {
+				break
+			}
+		}
+	}
 	return
 }
 func (m *MockTask) GetInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err error) {
@@ -86,11 +120,11 @@ func (m *MockTask) GetMasterClient() *master.MasterClient {
 }
 
 func (m *MockTask) GetProfPort() string {
-	return "9092"
+	return m.profPort
 }
 
 func (m *MockTask) GetMpInfo() *meta.MetaPartition {
-	return &meta.MetaPartition{}
+	return m.mpInfo
 }
 
 func (m *MockTask) GetLocalIp() string {
@@ -174,6 +208,9 @@ func init() {
 				Bucket:    bucketName,
 				VolId:     volId,
 			}
+		},
+		ControlConfig: &ControlConfig{
+			DirectWrite: true,
 		},
 	}
 	vol.ClusterName = clusterName
@@ -545,6 +582,7 @@ func TestLockAndUnlockExtent(t *testing.T) {
 		if err != nil {
 			assert.FailNowf(t, "GetExtentLockInfo failed", "dpId:%v hostAddr:%v, err:%v", dpId, hostAddr, err)
 		}
+		fmt.Printf("info:%v\n", info)
 		for i := proto.TinyExtentStartID; i <= proto.TinyExtentCount; i++ {
 			_, ok := info[strconv.Itoa(i)]
 			assert.Equal(t, true, ok)
@@ -625,9 +663,6 @@ func TestCheckReplicaCrcValid(t *testing.T) {
 	}
 	vol.DataClient = ec
 	vol.MetaClient = mw
-	vol.ControlConfig = &ControlConfig{
-		DirectWrite: true,
-	}
 	ctx := context.Background()
 	err := writeRowFileByMountDir(size512M, testFile)
 	if err != nil {
@@ -777,7 +812,7 @@ func TestCheckS3CrcValid(t *testing.T) {
 
 func readDatanodeWriteS3(fileSize int, t *testing.T) {
 	setVolForceRow(true)
-	//defer setVolForceRow(false)
+	defer setVolForceRow(false)
 
 	testFile := fmt.Sprintf("/cfs/mnt/TestReadWriteS3_%v", fileSize)
 	file, _ := os.Create(testFile)
@@ -925,11 +960,18 @@ func createMigrateInode(fileSize int, testFile string, t *testing.T) (inodeOp *M
 }
 
 func TestDeleteOldExtents(t *testing.T) {
-	inodeOperation := &MigInode{
-		inodeInfo: &proto.InodeInfo{
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeInodeMigration,
+	}
+	vol.ControlConfig = &ControlConfig{
+		DirectWrite: true,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
+	migInode := &proto.InodeExtents{
+		Inode:   &proto.InodeInfo{
 			Inode: 10,
 		},
-		extents: []proto.ExtentKey{
+		Extents: []proto.ExtentKey{
 			{
 				PartitionId: 1,
 				ExtentId:    1,
@@ -952,10 +994,15 @@ func TestDeleteOldExtents(t *testing.T) {
 			},
 		},
 	}
-	inodeOperation.startIndex = 0
-	inodeOperation.endIndex = 2
-	inodeOperation.vol = vol
-	err := inodeOperation.deleteOldExtents(inodeOperation.extents[inodeOperation.startIndex:inodeOperation.endIndex])
+	inodeOp, err := NewMigrateInode(mpOp, migInode)
+	if err != nil {
+		assert.FailNow(t, err.Error())
+		return
+	}
+	inodeOp.startIndex = 0
+	inodeOp.endIndex = 2
+	inodeOp.vol = vol
+	err = inodeOp.deleteOldExtents(inodeOp.extents[inodeOp.startIndex:inodeOp.endIndex])
 	assert.Nil(t, err)
 }
 
@@ -1403,7 +1450,6 @@ func TestMetaMergeExtents(t *testing.T) {
 		assert.FailNow(t, err.Error())
 		return
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
 	subTask, _ := NewMigrateInode(mpOp, cmpInode)
 	subTask.startIndex = 0
 	subTask.endIndex = len(extents)

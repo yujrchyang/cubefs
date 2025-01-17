@@ -1,4 +1,4 @@
-package migration
+package migcore
 
 type MigDirection uint8
 

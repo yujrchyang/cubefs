@@ -1,9 +1,9 @@
-package intraMigration
+package intramig
 
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/schedulenode/migration"
+	"github.com/cubefs/cubefs/schedulenode/migcore"
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/sdk/master"
 	"github.com/stretchr/testify/assert"
@@ -20,12 +20,12 @@ const (
 
 var (
 	masterClient = master.NewMasterClient(strings.Split(ltptestMaster, ","), false)
-	migTask *MigrateTask
-	vol  *migration.VolumeInfo
+	migTask *MigTask
+	vol  *migcore.VolumeInfo
 )
 
 func init() {
-	vol = &migration.VolumeInfo{
+	vol = &migcore.VolumeInfo{
 		GetMigrationConfig: func(cluster, volName string) (volumeConfig proto.MigrationConfig) {
 			return proto.MigrationConfig{
 				Region:    region,
@@ -50,7 +50,7 @@ var task = &proto.Task{
 	TaskId:     0,
 	TaskType:   proto.WorkerTypeInodeMigration,
 	Cluster:    clusterName,
-	VolName:    "volumeName",
+	VolName:    ltptestVolume,
 	DpId:       0,
 	MpId:       1,
 	WorkerAddr: "127.0.0.1:17321",
@@ -58,7 +58,8 @@ var task = &proto.Task{
 
 func getMpInfo(t *testing.T) {
 	time.Sleep(time.Minute * 2)
-	vol := &migration.VolumeInfo{
+	vol := &migcore.VolumeInfo{
+		Name: ltptestVolume,
 		GetMigrationConfig: func(cluster, volName string) (volumeConfig proto.MigrationConfig) {
 			return proto.MigrationConfig{
 				Region:    region,
@@ -70,7 +71,7 @@ func getMpInfo(t *testing.T) {
 			}
 		},
 	}
-	migTask = NewMigrateTask("127.0.0.1", task, masterClient, vol)
+	migTask = NewMigTask("127.0.0.1", task, masterClient, vol)
 	err := migTask.SetMpInfo()
 	if err != nil {
 		assert.FailNowf(t, err.Error(), "SetMpInfo err(%v)", err)
@@ -138,7 +139,7 @@ func TestSetInodeMigDirection(t *testing.T) {
 			layerPolicies = append(layerPolicies, lp)
 			return
 		}
-		mpOperation := &MigrateTask{
+		mpOperation := &MigTask{
 			vol:  vol,
 			mpId: 1,
 		}
@@ -147,17 +148,17 @@ func TestSetInodeMigDirection(t *testing.T) {
 			ModifyTime: proto.CubeFSTime(0),
 		}
 		var (
-			migDir migration.MigrateDirection
+			migDir migcore.MigDirection
 			err    error
 		)
 		if migDir, err = mpOperation.GetInodeMigDirection(inodeInfo); err != nil {
 			assert.FailNow(t, err.Error())
 		}
 		if policyMeta.TargetMedium == proto.MediumHDD {
-			assert.Equal(t, migration.SSDToHDDFileMigrate, migDir)
+			assert.Equal(t, migcore.SSDToHDDFileMigrate, migDir)
 		}
 		if policyMeta.TargetMedium == proto.MediumS3 {
-			assert.Equal(t, migration.S3FileMigrate, migDir)
+			assert.Equal(t, migcore.S3FileMigrate, migDir)
 		}
 		inodeInfo = &proto.InodeInfo{
 			AccessTime: proto.CubeFSTime(time.Now().Unix()),
@@ -167,10 +168,10 @@ func TestSetInodeMigDirection(t *testing.T) {
 			assert.FailNow(t, err.Error())
 		}
 		if policyMeta.TargetMedium == proto.MediumHDD {
-			assert.Equal(t, migration.HDDToSSDFileMigrate, migDir)
+			assert.Equal(t, migcore.HDDToSSDFileMigrate, migDir)
 		}
 		if policyMeta.TargetMedium == proto.MediumS3 {
-			assert.Equal(t, migration.ReverseS3FileMigrate, migDir)
+			assert.Equal(t, migcore.ReverseS3FileMigrate, migDir)
 		}
 	}
 }

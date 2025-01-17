@@ -9,7 +9,7 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/blck"
 	"github.com/cubefs/cubefs/schedulenode/crcworker"
 	"github.com/cubefs/cubefs/schedulenode/fsck"
-	"github.com/cubefs/cubefs/schedulenode/intraMigration"
+	"github.com/cubefs/cubefs/schedulenode/intramig"
 	"github.com/cubefs/cubefs/schedulenode/mdck"
 	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
 	"github.com/cubefs/cubefs/schedulenode/smart"
@@ -324,8 +324,8 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		s.workers.Store(proto.WorkerTypeSmartVolume, smartVolumeWorker)
 	}
 	if cfg.GetBool(config.ConfigKeyEnableCompact) {
-		var compactWorker *intraMigration.Worker
-		if compactWorker, err = intraMigration.NewWorkerForScheduler(cfg, proto.WorkerTypeCompact); err != nil {
+		var compactWorker *intramig.Worker
+		if compactWorker, err = intramig.NewWorkerForScheduler(cfg, proto.WorkerTypeCompact); err != nil {
 			log.LogErrorf("[registerWorker] create compact worker failed, err(%v)", err)
 			return
 		}
@@ -372,8 +372,8 @@ func (s *ScheduleNode) registerWorker(cfg *config.Config) (err error) {
 		s.workers.Store(proto.WorkerTypeNormalExtentMistakeDelCheck, normalExtentCheckTaskSchedule)
 	}
 	if cfg.GetBool(config.ConfigKeyEnableInodeMigrate) {
-		var fileMigrationWorker *intraMigration.Worker
-		if fileMigrationWorker, err = intraMigration.NewWorkerForScheduler(cfg, proto.WorkerTypeInodeMigration); err != nil {
+		var fileMigrationWorker *intramig.Worker
+		if fileMigrationWorker, err = intramig.NewWorkerForScheduler(cfg, proto.WorkerTypeInodeMigration); err != nil {
 			log.LogErrorf("[registerWorker] create file migration worker failed, err(%v)", err)
 			return
 		}
@@ -665,7 +665,7 @@ func (s *ScheduleNode) startTaskCreator() {
 				go s.taskCreator(proto.WorkerTypeSmartVolume, dr, sv.CreateTask)
 
 			case proto.WorkerTypeCompact:
-				cw := value.(*intraMigration.Worker)
+				cw := value.(*intramig.Worker)
 				dr := cw.GetCreatorDuration()
 				if dr <= 0 {
 					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))
@@ -714,7 +714,7 @@ func (s *ScheduleNode) startTaskCreator() {
 				go s.taskCreator(proto.WorkerTypeNormalExtentMistakeDelCheck, dr, normalExtentCheckTaskSchedule.CreateTask)
 
 			case proto.WorkerTypeInodeMigration:
-				fmw := value.(*intraMigration.Worker)
+				fmw := value.(*intramig.Worker)
 				dr := fmw.GetCreatorDuration()
 				if dr <= 0 {
 					log.LogWarnf("[startTaskCreator] worker duration is invalid, use default value, workerType(%v)", proto.WorkerTypeToName(wt))

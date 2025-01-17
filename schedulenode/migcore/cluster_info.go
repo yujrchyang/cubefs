@@ -1,4 +1,4 @@
-package migration
+package migcore
 
 import (
 	"github.com/cubefs/cubefs/sdk/master"

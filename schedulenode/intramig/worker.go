@@ -1,11 +1,11 @@
-package intraMigration
+package intramig
 
 import (
 	"fmt"
 	"github.com/cubefs/cubefs/cmd/common"
 	"github.com/cubefs/cubefs/proto"
 	cm "github.com/cubefs/cubefs/schedulenode/common"
-	"github.com/cubefs/cubefs/schedulenode/migration"
+	"github.com/cubefs/cubefs/schedulenode/migcore"
 	"github.com/cubefs/cubefs/schedulenode/worker"
 	"github.com/cubefs/cubefs/sdk/data"
 	"github.com/cubefs/cubefs/sdk/master"
@@ -98,7 +98,7 @@ type Worker struct {
 	lastFileMigrateVolume sync.Map            // key: cluster value: map[volume]
 	volumeTaskPos         sync.Map
 	volumeTaskCnt         sync.Map //key: clusterVolumeKey value: taskCnt
-	controlConfig         *migration.ControlConfig
+	controlConfig         *migcore.ControlConfig
 	limiter               *cm.ConcurrencyLimiter
 	volumeInfoCheckMutex  sync.Mutex
 	inodeMigParallelNum   int32
@@ -194,7 +194,7 @@ func (w *Worker) Sync() {
 }
 
 func (w *Worker) ConsumeCompactTask(task *proto.Task) (restore bool, err error) {
-	metrics := exporter.NewModuleTP(fmt.Sprintf("%v_%v", migration.Compact, migration.ConsumeTask))
+	metrics := exporter.NewModuleTP(fmt.Sprintf("%v_%v", migcore.Compact, migcore.ConsumeTask))
 	defer metrics.Set(err)
 
 	w.limiter.Add()
@@ -223,7 +223,7 @@ func (w *Worker) ConsumeCompactTask(task *proto.Task) (restore bool, err error) 
 }
 
 func (w *Worker) ConsumeFileMigTask(task *proto.Task) (restore bool, err error) {
-	metrics := exporter.NewModuleTP(migration.UmpKeySuffix(migration.FileMig, migration.ConsumeTask))
+	metrics := exporter.NewModuleTP(migcore.UmpKeySuffix(migcore.FileMig, migcore.ConsumeTask))
 	defer metrics.Set(err)
 
 	w.limiter.Add()
@@ -263,7 +263,7 @@ func (w *Worker) ConsumeFileMigTask(task *proto.Task) (restore bool, err error) 
 func (w *Worker) execMigrationTask(task *proto.Task) (isFinished bool, err error) {
 	var (
 		masterClient *master.MasterClient
-		volumeInfo   *migration.VolumeInfo
+		volumeInfo   *migcore.VolumeInfo
 		ok           bool
 	)
 	if masterClient, ok = w.getMasterClient(task.Cluster); !ok {
@@ -274,7 +274,7 @@ func (w *Worker) execMigrationTask(task *proto.Task) (isFinished bool, err error
 		log.LogErrorf("ConsumeTask getVolumeInfo cluster(%v) volName(%v) does not exist", task.Cluster, task.VolName)
 		return true, nil
 	}
-	migTask := NewMigrateTask(localIp, task, masterClient, volumeInfo)
+	migTask := NewMigTask(localIp, task, masterClient, volumeInfo)
 	migTask.updateInodeMigParallel(&w.inodeMigParallelNum)
 	isFinished, err = migTask.RunOnce()
 	if err == nil {
@@ -288,8 +288,8 @@ func (w *Worker) checkVolumeInfo(cluster, volume string, clientType data.ExtentC
 	w.volumeInfoCheckMutex.Lock()
 	defer w.volumeInfoCheckMutex.Unlock()
 	var (
-		clusterInfo *migration.ClusterInfo
-		volumeInfo  *migration.VolumeInfo
+		clusterInfo *migcore.ClusterInfo
+		volumeInfo  *migcore.VolumeInfo
 		ok          bool
 	)
 	clusterInfo = w.getClusterInfo(cluster)
@@ -319,7 +319,7 @@ func (w *Worker) checkVolumeInfo(cluster, volume string, clientType data.ExtentC
 		err = fmt.Errorf("volumeInfo clientType(%v) invalid cluster(%v) volume(%v) ", cluster, volume, clientType)
 		return
 	}
-	if volumeInfo, err = migration.NewVolumeInfo(cluster, volume, clusterInfo.MasterClient.Nodes(), w.controlConfig, clientType,
+	if volumeInfo, err = migcore.NewVolumeInfo(cluster, volume, clusterInfo.MasterClient.Nodes(), w.controlConfig, clientType,
 		getInodeATimePolicies, getDpMediumType, getMigrationConfig); err != nil {
 		err = fmt.Errorf("NewFileMigrateVolume cluster(%v) volume(%v) info failed:%v", cluster, volume, err)
 		return
@@ -330,15 +330,15 @@ func (w *Worker) checkVolumeInfo(cluster, volume string, clientType data.ExtentC
 	return
 }
 
-func (w *Worker) getVolumeInfo(clusterName, volName string) (volInfo *migration.VolumeInfo, ok bool) {
+func (w *Worker) getVolumeInfo(clusterName, volName string) (volInfo *migcore.VolumeInfo, ok bool) {
 	var value interface{}
 	value, ok = w.clusterMap.Load(clusterName)
 	if !ok {
 		return
 	}
 	var vol interface{}
-	if vol, ok = value.(*migration.ClusterInfo).GetVolByName(volName); ok {
-		volInfo = vol.(*migration.VolumeInfo)
+	if vol, ok = value.(*migcore.ClusterInfo).GetVolByName(volName); ok {
+		volInfo = vol.(*migcore.VolumeInfo)
 	}
 	return
 }
@@ -531,7 +531,7 @@ func (w *Worker) releaseVolume() {
 
 func (w *Worker) parseControlConfig(cfg *config.Config, workerType proto.WorkerType) (err error) {
 	var (
-		mcc    = &migration.ControlConfig{}
+		mcc    = &migcore.ControlConfig{}
 		mnInfo map[string]interface{}
 	)
 	if workerType == proto.WorkerTypeCompact {
@@ -601,19 +601,19 @@ func (w *Worker) parseMasterAddr(cfg *config.Config) {
 	for clusterName, nodes := range w.masterAddr {
 		materClient := master.NewMasterClient(nodes, false)
 		w.masterClients.Store(clusterName, materClient)
-		w.clusterMap.Store(clusterName, migration.NewClusterInfo(clusterName, materClient))
+		w.clusterMap.Store(clusterName, migcore.NewClusterInfo(clusterName, materClient))
 	}
 }
 
-func (w *Worker) getClusterInfo(cluster string) *migration.ClusterInfo {
+func (w *Worker) getClusterInfo(cluster string) *migcore.ClusterInfo {
 	value, ok := w.clusterMap.Load(cluster)
 	if !ok {
 		return nil
 	}
-	return value.(*migration.ClusterInfo)
+	return value.(*migcore.ClusterInfo)
 }
 
-func (w *Worker) addVolume(cluster, volName string, vol *migration.VolumeInfo) (err error) {
+func (w *Worker) addVolume(cluster, volName string, vol *migcore.VolumeInfo) (err error) {
 	defer func() {
 		if err != nil {
 			log.LogErrorf("Add volume, cluster[%v] volumeName[%v] failed:%v", cluster, volName, err)
@@ -634,13 +634,13 @@ func (w *Worker) getMasterClient(cluster string) (mc *master.MasterClient, ok bo
 	if !ok {
 		return
 	}
-	mc = value.(*migration.ClusterInfo).MasterClient
+	mc = value.(*migcore.ClusterInfo).MasterClient
 	return
 }
 
 func (w *Worker) releaseUnusedVolume() {
 	w.clusterMap.Range(func(key, value interface{}) bool {
-		clusterInfo := value.(*migration.ClusterInfo)
+		clusterInfo := value.(*migcore.ClusterInfo)
 		clusterInfo.ReleaseUnusedVolume()
 		return true
 	})
@@ -671,7 +671,7 @@ const (
 
 func (w *Worker) workerViewInfo(res http.ResponseWriter, r *http.Request) {
 	view := w.collectWorkerViewInfo()
-	migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: view})
+	migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: view})
 }
 
 func (w *Worker) collectWorkerViewInfo() (view *proto.DataMigWorkerViewInfo) {
@@ -679,14 +679,14 @@ func (w *Worker) collectWorkerViewInfo() (view *proto.DataMigWorkerViewInfo) {
 	view.Port = w.Port
 	view.Clusters = make([]*proto.ClusterDataMigView, 0)
 	w.clusterMap.Range(func(key, value interface{}) bool {
-		clusterInfo := value.(*migration.ClusterInfo)
+		clusterInfo := value.(*migcore.ClusterInfo)
 		clusterDateMigView := &proto.ClusterDataMigView{
 			ClusterName: clusterInfo.Name,
 			Nodes:       clusterInfo.Nodes(),
 			VolumeInfo:  make([]*proto.VolumeDataMigView, 0),
 		}
 		clusterInfo.VolumeMap.Range(func(key, value interface{}) bool {
-			vol := value.(*migration.VolumeInfo)
+			vol := value.(*migcore.VolumeInfo)
 			clusterDateMigView.VolumeInfo = append(clusterDateMigView.VolumeInfo, vol.GetVolumeView())
 			return true
 		})
@@ -705,111 +705,111 @@ func (w *Worker) collectWorkerViewInfo() (view *proto.DataMigWorkerViewInfo) {
 func (w *Worker) info(res http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError,
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError,
 			Msg: err.Error()})
 		return
 	}
-	clusterName := r.FormValue(migration.ClusterKey)
-	volumeName := r.FormValue(migration.VolNameKey)
+	clusterName := r.FormValue(migcore.ClusterKey)
+	volumeName := r.FormValue(migcore.VolNameKey)
 	volInfo := w.volInfo(clusterName, volumeName)
 	var migView *proto.VolumeDataMigView
 	if volInfo != nil {
 		migView = volInfo.GetVolumeView()
 	}
-	migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: migView})
+	migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: migView})
 }
 
-func (w *Worker) volInfo(clusterName, volumeName string) (volInfo *migration.VolumeInfo) {
+func (w *Worker) volInfo(clusterName, volumeName string) (volInfo *migcore.VolumeInfo) {
 	value, ok := w.clusterMap.Load(clusterName)
 	if !ok {
 		return
 	}
-	clusterInfo := value.(*migration.ClusterInfo)
+	clusterInfo := value.(*migcore.ClusterInfo)
 	var vol interface{}
 	if vol, ok = clusterInfo.GetVolByName(volumeName); !ok {
 		return
 	}
-	volInfo = vol.(*migration.VolumeInfo)
+	volInfo = vol.(*migcore.VolumeInfo)
 	return
 }
 
 func (w *Worker) stop(res http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	cluster := r.FormValue(migration.ClusterKey)
-	volume := r.FormValue(migration.VolNameKey)
+	cluster := r.FormValue(migcore.ClusterKey)
+	volume := r.FormValue(migcore.VolNameKey)
 	var msg string
 	if vol, ok := w.getVolumeInfo(cluster, volume); ok {
-		vol.State = migration.VolClosing
+		vol.State = migcore.VolClosing
 		msg = "Success"
 	} else {
 		msg = fmt.Sprintf("cluster(%v) volume(%v) doesn't exist", cluster, volume)
 	}
-	migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
+	migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: msg})
 }
 
 func (w *Worker) setLimit(res http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	setType := r.FormValue(migration.TypeKey)
-	limit := r.FormValue(migration.LimitSizeKey)
+	setType := r.FormValue(migcore.TypeKey)
+	limit := r.FormValue(migcore.LimitSizeKey)
 	var limitNum int64
 	var err error
 	if limitNum, err = strconv.ParseInt(limit, 10, 32); err != nil {
 		msg := fmt.Sprintf("limit(%v) should be numeric", limit)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 		return
 	}
 	if limitNum <= 0 {
 		msg := fmt.Sprintf("limit(%v) should be greater than 0", limit)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 		return
 	}
 	switch setType {
-	case migration.InodeIdKey:
+	case migcore.InodeIdKey:
 		w.inodeMigParallelNum = int32(limitNum)
-	case migration.MpIdKey:
+	case migcore.MpIdKey:
 		w.limiter.Reset(int32(limitNum))
 	default:
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "type invalid"})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "type invalid"})
 		return
 	}
-	migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success"})
+	migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success"})
 }
 
 func (w *Worker) getLimit(res http.ResponseWriter, r *http.Request) {
-	setType := r.FormValue(migration.TypeKey)
+	setType := r.FormValue(migcore.TypeKey)
 	var limit int32
 	switch setType {
-	case migration.InodeIdKey:
+	case migcore.InodeIdKey:
 		limit = w.inodeMigParallelNum
-	case migration.MpIdKey:
+	case migcore.MpIdKey:
 		limit = w.limiter.Limit()
 	default:
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "type invalid"})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "type invalid"})
 		return
 	}
-	migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: limit})
+	migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "Success", Data: limit})
 }
 
 func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: err.Error()})
 		return
 	}
-	cluster := r.FormValue(migration.ClusterKey)
-	volume := r.FormValue(migration.VolNameKey)
-	mpId := r.FormValue(migration.MpIdKey)
-	inodeId := r.FormValue(migration.InodeIdKey)
+	cluster := r.FormValue(migcore.ClusterKey)
+	volume := r.FormValue(migcore.VolNameKey)
+	mpId := r.FormValue(migcore.MpIdKey)
+	inodeId := r.FormValue(migcore.InodeIdKey)
 	if len(volume) == 0 {
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "volume name should not be an empty string"})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: "volume name should not be an empty string"})
 		return
 	}
 	var (
@@ -818,35 +818,35 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 	)
 	if mpIdNum, err = strconv.Atoi(mpId); err != nil {
 		msg := fmt.Sprintf("mpId(%v) should be numeric", mpId)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 		return
 	}
 	var inodeIdNum int
 	if inodeIdNum, err = strconv.Atoi(inodeId); err != nil {
 		msg := fmt.Sprintf("inodeId(%v) should be numeric", inodeId)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeParamError, Msg: msg})
 		return
 	}
 
 	if err = w.checkVolumeInfo(cluster, volume, data.Normal); err != nil {
 		msg := fmt.Sprintf("checkVolumeInfo err(%v)", err)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
 		return
 	}
 	var (
 		mc         *master.MasterClient
-		volumeInfo *migration.VolumeInfo
+		volumeInfo *migcore.VolumeInfo
 		ok         bool
 	)
 	if mc, ok = w.getMasterClient(cluster); !ok {
 		msg := "failed to get master client"
 		err = errors.New(msg)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
 		return
 	}
 	if volumeInfo, ok = w.getVolumeInfo(cluster, volume); !ok {
 		msg := fmt.Sprintf("cluster(%v) volName(%v) does not exist", cluster, volume)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
 		return
 	}
 	var (
@@ -857,11 +857,11 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 	inodeExtents, err = volumeInfo.MetaClient.GetInodeExtents_ll(context.Background(), uint64(mpIdNum), []uint64{uint64(inodeIdNum)}, inodeConcurrentPerMP, minEkLen, minInodeSize, maxEkAvgSize)
 	if err != nil {
 		msg := fmt.Sprintf("cluster(%v) volName(%v) mpIdNum(%v) err(%v)", cluster, volume, mpIdNum, err)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: msg})
 		return
 	}
 	if len(inodeExtents) <= 0 {
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "need not compact"})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "need not compact"})
 		return
 	}
 	go func() {
@@ -872,17 +872,17 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 			MpId:       uint64(mpIdNum),
 			WorkerAddr: w.LocalIp,
 		}
-		var migrateInode *migration.MigrateInode
-		migrateTask := NewMigrateTask(localIp, task, mc, volumeInfo)
-		if err = migrateTask.SetMpInfo(); err != nil {
+		var migrateInode *migcore.MigInode
+		migTask := NewMigTask(localIp, task, mc, volumeInfo)
+		if err = migTask.SetMpInfo(); err != nil {
 			log.LogErrorf("SetMpInfo cluster(%v) volName(%v) mpId(%v) inodeId(%v) err(%v)", cluster, volume, mpId, inodeId, err)
 			return
 		}
-		if err = migrateTask.SetProfPort(); err != nil {
+		if err = migTask.SetProfPort(); err != nil {
 			log.LogErrorf("SetProfPort cluster(%v) volName(%v) mpId(%v) inodeId(%v) err(%v)", cluster, volume, mpId, inodeId, err)
 			return
 		}
-		migrateInode, err = migration.NewMigrateInode(migrateTask, inodeExtents[0])
+		migrateInode, err = migcore.NewMigrateInode(migTask, inodeExtents[0])
 		if err != nil {
 			log.LogErrorf("NewMigrateInode cluster(%v) volName(%v) mpId(%v) inodeId(%v) err(%v)", cluster, volume, mpId, inodeId, err)
 			return
@@ -894,7 +894,7 @@ func (w *Worker) compactInode(res http.ResponseWriter, r *http.Request) {
 			log.LogInfof("compactInode migrateInode.RunOnce cluster(%v) volName(%v) mpId(%v) inodeId(%v) compact finished, result(%v)", cluster, volume, mpId, inodeId, isFinished)
 		}
 	}()
-	migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "start exec inode compact task"})
+	migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "start exec inode compact task"})
 }
 
 func (w *Worker) migrationConfigAddOrUpdate(res http.ResponseWriter, r *http.Request) {
@@ -908,28 +908,28 @@ func (w *Worker) migrationConfigAddOrUpdate(res http.ResponseWriter, r *http.Req
 	)
 	migConfig, err = parseParamVolumeConfig(w, r)
 	if err != nil {
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 	if value, ok = w.masterClients.Load(migConfig.ClusterName); !ok {
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: fmt.Sprintf("cluster(%v) not support", migConfig.ClusterName)})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: fmt.Sprintf("cluster(%v) not support", migConfig.ClusterName)})
 		return
 	}
 	mc := value.(*master.MasterClient)
 	if volumeInfo, err = mc.AdminAPI().GetVolumeSimpleInfo(migConfig.VolName); err != nil {
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 	if migConfig.Smart == migOpen {
 		if idcMap, err = getIdcMap(mc); err != nil {
-			migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
 		}
 		zoneList := strings.Split(volumeInfo.ZoneName, ",")
 		for _, name := range zoneList {
 			if idcMap[name] != proto.MediumSSDName {
 				err = fmt.Errorf("the medium type of zone: %v, should be ssd", name)
-				migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+				migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 				return
 			}
 		}
@@ -937,11 +937,11 @@ func (w *Worker) migrationConfigAddOrUpdate(res http.ResponseWriter, r *http.Req
 	var volumeConfigs []*proto.MigrationConfig
 	volumeConfigs, err = mysql.SelectVolumeConfig(migConfig.ClusterName, migConfig.VolName)
 	if err != nil {
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 	if err = checkS3BucketExist(migConfig.SmartRules, volumeInfo); err != nil {
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 	if len(volumeConfigs) == 0 {
@@ -965,10 +965,10 @@ func (w *Worker) migrationConfigAddOrUpdate(res http.ResponseWriter, r *http.Req
 		}
 		err = mysql.AddMigrationConfig(migConfig)
 		if err != nil {
-			migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+			migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 			return
 		}
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
 		return
 	}
 	volumeConfigInMysql := volumeConfigs[0]
@@ -992,10 +992,10 @@ func (w *Worker) migrationConfigAddOrUpdate(res http.ResponseWriter, r *http.Req
 	}
 	err = mysql.UpdateMigrationConfig(volumeConfigInMysql)
 	if err != nil && !strings.Contains(err.Error(), "affected rows less then one") {
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
-	migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
+	migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
 }
 
 func (w *Worker) migrationConfigDelete(res http.ResponseWriter, r *http.Request) {
@@ -1006,26 +1006,26 @@ func (w *Worker) migrationConfigDelete(res http.ResponseWriter, r *http.Request)
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 	cluster = r.FormValue(ParamKeyCluster)
 	if stringutil.IsStrEmpty(cluster) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyCluster)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 	volume = r.FormValue(ParamKeyVolume)
 	if stringutil.IsStrEmpty(volume) {
 		err = fmt.Errorf("param %v can not be empty", ParamKeyVolume)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 	if err = mysql.DeleteMigrationConfig(cluster, volume); err != nil {
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
-	migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
+	migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success"})
 }
 
 func (w *Worker) migrationConfigList(res http.ResponseWriter, r *http.Request) {
@@ -1036,13 +1036,13 @@ func (w *Worker) migrationConfigList(res http.ResponseWriter, r *http.Request) {
 	)
 	if err = r.ParseForm(); err != nil {
 		err = fmt.Errorf("parse form fail: %v", err)
-		migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
+		migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeInternalError, Msg: err.Error()})
 		return
 	}
 	cluster = r.FormValue(ParamKeyCluster)
 	volume = r.FormValue(ParamKeyVolume)
 	migrationConfig := loadAllMigrationConfig(cluster, volume)
-	migration.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success", Data: migrationConfig})
+	migcore.SendReply(res, r, &proto.HTTPReply{Code: proto.ErrCodeSuccess, Msg: "success", Data: migrationConfig})
 }
 
 func getIdcMap(mc *master.MasterClient) (idcMap map[string]string, err error) {
