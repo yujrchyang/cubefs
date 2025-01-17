@@ -21,6 +21,10 @@ import (
 
 var disk *Disk
 
+const (
+	tmpDiskPath = "/tmp/disk_unit_test/data"
+)
+
 func init() {
 	var (
 		spaceManager = &SpaceManager{
@@ -34,11 +38,11 @@ func init() {
 		reservedSpace uint64 = DefaultDiskReservedSpace
 		stateFS              = new(syscall.Statfs_t)
 	)
-	if err := syscall.Statfs(testDiskPath, stateFS); err == nil {
+	if err := syscall.Statfs(tmpDiskPath, stateFS); err == nil {
 		reservedSpace = uint64(float64(stateFS.Blocks*uint64(stateFS.Bsize)) * 0.1)
 	}
 	disk = new(Disk)
-	disk.Path = testDiskPath
+	disk.Path = tmpDiskPath
 	disk.ReservedSpace = reservedSpace
 	disk.MaxErrCnt = DefaultDiskMaxErr
 	disk.maxFDLimit = DiskMaxFDLimit

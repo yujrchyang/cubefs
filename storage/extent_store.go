@@ -1675,6 +1675,21 @@ func (s *ExtentStore) TinyExtentAvaliOffset(extentID uint64, offset int64) (newO
 	return
 }
 
+func (s *ExtentStore) CheckHole(extent uint64, offset, size int64) (crossHole bool, err error) {
+	if !proto.IsTinyExtent(extent) {
+		return false, nil
+	}
+	var newOff, newEnd int64
+	newOff, newEnd, err = s.TinyExtentAvaliOffset(extent, offset)
+	if err != nil {
+		return
+	}
+	if newOff > offset || newEnd < offset+size {
+		return true, nil
+	}
+	return false, nil
+}
+
 const (
 	DiskSectorSize = 512
 )

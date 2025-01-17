@@ -474,6 +474,16 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = raft.ErrNotLeader
 		return
 	}
+	if proto.IsTinyExtent(p.ExtentID) {
+		var crossHole bool
+		if crossHole, err = partition.ExtentStore().CheckHole(p.ExtentID, p.ExtentOffset, int64(p.Size)); err != nil {
+			return
+		}
+		if crossHole {
+			err = proto.ErrOperationDisabled
+			return
+		}
+	}
 	if _, ok := partition.ExtentStore().LoadExtentLockInfo(p.ExtentID); ok {
 		err = storage.ExtentLockedError
 		return
@@ -583,9 +593,7 @@ func (s *DataNode) handleStreamFollowerReadPacket(p *repl.Packet, connect net.Co
 }
 
 func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn, isRepairRead bool) {
-	var (
-		err error
-	)
+	var err error
 	defer func() {
 		if err != nil {
 			logContent := fmt.Sprintf("action[operatePacket] %v.",
@@ -609,6 +617,17 @@ func (s *DataNode) handleExtentRepairReadPacket(p *repl.Packet, connect net.Conn
 			return
 		}
 		defer multirate.DoneConcurrency(int(proto.OpExtentRepairRead), partition.disk.Path)
+	}
+
+	if !isRepairRead && proto.IsTinyExtent(p.ExtentID) {
+		var crossHole bool
+		if crossHole, err = partition.ExtentStore().CheckHole(p.ExtentID, offset, int64(needReplySize)); err != nil {
+			return
+		}
+		if crossHole {
+			err = proto.ExtentNotFoundError
+			return
+		}
 	}
 
 	// isForceRead 函数用来检查读请求包是否有强制读表示，强制读请求会不检查请求所读数据区域是否存在风险

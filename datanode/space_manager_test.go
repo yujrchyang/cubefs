@@ -106,8 +106,8 @@ func TestSpaceManager_CreatePartition(t *testing.T) {
 
 	t.Logf("Statistics: creation elapsed %v, access count: %v", creationElapsed, atomic.LoadInt64(&accessCount))
 }
-
 func newRaftLogger(dir string) {
+
 	raftLogPath := path.Join(dir, "logs")
 	_, err := os.Stat(raftLogPath)
 	if err != nil {
@@ -117,6 +117,7 @@ func newRaftLogger(dir string) {
 			}
 		}
 	}
+
 	raftLog, err := raftlog.NewLog(raftLogPath, "raft", "debug")
 	if err != nil {
 		fmt.Println("Fatal: failed to start the baud storage daemon - ", err)
@@ -129,8 +130,10 @@ func newRaftLogger(dir string) {
 func TestReloadExpiredDataPartitions(t *testing.T) {
 	raftPath := "/tmp/raft"
 	newRaftLogger(raftPath)
-	defer log.LogFlush()
 	var testPath = testutil.InitTempTestPath(t)
+	log.InitLog(testPath.Path(), "dp", log.DebugLevel, nil)
+	defer log.LogFlush()
+
 	defer testPath.Cleanup()
 	var err error
 	diskNames := []string{
@@ -141,7 +144,7 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 		path.Join(testPath.Path(), "testDisk"),
 		path.Join(testPath.Path(), "testDisk2"),
 	}
-	dps := []uint64{1, 2, 3, 4, 5}
+	dps := []uint64{1, 2, 3, 4, 5, 6}
 	for _, d := range diskNames {
 		if err = os.MkdirAll(path.Join(testPath.Path(), d), os.ModePerm); err != nil {
 			t.Fatalf("Make disk path %v failed: %v", d, err)
@@ -171,6 +174,7 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 			t.Fatalf("Load disk %v failed: %v", d, err)
 		}
 	}
+
 	var newCreateDpReq = func(id uint64, volName string) (req *proto.CreateDataPartitionRequest) {
 		return &proto.CreateDataPartitionRequest{
 			PartitionId:   id,
@@ -246,7 +250,8 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 			return
 		}
 	}
-	var verifyExpired = func(expect int, t *testing.T, paths []string) {
+
+	var verifyExpired = func(t *testing.T, expect int, paths []string) {
 		count := 0
 		for _, p := range paths {
 			var entries []os.DirEntry
@@ -277,7 +282,7 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 		assert.Equal(t, 1, len(successDps))
 		// verify vol name
 		assert.Equal(t, "test_vol", space.Partition(dps[2]).volumeID)
-		verifyExpired(0, t, diskDirs)
+		verifyExpired(t, 0, diskDirs)
 	})
 
 	t.Run("reload_dp_with_wal", func(t *testing.T) {
@@ -301,7 +306,9 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 			}
 		}
 	})
-	verifyExpired(0, t, diskDirs)
+
+	verifyExpired(t, 0, diskDirs)
+
 	t.Run("reload_multi_dp", func(t *testing.T) {
 		// expire old dp
 		space.ExpiredPartition(dps[4])
@@ -321,13 +328,56 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 		}
 		time.Sleep(time.Second)
 		space.ExpiredPartition(dps[4])
-		verifyExpired(3, t, diskDirs)
+
+		verifyExpired(t, 3, diskDirs)
+
 		// restore dp
-		failedDisks, failedDps, successDps := space.RestoreExpiredPartitions(true, make(map[uint64]bool, 0))
+		failedDisks, failedDps, successDps := space.RestoreExpiredPartitions(true, make(map[uint64]bool))
 		assert.Equal(t, 0, len(failedDisks))
 		assert.Equal(t, 0, len(failedDps))
 		assert.Equal(t, 1, len(successDps))
 		// verify vol name
 		assert.Equal(t, newVol2, space.Partition(dps[4]).volumeID)
+	})
+
+	t.Run("reload_dp_already_exist", func(t *testing.T) {
+		assert.GreaterOrEqual(t, len(space.disks), 2)
+		disks := make(map[string]int)
+		for i := 0; i < 4; i++ {
+			_, _ = space.CreatePartition(newCreateDpReq(dps[5], "test_vol"))
+			dp := space.Partition(dps[5])
+			time.Sleep(time.Second * 2)
+			t.Logf("create partition(%v) on disk(%v) allocated(%v) total disk(%v)", dp.partitionID, dp.disk.Path, dp.disk.Allocated, len(space.disks))
+			space.ExpiredPartition(dps[5])
+			dp.disk.Allocated += 1024 * 1024
+			disks[dp.disk.Path] += 1
+		}
+		for d, count := range disks {
+			for i := 0; i < count; i++ {
+				space.disks[d].Allocated -= 1024 * 1024
+			}
+		}
+
+		failedMap := make(map[uint64]int)
+		successMap := make(map[uint64]int)
+		_, failed, success := space.RestoreExpiredPartitions(false, map[uint64]bool{dps[5]: true})
+		for _, f := range failed {
+			failedMap[f] = failedMap[f] + 1
+		}
+		for _, f := range success {
+			successMap[f] = successMap[f] + 1
+		}
+		assert.Equal(t, 0, len(failedMap))
+		assert.Equal(t, 1, len(successMap))
+
+		_, failed, success = space.RestoreExpiredPartitions(false, map[uint64]bool{dps[5]: true})
+		for _, f := range failed {
+			failedMap[f] = failedMap[f] + 1
+		}
+		for _, f := range success {
+			successMap[f] = successMap[f] + 1
+		}
+		assert.Equal(t, 1, len(failedMap))
+		assert.Equal(t, 0, len(successMap))
 	})
 }

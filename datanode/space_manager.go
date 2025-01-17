@@ -648,6 +648,11 @@ func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]b
 
 	log.LogWarnf("action[RestoreExpiredPartitions] total need restore partitions:%v", len(restoreMap))
 	for dpid, dpInfo := range restoreMap {
+		if dp := manager.Partition(dpid); dp != nil {
+			log.LogWarnf("action[RestoreExpiredPartitions] already restore partition:%v, do not restore again", dpid)
+			failedDps = append(failedDps, dpid)
+			continue
+		}
 		// rename wal dir
 		if dpInfo.walPath != dpInfo.newWalPath {
 			err = os.Rename(path.Join(dpInfo.disk.Path, dpInfo.fileName, dpInfo.walPath), path.Join(dpInfo.disk.Path, dpInfo.fileName, dpInfo.newWalPath))

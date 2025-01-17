@@ -10,6 +10,10 @@ import (
 	"testing"
 )
 
+const (
+	testSfxDiskPath = "/cfs/mockdisk/data1"
+)
+
 func TestGetSfxStatus(t *testing.T) {
 
 	var (
@@ -22,14 +26,14 @@ func TestGetSfxStatus(t *testing.T) {
 		physicalUsageRatio      int
 		compRatio               int
 	)
-	t.Skipf("dev %v is not sfx ssd\n", testDiskPath)
+	t.Skipf("dev %v is not sfx ssd\n", testSfxDiskPath)
 
-	_, err = os.Stat(testDiskPath)
+	_, err = os.Stat(testSfxDiskPath)
 	if os.IsNotExist(err) {
-		t.Skipf("%s is not exist\n", testDiskPath)
+		t.Skipf("%s is not exist\n", testSfxDiskPath)
 	}
 
-	isSfx, devName := GetDevCheckSfx(testDiskPath)
+	isSfx, devName := GetDevCheckSfx(testSfxDiskPath)
 
 	/*非sfx硬盘也测试调用是否会有问题但不需要校验结果*/
 	dStatus, err = GetSfxStatus(devName)
@@ -44,7 +48,7 @@ func TestGetSfxStatus(t *testing.T) {
 	//使用sfx-status作为检测标准 如果没有安装工具则直接打印出结果
 	_, err = exec.LookPath("sfx-status")
 	if err != nil {
-		t.Logf("testPath:%v ,isSfx? %v ,dev=%v", testDiskPath, isSfx, devName)
+		t.Logf("testPath:%v ,isSfx? %v ,dev=%v", testSfxDiskPath, isSfx, devName)
 		if isSfx != false {
 			t.Logf("disk(%v) totalPhysicalSpace(%v) freePhysicalSpace(%v) physicalUsedRatio(%v) compressionRatio(%v)",
 				devName, dStatus.totalPhysicalCapability, dStatus.freePhysicalCapability, dStatus.physicalUsageRatio, dStatus.compRatio)
@@ -137,7 +141,7 @@ func TestCheckSfxSramErr(t *testing.T) {
 		sramErr bool
 	)
 
-	isSfx, devName := GetDevCheckSfx(testDiskPath)
+	isSfx, devName := GetDevCheckSfx(testSfxDiskPath)
 
 	if isSfx == false {
 		t.Skipf("dev %v is not sfx ssd\n", devName)

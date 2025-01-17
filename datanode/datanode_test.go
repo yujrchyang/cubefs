@@ -29,7 +29,7 @@ var (
 const (
 	mockClusterName   = mock.TestCluster
 	testLogDir        = "/cfs/log"
-	testDiskPath      = "/cfs/mockdisk/data1"
+	fakeNodeDiskPath  = "/cfs/mockdisk/data1"
 	raftHeartBeatPort = "17331"
 	raftReplicaPort   = "17341"
 	tcpProtoPort      = "11010"
@@ -82,7 +82,7 @@ func newFakeDataNode() *fakeDataNode {
 
 	cfgStr := `{
 		"disks": [
-			"` + testDiskPath + `:5368709120"
+			"` + fakeNodeDiskPath + `:5368709120"
 		],
 		"enableRootDisk": true,
 		"listen": "` + tcpProtoPort + `",
@@ -112,12 +112,14 @@ func newFakeDataNode() *fakeDataNode {
 }
 
 func FakeDirCreate() (err error) {
-	_, err = os.Stat(testDiskPath)
-	if err == nil {
-		os.RemoveAll(testDiskPath)
-	}
-	if err = os.MkdirAll(testDiskPath, 0766); err != nil {
-		panic(err)
+	for _, d := range []string{fakeNodeDiskPath} {
+		_, err = os.Stat(d)
+		if err == nil {
+			os.RemoveAll(d)
+		}
+		if err = os.MkdirAll(d, 0766); err != nil {
+			panic(err)
+		}
 	}
 	return
 }
