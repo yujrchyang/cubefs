@@ -1277,9 +1277,8 @@ func (d *Disk) freeExtentLockInfo() {
 	log.LogDebugf("action[freeExtentLockInfo] disk(%v) free end", d.Path)
 }
 
-func (d *Disk) prepareRestorePartitions(restoreAll bool, ids map[uint64]bool, reloadMap map[uint64]*dpReloadInfo) (failedDps, successDps []uint64, err error) {
+func (d *Disk) prepareRestorePartitions(restoreAll bool, ids map[uint64]bool, reloadMap map[uint64]*dpReloadInfo) (failedDps []uint64, err error) {
 	failedDps = make([]uint64, 0)
-	successDps = make([]uint64, 0)
 	// Format: expired_datapartition_{PartitionID}_{Capacity}_{Timestamp}
 	// Regexp: ^expired_datapartition_(\d)+_(\d)+_(\d)+$
 	regexpExpiredPartitionDirNameWithT := regexp.MustCompile("^expired_datapartition_(\\d)+_(\\d)+_(\\d)+$")
@@ -1290,7 +1289,7 @@ func (d *Disk) prepareRestorePartitions(restoreAll bool, ids map[uint64]bool, re
 	var entries []fs.DirEntry
 	entries, err = os.ReadDir(d.Path)
 	if err != nil {
-		return failedDps, successDps, err
+		return failedDps, err
 	}
 	for _, entry := range entries {
 		if !entry.IsDir() {
@@ -1353,7 +1352,7 @@ func (d *Disk) prepareRestorePartitions(restoreAll bool, ids map[uint64]bool, re
 			modTime:     modTime,
 		}
 	}
-	return failedDps, successDps, nil
+	return failedDps, nil
 }
 
 func (d *Disk) createPartition(dpCfg *dataPartitionCfg, request *proto.CreateDataPartitionRequest) (dp *DataPartition, err error) {

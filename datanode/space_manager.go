@@ -636,13 +636,12 @@ func (manager *SpaceManager) RestoreExpiredPartitions(all bool, ids map[uint64]b
 	var err error
 	restoreMap := make(map[uint64]*dpReloadInfo)
 	manager.WalkDisks(func(disk *Disk) bool {
-		var failedDpsDisk, successDpsDisk []uint64
-		if failedDpsDisk, successDpsDisk, err = disk.prepareRestorePartitions(all, ids, restoreMap); err != nil {
+		var failedDpsDisk []uint64
+		if failedDpsDisk, err = disk.prepareRestorePartitions(all, ids, restoreMap); err != nil {
 			failedDisks = append(failedDisks, disk.Path)
 			return true
 		}
 		failedDps = append(failedDps, failedDpsDisk...)
-		successDps = append(successDps, successDpsDisk...)
 		return true
 	})
 

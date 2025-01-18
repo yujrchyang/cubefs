@@ -370,6 +370,8 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 		assert.Equal(t, 0, len(failedMap))
 		assert.Equal(t, 1, len(successMap))
 
+		failedMap = make(map[uint64]int)
+		successMap = make(map[uint64]int)
 		_, failed, success = space.RestoreExpiredPartitions(false, map[uint64]bool{dps[5]: true})
 		for _, f := range failed {
 			failedMap[f] = failedMap[f] + 1
