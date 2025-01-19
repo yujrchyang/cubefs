@@ -53,7 +53,8 @@ func (mp *metaPartition) CreateDentry(req *CreateDentryReq, p *Packet) (err erro
 	}
 
 	if mp.config.ChildFileMaxCount > 0 && parIno.NLink > mp.config.ChildFileMaxCount {
-		err = fmt.Errorf("child file count reach max count:%v", mp.config.ChildFileMaxCount)
+		err = fmt.Errorf("partition (%v) parent inode (%v) child file count reach max count:%v",
+			mp.config.PartitionId, req.ParentID, mp.config.ChildFileMaxCount)
 		p.PacketErrorWithBody(proto.OpNotPerm, []byte(err.Error()))
 		return
 	}

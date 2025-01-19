@@ -366,8 +366,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		m.respondToClient(conn, p)
 	}
 	if err != nil {
-		err = errors.NewErrorf("%s [%s] req: %d - %s", remoteAddr, p.GetOpMsg(),
-			p.GetReqID(), err.Error())
+		err = errors.NewErrorf("%s [%s] partitionID: %v, req: %d - %s", remoteAddr, p.GetOpMsg(),
+			p.PartitionID, p.GetReqID(), err.Error())
 	}
 	return
 }
