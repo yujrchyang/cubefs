@@ -227,7 +227,6 @@ func (m *MockTcp) handleGetAllWatermarksV3(p *repl.Packet, c net.Conn) {
 		_ = replyData(p, 0, []byte(repl.ErrorUnknownOp.Error()), proto.OpErr, c)
 		return
 	}
-
 	var data []byte
 	if p.ExtentType == proto.NormalExtentType {
 		normalExtentCount := RemoteNormalExtentCount
@@ -252,6 +251,7 @@ func (m *MockTcp) handleGetAllWatermarksV3(p *repl.Packet, c net.Conn) {
 		binary.BigEndian.PutUint64(data[index:index+8], ei[storage.Size])
 		index += 8
 		data = data[:index]
+		log.LogInfof("handleGetAllWatermarksV3 normal, data:%v, extents:%v", len(data), normalExtentCount)
 	} else {
 		var extentIDs = make([]uint64, 0, len(p.Data)/8)
 		var extentID uint64
@@ -280,8 +280,11 @@ func (m *MockTcp) handleGetAllWatermarksV3(p *repl.Packet, c net.Conn) {
 			index += 8
 		}
 		data = data[:index]
+		log.LogInfof("handleGetAllWatermarksV3 tiny, data:%v, extents:%v", len(data), len(extentIDs))
 	}
+
 	if err = replyData(p, 0, append(make([]byte, 8), data...), proto.OpOk, c); err != nil {
+		log.LogErrorf("replyData err: %v", err)
 		fmt.Printf("replyData err: %v", err)
 	}
 	p.PacketOkReply()

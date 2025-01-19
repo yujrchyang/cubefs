@@ -131,8 +131,8 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 	raftPath := "/tmp/raft"
 	newRaftLogger(raftPath)
 	var testPath = testutil.InitTempTestPath(t)
-	log.InitLog(testPath.Path(), "dp", log.DebugLevel, nil)
-	defer log.LogFlush()
+	//log.InitLog(testPath.Path(), "dp", log.DebugLevel, nil)
+	//defer log.LogFlush()
 
 	defer testPath.Cleanup()
 	var err error

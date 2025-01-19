@@ -7,6 +7,7 @@ import (
 	"hash/crc32"
 	"net"
 	"os"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -16,19 +17,17 @@ import (
 	"github.com/cubefs/cubefs/repl"
 	"github.com/cubefs/cubefs/util/config"
 	"github.com/cubefs/cubefs/util/errors"
-	"github.com/cubefs/cubefs/util/log"
 	"github.com/cubefs/cubefs/util/unit"
-	"github.com/jacobsa/daemonize"
 )
 
 var (
 	localIP          string
 	localNodeAddress string
+	testLogDir       = path.Join(os.TempDir(), "unit_test")
 )
 
 const (
 	mockClusterName   = mock.TestCluster
-	testLogDir        = "/cfs/log"
 	fakeNodeDiskPath  = "/cfs/mockdisk/data1"
 	raftHeartBeatPort = "17331"
 	raftReplicaPort   = "17341"
@@ -97,15 +96,10 @@ func newFakeDataNode() *fakeDataNode {
 		],
 		"prof": "` + profPort + `"
 	}`
-	_, err := log.InitLog(testLogDir, "mock_datanode", log.DebugLevel, nil)
-	if err != nil {
-		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v ", err))
-		panic(err.Error())
-	}
-	defer log.LogFlush()
+
 	cfg := config.LoadConfigString(cfgStr)
 
-	if err = fdn.Start(cfg); err != nil {
+	if err := fdn.Start(cfg); err != nil {
 		panic(fmt.Sprintf("startTCPService err(%v)", err))
 	}
 	return fdn

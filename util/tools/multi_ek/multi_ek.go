@@ -7,13 +7,13 @@ import (
 	"flag"
 	"fmt"
 	"github.com/cubefs/cubefs/proto"
-	"github.com/cubefs/cubefs/util/errors"
 	diskv1 "github.com/shirou/gopsutil/disk"
 	"io"
 	"math"
 	"math/rand"
 	"os"
 	"path"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -22,13 +22,10 @@ import (
 // 1 使用跳跃写法，批量生成extentKey很长的文件
 // 2 文件分别存入本地文件系统和挂载点
 // 3 开启缓存读后，循环检查挂载点的md5是否发生变化
-var (
-	partitionNotFoundError = errors.NewErrorf("partition not found")
-	illegalPathError       = errors.NewErrorf("illegal disk path")
-)
 
 var mountP = flag.String("path", "", "mount point")
 var executeMin = flag.Int("minute", 10, "execute time/minutes")
+var reOpen = flag.Bool("re-open", false, "re-open")
 var testMountPath string
 var testLocalPath string
 
@@ -72,7 +69,11 @@ type filePattern struct {
 	sparse bool
 }
 
+var fdMap map[string]*os.File
+var lock sync.RWMutex
+
 func main() {
+	fdMap = make(map[string]*os.File)
 	testFiles := make([]filePattern, 0)
 	for i := 0; i < 64; i++ {
 		testFiles = append(testFiles, filePattern{int64(i*2 + 1), false})
@@ -118,11 +119,22 @@ func main() {
 		}
 		name := fmt.Sprintf("%v/%v_%v_%v", testMountPath, "test", fileP.sparse, i)
 		localName := fmt.Sprintf("%v/%v_%v_%v", testLocalPath, "test", fileP.sparse, i)
-		fd, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0666)
-		if err != nil {
-			panic(err)
+
+		var fd *os.File
+		var ok bool
+		var err error
+
+		lock.Lock()
+		if fd, ok = fdMap[name]; !ok {
+			fd, err = os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				panic(err)
+			}
+			fdMap[name] = fd
+			fmt.Printf("open fd for write file: %v\n", name)
 		}
-		defer fd.Close()
+		lock.Unlock()
+
 		localFd, err := os.OpenFile(localName, os.O_CREATE|os.O_RDWR, 0666)
 		if err != nil {
 			panic(err)
@@ -156,21 +168,51 @@ func main() {
 	}
 
 	var read = func(name string) {
-		fd, err := os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0666)
-		if err != nil {
-			panic(err)
+		var f *os.File
+		var ok bool
+		var err error
+		if *reOpen {
+			f, err = os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0666)
+			if err != nil {
+				panic(err)
+			}
+			defer f.Close()
+			fmt.Printf("open fd for read file: %v\n", name)
+		} else {
+			lock.Lock()
+			if f, ok = fdMap[name]; !ok {
+				f, err = os.OpenFile(name, os.O_CREATE|os.O_RDWR, 0666)
+				if err != nil {
+					panic(err)
+				}
+				fdMap[name] = f
+				fmt.Printf("map missing, open fd for read file: %v\n", name)
+			} else {
+				f = fdMap[name]
+			}
+			lock.Unlock()
 		}
-		defer fd.Close()
+
+		if _, err = f.Seek(0, 0); err != nil {
+			fmt.Println("Error seeking file:", err)
+			return
+		}
 		hash := md5.New()
-		_, _ = io.Copy(hash, fd)
+		_, _ = io.Copy(hash, f)
+		stat, _ := f.Stat()
+
 		if actual := hex.EncodeToString(hash.Sum(nil)); actual != hashMap[name] {
-			panic(fmt.Sprintf("file: %v, invalid hash code, expect: %v, actrual: %v", name, hashMap[name], actual))
+			emptyBuf := make([]byte, stat.Size())
+			h := md5.New()
+			h.Write([]byte(emptyBuf))
+			cipherStr := h.Sum(nil)
+			panic(fmt.Sprintf("file: %v, invalid hash code, expect: %v, actrual: %v, size:%v, emptymd5:%v", name, hashMap[name], actual, stat.Size(), hex.EncodeToString(cipherStr)))
 		} else {
 			fmt.Printf("file check success:%v hash:%v\n", name, hashMap[name])
 		}
 	}
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 16; i++ {
 		go func() {
 			for {
 				select {
@@ -191,6 +233,9 @@ func main() {
 		case <-ctx.Done():
 			fmt.Printf("all check success")
 			close(fileCh)
+			for _, fd := range fdMap {
+				fd.Close()
+			}
 			return
 		default:
 			for i, f := range testFiles {
