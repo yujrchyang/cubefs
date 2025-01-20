@@ -474,6 +474,10 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 		err = raft.ErrNotLeader
 		return
 	}
+	if _, ok := partition.ExtentStore().LoadExtentLockInfo(p.ExtentID); ok {
+		err = storage.ExtentLockedError
+		return
+	}
 	if proto.IsTinyExtent(p.ExtentID) {
 		var crossHole bool
 		if crossHole, err = partition.ExtentStore().CheckHole(p.ExtentID, p.ExtentOffset, int64(p.Size)); err != nil {
@@ -483,10 +487,6 @@ func (s *DataNode) handleRandomWritePacket(p *repl.Packet) {
 			err = proto.ErrOperationDisabled
 			return
 		}
-	}
-	if _, ok := partition.ExtentStore().LoadExtentLockInfo(p.ExtentID); ok {
-		err = storage.ExtentLockedError
-		return
 	}
 	err = partition.RandomWriteSubmit(p)
 	if err != nil && strings.Contains(err.Error(), raft.ErrNotLeader.Error()) {
