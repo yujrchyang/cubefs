@@ -271,11 +271,11 @@ func withLeaseAndDown(t *testing.T, testName string, isLease bool, mode RaftMode
 	stopT := time.Now()
 	for _, s := range servers {
 		if lead, _ := s.raft.LeaderTerm(1); s.nodeID != lead {
-			s.raft.Stop()
 			shutServer = append(shutServer, s)
 			if len(shutServer) == (len(peers)+1)/2 {	// 宕机过半数
 				stopT = time.Now()
 			}
+			s.raft.Stop()
 		} else {
 			newServers = append(newServers, s)
 		}

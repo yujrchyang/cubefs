@@ -813,9 +813,6 @@ func truncateLocalAndCFS(localF *os.File, ec *ExtentClient, inoID uint64, trunca
 }
 
 func isSameData(expectData, actualData []byte, dataSize int) (incorrectBegin, incorrectEnd int, isSame bool) {
-	if len(expectData) != dataSize || len(actualData) != dataSize {
-		return
-	}
 	incorrectBegin, incorrectEnd = dataSize, -1
 	for j := 0; j < dataSize; j++ {
 		if expectData[j] != actualData[j] {

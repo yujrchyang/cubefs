@@ -340,7 +340,8 @@ run_unit_test() {
             ./datanode/... \
             ./metanode/... \
             ./objectnode/... \
-            ./schedulenode/migration/... \
+            ./schedulenode/intramig/... \
+            ./schedulenode/migcore/... \
             ./schedulenode/smart/... \
             ./schedulenode/worker/... \
             ./codecnode/... \

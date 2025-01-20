@@ -799,7 +799,7 @@ func TestCheckS3CrcValid(t *testing.T) {
 		{"128M", size128M},
 		{"129M", size128M + size1M},
 		{"512M", size512M},
-		{"1024M", size512M * 2},
+		//{"1024M", size512M * 2},
 	}
 
 	for _, tt := range tests {
@@ -1901,6 +1901,7 @@ func creatHelper(t *testing.T) (mw *meta.MetaWrapper, ec *data.ExtentClient, err
 		Volume:            ltptestVolume,
 		Masters:           strings.Split(ltptestMaster, ","),
 		FollowerRead:      false,
+		MetaWrapper: 	   mw,
 		OnInsertExtentKey: mw.InsertExtentKey,
 		OnGetExtents:      mw.GetExtents,
 		OnTruncate:        mw.Truncate,

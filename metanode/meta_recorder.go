@@ -29,7 +29,6 @@ const (
 )
 
 type metaRecorder struct {
-	config      *raftstore.RecorderConfig
 	recorder    *raftstore.Recorder
 	partitionID uint64
 	status      int8
@@ -49,7 +48,6 @@ func NewMetaRecorder(cfg *raftstore.RecorderConfig, m *metadataManager) (*metaRe
 		return nil, err
 	}
 	mr := &metaRecorder{
-		config:      cfg,
 		partitionID: recorder.Config().PartitionID,
 		recorder:    recorder,
 		manager:     m,
@@ -167,7 +165,7 @@ func (mr *metaRecorder) startRecorderWorker() {
 				persistenceMode = conf.GetPersistenceMode()
 			}
 			sync := persistenceMode == proto.PersistenceMode_WriteThrough
-			changed := mr.config.WALSync != sync || mr.config.WALSyncRotate != sync
+			changed := mr.Recorder().WalSync() != sync || mr.Recorder().WALSyncRotate() != sync
 			mr.Recorder().SetWALSync(persistenceMode == proto.PersistenceMode_WriteThrough)
 			mr.Recorder().SetWALSyncRotate(persistenceMode == proto.PersistenceMode_WriteThrough)
 			if changed {

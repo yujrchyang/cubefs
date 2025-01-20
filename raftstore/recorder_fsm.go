@@ -181,6 +181,14 @@ func (r *Recorder) WalPath() string {
 	return r.walPath
 }
 
+func (r *Recorder) WalSync() bool {
+	return r.config.WALSync
+}
+
+func (r *Recorder) WALSyncRotate() bool {
+	return r.config.WALSyncRotate
+}
+
 func (r *Recorder) Config() *RecorderConfig {
 	return r.config
 }
