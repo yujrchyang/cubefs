@@ -198,7 +198,6 @@ func (r *Recorder) GetPersistApplyID() uint64 {
 }
 
 func (r *Recorder) Persist() (err error) {
-	// todo 加锁
 	if _, err = r.PersistApplyIndex(); err != nil {
 		return
 	}
