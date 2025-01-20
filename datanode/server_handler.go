@@ -1975,7 +1975,8 @@ func (s *DataNode) checkExtentHole(w http.ResponseWriter, r *http.Request) {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	var extentInfoMap map[uint64][]ExtentHoleInfo
+	var extentInfoMap map[uint64][]*ExtentHoleInfo
+	extentInfoMap = make(map[uint64][]*ExtentHoleInfo)
 	err = json.Unmarshal(buf.Bytes(), &extentInfoMap)
 	if err != nil {
 		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
