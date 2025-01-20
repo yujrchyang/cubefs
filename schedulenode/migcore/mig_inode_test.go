@@ -65,6 +65,10 @@ func NewMockTask(localIp string, task *proto.Task, masterClient *master.MasterCl
 
 func (m *MockTask) GetInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigDirection, err error) {
 	vol := m.GetVol()
+	if vol == nil {
+		err = fmt.Errorf("vol is nil")
+		return
+	}
 	policies, exist := vol.GetLayerPolicies(vol.ClusterName, vol.Name)
 	if !exist {
 		err = fmt.Errorf("getLayerPolicies does not exist, cluster(%v) volume(%v)", vol.ClusterName, vol.Name)
@@ -132,7 +136,7 @@ func (m *MockTask) GetLocalIp() string {
 }
 
 func (m *MockTask) GetVol() *VolumeInfo {
-	return vol
+	return m.vol
 }
 
 func (m *MockTask) GetMpId() uint64 {
@@ -219,10 +223,6 @@ func init() {
 	err := vol.Init(nodes, data.Normal)
 	if err != nil {
 		panic(fmt.Sprintf("vol.Init, err:%v", err))
-	}
-	mpOp = &MigrateTask{
-		vol: vol,
-		mc:  master.NewMasterClient(strings.Split(ltptestMaster, ","), false),
 	}
 	_, err = log.InitLog("/cfs/log", "unittest", log.DebugLevel, nil)
 	if err != nil {
@@ -582,7 +582,6 @@ func TestLockAndUnlockExtent(t *testing.T) {
 		if err != nil {
 			assert.FailNowf(t, "GetExtentLockInfo failed", "dpId:%v hostAddr:%v, err:%v", dpId, hostAddr, err)
 		}
-		fmt.Printf("info:%v\n", info)
 		for i := proto.TinyExtentStartID; i <= proto.TinyExtentCount; i++ {
 			_, ok := info[strconv.Itoa(i)]
 			assert.Equal(t, true, ok)
@@ -1514,6 +1513,7 @@ func TestMetaMergeExtentsError(t *testing.T) {
 	cMP.End = mpInfo.End
 	mpOp.mpInfo = cMP
 	mpOp.leader = cMP.GetLeaderAddr()
+	mpOp.SetProfPort()
 	mpOp.vol.DataClient = ec
 	mpOp.vol.MetaClient = mw
 	ctx := context.Background()
@@ -1523,7 +1523,6 @@ func TestMetaMergeExtentsError(t *testing.T) {
 		Inode:   inodeInfo,
 		Extents: extents,
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
 	subTask, _ := NewMigrateInode(mpOp, cmpInode)
 	subTask.startIndex = 0
 	subTask.endIndex = len(extents) - 2
@@ -1602,10 +1601,7 @@ func TestCompareReplicasInodeEksEqual(t *testing.T) {
 	if len(members) < 3 {
 		assert.FailNowf(t, "", "the members of mpId[%v] less than three", mpId)
 	}
-	task := &proto.Task{
-		MpId:     mpId,
-		TaskType: proto.WorkerTypeCompact,
-	}
+	task := &proto.Task{MpId: mpId, TaskType: proto.WorkerTypeCompact}
 	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	mpOp.mpInfo = &meta.MetaPartition{
 		Members: members,
@@ -1620,7 +1616,7 @@ func TestCompareReplicasInodeEksEqual(t *testing.T) {
 	cmpInode := &proto.InodeExtents{
 		Inode: inodeInfo,
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
+	mpOp.task = &proto.Task{MpId: mpId, TaskType: proto.WorkerTypeCompact}
 	subTask, _ := NewMigrateInode(mpOp, cmpInode)
 	isEqual := subTask.compareReplicasInodeEksEqual()
 	assert.True(t, isEqual, "")

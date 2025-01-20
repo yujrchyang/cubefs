@@ -771,7 +771,7 @@ func createNormalExtent(mc *master.MasterClient, volume string, partitionId uint
 		return
 	}
 	replyPacket := new(common.Packet)
-	if err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime*10*1000); err != nil {
+	if err = replyPacket.ReadFromConn(conn, proto.ReadDeadlineTime*10*1000*1000); err != nil {
 		err = errors.NewErrorf("creatNormalExtent read response from dataNode uniqueLogId(%v) hosts(%v) replyPacket(%v) err(%v)",
 			replyPacket.GetUniqueLogId(), allHosts, replyPacket, err)
 		return
