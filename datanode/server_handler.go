@@ -83,6 +83,7 @@ func (s *DataNode) registerHandler() {
 	http.HandleFunc("/batchDeleteTrashExtents", s.batchDeleteTrashExtents)
 	http.HandleFunc("/setSettings", s.setSettings)
 	http.HandleFunc("/getSettings", s.getSettings)
+	http.HandleFunc("/checkExtentHole", s.checkExtentHole)
 }
 
 // handler
@@ -1941,4 +1942,55 @@ func (s *DataNode) releaseTrashExtents(w http.ResponseWriter, r *http.Request) {
 		return true
 	})
 	s.buildSuccessResp(w, fmt.Sprintf("release trash extents, release extent count: %v: ", releaseCount))
+}
+
+type ExtentHoleInfo struct {
+	Offset    uint64 `json:"offset"`
+	Size      uint64 `json:"size"`
+	CrossHole bool   `json:"crossHole"`
+	ErrMsg    string `json:"errMsg,omitempty"`
+}
+
+func (s *DataNode) checkExtentHole(w http.ResponseWriter, r *http.Request) {
+	var (
+		partitionID uint64
+		err         error
+	)
+	if err = r.ParseForm(); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if partitionID, err = strconv.ParseUint(r.FormValue("partitionID"), 10, 64); err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	partition := s.space.Partition(partitionID)
+	if partition == nil {
+		s.buildFailureResp(w, http.StatusNotFound, "partition not exist")
+		return
+	}
+	buf := new(bytes.Buffer)
+	_, err = buf.ReadFrom(r.Body)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var extentInfoMap map[uint64][]ExtentHoleInfo
+	err = json.Unmarshal(buf.Bytes(), &extentInfoMap)
+	if err != nil {
+		s.buildFailureResp(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	for extentID, extentInfos := range extentInfoMap {
+		for _, extentInfo := range extentInfos {
+			crossHole, e := partition.ExtentStore().CheckHole(extentID, int64(extentInfo.Offset), int64(extentInfo.Size))
+			if e == nil {
+				extentInfo.CrossHole = crossHole
+			} else {
+				extentInfo.CrossHole = false
+				extentInfo.ErrMsg = e.Error()
+			}
+		}
+	}
+	s.buildSuccessResp(w, extentInfoMap)
 }
