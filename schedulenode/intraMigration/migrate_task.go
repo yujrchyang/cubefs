@@ -1,8 +1,9 @@
-package migration
+package intraMigration
 
 import (
 	"fmt"
 	cm "github.com/cubefs/cubefs/schedulenode/common"
+	"github.com/cubefs/cubefs/schedulenode/migration"
 	"strings"
 	"sync"
 	"time"
@@ -22,7 +23,7 @@ type MigrateTask struct {
 	name        string
 	stage       MigrateTaskStage
 	task        *proto.Task
-	vol         *VolumeInfo
+	vol         *migration.VolumeInfo
 	mc          *master.MasterClient
 	mpInfo      *meta.MetaPartition
 	leader      string
@@ -36,13 +37,14 @@ type MigrateTask struct {
 	migErrMsg   map[int]string
 	inodes      []uint64
 	last        int
+	localIp     string
 
 	stopC       chan struct{}
 	migInodeLimiter *cm.ConcurrencyLimiter
 }
 
-func NewMigrateTask(task *proto.Task, masterClient *master.MasterClient, vol *VolumeInfo) (mpOp *MigrateTask) {
-	mpOp = &MigrateTask{mpId: task.MpId, mc: masterClient, vol: vol, task: task}
+func NewMigrateTask(localIp string, task *proto.Task, masterClient *master.MasterClient, vol *migration.VolumeInfo) (mpOp *MigrateTask) {
+	mpOp = &MigrateTask{localIp: localIp, mpId: task.MpId, mc: masterClient, vol: vol, task: task}
 	mpOp.name = fmt.Sprintf("%s#%s#%d", task.Cluster, task.VolName, task.MpId)
 	mpOp.migErrMsg = make(map[int]string, 0)
 	mpOp.stopC = make(chan struct{})
@@ -69,7 +71,7 @@ func (migTask *MigrateTask) updateInodeMigParallel(num *int32) {
 }
 
 func (migTask *MigrateTask) RunOnce() (finished bool, err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, RunMpTask))
+	metrics := exporter.NewModuleTP(migration.UmpKeySuffix(migration.FileMig, migration.RunMpTask))
 	defer metrics.Set(err)
 
 	defer func() {
@@ -104,9 +106,9 @@ func (migTask *MigrateTask) RunOnce() (finished bool, err error) {
 
 		switch migTask.stage {
 		case GetMPInfo:
-			err = migTask.GetMpInfo()
+			err = migTask.SetMpInfo()
 		case GetMNProfPort:
-			err = migTask.GetProfPort()
+			err = migTask.SetProfPort()
 		case ListAllIno:
 			err = migTask.ListAllIno()
 		case GetInodes:
@@ -125,8 +127,8 @@ func (migTask *MigrateTask) RunOnce() (finished bool, err error) {
 	return
 }
 
-func (migTask *MigrateTask) GetMpInfo() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migTask.stage.String()))
+func (migTask *MigrateTask) SetMpInfo() (err error) {
+	metrics := exporter.NewModuleTP(migration.UmpKeySuffix(migration.FileMig, migTask.stage.String()))
 	defer metrics.Set(err)
 	defer func() {
 		if err != nil {
@@ -171,8 +173,8 @@ func (migTask *MigrateTask) GetMpInfo() (err error) {
 	return
 }
 
-func (migTask *MigrateTask) GetProfPort() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migTask.stage.String()))
+func (migTask *MigrateTask) SetProfPort() (err error) {
+	metrics := exporter.NewModuleTP(migration.UmpKeySuffix(migration.FileMig, migTask.stage.String()))
 	defer metrics.Set(err)
 	defer func() {
 		if err != nil {
@@ -196,7 +198,7 @@ func (migTask *MigrateTask) GetProfPort() (err error) {
 }
 
 func (migTask *MigrateTask) ListAllIno() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migTask.stage.String()))
+	metrics := exporter.NewModuleTP(migration.UmpKeySuffix(migration.FileMig, migTask.stage.String()))
 	defer metrics.Set(err)
 
 	defer func() {
@@ -225,7 +227,7 @@ func (migTask *MigrateTask) ListAllIno() (err error) {
 }
 
 func (migTask *MigrateTask) MigrateInode() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migTask.stage.String()))
+	metrics := exporter.NewModuleTP(migration.UmpKeySuffix(migration.FileMig, migTask.stage.String()))
 	defer metrics.Set(err)
 	defer func() {
 		if err != nil {
@@ -257,13 +259,13 @@ func (migTask *MigrateTask) MigrateInode() (err error) {
 		if !isMatch {
 			continue
 		}
-		var inodeOp *MigrateInode
-		if inodeOp, err = NewMigrateInode(migTask, migInode); err != nil {
+		var inodeOp *migration.MigrateInode
+		if inodeOp, err = migration.NewMigrateInode(migTask, migInode); err != nil {
 			log.LogErrorf("NewMigrateInode migTask.Name(%v) inode(%v) err(%v)", migTask.name, migInode.Inode, err)
 			continue
 		}
 		migTask.migInodeLimiter.Add()
-		go func(inodeOp *MigrateInode) {
+		go func(inodeOp *migration.MigrateInode) {
 			defer func() {
 				migTask.migInodeLimiter.Done()
 			}()
@@ -285,11 +287,11 @@ func (migTask *MigrateTask) checkMatchMigDir(inode uint64) (isMatch bool) {
 	if migTask.task.TaskType != proto.WorkerTypeInodeMigration {
 		return true
 	}
-	_, ok1 := migTask.vol.inodeFilter.Load(rootDir)
+	_, ok1 := migTask.vol.InodeFilter.Load(migration.RootDir)
 	if ok1 {
 		return true
 	}
-	_, ok2 := migTask.vol.inodeFilter.Load(inode)
+	_, ok2 := migTask.vol.InodeFilter.Load(inode)
 	if ok2 {
 		return true
 	}
@@ -311,7 +313,7 @@ func (migTask *MigrateTask) setLastCursor(migInodeCnt, end int, maxIno uint64) {
 }
 
 func (migTask *MigrateTask) WaitMigSubTask() (err error) {
-	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migTask.stage.String()))
+	metrics := exporter.NewModuleTP(migration.UmpKeySuffix(migration.FileMig, migTask.stage.String()))
 	defer metrics.Set(err)
 	if migTask.last >= len(migTask.inodes) {
 		migTask.resetInode()
@@ -331,7 +333,7 @@ func (migTask *MigrateTask) StopMig() {
 	migTask.resetInode()
 }
 
-func (migTask *MigrateTask) getInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err error) {
+func (migTask *MigrateTask) GetInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err error) {
 	var (
 		wg                                          sync.WaitGroup
 		mu                                          sync.Mutex
@@ -376,7 +378,7 @@ func (migTask *MigrateTask) getInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err
 	return
 }
 
-func (migTask *MigrateTask) getInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigrateDirection, err error) {
+func (migTask *MigrateTask) GetInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir migration.MigrateDirection, err error) {
 	vol := migTask.vol
 	if vol == nil {
 		err = fmt.Errorf("mig task name(%v) vol should not be nil", migTask.name)
@@ -433,24 +435,24 @@ func secondsAgo(inodeInfo *proto.InodeInfo, policyInodeATime *proto.LayerPolicyI
 		time.Now().Unix()-int64(inodeInfo.ModifyTime) > policyInodeATime.TimeValue
 }
 
-func convertMigrateDirection(policyInodeATime *proto.LayerPolicyInodeATime, isToColdMedium bool) (migDir MigrateDirection) {
+func convertMigrateDirection(policyInodeATime *proto.LayerPolicyInodeATime, isToColdMedium bool) (migDir migration.MigrateDirection) {
 	if policyInodeATime.TargetMedium == proto.MediumHDD {
 		if isToColdMedium {
-			migDir = SSDToHDDFileMigrate
+			migDir = migration.SSDToHDDFileMigrate
 		} else {
-			migDir = HDDToSSDFileMigrate
+			migDir = migration.HDDToSSDFileMigrate
 		}
 	} else if policyInodeATime.TargetMedium == proto.MediumS3 {
 		if isToColdMedium {
-			migDir = S3FileMigrate
+			migDir = migration.S3FileMigrate
 		} else {
-			migDir = ReverseS3FileMigrate
+			migDir = migration.ReverseS3FileMigrate
 		}
 	}
 	return
 }
 
-func (migTask *MigrateTask) UpdateStatisticsInfo(info MigrateRecord) {
+func (migTask *MigrateTask) UpdateStatisticsInfo(info migration.MigrateRecord) {
 	migTask.Lock()
 	defer migTask.Unlock()
 	migTask.migCnt += info.MigCnt
@@ -459,11 +461,51 @@ func (migTask *MigrateTask) UpdateStatisticsInfo(info MigrateRecord) {
 	migTask.newEkCnt += info.NewEkCnt
 	migTask.migSize += info.MigSize
 	migTask.migErrCnt += info.MigErrCnt
-	if info.MigErrCode >= InodeOpenFailedCode && info.MigErrCode <= InodeMergeFailedCode {
+	if info.MigErrCode >= migration.InodeOpenFailedCode && info.MigErrCode <= migration.InodeMergeFailedCode {
 		migTask.migErrMsg[info.MigErrCode] = info.MigErrMsg
 	}
 }
 
 func (migTask *MigrateTask) GetTaskType() proto.WorkerType {
 	return migTask.task.TaskType
+}
+
+func(migTask *MigrateTask) GetTaskId () uint64 {
+	return migTask.task.TaskId
+}
+
+func(migTask *MigrateTask) GetMasterClient () *master.MasterClient {
+	return migTask.mc
+}
+
+func(migTask *MigrateTask) GetProfPort() string {
+	return migTask.profPort
+}
+
+func(migTask *MigrateTask) GetMpInfo() *meta.MetaPartition {
+	return migTask.mpInfo
+}
+
+func(migTask *MigrateTask) GetLocalIp() string {
+	return migTask.localIp
+}
+
+func(migTask *MigrateTask) GetVol() *migration.VolumeInfo {
+	return migTask.vol
+}
+
+func(migTask *MigrateTask) GetMpId() uint64 {
+	return migTask.mpId
+}
+
+func(migTask *MigrateTask) GetMpLeader() string {
+	return migTask.leader
+}
+
+func(migTask *MigrateTask) GetRawTask() *proto.Task {
+	return migTask.task
+}
+
+func(migTask *MigrateTask) String () string {
+	return fmt.Sprintf("%v", migTask.task)
 }

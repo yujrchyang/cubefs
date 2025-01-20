@@ -1,4 +1,4 @@
-package migration
+package intraMigration
 
 type MigrateTaskStage uint8
 

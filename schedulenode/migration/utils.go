@@ -47,7 +47,7 @@ func CalcAuthKey(key string) (authKey string) {
 	return strings.ToLower(hex.EncodeToString(cipherStr))
 }
 
-func workerTypeKey(workerType proto.WorkerType, cluster, volume string) string {
+func WorkerTypeKey(workerType proto.WorkerType, cluster, volume string) string {
 	return fmt.Sprintf("%v,%v,%v", workerType, cluster, volume)
 }
 

@@ -26,7 +26,7 @@ const (
 )
 
 const (
-	rootDir                    = "/"
+	RootDir                    = "/"
 	refreshInodeFilterDuration = 120
 	dirSeparator               = ","
 )
@@ -54,7 +54,7 @@ type VolumeInfo struct {
 	GetLayerPolicies     func(cluster, volName string) (layerPolicies []interface{}, exist bool)
 	GetDpMediumType      func(cluster, volName string, dpId uint64) (mediumType string)
 	GetMigrationConfig   func(cluster, volName string) (volumeConfig proto.MigrationConfig)
-	inodeFilter          sync.Map
+	InodeFilter          sync.Map
 	stopC                chan struct{}
 }
 
@@ -317,13 +317,13 @@ func (vol *VolumeInfo) refreshMigrationConfig() {
 }
 
 func (vol *VolumeInfo) updateInodeFilter() {
-	vol.inodeFilter = sync.Map{}
+	vol.InodeFilter = sync.Map{}
 	ctx := context.Background()
 	hddDirs := vol.GetMigrationConfig(vol.ClusterName, vol.Name).HddDirs
 	hddDirArr := strings.Split(hddDirs, dirSeparator)
 	for _, dir := range hddDirArr {
-		if dir == rootDir {
-			vol.inodeFilter.Store(rootDir, struct{}{})
+		if dir == RootDir {
+			vol.InodeFilter.Store(RootDir, struct{}{})
 			return
 		}
 	}
@@ -369,7 +369,7 @@ func (vol *VolumeInfo) readDir(ctx context.Context, parentID uint64, fileNameReg
 	for _, d := range dentrys {
 		if proto.IsRegular(d.Type) {
 			if len(fileNameReg) == 0 || (len(fileNameReg) != 0 && checkMatchRegexp(d.Name, fileNameReg)) {
-				vol.inodeFilter.Store(d.Inode, struct{}{})
+				vol.InodeFilter.Store(d.Inode, struct{}{})
 				log.LogDebugf("will migrate cluster:%v volume:%v inode:%v name:%v", vol.ClusterName, vol.Name, d.Inode, d.Name)
 			}
 		} else if proto.IsDir(d.Type) {

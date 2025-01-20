@@ -31,6 +31,11 @@ const (
 	UploadByPartNumOfParallel = 10
 )
 
+const (
+	noMigrationBack = 0
+	migrationBack   = 1
+)
+
 var (
 	gConnPool = connpool.NewConnectPool()
 )
@@ -40,7 +45,8 @@ type MigrateInode struct {
 	extents        []proto.ExtentKey
 	stage          migrateInodeStage
 	name           string
-	mpOp           *MigrateTask
+	mpId           uint64
+	task           Task
 	extentMaxIndex map[string]int // key:partitionId#extentId
 	lastMigEkIndex int
 	startIndex     int
@@ -60,9 +66,9 @@ type MigrateInode struct {
 	DirectWrite    bool
 }
 
-func NewMigrateInode(mpOp *MigrateTask, inode *proto.InodeExtents) (inodeOp *MigrateInode, err error) {
-	if mpOp == nil {
-		err = fmt.Errorf("MigrateTask should not be nil")
+func NewMigrateInode(task Task, inode *proto.InodeExtents) (inodeOp *MigrateInode, err error) {
+	if task.GetVol() == nil {
+		err = fmt.Errorf("VolumeInfo should not be nil")
 		return
 	}
 	if inode == nil {
@@ -70,19 +76,21 @@ func NewMigrateInode(mpOp *MigrateTask, inode *proto.InodeExtents) (inodeOp *Mig
 		return
 	}
 	inodeOp = &MigrateInode{
-		mpOp:           mpOp,
-		vol:            mpOp.vol,
+		//mpOp:           mpOp,
+		task:           task,
+		mpId:           task.GetMpId(),
+		vol:            task.GetVol(),
 		inodeInfo:      inode.Inode,
 		extents:        inode.Extents,
 		extentMaxIndex: make(map[string]int, 0),
 		firstMig:       true,
 		statisticsInfo: MigrateRecord{MigInodeCnt: 1},
-		name:           fmt.Sprintf("%s_%d_%d", mpOp.vol.Name, mpOp.mpId, inode.Inode.Inode),
-		DirectWrite:    mpOp.vol.ControlConfig.DirectWrite,
+		name:           fmt.Sprintf("%s_%d_%d", task.GetVol().Name, task.GetMpId(), inode.Inode.Inode),
+		DirectWrite:    task.GetVol().ControlConfig.DirectWrite,
 	}
-	if mpOp.vol.VolId == 0 {
+	if inodeOp.vol.VolId == 0 {
 		err = fmt.Errorf("new migrate inode volume(%v) volId(%v) mpId(%v) inodeId(%v) volId should not be 0",
-			mpOp.vol.Name, mpOp.vol.VolId, mpOp.mpId, inode.Inode.Inode)
+			inodeOp.vol.Name, inodeOp.vol.VolId, inodeOp.mpId, inode.Inode.Inode)
 	}
 	return
 }
@@ -99,14 +107,14 @@ func (migInode *MigrateInode) RunOnce() (finished bool, err error) {
 	}
 	defer func() {
 		migInode.vol.UpdateVolLastTime()
-		migInode.mpOp.UpdateStatisticsInfo(migInode.statisticsInfo)
+		migInode.task.UpdateStatisticsInfo(migInode.statisticsInfo)
 	}()
 	for err == nil {
 		if !migInode.vol.IsRunning() {
 			log.LogDebugf("inode fileMigrate stop because vol(%v) be stopped, ino(%v) inode.stage(%v)", migInode.vol.Name, migInode.name, migInode.stage)
 			migInode.stage = InodeMigStopped
 		}
-		log.LogDebugf("inode runonce taskType(%v) ino(%v) inode.stage(%v) startEndIndex(%v:%v)", migInode.mpOp.task.TaskType, migInode.name, migInode.stage, migInode.startIndex, migInode.endIndex)
+		log.LogDebugf("inode runonce taskType(%v) ino(%v) inode.stage(%v) startEndIndex(%v:%v)", migInode.task.GetTaskType(), migInode.name, migInode.stage, migInode.startIndex, migInode.endIndex)
 		switch migInode.stage {
 		case Init:
 			err = migInode.Init()
@@ -159,14 +167,14 @@ func (migInode *MigrateInode) Init() (err error) {
 			return
 		}
 	}()
-	switch migInode.mpOp.task.TaskType {
+	switch migInode.task.GetTaskType() {
 	case proto.WorkerTypeCompact:
 		migInode.migDirection = CompactFileMigrate
 		migInode.extentClient = migInode.vol.DataClient
 	case proto.WorkerTypeInodeMigration:
 		err = migInode.initFileMigrate()
 	default:
-		err = fmt.Errorf("task type(%v) invaild", migInode.mpOp.task.TaskType)
+		err = fmt.Errorf("task type(%v) invaild", migInode.task.GetTaskType())
 		return
 	}
 	if err != nil || migInode.stage == InodeMigStopped {
@@ -202,7 +210,7 @@ func (migInode *MigrateInode) OpenFile() (err error) {
 }
 
 func (migInode *MigrateInode) initFileMigrate() (err error) {
-	if migInode.migDirection, err = migInode.mpOp.getInodeMigDirection(migInode.inodeInfo); err != nil {
+	if migInode.migDirection, err = migInode.task.GetInodeMigDirection(migInode.inodeInfo); err != nil {
 		return
 	}
 	if err = migInode.setInodeAttrMaxTime(); err != nil {
@@ -381,7 +389,7 @@ func (migInode *MigrateInode) checkCanMigrate() (err error) {
 	metrics := exporter.NewModuleTP(UmpKeySuffix(FileMig, migInode.stage.String()))
 	defer metrics.Set(err)
 
-	if migInode.mpOp.task.TaskType != proto.WorkerTypeInodeMigration {
+	if migInode.task.GetTaskType() != proto.WorkerTypeInodeMigration {
 		migInode.stage = ReadAndWriteEkData
 		return
 	}
@@ -402,10 +410,10 @@ func (migInode *MigrateInode) checkCanMigrate() (err error) {
 	if inodeInfo, err = migInode.getInodeInfo(); err != nil {
 		return
 	}
-	if err = migInode.mpOp.getInodeInfoMaxTime(inodeInfo); err != nil {
+	if err = migInode.task.GetInodeInfoMaxTime(inodeInfo); err != nil {
 		return
 	}
-	if migDirection, err = migInode.mpOp.getInodeMigDirection(inodeInfo); err != nil {
+	if migDirection, err = migInode.task.GetInodeMigDirection(inodeInfo); err != nil {
 		return
 	}
 	if migDirection != migInode.migDirection {
@@ -538,7 +546,7 @@ func (migInode *MigrateInode) ReadFromDataNodeAndWriteToS3() (err error) {
 
 func (migInode *MigrateInode) createAndDeleteNormalExtentForGenS3Key() (normalExtent proto.ExtentKey, err error) {
 	partitionId :=  migInode.extents[migInode.startIndex].PartitionId
-	extID, err := createNormalExtent(migInode.mpOp.mc, migInode.vol.Name, partitionId, migInode.inodeInfo.Inode)
+	extID, err := createNormalExtent(migInode.task.GetMasterClient(), migInode.vol.Name, partitionId, migInode.inodeInfo.Inode)
 	if err != nil {
 		return
 	}
@@ -547,7 +555,7 @@ func (migInode *MigrateInode) createAndDeleteNormalExtentForGenS3Key() (normalEx
 	eks := []proto.ExtentKey{
 		{PartitionId: partitionId, ExtentId: extID},
 	}
-	err = retryDeleteExtents(migInode.mpOp.mc, migInode.vol.Name, partitionId, eks, migInode.inodeInfo.Inode)
+	err = retryDeleteExtents(migInode.task.GetMasterClient(), migInode.vol.Name, partitionId, eks, migInode.inodeInfo.Inode)
 	if err != nil {
 		// delete failed, no impact on migration
 		log.LogWarnf("deleteNormalExtent ino(%v) partitionId(%v) extentKeys(%v) err(%v)", migInode.name, partitionId, eks, err)
@@ -644,7 +652,7 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 		migInode.stage = LookupEkSegment
 	}()
 	if !migInode.compareReplicasInodeEksEqual() {
-		err = fmt.Errorf("unequal extensions between mp[%v] inode[%v] replicas", migInode.mpOp.mpId, migInode.inodeInfo.Inode)
+		err = fmt.Errorf("unequal extensions between mp[%v] inode[%v] replicas", migInode.mpId, migInode.inodeInfo.Inode)
 		return
 	}
 	if ok, canDeleteExtentKeys := migInode.checkMigExtentCanDelete(migEks); !ok {
@@ -689,7 +697,7 @@ func (migInode *MigrateInode) MetaMergeExtents() (err error) {
 
 func (migInode *MigrateInode) deleteOldExtentsFailedAlarm(err error, migEks, newEks []proto.ExtentKey) {
 	warnMsg := fmt.Sprintf("migration cluster(%v) volume(%v) mp(%v) inode(%v) workerIp(%v) delete old extents fail",
-		migInode.vol.ClusterName, migInode.vol.Name, migInode.mpOp.mpId, migInode.inodeInfo.Inode, localIp)
+		migInode.vol.ClusterName, migInode.vol.Name, migInode.mpId, migInode.inodeInfo.Inode, migInode.task.GetLocalIp())
 	exporter.WarningBySpecialUMPKey(fmt.Sprintf("%v_%v_warning", proto.RoleDataMigWorker, "deleteOldExtents"), warnMsg)
 	log.LogErrorf("%v migEks(%v) newEks(%v) err(%v)", warnMsg, migEks, newEks, err)
 }
@@ -699,16 +707,16 @@ func (migInode *MigrateInode) compareReplicasInodeEksEqual() bool {
 		wg           sync.WaitGroup
 		mu           sync.Mutex
 		inodeExtents []*proto.GetExtentsResponse
-		members      = migInode.mpOp.mpInfo.Members
+		members      = migInode.task.GetMpInfo().Members
 	)
 
 	for _, member := range members {
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
-			ipPort := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], migInode.mpOp.profPort)
+			ipPort := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], migInode.task.GetProfPort())
 			metaHttpClient := meta.NewMetaHttpClient(ipPort, false)
-			getExtentsResp, err := metaHttpClient.GetExtentKeyByInodeId(migInode.mpOp.mpId, migInode.inodeInfo.Inode)
+			getExtentsResp, err := metaHttpClient.GetExtentKeyByInodeId(migInode.mpId, migInode.inodeInfo.Inode)
 			if err == nil && getExtentsResp != nil {
 				mu.Lock()
 				inodeExtents = append(inodeExtents, getExtentsResp)
@@ -754,9 +762,9 @@ func dpIdExtentIdKey(partitionId, extentId uint64) string {
 
 func (migInode *MigrateInode) UpdateTime() {
 	if time.Now().Unix()-migInode.lastUpdateTime > 10*60 {
-		if updateErr := mysql.UpdateTaskUpdateTime(migInode.mpOp.task.TaskId); updateErr != nil {
+		if updateErr := mysql.UpdateTaskUpdateTime(migInode.task.GetTaskId()); updateErr != nil {
 			if !strings.Contains(updateErr.Error(), "affected rows less then one") {
-				log.LogErrorf("UpdateTaskUpdateTime to mysql failed, tasks(%v), err(%v)", migInode.mpOp.task, updateErr)
+				log.LogErrorf("UpdateTaskUpdateTime to mysql failed, tasks(%v), err(%v)", migInode.task, updateErr)
 			}
 		}
 		migInode.lastUpdateTime = time.Now().Unix()

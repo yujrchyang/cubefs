@@ -1,4 +1,4 @@
-package migration
+package intraMigration
 
 import (
 	"encoding/json"

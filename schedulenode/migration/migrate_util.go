@@ -251,7 +251,7 @@ func (migInode *MigrateInode) writeToDataNode(ctx context.Context, dp **data.Dat
 		}
 		if !checkMigDirectionMediumTypeIsMatch(migInode, *dp) {
 			return fmt.Errorf("writeToDataNode syncWrite dpId(%v) incorrect medium type, volume(%v) mp(%v) inode(%v) migType(%v)",
-				(*dp).PartitionID, migInode.vol.Name, migInode.mpOp.mpId, migInode.inodeInfo.Inode, migInode.migDirection)
+				(*dp).PartitionID, migInode.vol.Name, migInode.task.GetMpId(), migInode.inodeInfo.Inode, migInode.migDirection)
 		}
 		migInode.newEks = append(migInode.newEks, *newEk)
 		*firstWrite = false
@@ -484,7 +484,7 @@ func (migInode *MigrateInode) deleteOldExtents(extentKeys []proto.ExtentKey) (er
 		dpIdEksMap[dpId] = append(dpIdEksMap[dpId], metaDelExtentKey)
 	}
 	for dpId, eks := range dpIdEksMap {
-		err = retryDeleteExtents(migInode.mpOp.mc, migInode.vol.Name, dpId, eks, migInode.inodeInfo.Inode)
+		err = retryDeleteExtents(migInode.task.GetMasterClient(), migInode.vol.Name, dpId, eks, migInode.inodeInfo.Inode)
 		if err != nil {
 			log.LogErrorf("deleteOldExtents ino:%v partitionId:%v extentKeys:%v err:%v", migInode.name, dpId, eks, err)
 			return
@@ -495,9 +495,9 @@ func (migInode *MigrateInode) deleteOldExtents(extentKeys []proto.ExtentKey) (er
 }
 
 func (migInode *MigrateInode) getInodeInfo() (inodeInfo *proto.InodeInfo, err error) {
-	ipPort := fmt.Sprintf("%v:%v", strings.Split(migInode.mpOp.leader, ":")[0], migInode.mpOp.profPort)
+	ipPort := fmt.Sprintf("%v:%v", strings.Split(migInode.task.GetMpLeader(), ":")[0], migInode.task.GetProfPort())
 	metaHttpClient := meta.NewMetaHttpClient(ipPort, false)
-	inodeInfo, err = metaHttpClient.GetInodeInfo(migInode.mpOp.mpId, migInode.inodeInfo.Inode)
+	inodeInfo, err = metaHttpClient.GetInodeInfo(migInode.task.GetMpId(), migInode.inodeInfo.Inode)
 	return
 }
 
@@ -547,7 +547,7 @@ func (migInode *MigrateInode) addInodeMigrateLog(oldEks, newEks []proto.ExtentKe
 	if newEksByte, err = json.Marshal(newEks); err != nil {
 		return
 	}
-	err = mysql.AddInodeMigrateLog(migInode.mpOp.task, migInode.inodeInfo.Inode, string(oldEksByte), string(newEksByte), len(oldEks), len(newEks))
+	err = mysql.AddInodeMigrateLog(migInode.task.GetRawTask(), migInode.inodeInfo.Inode, string(oldEksByte), string(newEksByte), len(oldEks), len(newEks))
 	return
 }
 
@@ -656,23 +656,23 @@ func (migInode *MigrateInode) setInodeAttrMaxTime() (err error) {
 		wg                                          sync.WaitGroup
 		mu                                          sync.Mutex
 		inodeInfoViews                              []*proto.InodeInfo
-		members                                     = migInode.mpOp.mpInfo.Members
+		members                                     = migInode.task.GetMpInfo().Members
 		maxAccessTime, maxModifyTime, maxCreateTime proto.CubeFSTime
 	)
 	for _, member := range members {
 		wg.Add(1)
 		go func(addr string) {
 			defer wg.Done()
-			ipPort := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], migInode.mpOp.profPort)
+			ipPort := fmt.Sprintf("%v:%v", strings.Split(addr, ":")[0], migInode.task.GetProfPort())
 			metaHttpClient := meta.NewMetaHttpClient(ipPort, false)
-			inodeInfoView, errInternal := metaHttpClient.GetInodeInfo(migInode.mpOp.mpId, migInode.inodeInfo.Inode)
+			inodeInfoView, errInternal := metaHttpClient.GetInodeInfo(migInode.task.GetMpId(), migInode.inodeInfo.Inode)
 			if errInternal == nil && inodeInfoView != nil {
 				mu.Lock()
 				inodeInfoViews = append(inodeInfoViews, inodeInfoView)
 				mu.Unlock()
 			} else {
 				err = errInternal
-				log.LogErrorf("GetInodeInfo mpId(%v) ino(%v) err(%v)", migInode.mpOp.mpId, migInode.inodeInfo.Inode, errInternal)
+				log.LogErrorf("GetInodeInfo mpId(%v) ino(%v) err(%v)", migInode.task.GetMpId(), migInode.inodeInfo.Inode, errInternal)
 			}
 		}(member)
 	}

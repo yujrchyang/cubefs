@@ -1,4 +1,4 @@
-package migration
+package intraMigration
 
 import (
 	"github.com/cubefs/cubefs/proto"

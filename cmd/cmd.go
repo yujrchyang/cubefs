@@ -27,8 +27,8 @@ import (
 	"github.com/cubefs/cubefs/schedulenode/crcworker"
 	"github.com/cubefs/cubefs/schedulenode/extentallocatecheck"
 	"github.com/cubefs/cubefs/schedulenode/fsck"
+	"github.com/cubefs/cubefs/schedulenode/intraMigration"
 	"github.com/cubefs/cubefs/schedulenode/mdck"
-	"github.com/cubefs/cubefs/schedulenode/migration"
 	"github.com/cubefs/cubefs/schedulenode/normalextentcheck"
 	"github.com/cubefs/cubefs/schedulenode/rebalance"
 	"github.com/cubefs/cubefs/schedulenode/scheduler"
@@ -253,7 +253,7 @@ func run() error {
 		server = extentallocatecheck.NewExtentAllocateChecker()
 		module = proto.ModuleDoubleAllocExtentsCheck
 	case proto.RoleDataMig:
-		server = migration.NewDataMigrationServer()
+		server = intraMigration.NewDataMigrationServer()
 		module = proto.ModuleDataMig
 	case proto.RoleTinyBlockCheck:
 		server = tinyblck.NewTinyBLockCheckWorker()

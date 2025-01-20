@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/s3"
 	"hash/crc32"
 	"io"
 	"os"
@@ -12,9 +13,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
-
-	"github.com/cubefs/cubefs/sdk/s3"
 
 	util_sdk "github.com/cubefs/cubefs/cli/cmd/util/sdk"
 	"github.com/cubefs/cubefs/proto"
@@ -39,9 +37,129 @@ const (
 	size512M      = 512 * 1024 * 1024
 )
 
+const (
+	region     = "chubaofs01"
+	endPoint   = "http://object.chubao.io"
+	accessKey  = "39bEF4RrAQgMj6RV"
+	secretKey  = "TRL6o3JL16YOqvZGIohBDFTHZDEcFsyd"
+	bucketName = "ltptest"
+	volId      = 24
+)
+
+type MockTask struct {
+	localIp  string
+	mpId     uint64
+	task     *proto.Task
+	mc       *master.MasterClient
+	mpInfo   *meta.MetaPartition
+	vol      *VolumeInfo
+	leader   string
+	profPort string
+}
+
+func NewMockTask(localIp string, task *proto.Task, masterClient *master.MasterClient, vol *VolumeInfo) (mpOp *MockTask) {
+	mpOp = &MockTask{localIp: localIp, mpId: task.MpId, mc: masterClient, vol: vol, task: task}
+	return
+}
+
+func (m *MockTask) GetInodeMigDirection(inodeInfo *proto.InodeInfo) (migDir MigrateDirection, err error) {
+	return
+}
+func (m *MockTask) GetInodeInfoMaxTime(inodeInfo *proto.InodeInfo) (err error) {
+	return
+}
+
+func (m *MockTask) UpdateStatisticsInfo(info MigrateRecord) {
+}
+
+func (m *MockTask) GetTaskType() proto.WorkerType {
+	return m.task.TaskType
+}
+
+func (m *MockTask) GetTaskId() uint64 {
+	return m.task.TaskId
+}
+
+func (m *MockTask) GetMasterClient() *master.MasterClient {
+	return m.mc
+}
+
+func (m *MockTask) GetProfPort() string {
+	return "9092"
+}
+
+func (m *MockTask) GetMpInfo() *meta.MetaPartition {
+	return &meta.MetaPartition{}
+}
+
+func (m *MockTask) GetLocalIp() string {
+	return "127.0.0.1"
+}
+
+func (m *MockTask) GetVol() *VolumeInfo {
+	return vol
+}
+
+func (m *MockTask) GetMpId() uint64 {
+	return m.task.MpId
+}
+
+func (m *MockTask) GetMpLeader() string {
+	return m.leader
+}
+
+func (m *MockTask) GetRawTask() *proto.Task {
+	return m.task
+}
+
+func (m *MockTask) SetMpInfo() (err error) {
+	mpInfo, err := m.mc.ClientAPI().GetMetaPartition(m.mpId, m.vol.Name)
+	if err != nil {
+		return
+	}
+	if mpInfo.IsRecover {
+		return
+	}
+	mp := &meta.MetaPartition{
+		PartitionID: m.mpId,
+	}
+	for _, replica := range mpInfo.Replicas {
+		mp.Members = append(mp.Members, replica.Addr)
+		if replica.IsLeader {
+			mp.LeaderAddr = proto.NewAtomicString(replica.Addr)
+		}
+		if replica.IsLearner {
+			mp.Learners = append(mp.Learners, replica.Addr)
+		}
+	}
+	mp.Status = mpInfo.Status
+	mp.Start = mpInfo.Start
+	mp.End = mpInfo.End
+
+	m.mpInfo = mp
+	leaderAddr := mp.GetLeaderAddr()
+	if leaderAddr == "" {
+		return fmt.Errorf("get metapartition(%v) no leader", m.mpId)
+	}
+	m.leader = leaderAddr
+	return
+}
+
+func (m *MockTask) SetProfPort() (err error) {
+
+	var leaderNodeInfo *proto.MetaNodeInfo
+	if leaderNodeInfo, err = m.mc.NodeAPI().GetMetaNode(m.leader); err != nil {
+		log.LogErrorf("get metaNode leader(%v) info failed:%v", m.leader, err)
+		return
+	}
+
+	m.profPort = leaderNodeInfo.ProfPort
+	m.leader = strings.Split(leaderNodeInfo.Addr, ":")[0] + ":" + m.profPort
+	return
+}
+
 var (
-	vol  *VolumeInfo
-	mpOp *MigrateTask
+	vol *VolumeInfo
 )
 
 func init() {
@@ -77,99 +195,6 @@ func init() {
 var clusterInfo = &ClusterInfo{
 	Name:         clusterName,
 	MasterClient: master.NewMasterClient(strings.Split(ltptestMaster, ","), false),
-}
-
-type LayerPolicyMeta struct {
-	TimeType     int8
-	TimeValue    int64
-	TargetMedium proto.MediumType
-}
-
-func TestSetInodeMigDirection(t *testing.T) {
-	layerPolicyMetas := []LayerPolicyMeta{
-		{
-			TimeType:     proto.InodeAccessTimeTypeSec,
-			TimeValue:    15,
-			TargetMedium: proto.MediumHDD,
-		},
-		{
-			TimeType:     proto.InodeAccessTimeTypeDays,
-			TimeValue:    15,
-			TargetMedium: proto.MediumHDD,
-		},
-		{
-			TimeType:     proto.InodeAccessTimeTypeTimestamp,
-			TimeValue:    15,
-			TargetMedium: proto.MediumHDD,
-		},
-		{
-			TimeType:     proto.InodeAccessTimeTypeSec,
-			TimeValue:    15,
-			TargetMedium: proto.MediumS3,
-		},
-		{
-			TimeType:     proto.InodeAccessTimeTypeDays,
-			TimeValue:    15,
-			TargetMedium: proto.MediumS3,
-		},
-		{
-			TimeType:     proto.InodeAccessTimeTypeTimestamp,
-			TimeValue:    15,
-			TargetMedium: proto.MediumS3,
-		},
-	}
-	for _, policyMeta := range layerPolicyMetas {
-		vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
-			exist = true
-			lp := &proto.LayerPolicyInodeATime{
-				TimeType:     policyMeta.TimeType,
-				TimeValue:    policyMeta.TimeValue,
-				TargetMedium: policyMeta.TargetMedium,
-			}
-			layerPolicies = append(layerPolicies, lp)
-			return
-		}
-		mpOperation := &MigrateTask{
-			vol:  vol,
-			mpId: 1,
-		}
-		inodeOperation := &MigrateInode{
-			mpOp: mpOperation,
-			inodeInfo: &proto.InodeInfo{
-				AccessTime: proto.CubeFSTime(0),
-				ModifyTime: proto.CubeFSTime(0),
-			},
-		}
-		var (
-			migDir MigrateDirection
-			err    error
-		)
-		if migDir, err = inodeOperation.mpOp.getInodeMigDirection(inodeOperation.inodeInfo); err != nil {
-			assert.FailNow(t, err.Error())
-		}
-		if policyMeta.TargetMedium == proto.MediumHDD {
-			assert.Equal(t, SSDToHDDFileMigrate, migDir)
-		}
-		if policyMeta.TargetMedium == proto.MediumS3 {
-			assert.Equal(t, S3FileMigrate, migDir)
-		}
-		inodeOperation = &MigrateInode{
-			mpOp: mpOperation,
-			inodeInfo: &proto.InodeInfo{
-				AccessTime: proto.CubeFSTime(time.Now().Unix()),
-				ModifyTime: proto.CubeFSTime(time.Now().Unix()),
-			},
-		}
-		if migDir, err = inodeOperation.mpOp.getInodeMigDirection(inodeOperation.inodeInfo); err != nil {
-			assert.FailNow(t, err.Error())
-		}
-		if policyMeta.TargetMedium == proto.MediumHDD {
-			assert.Equal(t, HDDToSSDFileMigrate, migDir)
-		}
-		if policyMeta.TargetMedium == proto.MediumS3 {
-			assert.Equal(t, ReverseS3FileMigrate, migDir)
-		}
-	}
 }
 
 func TestGetSSSDEkSegment(t *testing.T) {
@@ -597,9 +622,9 @@ func TestCheckReplicaCrcValid(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.DataClient = ec
-	mpOp.vol.MetaClient = mw
-	mpOp.vol.ControlConfig = &ControlConfig{
+	vol.DataClient = ec
+	vol.MetaClient = mw
+	vol.ControlConfig = &ControlConfig{
 		DirectWrite: true,
 	}
 	ctx := context.Background()
@@ -608,12 +633,15 @@ func TestCheckReplicaCrcValid(t *testing.T) {
 		assert.FailNow(t, err.Error())
 		return
 	}
-	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
+	_, _, extents, _ := vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
 		Extents: extents,
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	subTask, err := NewMigrateInode(mpOp, cmpInode)
 	if err != nil {
 		assert.FailNow(t, err.Error())
@@ -669,9 +697,9 @@ func TestCheckReplicaCrcValid2(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.DataClient = ec
-	mpOp.vol.MetaClient = mw
-	mpOp.vol.ControlConfig = &ControlConfig{
+	vol.DataClient = ec
+	vol.MetaClient = mw
+	vol.ControlConfig = &ControlConfig{
 		DirectWrite: true,
 	}
 	ctx := context.Background()
@@ -680,12 +708,15 @@ func TestCheckReplicaCrcValid2(t *testing.T) {
 		assert.FailNow(t, err.Error())
 		return
 	}
-	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
+	_, _, extents, _ := vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
 		Extents: extents,
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	subTask, err := NewMigrateInode(mpOp, cmpInode)
 	if err != nil {
 		assert.FailNow(t, err.Error())
@@ -757,7 +788,7 @@ func readDatanodeWriteS3(fileSize int, t *testing.T) {
 	}()
 	subTask := createMigrateInode(fileSize, testFile, t)
 
-	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+	vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
 		exist = true
 		lp := &proto.LayerPolicyInodeATime{
 			ClusterId:    clusterName,
@@ -848,11 +879,11 @@ func createMigrateInode(fileSize int, testFile string, t *testing.T) (inodeOp *M
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.DataClient = ec
-	mpOp.vol.S3Client = s3.NewS3Client(region, endPoint, accessKey, secretKey, false)
-	mpOp.vol.Bucket = ltptestVolume
-	mpOp.vol.MetaClient = mw
-	mpOp.vol.ControlConfig = &ControlConfig{
+	vol.DataClient = ec
+	vol.S3Client = s3.NewS3Client(region, endPoint, accessKey, secretKey, false)
+	vol.Bucket = ltptestVolume
+	vol.MetaClient = mw
+	vol.ControlConfig = &ControlConfig{
 		DirectWrite: true,
 	}
 
@@ -862,25 +893,29 @@ func createMigrateInode(fileSize int, testFile string, t *testing.T) (inodeOp *M
 		assert.FailNow(t, err.Error())
 		return
 	}
-	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
+	_, _, extents, _ := vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	migInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
 		Extents: extents,
 	}
-	_, mpID, err := util_sdk.LocateInode(stat.Ino, mpOp.mc, ltptestVolume)
+	_, mpID, err := util_sdk.LocateInode(stat.Ino, clusterInfo.MasterClient, ltptestVolume)
 	if err != nil {
 		t.Fatalf("LocateInode(%v) info failed, err(%v)", stat.Ino, err)
 	}
-	mpOp.mpId = mpID
-	err = mpOp.GetMpInfo()
+
+	task := &proto.Task{
+		MpId:     mpID,
+		TaskType: proto.WorkerTypeInodeMigration,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
+	err = mpOp.SetMpInfo()
 	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
-	err = mpOp.GetProfPort()
+	err = mpOp.SetProfPort()
 	if err != nil {
 		assert.FailNow(t, err.Error())
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeInodeMigration}
 	inodeOp, err = NewMigrateInode(mpOp, migInode)
 	if err != nil {
 		assert.FailNow(t, err.Error())
@@ -918,8 +953,7 @@ func TestDeleteOldExtents(t *testing.T) {
 	}
 	inodeOperation.startIndex = 0
 	inodeOperation.endIndex = 2
-	inodeOperation.mpOp = mpOp
-	inodeOperation.vol = mpOp.vol
+	inodeOperation.vol = vol
 	err := inodeOperation.deleteOldExtents(inodeOperation.extents[inodeOperation.startIndex:inodeOperation.endIndex])
 	assert.Nil(t, err)
 }
@@ -962,8 +996,11 @@ func TestCalcCmpExtents(t *testing.T) {
 		inodeOperation *MigrateInode
 		err            error
 	)
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
-	mpOp.vol.GetDpMediumType = func(cluster, volName string, dpId uint64) (mediumType string) {
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
+	vol.GetDpMediumType = func(cluster, volName string, dpId uint64) (mediumType string) {
 		return proto.MediumSSDName
 	}
 	inodeOperation, err = NewMigrateInode(mpOp, cmpInode)
@@ -1004,7 +1041,10 @@ func TestInitTask(t *testing.T) {
 		Inode:   inodeInfo,
 		Extents: []proto.ExtentKey{},
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	subTask, err := NewMigrateInode(mpOp, cmpInode)
 	if err != nil {
 		assert.FailNow(t, err.Error())
@@ -1027,7 +1067,7 @@ func TestInitFileMigrate(t *testing.T) {
 	}()
 	migInode := createMigrateInode(size1M, testFile, t)
 
-	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+	vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
 		exist = true
 		lp := &proto.LayerPolicyInodeATime{
 			OriginRule:   "inodeAccessTime:xxx:15:s3",
@@ -1044,7 +1084,7 @@ func TestInitFileMigrate(t *testing.T) {
 	}
 	assert.Equal(t, NoneFileMigrate, migInode.migDirection)
 	assert.Equal(t, InodeMigStopped, migInode.stage)
-	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+	vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
 		exist = true
 		lp := &proto.LayerPolicyInodeATime{
 			OriginRule:   "inodeAccessTime:timestamp:0:hdd",
@@ -1055,7 +1095,7 @@ func TestInitFileMigrate(t *testing.T) {
 		layerPolicies = append(layerPolicies, lp)
 		return
 	}
-	mpOp.vol.GetMigrationConfig = func(cluster, volName string) (volumeConfig proto.MigrationConfig) {
+	vol.GetMigrationConfig = func(cluster, volName string) (volumeConfig proto.MigrationConfig) {
 		return proto.MigrationConfig{
 			MigrationBack: noMigrationBack,
 		}
@@ -1066,7 +1106,7 @@ func TestInitFileMigrate(t *testing.T) {
 	}
 	assert.Equal(t, HDDToSSDFileMigrate, migInode.migDirection)
 	assert.Equal(t, InodeMigStopped, migInode.stage)
-	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+	vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
 		exist = true
 		lp := &proto.LayerPolicyInodeATime{
 			OriginRule:   "inodeAccessTime:timestamp:32526344848:hdd",
@@ -1082,7 +1122,7 @@ func TestInitFileMigrate(t *testing.T) {
 		assert.FailNow(t, err.Error())
 	}
 	assert.Equal(t, SSDToHDDFileMigrate, migInode.migDirection)
-	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+	vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
 		exist = true
 		lp := &proto.LayerPolicyInodeATime{
 			OriginRule:   "inodeAccessTime:timestamp:32526344848:s3",
@@ -1098,7 +1138,7 @@ func TestInitFileMigrate(t *testing.T) {
 		assert.FailNow(t, err.Error())
 	}
 	assert.Equal(t, S3FileMigrate, migInode.migDirection)
-	mpOp.vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+	vol.GetLayerPolicies = func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
 		exist = true
 		lp := &proto.LayerPolicyInodeATime{
 			OriginRule:   "inodeAccessTime:timestamp:0:s3",
@@ -1150,11 +1190,14 @@ func TestOpenFile(t *testing.T) {
 		Inode:   inodeInfo,
 		Extents: []proto.ExtentKey{},
 	}
-	mpOp.vol.DataClient = ec
-	mpOp.vol.ControlConfig = &ControlConfig{
+	vol.DataClient = ec
+	vol.ControlConfig = &ControlConfig{
 		DirectWrite: true,
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	subTask, _ := NewMigrateInode(mpOp, cmpInode)
 	_ = subTask.Init()
 	err = subTask.OpenFile()
@@ -1198,16 +1241,19 @@ func TestReadAndWriteEkData(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.DataClient = ec
-	mpOp.vol.MetaClient = mw
+	vol.DataClient = ec
+	vol.MetaClient = mw
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
-	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, vol.DataClient)
+	_, _, extents, _ := vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
 		Extents: extents,
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	mpOp.vol.ControlConfig = &ControlConfig{
 		DirectWrite: true,
 	}
@@ -1248,16 +1294,19 @@ func TestReadAndWriteEkData2(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.DataClient = ec
-	mpOp.vol.MetaClient = mw
+	vol.DataClient = ec
+	vol.MetaClient = mw
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
-	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, vol.DataClient)
+	_, _, extents, _ := vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
 		Extents: extents,
 	}
-	mpOp.task = &proto.Task{TaskType: proto.WorkerTypeCompact}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	subTask, _ := NewMigrateInode(mpOp, cmpInode)
 	subTask.startIndex = 0
 	subTask.endIndex = len(extents)
@@ -1307,22 +1356,26 @@ func TestMetaMergeExtents(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	mpOp.vol.DataClient = ec
-	mpOp.vol.SetMetaClient(mw)
+	vol.DataClient = ec
+	vol.SetMetaClient(mw)
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
-	_, _, extents, _ := mpOp.vol.GetMetaClient().GetExtents(ctx, stat.Ino)
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, vol.DataClient)
+	_, _, extents, _ := vol.GetMetaClient().GetExtents(ctx, stat.Ino)
 	cmpInode := &proto.InodeExtents{
 		Inode:   inodeInfo,
 		Extents: extents,
 	}
 	// 根据inode获取mpId，再根据mpId获取info
-	_, mpID, err := util_sdk.LocateInode(stat.Ino, mpOp.mc, ltptestVolume)
+	_, mpID, err := util_sdk.LocateInode(stat.Ino, clusterInfo.MasterClient, ltptestVolume)
 	if err != nil {
 		assert.FailNow(t, err.Error())
 		return
 	}
-	mpOp.mpId = mpID
+	task := &proto.Task{
+		MpId:     mpID,
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	var mpInfo *proto.MetaPartitionInfo
 	cMP := &meta.MetaPartition{PartitionID: mpID}
 	mpInfo, err = mpOp.mc.ClientAPI().GetMetaPartition(mpID, ltptestVolume)
@@ -1344,7 +1397,7 @@ func TestMetaMergeExtents(t *testing.T) {
 	cMP.End = mpInfo.End
 	mpOp.mpInfo = cMP
 	mpOp.leader = cMP.GetLeaderAddr()
-	err = mpOp.GetProfPort()
+	err = mpOp.SetProfPort()
 	if err != nil {
 		assert.FailNow(t, err.Error())
 		return
@@ -1385,11 +1438,15 @@ func TestMetaMergeExtentsError(t *testing.T) {
 	inodeInfo := &proto.InodeInfo{
 		Inode: stat.Ino,
 	}
-	_, mpID, err := util_sdk.LocateInode(stat.Ino, mpOp.mc, ltptestVolume)
+	_, mpID, err := util_sdk.LocateInode(stat.Ino, clusterInfo.MasterClient, ltptestVolume)
 	if !assert.NoError(t, err) {
 		return
 	}
-	mpOp.mpId = mpID
+	task := &proto.Task{
+		MpId:     mpID,
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	var mpInfo *proto.MetaPartitionInfo
 	cMP := &meta.MetaPartition{PartitionID: mpID}
 	mpInfo, err = mpOp.mc.ClientAPI().GetMetaPartition(mpID, ltptestVolume)
@@ -1451,10 +1508,10 @@ func TestWriteFileByRow(t *testing.T) {
 
 	mw, ec, _ := creatHelper(t)
 	stat := getFileStat(t, testFile)
-	mpOp.vol.DataClient = ec
-	mpOp.vol.MetaClient = mw
+	vol.DataClient = ec
+	vol.MetaClient = mw
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size10M, mpOp.vol.DataClient)
+	writeRowFileBySdk(t, ctx, stat.Ino, size10M, vol.DataClient)
 }
 
 func TestCompareReplicasInodeEksEqual(t *testing.T) {
@@ -1474,10 +1531,10 @@ func TestCompareReplicasInodeEksEqual(t *testing.T) {
 		Inode: stat.Ino,
 	}
 	mw, ec, _ := creatHelper(t)
-	mpOp.vol.DataClient = ec
-	mpOp.vol.MetaClient = mw
+	vol.DataClient = ec
+	vol.MetaClient = mw
 	ctx := context.Background()
-	writeRowFileBySdk(t, ctx, stat.Ino, size128M, mpOp.vol.DataClient)
+	writeRowFileBySdk(t, ctx, stat.Ino, size128M, vol.DataClient)
 	mps, err := clusterInfo.MasterClient.ClientAPI().GetMetaPartitions(ltptestVolume)
 	if err != nil {
 		assert.FailNowf(t, err.Error(), "", "")
@@ -1498,7 +1555,11 @@ func TestCompareReplicasInodeEksEqual(t *testing.T) {
 	if len(members) < 3 {
 		assert.FailNowf(t, "", "the members of mpId[%v] less than three", mpId)
 	}
-	mpOp.mpId = mpId
+	task := &proto.Task{
+		MpId:     mpId,
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	mpOp.mpInfo = &meta.MetaPartition{
 		Members: members,
 	}
@@ -1839,17 +1900,18 @@ func getMasterClient() *master.MasterClient {
 }
 
 func TestNewMigrateInode(t *testing.T) {
-	mpOp := &MigrateTask{
-		vol: &VolumeInfo{
-			Name: "testVol",
-			ControlConfig: &ControlConfig{
-				DirectWrite: true,
-			},
-			VolId: 1,
+	vol = &VolumeInfo{
+		Name: "testVol",
+		ControlConfig: &ControlConfig{
+			DirectWrite: true,
 		},
+		VolId: 1,
 	}
 	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{}}
-
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeCompact,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	// 正常情况
 	migInode, err := NewMigrateInode(mpOp, inode)
 	if err != nil {
@@ -1879,23 +1941,25 @@ func TestNewMigrateInode(t *testing.T) {
 }
 
 func TestMigrateInode_Init(t *testing.T) {
-	mpOp := &MigrateTask{
-		vol: &VolumeInfo{
-			Name: "testVol",
-			ControlConfig: &ControlConfig{
-				DirectWrite: true,
-			},
-			VolId: 1,
-			GetLayerPolicies: func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
-				return []interface{}{}, true
-			},
-			GetMigrationConfig: func(cluster, volName string) (volumeConfig proto.MigrationConfig) {
-				return proto.MigrationConfig{}
-			},
+	vol = &VolumeInfo{
+		Name: "testVol",
+		ControlConfig: &ControlConfig{
+			DirectWrite: true,
 		},
-		task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration},
-		mpInfo: &meta.MetaPartition{Members: []string{}},
+		VolId: 1,
+		GetLayerPolicies: func(cluster, volName string) (layerPolicies []interface{}, exist bool) {
+			return []interface{}{}, true
+		},
+		GetMigrationConfig: func(cluster, volName string) (volumeConfig proto.MigrationConfig) {
+			return proto.MigrationConfig{}
+		},
 	}
+
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeInodeMigration,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
+	mpOp.mpInfo = &meta.MetaPartition{Members: []string{}}
 	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{}}
 	migInode, _ := NewMigrateInode(mpOp, inode)
 
@@ -1922,19 +1986,22 @@ func TestMigrateInode_Init(t *testing.T) {
 }
 
 func TestMigrateInode_LookupEkSegment(t *testing.T) {
-	mpOp := &MigrateTask{
-		vol: &VolumeInfo{
-			Name: "testVol",
-			ControlConfig: &ControlConfig{
-				DirectWrite: true,
-			},
-			VolId: 1,
-			GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
-				return proto.MediumSSDName
-			},
+	vol = &VolumeInfo{
+		Name: "testVol",
+		ControlConfig: &ControlConfig{
+			DirectWrite: true,
 		},
-		task: &proto.Task{TaskType: proto.WorkerTypeInodeMigration},
+		VolId: 1,
+		GetDpMediumType: func(cluster, volName string, dpId uint64) (mediumType string) {
+			return proto.MediumSSDName
+		},
 	}
+
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeInodeMigration,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
+
 	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
 		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
 		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
@@ -1966,8 +2033,8 @@ func TestMigrateInode_LookupEkSegment(t *testing.T) {
 
 	// 测试 extents 中有空洞
 	migInode.extents = []proto.ExtentKey{
-		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: proto.TinyExtentCount+1, CRC: uint32(proto.CubeFSExtent)},
-		{FileOffset: 2048, Size: 1024, PartitionId: 1, ExtentId: proto.TinyExtentCount+2, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: proto.TinyExtentCount + 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 2048, Size: 1024, PartitionId: 1, ExtentId: proto.TinyExtentCount + 2, CRC: uint32(proto.CubeFSExtent)},
 	}
 	migInode.migDirection = SSDToHDDFileMigrate
 	migInode.lastMigEkIndex = 0
@@ -1978,15 +2045,19 @@ func TestMigrateInode_LookupEkSegment(t *testing.T) {
 }
 
 func TestMigrateInode_checkEkSegmentHasHole(t *testing.T) {
-	mpOp := &MigrateTask{
-		vol: &VolumeInfo{
-			Name: "testVol",
-			ControlConfig: &ControlConfig{
-				DirectWrite: true,
-			},
-			VolId: 1,
+	vol = &VolumeInfo{
+		Name: "testVol",
+		ControlConfig: &ControlConfig{
+			DirectWrite: true,
 		},
+		VolId: 1,
 	}
+
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeInodeMigration,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
+
 	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
 		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
 		{FileOffset: 2048, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
@@ -2014,15 +2085,18 @@ func TestMigrateInode_checkEkSegmentHasHole(t *testing.T) {
 }
 
 func TestMigrateInode_checkEkSegmentHasTinyExtent(t *testing.T) {
-	mpOp := &MigrateTask{
-		vol: &VolumeInfo{
-			Name: "testVol",
-			ControlConfig: &ControlConfig{
-				DirectWrite: true,
-			},
-			VolId: 1,
+	vol = &VolumeInfo{
+		Name: "testVol",
+		ControlConfig: &ControlConfig{
+			DirectWrite: true,
 		},
+		VolId: 1,
 	}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeInodeMigration,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
+
 	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
 		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
 		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},
@@ -2040,8 +2114,8 @@ func TestMigrateInode_checkEkSegmentHasTinyExtent(t *testing.T) {
 
 	// 测试没有 TinyExtent 的情况
 	migInode.extents = []proto.ExtentKey{
-		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: proto.TinyExtentCount+1, CRC: uint32(proto.CubeFSExtent)},
-		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: proto.TinyExtentCount+2, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: proto.TinyExtentCount + 1, CRC: uint32(proto.CubeFSExtent)},
+		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: proto.TinyExtentCount + 2, CRC: uint32(proto.CubeFSExtent)},
 	}
 	tinyExtentId, hasTinyExtent = migInode.checkEkSegmentHasTinyExtent(0, 2)
 	if hasTinyExtent {
@@ -2050,15 +2124,18 @@ func TestMigrateInode_checkEkSegmentHasTinyExtent(t *testing.T) {
 }
 
 func TestMigrateInode_checkEkSegmentHasS3Extent(t *testing.T) {
-	mpOp := &MigrateTask{
-		vol: &VolumeInfo{
-			Name: "testVol",
-			ControlConfig: &ControlConfig{
-				DirectWrite: true,
-			},
-			VolId: 1,
+	vol = &VolumeInfo{
+		Name: "testVol",
+		ControlConfig: &ControlConfig{
+			DirectWrite: true,
 		},
+		VolId: 1,
 	}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeInodeMigration,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
+
 	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
 		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
 		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.S3Extent)},
@@ -2083,15 +2160,18 @@ func TestMigrateInode_checkEkSegmentHasS3Extent(t *testing.T) {
 }
 
 func TestMigrateInode_checkEkSegmentHasCubeFSExtent(t *testing.T) {
-	mpOp := &MigrateTask{
-		vol: &VolumeInfo{
-			Name: "testVol",
-			ControlConfig: &ControlConfig{
-				DirectWrite: true,
-			},
-			VolId: 1,
+	vol = &VolumeInfo{
+		Name: "testVol",
+		ControlConfig: &ControlConfig{
+			DirectWrite: true,
 		},
+		VolId: 1,
 	}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeInodeMigration,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
+
 	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
 		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
 		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.S3Extent)},
@@ -2116,15 +2196,17 @@ func TestMigrateInode_checkEkSegmentHasCubeFSExtent(t *testing.T) {
 }
 
 func TestMigrateInode_checkEkSegmentHasNormalExtent(t *testing.T) {
-	mpOp := &MigrateTask{
-		vol: &VolumeInfo{
-			Name: "testVol",
-			ControlConfig: &ControlConfig{
-				DirectWrite: true,
-			},
-			VolId: 1,
+	vol = &VolumeInfo{
+		Name: "testVol",
+		ControlConfig: &ControlConfig{
+			DirectWrite: true,
 		},
+		VolId: 1,
 	}
+	task := &proto.Task{
+		TaskType: proto.WorkerTypeInodeMigration,
+	}
+	mpOp := NewMockTask("127.0.0.1", task, clusterInfo.MasterClient, vol)
 	inode := &proto.InodeExtents{Inode: &proto.InodeInfo{Inode: 1}, Extents: []proto.ExtentKey{
 		{FileOffset: 0, Size: 1024, PartitionId: 1, ExtentId: 1, CRC: uint32(proto.CubeFSExtent)},
 		{FileOffset: 1024, Size: 1024, PartitionId: 1, ExtentId: 2, CRC: uint32(proto.CubeFSExtent)},

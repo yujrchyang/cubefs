@@ -1,7 +1,8 @@
-package migration
+package intraMigration
 
 import (
 	"fmt"
+	"github.com/cubefs/cubefs/schedulenode/migration"
 	"sort"
 	"strings"
 	"time"
@@ -125,7 +126,7 @@ func (w *Worker) processMpView(cluster, volName string, mpView []*proto.MetaPart
 
 func (w *Worker) stopTasks(cluster, volName string, workerAddrMap map[string]struct{}, reqPath string) {
 	for addr := range workerAddrMap {
-		stopTaskUrl := GenStopUrl(addr, reqPath, cluster, volName)
+		stopTaskUrl := migration.GenStopUrl(addr, reqPath, cluster, volName)
 		if err := w.stopTask(stopTaskUrl, cluster, volName); err != nil {
 			log.LogErrorf("stopTasks failed, cluster(%v), volume(%v), stopTaskUrl(%v), err(%v)", cluster, volName, stopTaskUrl, err)
 		}
@@ -136,7 +137,7 @@ func (w *Worker) stopTask(url, cluster, volName string) error {
 	var res *proto.QueryHTTPResult
 	var err error
 	for i := 0; i < RetryDoGetMaxCnt; i++ {
-		if res, err = DoGet(url); err != nil {
+		if res, err = migration.DoGet(url); err != nil {
 			log.LogErrorf("CancelMpTask doGet failed, cluster(%v), volume(%v), url(%v), err(%v)", cluster, volName, url, err)
 			continue
 		}
@@ -166,7 +167,7 @@ func (w *Worker) createCompactTaskByVolume(cluster string, vols []*proto.DataMig
 		sort.Slice(mpView, func(i, j int) bool {
 			return mpView[i].PartitionID < mpView[j].PartitionID
 		})
-		key := workerTypeKey(proto.WorkerTypeCompact, cluster, vol.Name)
+		key := migration.WorkerTypeKey(proto.WorkerTypeCompact, cluster, vol.Name)
 		w.resetTaskPosition(key, mpView)
 		newTasks, err = w.createAndManageCompactTasks(cluster, vol, mpView, runningTasks, taskNum, proto.WorkerTypeCompact)
 	}
@@ -234,7 +235,7 @@ func (w *Worker) createFileMigrateTaskByVolume(workerType proto.WorkerType, clus
 		sort.Slice(mpView, func(i, j int) bool {
 			return mpView[i].PartitionID < mpView[j].PartitionID
 		})
-		key := workerTypeKey(workerType, cluster, vol.Name)
+		key := migration.WorkerTypeKey(workerType, cluster, vol.Name)
 		w.resetTaskPosition(key, mpView)
 		newTasks, err = w.createAndManageFileMigrateTasks(vol, mpView, runningTasks, taskNum, workerType)
 	}
@@ -244,7 +245,7 @@ func (w *Worker) createFileMigrateTaskByVolume(workerType proto.WorkerType, clus
 func (w *Worker) createAndManageFileMigrateTasks(vol *proto.SmartVolume, mpView []*proto.MetaPartitionView,
 	runningTasks []*proto.Task, taskNum int64, workerType proto.WorkerType) (newTasks []*proto.Task, err error) {
 	volumeTaskNum := w.getTaskCountByVolume(runningTasks, vol.Name)
-	key := workerTypeKey(workerType, vol.ClusterId, vol.Name)
+	key := migration.WorkerTypeKey(workerType, vol.ClusterId, vol.Name)
 	if !w.checkCanCreateTask(key) {
 		return
 	}
@@ -357,7 +358,7 @@ func (w *Worker) checkCanCreateTask(key string) (canCreate bool) {
 func (w *Worker) createAndManageCompactTasks(cluster string, vol *proto.DataMigVolume, mpView []*proto.MetaPartitionView,
 	runningTasks []*proto.Task, taskNum int64, workerType proto.WorkerType) (newTasks []*proto.Task, err error) {
 	volumeTaskNum := w.getTaskCountByVolume(runningTasks, vol.Name)
-	key := workerTypeKey(workerType, cluster, vol.Name)
+	key := migration.WorkerTypeKey(workerType, cluster, vol.Name)
 	if !w.checkCanCreateTask(key) {
 		return
 	}
@@ -715,7 +716,7 @@ func GetSmartVolumes(cluster string, mc *master.MasterClient) (svv *FileMigrateV
 
 	var smartVolume *proto.SmartVolume
 	for _, volume := range volumes {
-		smartVolume, err = mc.AdminAPI().GetSmartVolume(volume.Name, CalcAuthKey(volume.Owner))
+		smartVolume, err = mc.AdminAPI().GetSmartVolume(volume.Name, migration.CalcAuthKey(volume.Owner))
 		if err != nil {
 			log.LogErrorf("[GetSmartVolumes] FileMigrationWorker get volume info failed, cluster(%v), volumeName(%v), err(%v)", cluster, volume.Name, err)
 			return
@@ -771,8 +772,8 @@ func (w *Worker) GetCreatorDuration() int {
 
 func sortVolumesByTaskCountASC[T any](w *Worker, workerType proto.WorkerType, cluster string, vols []T, getVolName func(T) string) {
 	sort.Slice(vols, func(i, j int) bool {
-		key1 := workerTypeKey(workerType, cluster, getVolName(vols[i]))
-		key2 := workerTypeKey(workerType, cluster, getVolName(vols[j]))
+		key1 := migration.WorkerTypeKey(workerType, cluster, getVolName(vols[i]))
+		key2 := migration.WorkerTypeKey(workerType, cluster, getVolName(vols[j]))
 		var (
 			taskCnt1, taskCnt2 uint64
 		)
