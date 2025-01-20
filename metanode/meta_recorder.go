@@ -38,6 +38,8 @@ type metaRecorder struct {
 	stopC       chan bool
 	stopOnce    sync.Once
 	topoManager *topology.TopologyManager
+
+	persistMutex	sync.Mutex
 }
 
 func NewMetaRecorder(cfg *raftstore.RecorderConfig, m *metadataManager) (*metaRecorder, error) {
@@ -51,6 +53,7 @@ func NewMetaRecorder(cfg *raftstore.RecorderConfig, m *metadataManager) (*metaRe
 		partitionID: recorder.Config().PartitionID,
 		recorder:    recorder,
 		manager:     m,
+		topoManager: m.metaNode.topoManager,
 		stopC:       make(chan bool, 0),
 	}
 	return mr, nil
@@ -69,6 +72,9 @@ func (mr *metaRecorder) Recorder() *raftstore.Recorder {
 }
 
 func (mr *metaRecorder) persist() error {
+	mr.persistMutex.Lock()
+	defer mr.persistMutex.Unlock()
+
 	return mr.Recorder().Persist()
 }
 
@@ -95,7 +101,6 @@ func (mr *metaRecorder) start() (err error) {
 
 	go mr.startRecorderWorker()
 	go mr.checkRecoverAfterStart()
-	go mr.startUpdatePartitionConfigScheduler()
 
 	return nil
 }
@@ -110,7 +115,11 @@ func (mr *metaRecorder) startRecorderWorker() {
 		}
 	}()
 	persistTicker := time.NewTicker(2 * time.Minute)
-	defer persistTicker.Stop()
+	updateConfigTicker := time.NewTicker(intervalToUpdateVolTrashExpires)
+	defer func() {
+		updateConfigTicker.Stop()
+		persistTicker.Stop()
+	}()
 
 	ctx := context.Background()
 	failTruncateCount := 0
@@ -145,6 +154,27 @@ func (mr *metaRecorder) startRecorderWorker() {
 			}
 			mr.Recorder().RaftPartition().Truncate(truncateIndex)
 			log.LogInfof("recorder(%v) persist apply index to(%v) and truncate WAL to index(%v)", mr.partitionID, applyIndex, truncateIndex)
+
+		case <-updateConfigTicker.C:
+			volTopo := mr.topoManager.GetVolume(mr.Recorder().VolName())
+			conf := volTopo.Config()
+			if conf == nil {
+				continue
+			}
+			// 对集群级别和Volume级别PersistenceMode设置进行合并，优先使用集群级别的设置
+			persistenceMode := nodeInfo.PersistenceMode
+			if persistenceMode == proto.PersistenceMode_Nil {
+				persistenceMode = conf.GetPersistenceMode()
+			}
+			sync := persistenceMode == proto.PersistenceMode_WriteThrough
+			changed := mr.config.WALSync != sync || mr.config.WALSyncRotate != sync
+			mr.Recorder().SetWALSync(persistenceMode == proto.PersistenceMode_WriteThrough)
+			mr.Recorder().SetWALSyncRotate(persistenceMode == proto.PersistenceMode_WriteThrough)
+			if changed {
+				if err := mr.persist(); err != nil {
+					log.LogErrorf("recorder(%v) persist recorder config failed: %v", mr.partitionID, err)
+				}
+			}
 		}
 	}
 }
@@ -187,40 +217,6 @@ func (mr *metaRecorder) checkRecoverAfterStart() {
 			return
 		}
 	}
-}
-
-func (mr *metaRecorder) startUpdatePartitionConfigScheduler() {
-	ticker := time.NewTicker(intervalToUpdateVolTrashExpires)
-	go func(stopC chan bool) {
-		for {
-			select {
-			case <-stopC:
-				ticker.Stop()
-				return
-			case <-ticker.C:
-				volTopo := mr.topoManager.GetVolume(mr.config.VolName)
-				if volTopo.Config() == nil {
-					continue
-				}
-				conf := volTopo.Config()
-
-				// 对集群级别和Volume级别PersistenceMode设置进行合并， 优先使用集群级别的设置
-				persistenceMode := nodeInfo.PersistenceMode
-				if persistenceMode == proto.PersistenceMode_Nil {
-					persistenceMode = conf.GetPersistenceMode()
-				}
-				sync := persistenceMode == proto.PersistenceMode_WriteThrough
-				changed := mr.config.WALSync != sync || mr.config.WALSyncRotate != sync
-				mr.recorder.SetWALSync(persistenceMode == proto.PersistenceMode_WriteThrough)
-				mr.recorder.SetWALSyncRotate(persistenceMode == proto.PersistenceMode_WriteThrough)
-				if changed {
-					if err := mr.recorder.Persist(); err != nil {
-						log.LogErrorf("recorder(%v) persist recorder config failed: %v", mr.partitionID, err)
-					}
-				}
-			}
-		}
-	}(mr.stopC)
 }
 
 func (mr *metaRecorder) Stop(needPersist bool) {
