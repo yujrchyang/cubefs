@@ -440,7 +440,7 @@ func (m *MetaNode) updateDeleteLimitInfo() {
 			exporter.WarningAppendKey(PanicBackGroundKey, "update node info panic")
 		}
 	}()
-	info, err := masterClient.AdminAPI().GetLimitInfo("")
+	info, err := masterLBDomainClient.AdminAPI().GetLimitInfo("")
 	if err != nil {
 		log.LogErrorf("[updateDeleteLimitInfo] %s", err.Error())
 		return

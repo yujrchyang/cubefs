@@ -466,7 +466,7 @@ func (m *MetaNode) stopFetchTopologyManager() {
 }
 
 func (m *MetaNode) initMultiLimiterManager() (err error) {
-	_, err = multirate.InitLimiterManager(m.clusterId, multirate.ModuleMetaNode, m.zoneName, masterClient.AdminAPI().GetLimitInfo)
+	_, err = multirate.InitLimiterManager(m.clusterId, multirate.ModuleMetaNode, m.zoneName, masterLBDomainClient.AdminAPI().GetLimitInfo)
 	if err != nil {
 		err = fmt.Errorf("init limit manager failed[%s]", err.Error())
 		return
