@@ -93,7 +93,7 @@ func (c *S3Client) CheckBucketExist(ctx context.Context, bucketName string) (exi
 func (c *S3Client) HeadObject(ctx context.Context, bucketName, key string) (exist bool, err error) {
 	headObjectInput := &s3.HeadObjectInput{
 		Bucket: aws.String(bucketName),
-		Key: aws.String(key),
+		Key:    aws.String(key),
 	}
 	_, err = c.s3Client.HeadObject(ctx, headObjectInput)
 	if err != nil {
@@ -101,15 +101,14 @@ func (c *S3Client) HeadObject(ctx context.Context, bucketName, key string) (exis
 		if errors.As(err, &apiError) {
 			switch apiError.(type) {
 			case *types.NotFound:
-				log.LogErrorf("object %v not exist in %s.", key, bucketName)
-				exist = false
+				log.LogErrorf("object %v not exist in %s", key, bucketName)
 				err = nil
 			default:
-				fmt.Printf("errorCode: %v, errMsg: %v\n", apiError.ErrorCode(), apiError.ErrorMessage())
-				log.LogErrorf("Either you don't have access to bucket %v or another error occurred. "+
-					"Here's what happened: %v", bucketName, err)
+				err = fmt.Errorf("errorCode: %v, errMsg: %v\n", apiError.ErrorCode(), apiError.ErrorMessage())
+				log.LogErrorf("head bucket %v object %v occurred error, err: %v", bucketName, key, err)
 			}
 		}
+		return
 	}
 	exist = true
 	return

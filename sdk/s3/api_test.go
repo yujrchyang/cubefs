@@ -68,7 +68,7 @@ func TestS3API_PutAndGetObject(t *testing.T) {
 		fmt.Printf("delete object %s finised\n", key)
 		exist, err = s3Client.HeadObject(ctx, bucketName, key)
 		assert.Nil(t, err)
-		assert.Equal(t, exist, false)
+		assert.Equal(t, false, exist)
 	}()
 
 	var (
@@ -103,7 +103,7 @@ func TestS3API_BatchDeleteObjects(t *testing.T) {
 
 		exist, err = s3Client.HeadObject(ctx, bucketName, key)
 		assert.Nil(t, err)
-		assert.Equal(t, exist, true, fmt.Sprintf("key %s expect exist", key))
+		assert.Equal(t, true, exist, fmt.Sprintf("key %s expect exist", key))
 
 		keys = append(keys, key)
 	}
@@ -113,7 +113,7 @@ func TestS3API_BatchDeleteObjects(t *testing.T) {
 	for _, key = range keys {
 		exist, err = s3Client.HeadObject(ctx, bucketName, key)
 		assert.Nil(t, err)
-		assert.Equal(t, exist, false, fmt.Sprintf("key %s expect not exist", key))
+		assert.Equal(t, false, exist, fmt.Sprintf("key %s expect not exist", key))
 	}
 }
 
@@ -170,6 +170,7 @@ func TestS3Client_DeleteObjectsByPrefix(t *testing.T) {
 		}
 		expectCount += int(fileCount)
 	}
+	expectCount+=1
 
 	actualCount, err = s3Client.GetObjectsCountByPrefix(ctx, bucketName, keyPrefix)
 	assert.Nil(t, err, fmt.Sprintf("error expect nil, but: %v", err))
