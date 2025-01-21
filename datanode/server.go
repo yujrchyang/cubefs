@@ -176,7 +176,7 @@ func doStart(server common.Server, cfg *config.Config) (err error) {
 	}
 	exporter.Init(exporter.NewOptionFromConfig(cfg).WithCluster(s.clusterID).WithModule(ModuleName).WithZone(s.zoneName))
 
-	_, err = multirate.InitLimiterManager(s.clusterID, multirate.ModuleDataNode, s.zoneName, MasterClient.AdminAPI().GetLimitInfo)
+	_, err = multirate.InitLimiterManager(s.clusterID, multirate.ModuleDataNode, s.zoneName, MasterLBDomainClient.AdminAPI().GetLimitInfo)
 	if err != nil {
 		return err
 	}
@@ -354,7 +354,7 @@ func (s *DataNode) startSpaceManager(cfg *config.Config) (err error) {
 	}
 
 	var limitInfo *proto.LimitInfo
-	limitInfo, err = MasterClient.AdminAPI().GetLimitInfo("")
+	limitInfo, err = MasterLBDomainClient.AdminAPI().GetLimitInfo("")
 	if err == nil && limitInfo != nil {
 		s.space.SetConsistencyMode(limitInfo.DataPartitionConsistencyMode)
 		s.space.SetPersistenceMode(limitInfo.PersistenceMode)
@@ -690,6 +690,7 @@ func (s *DataNode) stopUpdateNodeInfo() {
 
 func (s *DataNode) updateNodeBaseInfo() {
 	limitInfo, err := MasterClient.AdminAPI().GetLimitInfo("")
+	limitInfo, err := MasterLBDomainClient.AdminAPI().GetLimitInfo("")
 	if err != nil {
 		log.LogWarnf("[updateNodeBaseInfo] get limit info err: %s", err.Error())
 		return
