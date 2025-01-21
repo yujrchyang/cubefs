@@ -853,7 +853,7 @@ func createDataPartition(partitionId, normalExtentCount uint64, baseDir string, 
 		if err = dp.extentStore.Create(extentID, 0, true); err != nil {
 			t.Fatalf("extent store create normal extent err:%v", err)
 		}
-		if err = dp.extentStore.Write(extentID, 0, size, data, crc, storage.AppendWriteType, false); err != nil {
+		if err = dp.extentStore.Write(extentID, 0, size, data, crc, storage.Append, false); err != nil {
 			t.Fatalf("extent store write normal extent err:%v", err)
 		}
 	}

@@ -1341,7 +1341,7 @@ func (dp *DataPartition) applyRandomWrite(opItem *rndWrtOpItem, raftApplyID uint
 		}
 	}()
 	for i := 0; i < 2; i++ {
-		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.RandomWriteType, opItem.opcode == proto.OpSyncRandomWrite)
+		err = dp.ExtentStore().Write(opItem.extentID, opItem.offset, opItem.size, opItem.data, opItem.crc, storage.Overwrite, opItem.opcode == proto.OpSyncRandomWrite)
 		if err == nil {
 			break
 		}
@@ -4090,7 +4090,7 @@ func (dp *DataPartition) streamRepairExtent(ctx context.Context, remoteExtentInf
 				return
 			}
 			var tpObject = dp.monitorData[proto.ActionRepairWrite].BeforeTp()
-			err = store.Write(extentID, int64(currFixOffset), int64(reply.Size), reply.Data[0:reply.Size], reply.CRC, storage.AppendWriteType, BufferWrite)
+			err = store.Write(extentID, int64(currFixOffset), int64(reply.Size), reply.Data[0:reply.Size], reply.CRC, storage.Append, BufferWrite)
 			tpObject.AfterTp(uint64(reply.Size))
 		}
 

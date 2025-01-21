@@ -515,7 +515,7 @@ func (p *Fixer) applyTempFileToExtent(f *os.File, extentID, offset, size uint64)
 		if err != nil {
 			return
 		}
-		if err = p.storage.Write(extentID, extentOffset, readSize, buf[:readSize], crc, storage.RandomWriteType, false); err != nil {
+		if err = p.storage.Write(extentID, extentOffset, readSize, buf[:readSize], crc, storage.Overwrite, false); err != nil {
 			return
 		}
 		remain -= readSize
@@ -989,7 +989,7 @@ func (p *Fixer) fixByFastTrustPolicy(hosts []string, hat proto.CrossRegionHAType
 			if err != nil {
 				return
 			}
-			err = p.storage.Write(extentID, extentWriteOffset, extentWriteSize, b, crc, storage.RandomWriteType, false)
+			err = p.storage.Write(extentID, extentWriteOffset, extentWriteSize, b, crc, storage.Overwrite, false)
 			n = int(extentWriteSize)
 			return
 		}
@@ -1069,7 +1069,7 @@ func (p *Fixer) fixByStdTrustPolicy(hosts []string, hat proto.CrossRegionHAType,
 			if err != nil {
 				return
 			}
-			err = p.storage.Write(extentID, extentWriteOffset, extentWriteSize, b, crc, storage.RandomWriteType, false)
+			err = p.storage.Write(extentID, extentWriteOffset, extentWriteSize, b, crc, storage.Overwrite, false)
 			if log.IsDebugEnabled() {
 				log.LogDebugf("Fixer[%v] write data to local storage: extent=%v, offset=%v, size=%v", p.partitionID, extentID, extentWriteOffset, extentWriteSize)
 			}
