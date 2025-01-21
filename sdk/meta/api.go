@@ -19,6 +19,7 @@ import (
 	"fmt"
 	syslog "log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -638,6 +639,51 @@ func (mw *MetaWrapper) ReadDir_ll(ctx context.Context, parentID uint64) (childre
 		return nil, statusToErrno(status)
 	}
 	return children, nil
+}
+
+// / PathFilterFunc 是一个函数类型，用于定义基于路径和文件信息的过滤规则
+type PathFilterFunc func(absolutePath string, dentry proto.Dentry) bool
+
+// WalkDir 遍历指定路径下的文件或目录，并根据过滤函数对符合条件的文件执行操作
+func (mw *MetaWrapper) WalkDirWithFilter(parentID uint64, prefix, marker, currentPath string, batchSize uint64, filter PathFilterFunc) error {
+	for {
+		// 读取当前目录下的子项
+		entries, nextMarker, err := mw.ReadDir_wo(parentID, prefix, marker, batchSize)
+		if err != nil {
+			if err == syscall.ENOENT {
+				break // 没有更多条目
+			}
+			return fmt.Errorf("failed to read directory: %v", err)
+		}
+
+		// 遍历当前批次的子项
+		for _, entry := range entries {
+			// 拼接绝对路径
+			absolutePath := filepath.Join(currentPath, entry.Name)
+
+			// 过滤并检查是否通过
+			if !filter(absolutePath, entry) {
+				return fmt.Errorf("filter failed for path: %s", absolutePath)
+			}
+
+			// 如果是目录，递归遍历
+			if os.FileMode(entry.Type).IsDir() {
+				if err := mw.WalkDirWithFilter(entry.Inode, prefix, "", absolutePath, batchSize, filter); err != nil {
+					return err
+				}
+			}
+		}
+
+		// 如果没有更多条目，退出循环
+		if nextMarker == "" {
+			break
+		}
+
+		// 更新 marker 以获取下一批条目
+		marker = nextMarker
+	}
+
+	return nil
 }
 
 // ReadDir_wo means execute read dir with options.
