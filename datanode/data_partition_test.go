@@ -5,11 +5,14 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/util/log"
+	"github.com/jacobsa/daemonize"
 	"hash/crc32"
 	"math/rand"
 	"os"
 	"path"
 	"reflect"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -28,20 +31,20 @@ var fakeNode *fakeDataNode
 
 const (
 	mockDataTcpPort1 = 17017
-	mockDataID1      = 1
-	mockDataTcpPort2 = 17018
-	mockDataID2      = 2
-	mockDataTcpPort3 = 17019
-	mockDataID3      = 3
 	pageSize         = 4096
 )
 
 func init() {
-	rand.Seed(time.Now().UnixNano())
 	getLocalIp()
 	fmt.Println("init datanode")
+	_, err := log.InitLog(path.Join(os.TempDir(), "unit_test"), "datanode_unit_test", log.DebugLevel, nil)
+	if err != nil {
+		_ = daemonize.SignalOutcome(fmt.Errorf("Fatal: failed to init log - %v ", err))
+		panic(err.Error())
+	}
+	defer log.LogFlush()
 	mock.NewMockMaster()
-	if err := FakeDirCreate(); err != nil {
+	if err = FakeDirCreate(); err != nil {
 		panic(err.Error())
 	}
 	fakeNode = newFakeDataNode()
@@ -400,10 +403,11 @@ func TestIsIOTimeoutFailure(t *testing.T) {
 func TestGetRemoteExtentInfoForValidateCRCWithRetry(t *testing.T) {
 	var (
 		ctx         = context.Background()
-		tcp         = mock.NewMockTcp(mockDataTcpPort1)
 		err         error
 		extentFiles []storage.ExtentInfoBlock
 	)
+	mockS := mockDataTcpPort1 + rand.Intn(1000)
+	tcp := mock.NewMockTcp(mockS)
 	err = tcp.Start()
 	if err != nil {
 		t.Fatalf("start mock tcp server failed: %v", err)
@@ -413,7 +417,7 @@ func TestGetRemoteExtentInfoForValidateCRCWithRetry(t *testing.T) {
 		partitionID: 10,
 	}
 	mock.ReplyGetRemoteExtentInfoForValidateCRCCount = GetRemoteExtentInfoForValidateCRCRetryTimes
-	targetHost := fmt.Sprintf(":%v", mockDataTcpPort1)
+	targetHost := fmt.Sprintf(":%v", mockS)
 	if extentFiles, err = dp.getRemoteExtentInfoForValidateCRCWithRetry(ctx, targetHost); err == nil {
 		t.Error("action[getRemoteExtentInfoForValidateCRCWithRetry] err should not be nil")
 	}
@@ -433,8 +437,10 @@ func TestValidateCrc(t *testing.T) {
 		testBaseDir        = path.Join(os.TempDir(), t.Name())
 		extents     []storage.ExtentInfoBlock
 	)
+	mockS := mockDataTcpPort1 + rand.Intn(1000)
+
 	_ = os.RemoveAll(testBaseDir)
-	dp = createDataPartition(1, count, testBaseDir, t)
+	dp = createDataPartition(1, count, testBaseDir, t, []string{fmt.Sprintf(":%v", mockS)})
 	defer func() {
 		_ = os.RemoveAll(testBaseDir)
 	}()
@@ -461,14 +467,16 @@ func TestValidateCrc(t *testing.T) {
 					t.Errorf("action[getLocalExtentInfoForValidateCRC] extents length expect[%v] actual[%v]", count, len(extents))
 				}
 				var dp2 *DataPartition
-				if dp2, err = initDataPartition(testBaseDir, 2, false); err != nil {
+				mockServer := mockDataTcpPort1 + rand.Intn(1000)
+				if dp2, err = initDataPartition(testBaseDir, 2, false, []string{fmt.Sprintf(":%v", mockServer)}); err != nil {
 					t.Errorf("init data partition err:%v", err)
 				}
 				if extents, err = dp2.getLocalExtentInfoForValidateCRC(); err == nil || err.Error() != "partition is loadding" {
 					t.Errorf("action[getLocalExtentInfoForValidateCRC], err should not be equal to nil or err[%v]", err)
 				}
 			case 1:
-				tcp := mock.NewMockTcp(mockDataTcpPort1)
+				mockServer := mockDataTcpPort1 + rand.Intn(1000)
+				tcp := mock.NewMockTcp(mockServer)
 				err = tcp.Start()
 				if err != nil {
 					t.Fatalf("start mock tcp server failed: %v", err)
@@ -488,8 +496,10 @@ func TestGetLocalExtentInfo(t *testing.T) {
 		count       uint64 = 100
 		testBaseDir        = path.Join(os.TempDir(), t.Name())
 	)
+	mockS1 := mockDataTcpPort1 + rand.Intn(1000)
+	mockS2 := mockDataTcpPort1 + rand.Intn(1000)
 	_ = os.RemoveAll(testBaseDir)
-	dp = createDataPartition(1, count, testBaseDir, t)
+	dp = createDataPartition(1, count, testBaseDir, t, []string{fmt.Sprintf(":%v", mockS1)})
 	defer func() {
 		_ = os.RemoveAll(testBaseDir)
 	}()
@@ -516,17 +526,19 @@ func TestGetLocalExtentInfo(t *testing.T) {
 		t.Fatalf("tiny extent count expect:%v, actual:%v", count, len(extents))
 	}
 
-	if dp, err = initDataPartition(testBaseDir, 2, false); err != nil {
-		t.Fatalf("init data partition err:%v", err)
+	if dp, err = initDataPartition(testBaseDir, 2, false, []string{fmt.Sprintf(":%v", mockS2)}); err != nil {
+		t.Errorf("init data partition err:%v", err)
+		return
 	}
 	if _, _, err = dp.getLocalExtentInfo(proto.NormalExtentType, tinyExtents); err == nil {
 		t.Fatalf("get local extent info, extentType:%v err equal nil", proto.TinyExtentType)
 	}
 }
 
-func TestGetRemoteExtentInfo(t *testing.T) {
+func TestGetRemoteExtentInfoMix(t *testing.T) {
+	mockS := mockDataTcpPort1 + rand.Intn(1000)
 	ctx := context.Background()
-	tcp := mock.NewMockTcp(mockDataTcpPort1)
+	tcp := mock.NewMockTcp(mockS)
 	err := tcp.Start()
 	if err != nil {
 		t.Fatalf("start mock tcp server failed: %v", err)
@@ -538,7 +550,7 @@ func TestGetRemoteExtentInfo(t *testing.T) {
 		partitionID: 10,
 	}
 	tinyExtents := []uint64{1, 2, 3, 10}
-	targetHost := fmt.Sprintf(":%v", mockDataTcpPort1)
+	targetHost := fmt.Sprintf(":%v", mockS)
 	extentFiles, _, err := dp.getRemoteExtentInfo(ctx, proto.TinyExtentType, tinyExtents, targetHost)
 	if err != nil {
 		t.Fatalf("get remote extent info by v3 type:%v failed:%v", proto.TinyExtentType, err)
@@ -596,30 +608,41 @@ func TestBuildDataPartitionRepairTask_TinyExtent(t *testing.T) {
 		testBaseDir                 = path.Join(os.TempDir(), t.Name())
 		ctx                         = context.Background()
 	)
-	tcp := mock.NewMockTcp(mockDataTcpPort1)
+	mockServer := mockDataTcpPort1 + rand.Intn(1000)
+	host := []string{
+		fmt.Sprintf(":%v", mockServer),
+		fmt.Sprintf(":%v", mockServer),
+		fmt.Sprintf(":%v", mockServer),
+	}
+	tcp := mock.NewMockTcp(mockServer)
 	err = tcp.Start()
 	if err != nil {
-		t.Fatalf("start mock tcp server failed: %v", err)
+		t.Errorf("start mock tcp server failed: %v", err)
+		return
 	}
 	defer tcp.Stop()
 	_ = os.RemoveAll(testBaseDir)
-	dp = createDataPartition(1, localExtentFileCount, testBaseDir, t)
+	dp = createDataPartition(1, localExtentFileCount, testBaseDir, t, host)
 	defer func() {
 		_ = os.RemoveAll(testBaseDir)
 	}()
 	var repairTasks []*DataPartitionRepairTask
 	tinyExtents := []uint64{1, 2, 3, 10}
 	if repairTasks, err = dp.buildDataPartitionRepairTask(ctx, dp.replicas, proto.TinyExtentType, tinyExtents); err != nil {
-		t.Fatalf("build data partition repair task err:%v", err)
+		t.Errorf("build data partition repair task err:%v", err)
+		return
 	}
 	if len(repairTasks[0].extents) != len(tinyExtents) {
-		t.Fatalf("repairTasks[0] tiny extent count expect:%v, actual:%v", len(tinyExtents), len(repairTasks[0].extents))
+		t.Errorf("repairTasks[0] tiny extent count expect:%v, actual:%v", len(tinyExtents), len(repairTasks[0].extents))
+		return
 	}
 	if repairTasks[0].LeaderTinyDeleteRecordFileSize != int64(24) {
-		t.Fatalf("repairTasks[0] leaderTinyDeleteRecordFileSize expect:%v, actual:%v", 24, repairTasks[0].LeaderTinyDeleteRecordFileSize)
+		t.Errorf("repairTasks[0] leaderTinyDeleteRecordFileSize expect:%v, actual:%v", 24, repairTasks[0].LeaderTinyDeleteRecordFileSize)
+		return
 	}
 	if len(repairTasks[1].extents) != len(tinyExtents) {
-		t.Fatalf("repairTasks[1] tiny extent info type:%v tiny extent count expect:%v actual:%v", proto.TinyExtentType, len(tinyExtents), len(repairTasks[1].extents))
+		t.Errorf("repairTasks[1] tiny extent info type:%v tiny extent count expect:%v actual:%v", proto.TinyExtentType, len(tinyExtents), len(repairTasks[1].extents))
+		return
 	}
 	_, brokenTinyExtents := dp.prepareRepairTasks(repairTasks)
 	results := [][3]uint64{
@@ -629,26 +652,32 @@ func TestBuildDataPartitionRepairTask_TinyExtent(t *testing.T) {
 	}
 	for i, task := range repairTasks {
 		if results[i][0] != uint64(len(task.ExtentsToBeRepairedSource)) || results[i][1] != uint64(len(task.ExtentsToBeCreated)) || results[i][2] != uint64(len(task.ExtentsToBeRepaired)) {
-			t.Fatalf("repairTasks[%v] result not match, expect:%v actual:%v", i, results[i],
+			t.Errorf("repairTasks[%v] result not match, expect:%v actual:%v", i, results[i],
 				[3]int{len(task.ExtentsToBeRepairedSource), len(task.ExtentsToBeCreated), len(task.ExtentsToBeRepaired)})
+			return
 		}
 	}
 	if len(brokenTinyExtents) != len(tinyExtents) {
-		t.Fatalf("brokenTinyExtents count expect:%v, actual:%v", len(tinyExtents), len(brokenTinyExtents))
+		t.Errorf("brokenTinyExtents count expect:%v, actual:%v", len(tinyExtents), len(brokenTinyExtents))
+		return
 	}
 	if len(repairTasks[0].ExtentsToBeRepairedSource) != len(tinyExtents) {
-		t.Fatalf("repairTasks[0] ExtentsToBeRepairedSource count expect:%v, actual:%v", len(tinyExtents), len(repairTasks[0].ExtentsToBeRepairedSource))
+		t.Errorf("repairTasks[0] ExtentsToBeRepairedSource count expect:%v, actual:%v", len(tinyExtents), len(repairTasks[0].ExtentsToBeRepairedSource))
+		return
 	}
 	if len(repairTasks[0].ExtentsToBeCreated) != 0 {
-		t.Fatalf("repairTasks[0] v count expect:%v, actual:%v", 0, len(repairTasks[0].ExtentsToBeCreated))
+		t.Errorf("repairTasks[0] v count expect:%v, actual:%v", 0, len(repairTasks[0].ExtentsToBeCreated))
+		return
 	}
 	if len(repairTasks[0].ExtentsToBeRepaired) != len(tinyExtents) {
-		t.Fatalf("repairTasks[0] ExtentsToBeRepaired count expect:%v, actual:%v", len(tinyExtents), len(repairTasks[0].ExtentsToBeRepaired))
+		t.Errorf("repairTasks[0] ExtentsToBeRepaired count expect:%v, actual:%v", len(tinyExtents), len(repairTasks[0].ExtentsToBeRepaired))
+		return
 	}
 	dp.DoRepairOnLeaderDisk(ctx, repairTasks[0])
 	for _, extentId := range tinyExtents {
 		if !dp.ExtentStore().IsExists(extentId) {
-			t.Fatalf("tiny extent(%v) should exist", extentId)
+			t.Errorf("tiny extent(%v) should exist", extentId)
+			return
 		}
 		size, _ := dp.ExtentStore().LoadExtentWaterMark(extentId)
 		expectSize := extentId * 1024
@@ -656,11 +685,13 @@ func TestBuildDataPartitionRepairTask_TinyExtent(t *testing.T) {
 			expectSize = expectSize + (pageSize - expectSize%pageSize)
 		}
 		if size != int64(expectSize) {
-			t.Fatalf("repaired tiny extent(%v) size expect:%v actual:%v", extentId, expectSize, size)
+			t.Errorf("repaired tiny extent(%v) size expect:%v actual:%v", extentId, expectSize, size)
+			return
 		}
 	}
 	if err = dp.notifyFollowersToRepair(ctx, repairTasks); err != nil {
-		t.Fatalf("notify extent repair should not have err, but there are err:%v", err)
+		t.Errorf("notify extent repair should not have err, but there are err:%v", err)
+		return
 	}
 }
 
@@ -672,27 +703,37 @@ func TestBuildDataPartitionRepairTask_NormalExtent(t *testing.T) {
 		testBaseDir                 = path.Join(os.TempDir(), t.Name())
 		ctx                         = context.Background()
 	)
-	tcp := mock.NewMockTcp(mockDataTcpPort1)
+	mockServer := mockDataTcpPort1 + rand.Intn(1000)
+	host := []string{
+		fmt.Sprintf(":%v", mockServer),
+		fmt.Sprintf(":%v", mockServer),
+		fmt.Sprintf(":%v", mockServer),
+	}
+	tcp := mock.NewMockTcp(mockServer)
 	err = tcp.Start()
 	if err != nil {
-		t.Fatalf("start mock tcp server failed: %v", err)
+		t.Errorf("start mock tcp server failed: %v", err)
+		return
 	}
 	defer tcp.Stop()
 	_ = os.RemoveAll(testBaseDir)
-	dp = createDataPartition(1, localExtentFileCount, testBaseDir, t)
+	dp = createDataPartition(1, localExtentFileCount, testBaseDir, t, host)
 	defer func() {
 		_ = os.RemoveAll(testBaseDir)
 	}()
 	var repairTasks []*DataPartitionRepairTask
 	var tinyExtents []uint64
 	if repairTasks, err = dp.buildDataPartitionRepairTask(ctx, dp.replicas, proto.NormalExtentType, tinyExtents); err != nil {
-		t.Fatalf("build data partition repair task err:%v", err)
+		t.Errorf("build data partition repair task err:%v", err)
+		return
 	}
 	if len(repairTasks[0].extents) != int(localExtentFileCount) {
-		t.Fatalf("repairTasks[0] noraml extent count expect:%v, actual:%v", localExtentFileCount, len(repairTasks[0].extents))
+		t.Errorf("repairTasks[0] noraml extent count expect:%v, actual:%v", localExtentFileCount, len(repairTasks[0].extents))
+		return
 	}
 	if repairTasks[0].LeaderTinyDeleteRecordFileSize != int64(24) {
-		t.Fatalf("repairTasks[0] leaderTinyDeleteRecordFileSize expect:%v, actual:%v", 24, repairTasks[0].LeaderTinyDeleteRecordFileSize)
+		t.Errorf("repairTasks[0] leaderTinyDeleteRecordFileSize expect:%v, actual:%v", 24, repairTasks[0].LeaderTinyDeleteRecordFileSize)
+		return
 	}
 	_, _ = dp.prepareRepairTasks(repairTasks)
 	remoteRepairCount := localExtentFileCount - (mock.RemoteNormalExtentCount - 1)
@@ -709,23 +750,27 @@ func TestBuildDataPartitionRepairTask_NormalExtent(t *testing.T) {
 	}
 	dp.DoRepairOnLeaderDisk(ctx, repairTasks[0])
 	if !dp.ExtentStore().IsExists(mock.LocalCreateExtentId) {
-		t.Fatalf("normal extent(%v) should exist", mock.LocalCreateExtentId)
+		t.Errorf("normal extent(%v) should exist", mock.LocalCreateExtentId)
+		return
 	}
 	// 比较创建并修复后extent水位
 	size, _ := dp.ExtentStore().LoadExtentWaterMark(mock.LocalCreateExtentId)
 	if size != int64(mock.LocalCreateExtentId*1024) {
-		t.Fatalf("created normal extent(%v) size expect:%v actual:%v", mock.LocalCreateExtentId, mock.LocalCreateExtentId*1024, size)
+		t.Errorf("created normal extent(%v) size expect:%v actual:%v", mock.LocalCreateExtentId, mock.LocalCreateExtentId*1024, size)
+		return
 	}
 	// 比较修复后extent水位
 	for i := 0; i < mock.RemoteNormalExtentCount-1; i++ {
 		extentId := uint64(i + 1 + proto.TinyExtentCount)
 		size, _ = dp.ExtentStore().LoadExtentWaterMark(extentId)
 		if size != int64(extentId*1024) {
-			t.Fatalf("repaired normal extent(%v) size expect:%v actual:%v", extentId, extentId*1024, size)
+			t.Errorf("repaired normal extent(%v) size expect:%v actual:%v", extentId, extentId*1024, size)
+			return
 		}
 	}
 	if err = dp.notifyFollowersToRepair(ctx, repairTasks); err != nil {
-		t.Fatalf("notify extent repair should not have err, but there are err:%v", err)
+		t.Errorf("notify extent repair should not have err, but there are err:%v", err)
+		return
 	}
 }
 
@@ -737,14 +782,21 @@ func TestRepair(t *testing.T) {
 		testBaseDir                 = path.Join(os.TempDir(), t.Name())
 		ctx                         = context.Background()
 	)
-	tcp := mock.NewMockTcp(mockDataTcpPort1)
+	mockServer := mockDataTcpPort1 + rand.Intn(1000)
+	host := []string{
+		fmt.Sprintf(":%v", mockServer),
+		fmt.Sprintf(":%v", mockServer),
+		fmt.Sprintf(":%v", mockServer),
+	}
+	tcp := mock.NewMockTcp(mockServer)
 	err = tcp.Start()
 	if err != nil {
-		t.Fatalf("start mock tcp server failed: %v", err)
+		t.Errorf("start mock tcp server failed: %v", err)
+		return
 	}
 	defer tcp.Stop()
 	_ = os.RemoveAll(testBaseDir)
-	dp = createDataPartition(1, localExtentFileCount, testBaseDir, t)
+	dp = createDataPartition(1, localExtentFileCount, testBaseDir, t, host)
 	defer func() {
 		_ = os.RemoveAll(testBaseDir)
 	}()
@@ -755,7 +807,8 @@ func TestRepair(t *testing.T) {
 	dp.repair(ctx, proto.TinyExtentType)
 	for _, extentId := range brokenTinyExtents {
 		if !dp.ExtentStore().IsExists(extentId) {
-			t.Fatalf("tiny extent(%v) should exist", extentId)
+			t.Errorf("tiny extent(%v) should exist", extentId)
+			return
 		}
 		size, _ := dp.ExtentStore().LoadExtentWaterMark(extentId)
 		expectSize := extentId * 1024
@@ -763,24 +816,28 @@ func TestRepair(t *testing.T) {
 			expectSize = expectSize + (pageSize - expectSize%pageSize)
 		}
 		if size != int64(expectSize) {
-			t.Fatalf("repaired tiny extent(%v) size expect:%v actual:%v", extentId, expectSize, size)
+			t.Errorf("repaired tiny extent(%v) size expect:%v actual:%v", extentId, expectSize, size)
+			return
 		}
 	}
 	dp.repair(ctx, proto.NormalExtentType)
 	if !dp.ExtentStore().IsExists(mock.LocalCreateExtentId) {
-		t.Fatalf("normal extent(%v) should exist", mock.LocalCreateExtentId)
+		t.Errorf("normal extent(%v) should exist", mock.LocalCreateExtentId)
+		return
 	}
 	// 比较创建并修复后extent水位
 	size, _ := dp.ExtentStore().LoadExtentWaterMark(mock.LocalCreateExtentId)
 	if size != int64(mock.LocalCreateExtentId*1024) {
-		t.Fatalf("created normal extent(%v) size expect:%v actual:%v", mock.LocalCreateExtentId, mock.LocalCreateExtentId*1024, size)
+		t.Errorf("created normal extent(%v) size expect:%v actual:%v", mock.LocalCreateExtentId, mock.LocalCreateExtentId*1024, size)
+		return
 	}
 	// 比较修复后extent水位
 	for i := 0; i < mock.RemoteNormalExtentCount-1; i++ {
 		extentId := uint64(i + 1 + proto.TinyExtentCount)
 		size, _ = dp.ExtentStore().LoadExtentWaterMark(extentId)
 		if size != int64(extentId*1024) {
-			t.Fatalf("repaired normal extent(%v) size expect:%v actual:%v", extentId, extentId*1024, size)
+			t.Errorf("repaired normal extent(%v) size expect:%v actual:%v", extentId, extentId*1024, size)
+			return
 		}
 	}
 }
@@ -793,53 +850,72 @@ func TestDoStreamExtentFixRepairOnFollowerDisk(t *testing.T) {
 		testBaseDir                 = path.Join(os.TempDir(), t.Name())
 		ctx                         = context.Background()
 	)
-	tcp := mock.NewMockTcp(mockDataTcpPort1)
+	mockServer := mockDataTcpPort1 + rand.Intn(1000)
+	host := []string{
+		fmt.Sprintf(":%v", mockServer),
+		fmt.Sprintf(":%v", mockServer),
+		fmt.Sprintf(":%v", mockServer),
+	}
+	tcp := mock.NewMockTcp(mockServer)
 	err = tcp.Start()
 	if err != nil {
-		t.Fatalf("start mock tcp server failed: %v", err)
+		t.Errorf("start mock tcp server failed: %v", err)
+		return
 	}
 	defer tcp.Stop()
+	defer func() {
+		log.LogFlush()
+	}()
 	_ = os.RemoveAll(testBaseDir)
-	dp = createDataPartition(1, localExtentFileCount, testBaseDir, t)
+	t.Logf("create dp on %v", testBaseDir)
+	dp = createDataPartition(1, localExtentFileCount, testBaseDir, t, host)
 	defer func() {
 		_ = os.RemoveAll(testBaseDir)
 	}()
 	var repairTasks []*DataPartitionRepairTask
 	var tinyExtents []uint64
 	if repairTasks, err = dp.buildDataPartitionRepairTask(ctx, dp.replicas, proto.NormalExtentType, tinyExtents); err != nil {
-		t.Fatalf("build data partition repair task err:%v", err)
+		t.Errorf("build data partition repair task err:%v", err)
+		return
 	}
 	_, _ = dp.prepareRepairTasks(repairTasks)
-	wg := new(sync.WaitGroup)
+	var wg sync.WaitGroup
 	for _, extentInfo := range repairTasks[0].ExtentsToBeRepaired {
 		wg.Add(1)
+		t.Logf("repair task extentInfo:%v", extentInfo)
 		source := repairTasks[0].ExtentsToBeRepairedSource[extentInfo[storage.FileID]]
-		go func(info storage.ExtentInfoBlock) {
+		go func(info storage.ExtentInfoBlock, src string) {
 			defer wg.Done()
-			dp.doStreamExtentFixRepairOnFollowerDisk(ctx, info, []string{source})
-		}(extentInfo)
+			dp.doStreamExtentFixRepairOnFollowerDisk(ctx, info, []string{src})
+		}(extentInfo, source)
 	}
 	wg.Wait()
 	// 比较修复后extent水位
 	for i := 0; i < mock.RemoteNormalExtentCount-1; i++ {
 		extentId := uint64(i + 1 + proto.TinyExtentCount)
 		size, _ := dp.ExtentStore().LoadExtentWaterMark(extentId)
+		stat, _ := os.Stat(path.Join(dp.path, strconv.FormatUint(extentId, 10)))
+		if stat.Size() != size {
+			t.Errorf("repaired normal extent(%v) cache size:%v stat size:%v", extentId, size, stat.Size())
+		}
 		if size != int64(extentId*1024) {
-			t.Fatalf("repaired normal extent(%v) size expect:%v actual:%v", extentId, extentId*1024, size)
+			t.Errorf("repaired normal extent(%v) size expect:%v actual:%v stat:%v", extentId, extentId*1024, size, stat.Size())
 		}
 	}
 }
 
-func createDataPartition(partitionId, normalExtentCount uint64, baseDir string, t *testing.T) (dp *DataPartition) {
+func createDataPartition(partitionId, normalExtentCount uint64, baseDir string, t *testing.T, hosts []string) (dp *DataPartition) {
 	var (
 		err error
 	)
 	if err = os.MkdirAll(baseDir, os.ModePerm); err != nil {
-		t.Fatalf("prepare test base dir:%v err: %v", baseDir, err)
+		t.Errorf("prepare test base dir:%v err: %v", baseDir, err)
+		return
 	}
 
-	if dp, err = initDataPartition(baseDir, partitionId, true); err != nil {
-		t.Fatalf("init data partition err:%v", err)
+	if dp, err = initDataPartition(baseDir, partitionId, true, hosts); err != nil {
+		t.Errorf("init data partition err:%v", err)
+		return
 	}
 	// create normal extent
 	var (
@@ -851,14 +927,17 @@ func createDataPartition(partitionId, normalExtentCount uint64, baseDir string, 
 	)
 	for ; extentID <= proto.TinyExtentCount+normalExtentCount; extentID++ {
 		if err = dp.extentStore.Create(extentID, 0, true); err != nil {
-			t.Fatalf("extent store create normal extent err:%v", err)
+			t.Errorf("extent store create normal extent err:%v", err)
+			return
 		}
 		if err = dp.extentStore.Write(extentID, 0, size, data, crc, storage.Append, false); err != nil {
-			t.Fatalf("extent store write normal extent err:%v", err)
+			t.Errorf("extent store write normal extent err:%v", err)
+			return
 		}
 	}
 	if uint64(dp.GetExtentCount()) != proto.TinyExtentCount+normalExtentCount {
-		t.Fatalf("get extent count expect:%v, actual:%v", proto.TinyExtentCount+normalExtentCount, dp.GetExtentCount())
+		t.Errorf("get extent count expect:%v, actual:%v", proto.TinyExtentCount+normalExtentCount, dp.GetExtentCount())
+		return
 	}
 	// waiting time for modification is greater than 10s
 	time.Sleep(time.Second * 11)
@@ -866,19 +945,18 @@ func createDataPartition(partitionId, normalExtentCount uint64, baseDir string, 
 	return
 }
 
-func initDataPartition(rootDir string, partitionID uint64, isCreatePartition bool) (partition *DataPartition, err error) {
+func initDataPartition(rootDir string, partitionID uint64, isCreatePartition bool, hosts []string) (partition *DataPartition, err error) {
 	var (
 		partitionSize = 128849018880
 	)
 	dataPath := path.Join(rootDir, fmt.Sprintf(DataPartitionPrefix+"_%v_%v", partitionID, partitionSize))
-	host := fmt.Sprintf(":%v", mockDataTcpPort1)
 	partition = &DataPartition{
 		volumeID:                "test-vol",
 		clusterID:               "test-cluster",
 		partitionID:             partitionID,
 		path:                    dataPath,
 		partitionSize:           partitionSize,
-		replicas:                []string{host, host, host},
+		replicas:                hosts,
 		repairPropC:             make(chan struct{}, 1),
 		stopC:                   make(chan bool, 0),
 		stopRaftC:               make(chan uint64, 0),

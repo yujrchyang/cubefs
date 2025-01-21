@@ -38,6 +38,7 @@ func init() {
 		reservedSpace uint64 = DefaultDiskReservedSpace
 		stateFS              = new(syscall.Statfs_t)
 	)
+	os.MkdirAll(tmpDiskPath, 0755)
 	if err := syscall.Statfs(tmpDiskPath, stateFS); err == nil {
 		reservedSpace = uint64(float64(stateFS.Blocks*uint64(stateFS.Bsize)) * 0.1)
 	}

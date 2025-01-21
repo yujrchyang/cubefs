@@ -42,10 +42,12 @@ func RandTestData(size int, seed int64) (data []byte) {
 type MockTcp struct {
 	ln     net.Listener
 	listen int
+	stopCh chan bool
 }
 
 func NewMockTcp(listen int) *MockTcp {
 	return &MockTcp{
+		stopCh: make(chan bool),
 		listen: listen,
 	}
 }
@@ -62,6 +64,7 @@ func (m *MockTcp) Stop() {
 	if m.ln != nil {
 		_ = m.ln.Close()
 	}
+	close(m.stopCh)
 }
 
 func (m *MockTcp) serveAccept() {
@@ -71,7 +74,19 @@ func (m *MockTcp) serveAccept() {
 		if conn, err = m.ln.Accept(); err != nil {
 			return
 		}
-		go m.serveConn(conn)
+		go func(c net.Conn) {
+			for {
+				select {
+				case <-m.stopCh:
+					return
+				default:
+					if err = m.serveConn(c); err != nil {
+						_ = c.Close()
+						return
+					}
+				}
+			}
+		}(conn)
 	}
 }
 
@@ -79,6 +94,10 @@ func (m *MockTcp) serveConn(conn net.Conn) (err error) {
 	p := new(repl.Packet)
 	_, err = p.ReadFromConnFromCli(conn, repl.ReplProtocalServerTimeOut)
 	if err != nil {
+		if err == io.EOF {
+			return
+		}
+		log.LogErrorf("serveConnFromCli error: %v", err)
 		return
 	}
 	switch p.Opcode {
@@ -212,10 +231,10 @@ func (m *MockTcp) handleGetAllWatermarksV2(p *repl.Packet, c net.Conn) {
 		}
 		data = data[:index]
 	}
-	if err = replyData(p, 0, data, proto.OpOk, c); err != nil {
+	p.PacketOkWithBody(data)
+	if err = response(p, c); err != nil {
 		fmt.Printf("replyData err: %v", err)
 	}
-	p.PacketOkReply()
 }
 
 func (m *MockTcp) handleGetAllWatermarksV3(p *repl.Packet, c net.Conn) {
@@ -224,7 +243,11 @@ func (m *MockTcp) handleGetAllWatermarksV3(p *repl.Packet, c net.Conn) {
 	)
 
 	if SupportedGetAllWatermarksVersion < 3 {
-		_ = replyData(p, 0, []byte(repl.ErrorUnknownOp.Error()), proto.OpErr, c)
+		p.PackErrorBody("ActionGetAllExtentWatermarksV3", repl.ErrorUnknownOp.Error())
+		err = response(p, c)
+		if err != nil {
+			log.LogErrorf("ActionGetAllExtentWatermarksV3 response err: %v", err)
+		}
 		return
 	}
 	var data []byte
@@ -234,8 +257,8 @@ func (m *MockTcp) handleGetAllWatermarksV3(p *repl.Packet, c net.Conn) {
 		index := 0
 		for i := 0; i < normalExtentCount-1; i++ {
 			ei := &proto.ExtentInfoBlock{
-				uint64(i + 65),
-				uint64(i+65) * 1024,
+				storage.FileID: uint64(i + 65),
+				storage.Size:   uint64(i+65) * 1024,
 			}
 			binary.BigEndian.PutUint64(data[index:index+8], ei[storage.FileID])
 			index += 8
@@ -243,8 +266,8 @@ func (m *MockTcp) handleGetAllWatermarksV3(p *repl.Packet, c net.Conn) {
 			index += 8
 		}
 		ei := &proto.ExtentInfoBlock{
-			LocalCreateExtentId,
-			LocalCreateExtentId * 1024,
+			storage.FileID: LocalCreateExtentId,
+			storage.Size:   LocalCreateExtentId * 1024,
 		}
 		binary.BigEndian.PutUint64(data[index:index+8], ei[storage.FileID])
 		index += 8
@@ -280,14 +303,38 @@ func (m *MockTcp) handleGetAllWatermarksV3(p *repl.Packet, c net.Conn) {
 			index += 8
 		}
 		data = data[:index]
-		log.LogInfof("handleGetAllWatermarksV3 tiny, data:%v, extents:%v", len(data), len(extentIDs))
+		log.LogInfof("handleGetAllWatermarksV3 tiny, data:%v, extents:%v, extent type:%v", len(data), len(extentIDs), p.ExtentType)
+	}
+	var res = make([]byte, len(data)+8)
+	binary.BigEndian.PutUint64(res[:8], LocalCreateExtentId)
+	copy(res[8:], data)
+	p.PacketOkWithBody(res)
+	if err = response(p, c); err != nil {
+		log.LogErrorf("replyData err: %v", err)
+		return
+	}
+	log.LogInfof("handleGetAllWatermarksV3, response success, data:%v, extent type:%v, res:%v", len(data), p.ExtentType, len(res))
+}
+
+func response(reply *repl.Packet, c net.Conn) (err error) {
+	if reply.IsErrPacket() {
+		err = fmt.Errorf(reply.LogMessage("ActionWriteToClient", c.RemoteAddr().String(),
+			reply.StartT, fmt.Errorf(string(reply.Data[:reply.Size]))))
+		log.LogErrorf(err.Error())
 	}
 
-	if err = replyData(p, 0, append(make([]byte, 8), data...), proto.OpOk, c); err != nil {
-		log.LogErrorf("replyData err: %v", err)
-		fmt.Printf("replyData err: %v", err)
+	if err = reply.WriteToConn(c, proto.WriteDeadlineTime); err != nil {
+		err = fmt.Errorf(reply.LogMessage("ActionWriteToClient", fmt.Sprintf("local(%v)->remote(%v)", c.LocalAddr().String(),
+			c.RemoteAddr().String()), reply.StartT, err))
+		err = fmt.Errorf("remote(%v) will exit error(%v)",
+			c.RemoteAddr(), err)
+		log.LogErrorf(err.Error())
 	}
-	p.PacketOkReply()
+	if log.IsDebugEnabled() {
+		log.LogDebugf(reply.LogMessage("ActionWriteToClient",
+			c.RemoteAddr().String(), reply.StartT, err))
+	}
+	return nil
 }
 
 func replyData(p *repl.Packet, ExtentOffset int64, data []byte, resultCode uint8, c net.Conn) (err error) {
@@ -320,6 +367,7 @@ func (m *MockTcp) handleExtentRepairReadPacket(p *repl.Packet, c net.Conn) {
 		fmt.Printf("replyData err: %v", err)
 	}
 	p.PacketOkReply()
+	log.LogInfof("handleExtentRepairReadPacket, response extent:%v offset:%v data:%v remote:%v", p.ExtentID, p.ExtentOffset, len(data), c.RemoteAddr())
 }
 
 func (m *MockTcp) handleTinyExtentRepairRead(p *repl.Packet, c net.Conn) {
@@ -331,6 +379,7 @@ func (m *MockTcp) handleTinyExtentRepairRead(p *repl.Packet, c net.Conn) {
 		fmt.Printf("replyData err: %v", err)
 	}
 	p.PacketOkReply()
+	log.LogInfof("handleExtentRepairReadPacket, response extent:%v offset:%v data:%v remote:%v", p.ExtentID, p.ExtentOffset, len(data), c.RemoteAddr())
 }
 
 type DataPartitionRepairTask struct {

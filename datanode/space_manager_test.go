@@ -130,23 +130,24 @@ func newRaftLogger(dir string) {
 func TestReloadExpiredDataPartitions(t *testing.T) {
 	raftPath := "/tmp/raft"
 	newRaftLogger(raftPath)
-	var testPath = testutil.InitTempTestPath(t)
-	//log.InitLog(testPath.Path(), "dp", log.DebugLevel, nil)
-	//defer log.LogFlush()
 
-	defer testPath.Cleanup()
+	var testPath = path.Join(os.TempDir(), t.Name())
+	_ = os.RemoveAll(testPath)
+	defer func() {
+		_ = os.RemoveAll(testPath)
+	}()
 	var err error
 	diskNames := []string{
 		"testDisk",
 		"testDisk2",
 	}
 	diskDirs := []string{
-		path.Join(testPath.Path(), "testDisk"),
-		path.Join(testPath.Path(), "testDisk2"),
+		path.Join(testPath, "testDisk"),
+		path.Join(testPath, "testDisk2"),
 	}
 	dps := []uint64{1, 2, 3, 4, 5, 6}
 	for _, d := range diskNames {
-		if err = os.MkdirAll(path.Join(testPath.Path(), d), os.ModePerm); err != nil {
+		if err = os.MkdirAll(path.Join(testPath, d), os.ModePerm); err != nil {
 			t.Fatalf("Make disk path %v failed: %v", d, err)
 		}
 	}
@@ -170,7 +171,7 @@ func TestReloadExpiredDataPartitions(t *testing.T) {
 	}
 	space.SetRaftStore(raftStore)
 	for _, d := range diskNames {
-		if err = space.LoadDisk(path.Join(testPath.Path(), d), nil); err != nil {
+		if err = space.LoadDisk(path.Join(testPath, d), nil); err != nil {
 			t.Fatalf("Load disk %v failed: %v", d, err)
 		}
 	}

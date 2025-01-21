@@ -78,6 +78,7 @@ func newFakeDataNode() *fakeDataNode {
 		fakeTinyExtentId:   1,
 	}
 	MasterClient.AddNode(mock.TestMasterHost)
+	MasterLBDomainClient.AddNode(mock.TestMasterHost)
 
 	cfgStr := `{
 		"disks": [
