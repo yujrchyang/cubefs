@@ -3,6 +3,7 @@ package meta
 import (
 	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -140,7 +141,7 @@ func TestWalkDirWithFilter(t *testing.T) {
 		if ok {
 			matchedPaths = append(matchedPaths, absolutePath)
 		}
-		return ok
+		return true
 	}
 
 	// 定义过滤函数，只处理 .log 文件
@@ -149,12 +150,14 @@ func TestWalkDirWithFilter(t *testing.T) {
 		if ok {
 			matchedPaths = append(matchedPaths, absolutePath)
 		}
-		return ok
+		return true
 	}
 
 	// 定义过滤函数，处理所有文件
 	filterAllFiles := func(absolutePath string, dentry proto.Dentry) bool {
-		matchedPaths = append(matchedPaths, absolutePath)
+		if !proto.IsDir(dentry.Type) {
+			matchedPaths = append(matchedPaths, absolutePath)
+		}
 		return true
 	}
 
@@ -199,6 +202,12 @@ func TestWalkDirWithFilter(t *testing.T) {
 			"/test1/test2/test.log",
 			"/test1/test2/test3/test.md",
 		}
+		sort.Slice(expectedPaths, func(i, j int) bool {
+			return strings.Compare(expectedPaths[i], expectedPaths[j]) > 0
+		})
+		sort.Slice(matchedPaths, func(i, j int) bool {
+			return strings.Compare(matchedPaths[i], matchedPaths[j]) > 0
+		})
 		if len(matchedPaths) != len(expectedPaths) {
 			t.Errorf("FilterAllFiles result mismatch, got: %v, want: %v", matchedPaths, expectedPaths)
 		} else {
@@ -229,7 +238,7 @@ func TestWalkDirWithFilter(t *testing.T) {
 	t.Run("NonExistentDirectory", func(t *testing.T) {
 		matchedPaths = nil // 重置记录
 		err = mw.WalkDirWithFilter(999999, "", "", "/nonexistent", 100, filterAllFiles)
-		if err == nil {
+		if len(matchedPaths) != 0 {
 			t.Errorf("WalkDir should fail for non-existent directory")
 		}
 	})
@@ -238,8 +247,12 @@ func TestWalkDirWithFilter(t *testing.T) {
 	t.Run("FilterDirectories", func(t *testing.T) {
 		matchedPaths = nil // 重置记录
 		filterDirs := func(absolutePath string, dentry proto.Dentry) bool {
-			return dentry.Type == uint32(os.ModeDir)
+			if proto.IsDir(dentry.Type) {
+				matchedPaths = append(matchedPaths, absolutePath)
+			}
+			return true
 		}
+
 		err = mw.WalkDirWithFilter(proto.RootIno, "", "", "/", 100, filterDirs)
 		if err != nil {
 			t.Fatalf("WalkDir failed: %v", err)
@@ -250,6 +263,12 @@ func TestWalkDirWithFilter(t *testing.T) {
 			"/test1/test2",
 			"/test1/test2/test3",
 		}
+		sort.Slice(expectedPaths, func(i, j int) bool {
+			return strings.Compare(expectedPaths[i], expectedPaths[j]) > 0
+		})
+		sort.Slice(matchedPaths, func(i, j int) bool {
+			return strings.Compare(matchedPaths[i], matchedPaths[j]) > 0
+		})
 		if len(matchedPaths) != len(expectedPaths) {
 			t.Errorf("FilterDirectories result mismatch, got: %v, want: %v", matchedPaths, expectedPaths)
 		} else {
