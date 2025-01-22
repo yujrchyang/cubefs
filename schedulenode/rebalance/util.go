@@ -96,15 +96,11 @@ func getInRecoveringMapIgnoreMig(mc *master.MasterClient, rc *releaseClient, rTy
 		switch rType {
 		case RebalanceData:
 			for _, badPartitionViews := range cv.BadPartitionIDs {
-				for _, partitionID := range badPartitionViews.PartitionIDs {
-					inRecoveringMap[partitionID]++
-				}
+				inRecoveringMap[badPartitionViews.PartitionID]++
 			}
 		case RebalanceMeta:
 			for _, badPartitionViews := range cv.BadMetaPartitionIDs {
-				for _, partitionID := range badPartitionViews.PartitionIDs {
-					inRecoveringMap[partitionID]++
-				}
+				inRecoveringMap[badPartitionViews.PartitionID]++
 			}
 		}
 	}
