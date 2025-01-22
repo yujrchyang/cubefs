@@ -57,7 +57,7 @@ type DbBakNodeView struct {
 
 type BadPartitionView struct {
 	Path         string
-	PartitionIDs []uint64
+	PartitionID  uint64
 }
 
 type ClusterView struct {
