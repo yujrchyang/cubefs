@@ -40,6 +40,9 @@ const (
  *  method:         GET
  *  url:            /shard/get/diskid/{diskid}/vuid/{vuid}/bid/{bid}?iotype={iotype}
  *  response body:  bidData
+ *
+ * blobnode 模块收到上层请求的入口
+ *   /shard/get/diskid/15/vuid/17403207483393/bid/65171137?iotype=0
  */
 func (s *Service) ShardGet(c *rpc.Context) {
 	args := new(bnapi.GetShardArgs)
@@ -51,6 +54,7 @@ func (s *Service) ShardGet(c *rpc.Context) {
 	ctx, w := c.Request.Context(), c.Writer
 	span := trace.SpanFromContextSafe(ctx)
 
+	// 检查磁盘 ID 是否有效
 	if !bnapi.IsValidDiskID(args.DiskID) {
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
@@ -63,6 +67,7 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		written     int64
 		wroteHeader bool
 	)
+	// 请求中会标记要读的 shard 的范围（如："Range":"bytes=0-262143"）
 	rangeBytesStr := c.Request.Header.Get("Range")
 	if rangeBytesStr != "" {
 		// [start, end]
@@ -78,6 +83,7 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		return
 	}
 
+	// 获取 diskstorage 句柄
 	s.lock.RLock()
 	ds, exist := s.Disks[args.DiskID]
 	s.lock.RUnlock()
@@ -86,11 +92,13 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		return
 	}
 
+	// 检查磁盘状态
 	if !ds.IsWritable() { // not normal disk, skip
 		c.RespondError(bloberr.ErrDiskBroken)
 		return
 	}
 
+	// 获取 chunkstorage 句柄
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
 		c.RespondError(bloberr.ErrNoSuchVuid)
@@ -119,8 +127,10 @@ func (s *Service) ShardGet(c *rpc.Context) {
 	defer qosLmt.Release()
 
 	// build shard reader
+	// 构造 shard reader，w 是 http 结果的 writer
 	shard := core.NewShardReader(args.Bid, args.Vuid, from, to, w)
 
+	// 设置回调，用于处理结果
 	shard.PrepareHook = func(shard *core.Shard) {
 		// set crc to header
 		// build http response header
@@ -151,8 +161,10 @@ func (s *Service) ShardGet(c *rpc.Context) {
 		c.Flush()
 	}
 
+	// 如果指定了 range，则调用 range 读，否则全量读
 	if rangeBytesStr != "" {
 		// [from, to)
+		// blobstore/blobnode/core/chunk/chunk.go
 		written, err = cs.RangeRead(ctx, shard)
 	} else {
 		written, err = cs.Read(ctx, shard)

@@ -507,6 +507,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	}
 	span.Infof("registered disks: %v", registeredDisks)
 
+	// 根据 path 检查所有已注册的状态正常的磁盘是否在配置文件中，如果不在则报错
 	check := isAllInConfig(ctx, registeredDisks, &conf)
 	if !check {
 		span.Errorf("no all registered normal disk in config")
@@ -521,6 +522,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 	svr.BrokenLimitPerDisk = keycount.New(1)
 
 	switchMgr := taskswitch.NewSwitchMgr(svr.ClusterMgrClient)
+	// 根据配置文件中的 inspect_conf 创建数据校验管理
 	svr.inspectMgr, err = NewDataInspectMgr(svr, conf.InspectConf, switchMgr)
 	if err != nil {
 		span.Errorf("Fail to new data inspect mgr, err:%+v", err)
@@ -548,8 +550,10 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 			var err error
 			defer wg.Done()
 
+			// 初始化磁盘配置
 			svr.fixDiskConf(&diskConf)
 
+			// 检查磁盘路径是否是挂载点
 			if diskConf.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
 				span.Errorf("Path is not mount point:%s. skip init", diskConf.Path)
 				lostDisk, exist := foundDiskPathInCluster[diskConf.Path]
@@ -606,6 +610,7 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 				}
 			}
 
+			// 根据 disk 信息初始化磁盘存储器
 			ds, err = disk.NewDiskStorage(svr.ctx, diskConf)
 			if err != nil {
 				svr.handleStartDiskError(ctx, foundDiskPathInCluster, diskConf.Path, format.DiskID, err)
@@ -613,10 +618,12 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 			}
 
 			// new disk, register to cm: not found in cm, or format.diskID==0 and old disk is repaired
+			// 如果 cm 集群中没有该磁盘或者配置文件中标明了需要重新添加，则重新向 cm 注册
 			diskInfo, foundIDInCluster := foundDiskIDInCluster[format.DiskID]
 			if format.DiskID == 0 || !foundIDInCluster {
 				span.Warnf("diskInfo:%v not found in cm, will register to cm, nodeID:%d", diskInfo, conf.NodeID)
 				dsInfo := ds.DiskInfo() // get nodeID to add disk
+				// 向 cm 注册
 				err = svr.ClusterMgrClient.AddDisk(ctx, &dsInfo)
 				if err != nil {
 					span.Fatalf("Failed register disk: %v, err:%+v", dsInfo, err)
@@ -624,14 +631,17 @@ func startBlobnodeService(ctx context.Context, svr *Service, conf Config) (err e
 				}
 			}
 
+			// 保存磁盘存储器
 			svr.lock.Lock()
 			svr.Disks[ds.ID()] = ds
 			svr.lock.Unlock()
 
+			// 汇报磁盘状态
 			svr.reportOnlineDisk(&diskConf.HostInfo, diskConf.Path) // restart, normal disk
 			span.Infof("Init disk storage, cluster:%d, diskID:%d", conf.ClusterID, ds.ID())
 		}(diskConf)
 	}
+	// 等待所有磁盘处理完成
 	wg.Wait()
 
 	if err = setDefaultIOStat(conf.DiskConfig.IOStatFileDryRun); err != nil {
