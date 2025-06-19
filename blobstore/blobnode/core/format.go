@@ -174,7 +174,10 @@ func ReadFormatInfo(ctx context.Context, diskRootPath string) (
 ) {
 	span := trace.SpanFromContextSafe(ctx)
 
+	// path+.sys+.format.json
 	configFile := filepath.Join(sysRootPath(diskRootPath), formatConfigFile)
+	// 读文件，内容类似于：
+	// {"diskid":3,"version":1,"ctime":1750149239280558890,"format":"fs","check_sum":2898905125}
 	buf, err := os.ReadFile(configFile)
 	if err != nil {
 		span.Errorf("Failed read file:%v, err:%v", configFile, err)

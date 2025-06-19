@@ -481,13 +481,18 @@ Fill Shard:
   - Flag
 */
 func (cs *chunk) RangeRead(ctx context.Context, b *core.Shard) (n int64, err error) {
+	// 将请求插入到链表中并返回链表元素
 	elem := cs.consistent.Begin(b.Bid)
+	// 处理完成后从链表中删除
 	defer cs.consistent.End(elem)
 
 	// statistics
+	// 统计请求
 	cs.stats.rangereadBefore()
 
+	// 获取存储接口句柄并增加计数
 	stg := cs.GetStg()
+	// 调用完成后自减计数
 	defer cs.PutStg(stg)
 
 	// read meta

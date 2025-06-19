@@ -36,25 +36,30 @@ func (s *Service) ChunkCreate(c *rpc.Context) {
 		return
 	}
 
+	// 获取请求上下文，根据上下文跟踪
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
 
 	span.Infof("chunk create args:%v", args)
 
+	// 检查 chunk 大小
 	if args.ChunkSize < 0 || args.ChunkSize > disk.MaxChunkSize {
 		c.RespondError(bloberr.ErrInvalidParam)
 		return
 	}
 
+	// 检查磁盘 ID 是否有效
 	if !bnapi.IsValidDiskID(args.DiskID) {
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
 	}
 
+	// 未指定的情况下使用默认值（16G）
 	if args.ChunkSize == 0 {
 		args.ChunkSize = core.DefaultChunkSize
 	}
 
+	// 以 vuid 为键值获取限制，类似加锁
 	limitKey := args.Vuid
 	err := s.ChunkLimitPerVuid.Acquire(limitKey)
 	if err != nil {
@@ -64,6 +69,7 @@ func (s *Service) ChunkCreate(c *rpc.Context) {
 	}
 	defer s.ChunkLimitPerVuid.Release(limitKey)
 
+	// 获取 diskstorage
 	s.lock.RLock()
 	ds, exist := s.Disks[args.DiskID]
 	s.lock.RUnlock()
@@ -73,6 +79,7 @@ func (s *Service) ChunkCreate(c *rpc.Context) {
 		return
 	}
 
+	// 创建 chunk
 	cs, err := ds.CreateChunk(ctx, args.Vuid, args.ChunkSize)
 	if err != nil {
 		span.Errorf("Failed register vuid:%v, err:%v", args.DiskID, err)

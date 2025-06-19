@@ -33,6 +33,7 @@ var (
 	conf     Config
 )
 
+// 在包初始化阶段自动调用
 func init() {
 	mod := &cmd.Module{
 		Name:       "BLOBNODE",
@@ -82,6 +83,8 @@ func initPromeConf() {
 	}
 }
 
+// rpc.Router - 负责 RPC 请求的路由和分发
+// rpc.ProgressHandler - 用于监控和反馈长时间运行请求的进度
 func setUp() (*rpc.Router, []rpc.ProgressHandler) {
 	var err error
 	gService, err = NewService(conf)
@@ -89,6 +92,7 @@ func setUp() (*rpc.Router, []rpc.ProgressHandler) {
 		log.Fatalf("Failed to new blobnode service, err: %v", err)
 	}
 	// register all self functions of service
+	// 注册 rpc 接口
 	return NewHandler(gService), nil
 }
 

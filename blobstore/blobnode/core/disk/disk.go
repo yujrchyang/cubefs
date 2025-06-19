@@ -383,6 +383,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	span, _ := trace.StartSpanFromContextWithTraceID(context.Background(), "", conf.Path)
 
 	// init config
+	// 初始化磁盘配置
 	err = core.InitConfig(&conf)
 	if err != nil {
 		return nil, err
@@ -396,24 +397,31 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 
 	metaRoot := conf.MetaRootPrefix
 	if metaRoot != "" {
+		// 检查路径是否存在
 		if exist, err := bncom.IsFileExists(metaRoot); err != nil || !exist {
 			span.Errorf("meta path: %s not exist ( occur err:%v ), exit", metaRoot, err)
 			return nil, errors.New("meta root prefix not exist")
 		}
 	}
 
+	// 检查是否是挂载点
 	if conf.MustMountPoint {
+		// 检查 data 目录是否是挂载点
 		if !myos.IsMountPoint(conf.Path) {
 			span.Errorf("%s must mount point.", conf.Path)
 			return nil, errors.New("must mount point")
 		}
 
+		// 如果指定了 meta_root_prefix，则检查其是否是挂载点
+		// todo: 增加配置，说明是所有盘共用 meta 还是单独挂载
+		//       如果共用，则判断 meta_root_prefix，否则判断 meta_root_prefix+datapath
 		if metaRoot != "" && !myos.IsMountPoint(metaRoot) {
 			span.Errorf("%s must mount point.", metaRoot)
 			return nil, errors.New("must mount point")
 		}
 	}
 
+	// 如果指定了自动初始化，则自动创建相关目录
 	if conf.AutoFormat {
 		span.Warnf("auto format mode, will ensure directory.")
 		err = core.EnsureDiskArea(path, metaRoot)
@@ -422,7 +430,9 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		}
 	}
 
+	// path+data
 	diskDataPath := core.GetDataPath(path)
+	// metaPrefix+path+meta+superblock
 	diskMetaPath := core.GetMetaPath(path, metaRoot)
 
 	span.Infof("datapath: %v, metapath:%v", diskDataPath, diskMetaPath)
@@ -435,8 +445,10 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 
 	var dm core.DiskMeta
 
+	// 从 rocksdb 中加载磁盘元数据
 	dm, err = sb.LoadDiskInfo(ctx)
 	if err != nil {
+		// 如果不存在则稍后初始化
 		if os.IsNotExist(err) {
 			span.Warnf("disk not format. will format and register")
 		} else {
@@ -447,11 +459,13 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 
 	if !dm.Registered {
 		exist, err := core.IsFormatConfigExist(path)
+		// 未注册的情况下，不应该存在格式化信息
 		if err != nil || exist {
 			span.Errorf("unexpected error. format file ( in %s ) should not exist, but, exist:%v err:%v", path, exist, err)
 			return nil, bloberr.ErrUnexpected
 		}
 
+		// 注册磁盘
 		dm, err = registerDisk(ctx, sb, &conf)
 		if err != nil {
 			span.Errorf("register disk failed: %v", err)
@@ -462,6 +476,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	span.Infof("diskID:%d", dm.DiskID)
 
 	// check format info
+	// 格式化数据校验
 	formatInfo, err := core.ReadFormatInfo(ctx, path)
 	if err != nil {
 		span.Errorf("Failed read format info, err:%v", err)
@@ -478,6 +493,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	})
 
 	// io visualization: init data io stat
+	// 初始化流控
 	dataIos, err := flow.NewIOFlowStat(dm.DiskID.ToString(), conf.IOStatFileDryRun)
 	if err != nil {
 		span.Errorf("Failed new dataio flow stat, err:%v", err)
@@ -509,6 +525,7 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 	readPool := taskpool.NewReadPool(conf.ReadThreadCnt, qos.MaxQueueDepth, metricConf)
 	delPool := taskpool.NewDeletePool(conf.DeleteThreadCnt, qos.MaxQueueDepth, metricConf)
 
+	// 初始化磁盘存储器
 	ds = &DiskStorage{
 		DiskID:           dm.DiskID,
 		SuperBlock:       sb,
@@ -531,12 +548,14 @@ func newDiskStorage(ctx context.Context, conf core.Config) (ds *DiskStorage, err
 		},
 	}
 
+	// 根据路径获取磁盘的容量等信息
 	if err = ds.fillDiskUsage(ctx); err != nil {
 		span.Errorf("Failed fill disk usage, err:%v", err)
 		return nil, err
 	}
 
 	// background loop
+	// 启动后台定时任务
 	ds.loopAttach(ds.loopCleanChunk)
 	ds.loopAttach(ds.loopCompactFile)
 	ds.loopAttach(ds.loopDiskUsage)
@@ -552,6 +571,7 @@ func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrap
 		return nil, err
 	}
 
+	// 封装磁盘存储器，进一步更新相关信息
 	dsw = &DiskStorageWrapper{DiskStorage: ds}
 
 	err = dsw.RestoreChunkStorage(ctx)
@@ -560,6 +580,7 @@ func NewDiskStorage(ctx context.Context, conf core.Config) (dsw *DiskStorageWrap
 	}
 
 	// It will be automatically recycled when gc
+	// 注册回调函数，在释放 dsw 前对各种资源进行回收
 	runtime.SetFinalizer(dsw, func(wapper *DiskStorageWrapper) {
 		wapper.Close(context.Background())
 	})
@@ -573,16 +594,17 @@ func registerDisk(ctx context.Context, sb *SuperBlock, conf *core.Config) (dm co
 	span.Infof("disk conf:<%v> auto format", conf)
 
 	// allocate global Uniq diskID
+	// 调用 cm client 的接口分配全局唯一的磁盘 ID
 	diskID, err := conf.AllocDiskID(ctx)
 	if err != nil {
 		span.Errorf("Failed alloc diskId: %d, err:%v", dm.DiskID, err)
 		return
 	}
-
 	span.Debugf("diskId: <%v>", diskID)
 
 	now := time.Now().UnixNano()
 
+	// 生成格式化信息
 	format := &core.FormatInfo{
 		FormatInfoProtectedField: core.FormatInfoProtectedField{
 			DiskID:  diskID,
@@ -591,6 +613,7 @@ func registerDisk(ctx context.Context, sb *SuperBlock, conf *core.Config) (dm co
 			Ctime:   now,
 		},
 	}
+	// 计算校验值
 	checkSum, err := format.CalCheckSum()
 	if err != nil {
 		span.Errorf("cal format info crc failed: %v", err)
@@ -607,12 +630,14 @@ func registerDisk(ctx context.Context, sb *SuperBlock, conf *core.Config) (dm co
 		Path:       conf.Path,
 	}
 
+	// 将磁盘元数据写入 rocksdb
 	err = sb.UpsertDisk(ctx, dm.DiskID, dm)
 	if err != nil {
 		span.Errorf("Failed upsert disk: %d, err:%v", dm.DiskID, err)
 		return
 	}
 
+	// 将格式化信息写入到 .format 文件
 	err = core.SaveDiskFormatInfo(ctx, conf.Path, format)
 	if err != nil {
 		span.Errorf("Failed save disk[%s] format info, err:%v", conf.Path, err)

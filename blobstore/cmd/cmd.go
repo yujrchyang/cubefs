@@ -75,6 +75,7 @@ type Module struct {
 	graceful   bool
 }
 
+// 在每个包的初始化阶段由各个包提供的 init() 函数自动初始化
 var mod *Module
 
 func RegisterModule(m *Module) {
@@ -111,15 +112,19 @@ func NewLogWriter(cfg *LogConfig) io.Writer {
 }
 
 func Main(args []string) {
+	// 加载各个模块的自定义函数初始化配置文件
 	cfg, err := mod.InitConfig(args)
 	if err != nil {
 		log.Fatalf("init config error: %v", err)
 	}
+	// 设置最大 cpu 核心数
 	if cfg.MaxProcs > 0 {
 		runtime.GOMAXPROCS(cfg.MaxProcs)
 	}
+	// 设置日志级别
 	log.SetOutputLevel(cfg.LogConf.Level)
 	registerLogLevel()
+	// 设置日志文件
 	if cfg.LogConf.Filename != "" {
 		log.SetOutput(NewLogWriter(&cfg.LogConf))
 	}
@@ -127,6 +132,7 @@ func Main(args []string) {
 		cfg.ShutdownTimeoutS = defaultShutdownTimeoutS
 	}
 
+	// 初始化审计日志
 	lh, logf, err := auditlog.Open(mod.Name, &cfg.AuditLog)
 	if err != nil {
 		log.Fatal("failed to open auditlog:", err)
@@ -135,13 +141,17 @@ func Main(args []string) {
 		defer logf.Close()
 	}
 
+	// 基于基础上下文创建可取消的上下文
 	ctx, cancel1 := context.WithCancel(context.Background())
 	defer cancel1()
+
+	// 启动后台 goroutine 监听信号实现热加载配置文件
 	config.HotReload(ctx, config.ConfName())
 
 	// new profile handler firstly
 	profileHandler := profile.NewProfileHandler(cfg.BindAddr)
 
+	// blobnode 为 false
 	if mod.SetUp != nil && mod.graceful {
 		programEntry := func(state *graceful.State) {
 			router, handlers := mod.SetUp()
@@ -192,7 +202,9 @@ func Main(args []string) {
 	}
 
 	if mod.SetUp != nil {
+		// 服务启动完成，获取 rpc 请求处理和进度句柄
 		router, handlers := mod.SetUp()
+		// 启动 http 服务
 		httpServer := &http.Server{
 			Addr:         cfg.BindAddr,
 			Handler:      reorderMiddleWareHandlers(router, lh, profileHandler, cfg.Auth, handlers),
@@ -210,6 +222,7 @@ func Main(args []string) {
 	}
 
 	// wait for signal
+	// 等待终止信号
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, syscall.SIGTERM, syscall.SIGINT)
 	sig := <-ch
@@ -220,6 +233,7 @@ func Main(args []string) {
 		shutdown(ctx)
 	}
 
+	// 调用各模块的资源回收接口
 	if mod.TearDown != nil {
 		mod.TearDown()
 	}

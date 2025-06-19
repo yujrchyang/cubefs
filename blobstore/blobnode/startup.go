@@ -50,6 +50,7 @@ func readFormatInfo(ctx context.Context, diskRootPath string) (
 	formatInfo *core.FormatInfo, err error,
 ) {
 	span := trace.SpanFromContextSafe(ctx)
+	// 读一下磁盘 path，该接口正常返回 path 下的条目
 	_, err = os.ReadDir(diskRootPath)
 	if err != nil {
 		span.Errorf("read disk root path error:%s", diskRootPath)
@@ -57,6 +58,7 @@ func readFormatInfo(ctx context.Context, diskRootPath string) (
 	}
 	formatInfo, err = core.ReadFormatInfo(ctx, diskRootPath)
 	if err != nil {
+		// 如果文件不存在则认为是第一次注册，此时返回一个新的
 		if os.IsNotExist(err) {
 			span.Warnf("format file not exist. must be first register")
 			return new(core.FormatInfo), nil
@@ -301,25 +303,31 @@ func (s *Service) fixDiskConf(config *core.Config) {
 func NewService(conf Config) (svr *Service, err error) {
 	span, ctx := trace.StartSpanFromContext(context.Background(), "NewBlobNodeService")
 
+	// 参数检查
 	configInit(&conf)
 
+	// 根据配置文件中的 clustermgr 字段初始化 cm client
 	clusterMgrCli := cmapi.New(conf.Clustermgr)
+	// 初始化 blobnode 节点信息
 	node := cmapi.ServiceNode{
 		ClusterID: uint64(conf.ClusterID),
 		Name:      proto.ServiceNameBlobNode,
 		Host:      conf.Host,
 		Idc:       conf.IDC,
 	}
+	// 向 cm 注册服务
 	err = clusterMgrCli.RegisterService(ctx, node, TickInterval, HeartbeatTicks, ExpiresTicks)
 	if err != nil {
 		span.Fatalf("blobnode register to clusterMgr error:%+v", err)
 	}
 
+	// 向 cm 注册节点
 	if err = registerNode(ctx, clusterMgrCli, &conf); err != nil {
 		span.Fatalf("fail to register node to clusterMgr, err:%+v", err)
 		return nil, err
 	}
 
+	// 从 cm 获取已注册的磁盘列表
 	registeredDisks, err := clusterMgrCli.ListHostDisk(ctx, conf.Host)
 	if err != nil {
 		span.Errorf("Failed ListDisk from clusterMgr. err:%+v", err)
@@ -327,6 +335,7 @@ func NewService(conf Config) (svr *Service, err error) {
 	}
 	span.Infof("registered disks: %v", registeredDisks)
 
+	// 根据 path 检查所有已注册的状态正常的磁盘是否在配置文件中，如果不在则报错
 	check := isAllInConfig(ctx, registeredDisks, &conf)
 	if !check {
 		span.Errorf("no all registered normal disk in config")
@@ -349,16 +358,19 @@ func NewService(conf Config) (svr *Service, err error) {
 		closeCh: make(chan struct{}),
 	}
 
+	// 创建开关管理
 	switchMgr := taskswitch.NewSwitchMgr(clusterMgrCli)
+	// 根据配置文件中的 inspect_conf 创建数据校验管理
 	svr.inspectMgr, err = NewDataInspectMgr(svr, conf.InspectConf, switchMgr)
 	if err != nil {
 		return nil, err
 	}
 
+	// 创建进程上下文
 	svr.ctx, svr.cancel = context.WithCancel(context.Background())
 
+	// 并发创建 磁盘存储器
 	wg := sync.WaitGroup{}
-
 	lostCnt := int32(0)
 	for _, diskConf := range conf.Disks {
 		wg.Add(1)
@@ -367,13 +379,17 @@ func NewService(conf Config) (svr *Service, err error) {
 			var err error
 			defer wg.Done()
 
+			// 初始化磁盘配置
 			svr.fixDiskConf(&diskConf)
 
+			// 检查磁盘路径是否是挂载点
 			if diskConf.MustMountPoint && !myos.IsMountPoint(diskConf.Path) {
 				lost := atomic.AddInt32(&lostCnt, 1)
+				// 设置监控中的状态
 				svr.reportLostDisk(&diskConf.HostInfo, diskConf.Path) // startup check lost disk
 				// skip
 				span.Errorf("Path is not mount point:%s, err:%+v. skip init", diskConf.Path, err)
+				// 丢失的磁盘超过 3 块则推出
 				if lost >= LostDiskCount {
 					log.Fatalf("lost disk count:%d over threshold:%d", lost, LostDiskCount)
 				}
@@ -381,6 +397,7 @@ func NewService(conf Config) (svr *Service, err error) {
 			}
 			// read disk meta. get DiskID
 			format, err := readFormatInfo(ctx, diskConf.Path)
+			// 获取磁盘元数据失败则报错退出初始化
 			if err != nil {
 				// todo: report to ums
 				span.Errorf("Failed read diskMeta:%s, err:%+v. skip init", diskConf.Path, err)
@@ -390,9 +407,11 @@ func NewService(conf Config) (svr *Service, err error) {
 			span.Debugf("local disk meta: %v", format)
 
 			// found diskInfo store in cluster mgr
+			// 在 cm 返回的磁盘列表中根据磁盘 ID 查找
 			diskInfo, foundInCluster := findDisk(registeredDisks, conf.ClusterID, format.DiskID)
 			span.Debugf("diskInfo: %v, foundInCluster:%v", diskInfo, foundInCluster)
 
+			// 如果未找到或磁盘状态不正常，则退出初始化
 			nonNormal := foundInCluster && diskInfo.Status != proto.DiskStatusNormal
 			if nonNormal {
 				// todo: report to ums
@@ -400,15 +419,18 @@ func NewService(conf Config) (svr *Service, err error) {
 				return // skip
 			}
 
+			// 根据 disk 信息初始化磁盘存储器
 			ds, err := disk.NewDiskStorage(svr.ctx, diskConf)
 			if err != nil {
 				span.Fatalf("Failed Open DiskStorage. conf:%v, err:%+v", diskConf, err)
 				return
 			}
 
+			// 如果 cm 集群中没有改磁盘 或者配置文件中标明了需要重新添加，则重新向 cm 注册
 			if !foundInCluster || conf.HostInfo.ReAddDisk { // need to re-register all disks
 				span.Warnf("diskInfo:%v not found in cm, will register to cm, nodeID:%d", diskInfo, conf.NodeID)
 				diskInfo := ds.DiskInfo() // get nodeID to add disk
+				// 向 cm 注册
 				err = clusterMgrCli.AddDisk(ctx, &diskInfo)
 				// if it need re-register disk, it is necessary to ignore duplicate registrations
 				if err != nil && (conf.HostInfo.ReAddDisk && rpc.DetectStatusCode(err) != http.StatusCreated) {
@@ -417,21 +439,24 @@ func NewService(conf Config) (svr *Service, err error) {
 				}
 			}
 
+			// 保存磁盘存储器
 			svr.lock.Lock()
 			svr.Disks[ds.DiskID] = ds
 			svr.lock.Unlock()
 
+			// 向监控上报磁盘状态
 			svr.reportOnlineDisk(&diskConf.HostInfo, diskConf.Path) // restart, normal disk
 			span.Infof("Init disk storage, cluster:%d, formatID:%d, diskID:%d", conf.ClusterID, format.DiskID, ds.ID())
 		}(diskConf)
 	}
-	wg.Wait()
+	wg.Wait() // 等待所有磁盘处理完成
 
 	if err = setDefaultIOStat(conf.DiskConfig.IOStatFileDryRun); err != nil {
 		span.Errorf("Failed set default iostat file, err:%v", err)
 		return nil, err
 	}
 
+	// 注册回调函数更新配置
 	callBackFn := func(conf []byte) error {
 		_, ctx := trace.StartSpanFromContext(ctx, "")
 		c := Config{}
@@ -447,6 +472,7 @@ func NewService(conf Config) (svr *Service, err error) {
 	}
 	config.Register(callBackFn)
 
+	// 注册 rpc worker
 	svr.WorkerService, err = NewWorkerService(&conf.WorkerConfig, clusterMgrCli, conf.ClusterID, conf.IDC)
 	if err != nil {
 		span.Errorf("Failed to new worker service, err: %v", err)
@@ -454,6 +480,7 @@ func NewService(conf Config) (svr *Service, err error) {
 	}
 
 	// background loop goroutines
+	// 启动后台任务
 	go svr.loopHeartbeatToClusterMgr()
 	go svr.loopReportChunkInfoToClusterMgr()
 	go svr.loopGcRubbishChunkFile()
