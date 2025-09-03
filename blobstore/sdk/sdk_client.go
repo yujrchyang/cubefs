@@ -179,10 +179,11 @@ func (s *sdkHandler) Delete(ctx context.Context, args *acapi.DeleteArgs) (failed
 }
 
 func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Location, hm acapi.HashSumMap, err error) {
+	// 未传入参数直接返回错误
 	if args == nil {
 		return proto.Location{}, nil, errcode.ErrIllegalArguments
 	}
-
+	// size == 0 直接返回空的 location
 	if args.Size == 0 {
 		hashSumMap := args.Hashes.ToHashSumMap()
 		for alg := range hashSumMap {
@@ -191,8 +192,10 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 		return proto.Location{Slices: make([]proto.Slice, 0)}, hashSumMap, nil
 	}
 
+	// 获取 Req ID
 	ctx = acapi.ClientWithReqidContext(ctx)
 
+	// 获取“put”限速器
 	name := limitNamePut
 	if err := s.limiter.Acquire(name); err != nil {
 		span := trace.SpanFromContextSafe(ctx)
@@ -201,6 +204,7 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 	}
 	defer s.limiter.Release(name)
 
+	// 如果对象大小小于等于最大值限制（默认 256M），直接 put，否则分段上传
 	if args.Size <= s.conf.MaxSizePutOnce {
 		if args.GetBody == nil {
 			return s.doPutObject(ctx, args)
@@ -221,6 +225,7 @@ func (s *sdkHandler) Put(ctx context.Context, args *acapi.PutArgs) (lc proto.Loc
 		})
 		return lc, hm, err
 	}
+	// 分段上传
 	return s.putParts(ctx, args)
 }
 
@@ -572,6 +577,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (prot
 	var err error
 
 	span.Debugf("accept sdk put request args:%+v", args)
+	// 校验参数是否合法
 	if !args.IsValid() {
 		err = errcode.ErrIllegalArguments
 		span.Error("stream get args is invalid ", errors.Detail(err))
@@ -585,6 +591,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (prot
 		hasherMap[alg] = alg.ToHasher()
 	}
 
+	// 获取限速器
 	rc := s.limiter.Reader(ctx, args.Body)
 	loc, err := s.handler.Put(ctx, rc, args.Size, hasherMap, args.AssignClusterID, args.CodeMode)
 	if err != nil {
@@ -598,6 +605,7 @@ func (s *sdkHandler) doPutObject(ctx context.Context, args *acapi.PutArgs) (prot
 		hashSumMap[alg] = hasher.Sum(nil)
 	}
 
+	// 计算并填充 crc
 	if err = security.LocationCrcFill(loc); err != nil {
 		span.Error("stream put fill location crc", err)
 		err = httpError(err)

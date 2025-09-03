@@ -102,6 +102,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 	if blobSize == 0 {
 		blobSize = atomic.LoadUint32(&h.MaxBlobSize)
 	}
+	// 未指定 Cluster 时选择一个集群
 	if clusterID == 0 {
 		clusterChosen, err := h.clusterController.ChooseOne()
 		if err != nil {
@@ -110,6 +111,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		clusterID = clusterChosen.ClusterID
 	}
 
+	// 按照最大 blobsize 进行切分
 	args := proxy.AllocVolsArgs{
 		Fsize:    size,
 		CodeMode: codeMode,
@@ -137,7 +139,9 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		hosts = hosts[1:]
 		allocHost = host
 
+		// 申请 volume
 		allocRets, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
+		// 申请失败且满足条件时隔离 proxy
 		if err != nil {
 			if errorTimeout(err) || errorConnectionRefused(err) {
 				span.Warn("punish unreachable proxy host:", host)
@@ -182,6 +186,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		setCacheVidHost(clusterID, ret.Vid, allocHost)
 	}
 
+	// 组装返回值
 	blobN := util.AlignedBlocks(size, uint64(blobSize))
 	blobs := make([]proto.Slice, 0, blobN)
 	for _, bidRet := range allocRets {
