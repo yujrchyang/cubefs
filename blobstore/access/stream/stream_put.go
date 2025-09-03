@@ -50,6 +50,7 @@ func (h *Handler) Put(ctx context.Context,
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("put request size:%d hashes:b(%b)", size, hasherMap.ToHashAlgorithm())
 
+	// 检查 size 大小
 	if size <= 0 {
 		return nil, errcode.ErrIllegalArguments
 	}
@@ -64,10 +65,12 @@ func (h *Handler) Put(ctx context.Context,
 	}
 
 	// 2.choose cluster and alloc volume from allocator
+	// 根据策略选择 EC 模式
 	selectedCodeMode := h.allCodeModes.SelectCodeMode(size)
 	span.Debugf("select codemode %d", selectedCodeMode)
 
 	blobSize := atomic.LoadUint32(&h.MaxBlobSize)
+	// 分配 blob
 	clusterID, blobs, err := h.allocFromAllocatorWithHystrix(ctx, selectedCodeMode, uint64(size), blobSize, 0)
 	if err != nil {
 		span.Error("alloc failed", errors.Detail(err))
@@ -77,6 +80,7 @@ func (h *Handler) Put(ctx context.Context,
 
 	// 3.read body and split, alloc from mem pool;ec encode and put into data node
 	limitReader := io.LimitReader(rc, int64(size))
+	// 一个对象会被切分为多个 blob
 	location := &proto.Location{
 		ClusterID: clusterID,
 		CodeMode:  selectedCodeMode,
@@ -114,6 +118,7 @@ func (h *Handler) Put(ctx context.Context,
 
 	encoder := h.encoder[selectedCodeMode]
 	tactic := selectedCodeMode.Tactic()
+	// 这里遍历的单位还是 blob
 	for _, blob := range location.Spread() {
 		vid, bid, bsize := blob.Vid, blob.Bid, int(blob.Size)
 
@@ -127,6 +132,7 @@ func (h *Handler) Put(ctx context.Context,
 		}
 
 		readBuff := buffer.DataBuf[:bsize]
+		// 将 blob 切分为 shard
 		shards, err := encoder.Split(buffer.ECDataBuf)
 		if err != nil {
 			return nil, err
@@ -145,6 +151,7 @@ func (h *Handler) Put(ctx context.Context,
 		}
 
 		// ec encode
+		// ec 编码
 		if err = encoder.Encode(shards); err != nil {
 			return nil, err
 		}
@@ -157,6 +164,7 @@ func (h *Handler) Put(ctx context.Context,
 		buffer = nil
 		<-ready
 		startWrite := time.Now()
+		// 写数据
 		err = h.writeToBlobnodesWithHystrix(ctx, blobident, shards, func() {
 			takeoverBuffer.Release()
 			ready <- struct{}{}
@@ -202,6 +210,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 	span := trace.SpanFromContextSafe(ctx)
 	clusterID, vid, bid := blob.cid, blob.vid, blob.bid
 
+	// 等待所有 shard 完成
 	wg := &sync.WaitGroup{}
 	defer func() {
 		// waiting all shards done in background
@@ -211,15 +220,18 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 		}()
 	}()
 
+	// 获取 volume
 	volume, err := h.getVolume(ctx, clusterID, vid, true)
 	if err != nil {
 		return
 	}
+	// 获取服务控制器
 	serviceController, err := h.clusterController.GetServiceController(clusterID)
 	if err != nil {
 		return
 	}
 
+	// 通过通道处理 put 返回的状态
 	statusCh := make(chan shardPutStatus, len(volume.Units))
 	tactic := volume.CodeMode.Tactic()
 	putQuorum := uint32(tactic.PutQuorum)
@@ -227,27 +239,34 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 		putQuorum = uint32(num)
 	}
 
+	// 计时
 	writeStart := time.Now()
 	writeTime := int32(0)
 
 	// writtenNum ONLY apply on data and partiy shards
 	// TODO: count N and M in each AZ,
 	//    decision ec data is recoverable or not.
+	// 计算分片数，用于后续的判断
 	maxWrittenIndex := tactic.N + tactic.M
 	writtenNum := uint32(0)
 
+	// 并行处理
 	wg.Add(len(volume.Units))
 	for i, unitI := range volume.Units {
 		index, unit := i, unitI
 
 		go func() {
+			// 声明本通道的 shard 状态
 			status := shardPutStatus{index: index}
+			// 结束时发送状态
 			defer func() {
 				statusCh <- status
 				wg.Done()
 			}()
 
+			// 获取本 shard 对应的磁盘 ID
 			diskID := unit.DiskID
+			// 初始化给 blobnode io 的参数
 			args := &blobnode.PutShardArgs{
 				DiskID: diskID,
 				Vuid:   unit.Vuid,
@@ -268,12 +287,14 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 			defer spanChild.Finish()
 
 		RETRY:
+			// 获取磁盘所在节点
 			hostInfo, err := serviceController.GetDiskHost(ctxChild, diskID)
 			if err != nil {
 				span.Error("get disk host failed", errors.Detail(err))
 				return
 			}
 			// punished disk, ignore and return
+			// 如果节点异常并且被隔离，直接返回
 			if hostInfo.Punished {
 				span.Warnf("ignore punished disk(%d %s) uvid(%d) ecidx(%02d) in idc(%s)",
 					diskID, hostInfo.Host, unit.Vuid, index, hostInfo.IDC)
@@ -286,10 +307,13 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				needRetry bool
 				crc       uint32
 			)
+			// 带重试的写
 			writeErr = retry.ExponentialBackoff(3, 200).RuptOn(func() (bool, error) {
+				// 读数据到 body
 				args.Body = bytes.NewReader(shards[index])
-
+				// 写数据到 blobnode
 				crc, err = h.blobnodeClient.PutShard(ctxChild, host, args)
+				// 成功则返回
 				if err == nil {
 					if !crcDisable && crc != crcOrigin {
 						return false, fmt.Errorf("crc mismatch 0x%x != 0x%x", crc, crcOrigin)
@@ -311,6 +335,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 					return true, nil
 				}
 
+				// 异常处理
 				code := rpc.DetectStatusCode(err)
 				switch code {
 				case errcode.CodeDiskBroken, errcode.CodeDiskNotFound,
@@ -389,13 +414,16 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 				return
 			}
 
+			// 计数
 			if index < maxWrittenIndex {
 				atomic.AddUint32(&writtenNum, 1)
 			}
+			// 设置状态
 			status.status = true
 		}()
 	}
 
+	// 等待写完成
 	received := make(map[int]shardPutStatus, len(volume.Units))
 	for len(received) < len(volume.Units) && atomic.LoadUint32(&writtenNum) < putQuorum {
 		st := <-statusCh
@@ -407,6 +435,8 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 		}
 	}
 
+	// 后台等待并分析结果
+	// 如果总体成功则将失败的 shard 发送到修复队列
 	writeDone := make(chan struct{}, 1)
 	// write unaccomplished shard to repair queue
 	go func(writeDone <-chan struct{}) {
@@ -471,6 +501,7 @@ func (h *Handler) writeToBlobnodes(ctx context.Context,
 		}
 	}
 
+	// 返回失败
 	close(writeDone)
 	err = fmt.Errorf("quorum write failed (%d < %d) of %s", writtenNum, putQuorum, blob.String())
 	return

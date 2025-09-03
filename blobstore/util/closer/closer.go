@@ -19,14 +19,19 @@ import (
 )
 
 // Closer is the interface for object that can release its resources.
+// 提供了一个极简、并发安全的“关闭信号”抽象层，
+// 让任何对象都能一次性、优雅地释放资源，并对外广播“我已经关了”
 type Closer interface {
 	// Close release all resources holded by the object.
+	// 触发一次性资源释放
 	Close()
 	// Done returns a channel that's closed when object was closed.
+	// 返回一个只读 channel，关闭后立即可读，用于广播“已关闭”
 	Done() <-chan struct{}
 }
 
 // Close release all resources holded by the object.
+// 如果传入的对象实现了 Closer，就调用他的 Close()，否则什么都不做
 func Close(obj interface{}) {
 	if obj == nil {
 		return
@@ -42,8 +47,8 @@ func New() Closer {
 }
 
 type closer struct {
-	once sync.Once
-	ch   chan struct{}
+	once sync.Once     // 保证 close() 只执行一次（并发安全）
+	ch   chan struct{} // 关闭后所有监听者立即收到 done 信号
 }
 
 func (c *closer) Close() {
