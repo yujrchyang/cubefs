@@ -57,11 +57,14 @@ func (s *Service) ServiceRegister(c *rpc.Context) {
 	}
 	span.Debugf("accept ServiceRegister request, args: %v", args)
 
+	// 校验集群 ID
 	if proto.ClusterID(args.ClusterID) != s.ClusterID {
 		span.Warnf("register service clusterID:%d not match", args.ClusterID)
 		c.RespondError(apierrors.ErrInvalidClusterID)
 		return
 	}
+
+	// 校验 idc 是否匹配
 	isRightIdc := false
 	for _, idc := range s.IDC {
 		if idc == args.Idc {
@@ -75,6 +78,7 @@ func (s *Service) ServiceRegister(c *rpc.Context) {
 		return
 	}
 
+	// 校验是否是正确的 host 地址
 	if !isValidHost(args.Host) {
 		c.RespondError(apierrors.ErrRegisterServiceInvalidParams)
 		return

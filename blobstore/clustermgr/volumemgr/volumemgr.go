@@ -807,11 +807,14 @@ func (v *VolumeMgr) loop() {
 			span_, ctx_ := trace.StartSpanFromContext(context.Background(), "")
 			span_.Infof("leader node start create volume")
 
+			// 获取每种 codemode 创建 volume 个数
 			allocatableVolCounts := v.allocator.StatAllocatable()
 
 		CREATE:
+			// 遍历 codemode
 			for _, modeConfig := range v.codeMode {
 				// do not create new volume when enable is false
+				// 未启用则跳过
 				if !modeConfig.enable {
 					continue
 				}
