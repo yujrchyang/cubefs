@@ -79,11 +79,12 @@ func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode cod
 	var (
 		err        error
 		ret        = make([]allocRet, 0)
-		idcIndexes = mode.T().GetECLayoutByAZ()
-		allocCount = mode.GetShardNum()
+		idcIndexes = mode.T().GetECLayoutByAZ() // 按照 az 分配 ec 索引
+		allocCount = mode.GetShardNum()         // N+M+L
 	)
 
 	// alloc nodeset
+	// nodeset 是根据磁盘类型设置的节点组
 	nodeSetAllocator, err := a.allocNodeSet(ctx, diskType, mode)
 	if err != nil {
 		span.Errorf("alloc nodeset failed, err: %s", err.Error())

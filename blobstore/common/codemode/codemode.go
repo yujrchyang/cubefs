@@ -298,6 +298,13 @@ func (c *Tactic) IsValid() bool {
 }
 
 // GetECLayoutByAZ ec layout by AZ
+// shard 索引为 0～(N+M+L)
+// 这里本质上是按照 AZ 平分 N、M、L，然后按照这个顺序加入到数组中
+// 以 6+6 3AZ 举例：
+//
+//	az0 : 0,1,6,7
+//	az1 : 2,3,8,9
+//	az2 : 4,5,10,11
 func (c *Tactic) GetECLayoutByAZ() (azStripes [][]int) {
 	azStripes = make([][]int, c.AZCount)
 	n, m, l := c.N/c.AZCount, c.M/c.AZCount, c.L/c.AZCount

@@ -138,18 +138,18 @@ type RaftConfig struct {
 }
 
 type Service struct {
-	ConfigMgr  *configmgr.ConfigMgr
-	ScopeMgr   *scopemgr.ScopeMgr
-	ServiceMgr *servicemgr.ServiceMgr
+	ConfigMgr  *configmgr.ConfigMgr   // 管理集群的全局配置信息
+	ScopeMgr   *scopemgr.ScopeMgr     // 管理 diskid/bid 单调递增，为 proxy 分配 bid 区段
+	ServiceMgr *servicemgr.ServiceMgr // 管理数据集群内 proxy/blobnode/scheduler 的服务发现
 	// Note: BlobNodeMgr should always list before volumeMgr
 	// cause BlobNodeMgr applier LoadData should be call first, or VolumeMgr LoadData may return error with disk not found
-	BlobNodeMgr  *cluster.BlobNodeManager
-	ShardNodeMgr *cluster.ShardNodeManager
-	VolumeMgr    *volumemgr.VolumeMgr
-	CatalogMgr   *catalog.CatalogMgr
-	KvMgr        *kvmgr.KvMgr
+	BlobNodeMgr  *cluster.BlobNodeManager  // 管理 blobnode
+	ShardNodeMgr *cluster.ShardNodeManager // 管理 shard
+	VolumeMgr    *volumemgr.VolumeMgr      // 管理 volume/chunk 增删改查，为 proxy 分配 volume
+	CatalogMgr   *catalog.CatalogMgr       // 管理目录
+	KvMgr        *kvmgr.KvMgr              // 管理 scheduler 和 configmgr 的 kv 键值对
 
-	dbs map[string]base.SnapshotDB
+	dbs map[string]base.SnapshotDB // 所有 DB 的映射
 	// status indicate service's current state, like normal/snapshot
 	status uint32
 	// electedLeaderReadIndex indicate that service(elected leader) should execute ReadIndex or not before accept incoming request
@@ -195,33 +195,41 @@ func tearDown() {
 }
 
 func New(cfg *Config) (*Service, error) {
+	// 检查配置并更正一些配置项的默认值
 	if err := cfg.checkAndFix(); err != nil {
 		log.Fatalf(fmt.Sprint("clusterMgr service config check failed => ", errors.Detail(err)))
 	}
 
 	// db initial: normal/volume/raft
+	// 各个 DB 封装基于 rocksdb 的 kvdb，创建时传入自己的 colume family
+	// 创建 NormalDB 句柄
 	normalDB, err := normaldb.OpenNormalDB(cfg.NormalDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatalf("open normal database failed, err: %v", err)
 	}
+	// 创建 VolumeDB 句柄
 	volumeDB, err := volumedb.Open(cfg.VolumeMgrConfig.VolumeDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatalf("open volume database failed, err: %v", err)
 	}
+	// 创建 CatalogDB 句柄
 	catalogDB, err := catalogdb.Open(cfg.CatalogMgrConfig.CatalogDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatalf("open catalog database failed, err: %v", err)
 	}
+	// 创建 RaftDB 句柄
 	raftDB, err := raftdb.OpenRaftDB(cfg.RaftConfig.RaftDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatalf("open raft database failed, err: %v", err)
 	}
+	// 创建 KVDB 句柄
 	kvDB, err := kvdb.Open(cfg.KvDBPath, kvstore.WithCatchSize(cfg.DBCacheSize))
 	if err != nil {
 		log.Fatal("open kv database failed,err:%v", err)
 	}
 
 	// consul client initial
+	// 创建 consul 客户端
 	consulConf := api.DefaultConfig()
 	consulConf.Address = cfg.ConsulAgentAddr
 	if cfg.ConsulTokenFile != "" {
@@ -236,6 +244,7 @@ func New(cfg *Config) (*Service, error) {
 		log.Fatalf("new consul client failed, err: %v", err)
 	}
 
+	// 创建服务结构体
 	service := &Service{
 		dbs:          map[string]base.SnapshotDB{"volume": volumeDB, "normal": normalDB, "keyValue": kvDB, "catalog": catalogDB},
 		Config:       cfg,
@@ -246,42 +255,45 @@ func New(cfg *Config) (*Service, error) {
 	}
 
 	// module manager initial
+	// 创建 ID 管理器
 	scopeMgr, err := scopemgr.NewScopeMgr(normalDB)
 	if err != nil {
 		log.Fatalf("new scopeMgr failed, err: %v", err)
 	}
+	// 创建 blobnode 管理器
 	blobNodeMgr, err := cluster.NewBlobNodeMgr(scopeMgr, normalDB, cfg.BlobNodeDiskMgrConfig)
 	if err != nil {
 		log.Fatalf("new blobNodeMgr failed, err: %v", err)
 	}
-
+	// 创建 shard 管理器
 	shardNodeMgr, err := cluster.NewShardNodeMgr(scopeMgr, normalDB, cfg.ShardNodeDiskMgrConfig)
 	if err != nil {
 		log.Fatalf("new shardNodeMgr failed, err: %v", err)
 	}
-
+	// 创建 kv 管理器
 	kvMgr, err := kvmgr.NewKvMgr(kvDB)
 	if err != nil {
 		log.Fatalf("new kvMgr failed, error: %v", errors.Detail(err))
 	}
-
+	// 创建配置管理器
 	configMgr, err := configmgr.New(kvMgr, cfg.ClusterCfg)
 	if err != nil {
 		log.Fatalf("new configMg failed, error: %v", err)
 	}
-
+	// 创建服务管理器
 	serviceMgr := servicemgr.NewServiceMgr(normaldb.OpenServiceTable(normalDB))
 
 	volumeMgr, err := volumemgr.NewVolumeMgr(cfg.VolumeMgrConfig, blobNodeMgr, scopeMgr, configMgr, volumeDB)
 	if err != nil {
 		log.Fatalf("new volumeMgr failed, error: %v", errors.Detail(err))
 	}
-
+	// 创建目录管理器
 	catalogMgr, err := catalog.NewCatalogMgr(cfg.CatalogMgrConfig, shardNodeMgr, scopeMgr, kvMgr, catalogDB)
 	if err != nil {
 		log.Fatalf("new catalogMgr failed, error: %v", errors.Detail(err))
 	}
 
+	// 赋值
 	service.KvMgr = kvMgr
 	service.VolumeMgr = volumeMgr
 	service.ConfigMgr = configMgr
@@ -292,6 +304,7 @@ func New(cfg *Config) (*Service, error) {
 	service.CatalogMgr = catalogMgr
 
 	// raft server initial
+	// 创建 raft 集群
 	applyIndex := uint64(0)
 	rawApplyIndex, err := raftDB.Get(base.ApplyIndexKey)
 	if err != nil {
@@ -328,6 +341,7 @@ func New(cfg *Config) (*Service, error) {
 		m := raftserver.Member{NodeID: member.ID, Host: member.Host, Learner: member.Learner, Context: mc}
 		cfg.RaftConfig.ServerConfig.Members = append(cfg.RaftConfig.ServerConfig.Members, m)
 	}
+	// 启动 raft
 	raftServer, err := raftserver.NewRaftServer(&cfg.RaftConfig.ServerConfig)
 	if err != nil {
 		log.Fatalf("new raft server failed, err: %v", err)
@@ -343,6 +357,7 @@ func New(cfg *Config) (*Service, error) {
 	catalogMgr.SetRaftServer(raftServer)
 
 	// wait for raft start
+	// 等待 raft leader 选举
 	service.waitForRaftStart()
 
 	// start volumeMgr task and refresh blobnode disk expire time after all ready
@@ -355,9 +370,11 @@ func New(cfg *Config) (*Service, error) {
 	shardNodeMgr.RefreshExpireTime()
 
 	// start raft node background progress
+	// 启动 raft 后台服务
 	go raftNode.Start()
 
 	// start service background loop
+	// 启动服务后台循环
 	go service.loop()
 
 	return service, nil

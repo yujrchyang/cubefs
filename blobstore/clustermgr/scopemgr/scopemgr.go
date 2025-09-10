@@ -53,6 +53,7 @@ func NewScopeMgr(db *normaldb.NormalDB) (*ScopeMgr, error) {
 		return nil, err
 	}
 
+	// 加载现有的数据（刚创建集群时为空）
 	s := &ScopeMgr{tbl: tbl}
 	if err = s.LoadData(ctx); err != nil {
 		return nil, err
@@ -64,7 +65,9 @@ func (s *ScopeMgr) SetRaftServer(raftServer raftserver.RaftServer) {
 	s.raftServer = raftServer
 }
 
+// 分配 ID
 func (s *ScopeMgr) Alloc(ctx context.Context, name string, count int) (base, new uint64, err error) {
+	// 对个数进行检查
 	if count <= 0 {
 		return 0, 0, ErrInvalidCount
 	}
@@ -72,11 +75,15 @@ func (s *ScopeMgr) Alloc(ctx context.Context, name string, count int) (base, new
 		count = MaxCount
 	}
 	span := trace.SpanFromContextSafe(ctx)
+	// 加锁保护
 	s.lock.Lock()
+	// 自增 ID
 	s.scopeItems[name] += uint64(count)
+	// 获取当前的值，用于 raft 中与其他服务通信，设置新的起始 ID
 	new = s.scopeItems[name]
 	s.lock.Unlock()
 
+	// json 序列化，返回 []byte 结构，用于 raft 交互
 	data, err := json.Marshal(&allocCtx{Name: name, Current: new})
 	if err != nil {
 		return
@@ -87,6 +94,7 @@ func (s *ScopeMgr) Alloc(ctx context.Context, name string, count int) (base, new
 		return
 	}
 
+	// 返回分配的起始 ID
 	base = new - uint64(count) + 1
 	return
 }

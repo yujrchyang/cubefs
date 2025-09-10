@@ -110,29 +110,36 @@ func (v *VolumeMgr) finishLastCreateJob(ctx context.Context) error {
 // 6. success and return
 func (v *VolumeMgr) createVolume(ctx context.Context, mode codemode.CodeMode) error {
 	span := trace.SpanFromContextSafe(ctx)
+
+	// 分配 vid
 	_, newVid, err := v.scopeMgr.Alloc(ctx, vidScopeName, 1)
 	if err != nil {
 		return errors.Info(err, "scope alloc vid failed").Detail(err)
 	}
 	vid := proto.Vid(newVid)
 	// check avoid vol already exist
+	// 检查 vid 是否存在
 	if oldVol := v.all.getVol(vid); oldVol != nil {
 		return errors.Info(ErrCreateVolumeAlreadyExist, fmt.Sprintf("create volume vid:%d already exist,please check scopeMgr alloc", vid))
 	}
 	span, ctx = trace.StartSpanFromContextWithTraceID(ctx, "", span.TraceID()+"/"+vid.ToString())
 
+	// N+M+L
 	unitCount := v.getModeUnitCount(mode)
+	// 创建 volume unit 基础信息
 	vuInfos := make([]*clustermgr.VolumeUnitInfo, unitCount)
 	for index := 0; index < unitCount; index++ {
+		// proto.EncodeVuidPrefix(vid, uint8(index)) - vid 左移 32 位 + ec_index
 		vuid := proto.EncodeVuid(proto.EncodeVuidPrefix(vid, uint8(index)), proto.MinEpoch)
 		vuInfos[index] = &clustermgr.VolumeUnitInfo{
-			DiskID: proto.InvalidDiskID,
-			Free:   v.ChunkSize,
-			Total:  v.ChunkSize,
-			Vuid:   vuid,
+			DiskID: proto.InvalidDiskID, // 初始化为 0
+			Free:   v.ChunkSize,         // 初始化为 chunksize
+			Total:  v.ChunkSize,         // 初始化为 chunksize
+			Vuid:   vuid,                // 设置 vuid
 		}
 	}
 
+	// 组建 volume 基础信息
 	volInfo := clustermgr.VolumeInfoBase{
 		Vid:            vid,
 		CodeMode:       mode,
@@ -142,6 +149,7 @@ func (v *VolumeMgr) createVolume(ctx context.Context, mode codemode.CodeMode) er
 		Total:          v.ChunkSize * uint64(v.codeMode[mode].tactic.N),
 		CreateByNodeID: v.raftServer.Status().Id,
 	}
+	// 组建 volume 创建参数
 	createVolCtx := &CreateVolumeCtx{
 		Vid:     vid,
 		VuInfos: vuInfos,
@@ -151,6 +159,7 @@ func (v *VolumeMgr) createVolume(ctx context.Context, mode codemode.CodeMode) er
 
 	// save volume and unit info into transited table(raft propose)
 	data, _ := createVolCtx.Encode()
+	// func (v *VolumeMgr) applyInitCreateVolume(ctx context.Context, vol *volume) error
 	proposeInfo := base.EncodeProposeInfo(v.GetModuleName(), OperTypeInitCreateVolume, data, base.ProposeContext{ReqID: span.TraceID()})
 	if err := v.raftServer.Propose(ctx, proposeInfo); err != nil {
 		return errors.Info(err, fmt.Sprintf("raft propose initial create volume[%d] failed", vid)).Detail(err)
@@ -238,6 +247,7 @@ func (v *VolumeMgr) allocChunkForAllUnits(ctx context.Context, vol *CreateVolume
 	span := trace.SpanFromContextSafe(ctx)
 	span.Debugf("start alloc chunk for all units,volume is %d", vol.Vid)
 
+	// 判断可用 AZ 个数是否 codemode 满足
 	idcCnt := vol.VolInfo.CodeMode.Tactic().AZCount
 	availableIDC := make([]string, 0)
 	for i := range v.IDC {
@@ -256,6 +266,7 @@ func (v *VolumeMgr) allocChunkForAllUnits(ctx context.Context, vol *CreateVolume
 		vuids = append(vuids, vuInfo.Vuid)
 	}
 
+	// 组装申请策略
 	policy := cluster.AllocPolicy{
 		DiskType:   proto.DiskTypeHDD,
 		CodeMode:   vol.VolInfo.CodeMode,

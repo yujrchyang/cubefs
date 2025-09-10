@@ -49,15 +49,20 @@ func (b *BlobNodeManager) refresh(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// space and disk stat info
+	// 创建用于统计空间和磁盘状态的 map
 	spaceStatInfos := make(map[proto.DiskType]*clustermgr.SpaceStatInfo)
 	// generate diskType -> nodeSet -> diskSet -> idc -> rack -> blobnode storage and statInfo
+	// 创建 nodeset 分配器
 	nodeSetAllocators := make(map[proto.DiskType]nodeSetAllocatorMap)
+	// 创建 diskset 分配器
 	diskSetAllocators := make(map[proto.DiskType]diskSetAllocatorMap)
-
+	// 创建 ecdiskset
 	ecDiskSet := make(map[proto.DiskType][]*diskItem)
+	// 获取所有节点
 	nodeSetsMap := b.topoMgr.GetAllNodeSets(ctx)
 
 	for diskType, nodeSets := range nodeSetsMap {
+		// 不存在该磁盘类型的则创建
 		if _, ok := nodeSetAllocators[diskType]; !ok {
 			nodeSetAllocators[diskType] = make(nodeSetAllocatorMap)
 		}
@@ -68,6 +73,7 @@ func (b *BlobNodeManager) refresh(ctx context.Context) {
 			spaceStatInfos[diskType] = &clustermgr.SpaceStatInfo{}
 		}
 		spaceStatInfo := spaceStatInfos[diskType]
+		// 创建 IDC 容器
 		diskStatInfo := make(map[string]*clustermgr.DiskStatInfo)
 		for i := range b.cfg.IDC {
 			diskStatInfo[b.cfg.IDC[i]] = &clustermgr.DiskStatInfo{IDC: b.cfg.IDC[i]}

@@ -29,23 +29,29 @@ import (
 func (s *Service) NodeAdd(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
+
+	// 创建参数
 	args := new(clustermgr.BlobNodeInfo)
+	// 解析参数
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
 		return
 	}
 	span.Infof("accept NodeAdd request, args: %v", args)
 
+	// 检测节点是否存在
 	if nodeID, ok := s.BlobNodeMgr.CheckNodeInfoDuplicated(ctx, &args.NodeInfo); ok {
 		span.Warnf("node already exist, no need to create again, node info: %v", args)
 		c.RespondJSON(&clustermgr.NodeIDAllocRet{NodeID: nodeID})
 		return
 	}
+	// 校验集群 ID
 	if args.ClusterID != s.ClusterID {
 		span.Warn("invalid clusterID")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
+	// 校验 idc 是否匹配
 	for i := range s.IDC {
 		if args.Idc == s.IDC[i] {
 			break
@@ -56,12 +62,14 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 			return
 		}
 	}
+	// 校验节点信息参数是否有效
 	if err := s.BlobNodeMgr.ValidateNodeInfo(ctx, &args.NodeInfo); err != nil {
 		span.Warn("invalid nodeinfo")
 		c.RespondError(err)
 		return
 	}
 
+	// 分配节点 ID
 	nodeID, err := s.BlobNodeMgr.AllocNodeID(ctx)
 	if err != nil {
 		span.Errorf("alloc node id failed =>", errors.Detail(err))
@@ -70,6 +78,7 @@ func (s *Service) NodeAdd(c *rpc.Context) {
 	}
 	args.NodeID = nodeID
 
+	// 更新 raft
 	data, err := json.Marshal(args)
 	if err != nil {
 		span.Errorf("json marshal failed, node info: %v, error: %v", args, err)

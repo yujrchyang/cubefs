@@ -480,11 +480,15 @@ func NewService(conf Config) (svr *Service, err error) {
 	}
 
 	// background loop goroutines
-	// 启动后台任务
+	// 启动汇报心跳后台定时任务
 	go svr.loopHeartbeatToClusterMgr()
+	// 启动汇报 chunk 信息后台定时任务
 	go svr.loopReportChunkInfoToClusterMgr()
+	// 启动回收 chunk file 后台定时任务
 	go svr.loopGcRubbishChunkFile()
+	// 启动清理过期文件后台定时任务
 	go svr.loopCleanExpiredStatFile()
+	// 启动数据校验后台定时任务
 	go svr.inspectMgr.loopDataInspect()
 
 	return

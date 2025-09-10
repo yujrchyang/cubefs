@@ -77,11 +77,13 @@ func NewBlobNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg Di
 		return nil, errors.New("idc can not be nil")
 	}
 
+	// 加载 disk cf
 	diskTbl, err := normaldb.OpenBlobNodeDiskTable(db, cfg.EnsureIndex)
 	if err != nil {
 		return nil, errors.Info(err, "open disk table failed").Detail(err)
 	}
 
+	// 记载 node cf
 	nodeTbl, err := normaldb.OpenBlobNodeTable(db)
 	if err != nil {
 		return nil, errors.Info(err, "open node table failed").Detail(err)
@@ -105,6 +107,7 @@ func NewBlobNodeMgr(scopeMgr scopemgr.ScopeMgrAPI, db *normaldb.NormalDB, cfg Di
 	bm.manager = m
 
 	// initial load data
+	// 加载数据
 	err = bm.LoadData(ctx)
 	if err != nil {
 		return nil, err
@@ -251,6 +254,7 @@ func (b *BlobNodeManager) ListDiskInfo(ctx context.Context, opt *clustermgr.List
 
 func (b *BlobNodeManager) AddDisk(ctx context.Context, args *clustermgr.BlobNodeDiskInfo) error {
 	span := trace.SpanFromContextSafe(ctx)
+	// 在内存中获取节点信息
 	node, ok := b.getNode(args.NodeID)
 	if !ok {
 		span.Warnf("node not exist, disk info: %v", args)
@@ -273,6 +277,7 @@ func (b *BlobNodeManager) AddDisk(ctx context.Context, args *clustermgr.BlobNode
 		return err
 	}
 	// CheckDiskInfoDuplicated will add a meta lock. To avoid nested locks, it should not be called in node.withRLocked
+	// 检查磁盘信息是否已存在
 	if err = b.CheckDiskInfoDuplicated(ctx, args.DiskID, &args.DiskInfo, &nodeInfo); err != nil {
 		return err
 	}
@@ -281,6 +286,7 @@ func (b *BlobNodeManager) AddDisk(ctx context.Context, args *clustermgr.BlobNode
 	args.Rack = nodeInfo.Rack
 	args.Host = nodeInfo.Host
 
+	// 更新 raft
 	data, err := json.Marshal(args)
 	if err != nil {
 		span.Errorf("json marshal failed, disk info: %v, error: %v", args, err)
@@ -398,6 +404,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 	)
 
 	// repair
+	// 修复时，volume 中正常的磁盘是不能选的，会设置到 Excludes 中
 	if len(policy.Excludes) > 0 {
 		ret, err := allocator.ReAlloc(ctx, reAllocPolicy{
 			diskType:  policy.DiskType,
@@ -417,8 +424,11 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 		}
 	} else {
 		tactic := policy.CodeMode.Tactic()
+		// 根据 AZ 获取 EC 索引分布
 		idcIndexes := tactic.GetECLayoutByAZ()
 		rand.Seed(time.Now().UnixNano())
+		// 打乱顺序
+		// 这里的作用的是让每个 ec 组的相同索引尽可能在不同 az 上分配
 		rand.Shuffle(len(idcIndexes), func(i, j int) {
 			idcIndexes[i], idcIndexes[j] = idcIndexes[j], idcIndexes[i]
 		})
@@ -533,31 +543,38 @@ func (b *BlobNodeManager) GetModuleName() string {
 }
 
 func (b *BlobNodeManager) LoadData(ctx context.Context) error {
+	// 在 rocksdb 中加载所有磁盘信息
 	diskDBs, err := b.diskTbl.GetAllDisks()
 	if err != nil {
 		return errors.Info(err, "get all disks failed").Detail(err)
 	}
+	// 在 rocksdb 中加载所有下线磁盘信息
 	droppingDiskDBs, err := b.diskTbl.GetAllDroppingDisk()
 	if err != nil {
 		return errors.Info(err, "get dropping disks failed").Detail(err)
 	}
+	// 在 rocksdb 中加载所有节点信息
 	nodeDBs, err := b.nodeTbl.GetAllNodes()
 	if err != nil {
 		return errors.Info(err, "get all nodes failed").Detail(err)
 	}
+	// 在 rocksdb 中加载所有下线节点信息
 	droppingNodeDBs, err := b.nodeTbl.GetAllDroppingNode()
 	if err != nil {
 		return errors.Info(err, "get dropping nodes failed").Detail(err)
 	}
+	// 维护下线磁盘 map
 	droppingDisks := make(map[proto.DiskID]bool)
 	for _, diskID := range droppingDiskDBs {
 		droppingDisks[diskID] = true
 	}
+	// 维护下线节点 map
 	droppingNodes := make(map[proto.NodeID]bool)
 	for _, nodeID := range droppingNodeDBs {
 		droppingNodes[nodeID] = true
 	}
 
+	// 维护所有节点 map
 	allNodes := make(map[proto.NodeID]*nodeItem)
 	curNodeSetID := ecNodeSetID
 	curDiskSetID := ecDiskSetID
@@ -581,6 +598,7 @@ func (b *BlobNodeManager) LoadData(ctx context.Context) error {
 	}
 	b.allNodes = allNodes
 
+	// 维护所有磁盘 map
 	allDisks := make(map[proto.DiskID]*diskItem)
 	for _, disk := range diskDBs {
 		info := b.diskInfoRecordToDiskInfo(disk)
@@ -615,6 +633,7 @@ func (b *BlobNodeManager) LoadData(ctx context.Context) error {
 	b.topoMgr.SetDiskSetID(curDiskSetID)
 
 	// Refresh inside loadData because of snapshot
+	// 刷新所有信息
 	b.refresh(ctx)
 
 	return nil

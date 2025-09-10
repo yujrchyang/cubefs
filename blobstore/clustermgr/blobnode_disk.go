@@ -51,23 +51,27 @@ func (s *Service) DiskAdd(c *rpc.Context) {
 	}
 	span.Infof("accept DiskAdd request, args: %v", args)
 
+	// 校验集群 ID
 	if args.ClusterID != s.ClusterID {
 		span.Warn("invalid clusterID")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
+	// 校验磁盘 ID，磁盘 ID 要比未分配的 ID 小
 	curDiskID := s.ScopeMgr.GetCurrent(cluster.DiskIDScopeName)
 	if proto.DiskID(curDiskID) < args.DiskID {
 		span.Warn("invalid disk_id")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
+	// 校验节点 ID，节点 ID 要比未分配的 ID 小
 	curNodeID := s.ScopeMgr.GetCurrent(cluster.NodeIDScopeName)
 	if proto.NodeID(curNodeID) < args.NodeID {
 		span.Warn("invalid node_id")
 		c.RespondError(apierrors.ErrIllegalArguments)
 		return
 	}
+
 	err := s.BlobNodeMgr.AddDisk(ctx, args)
 	if err != nil {
 		c.RespondError(err)

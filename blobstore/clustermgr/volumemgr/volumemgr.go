@@ -749,17 +749,22 @@ func (v *VolumeMgr) loop() {
 			span_, ctx_ := trace.StartSpanFromContext(context.Background(), "")
 			span_.Infof("leader node start create volume")
 
+			// 获取每种 codemode 创建 volume 个数
 			allocatableVolCounts := v.allocator.StatAllocatable()
+			// 获取磁盘总数
 			diskNums := v.diskMgr.Stat(ctx_, proto.DiskTypeHDD).TotalDisk
 
 		CREATE:
+			// 遍历 codemode
 			for _, modeConfig := range v.codeMode {
 				// do not create new volume when enable is false
+				// 未启用则跳过
 				if !modeConfig.enable {
 					continue
 				}
-
+				// N+M+L
 				count := v.getModeUnitCount(modeConfig.mode)
+				// 计算需要最少申请多少个 volume
 				minVolCount := int(float64(diskNums) * modeConfig.sizeRatio / float64(count))
 				if minVolCount < v.MinAllocableVolumeCount {
 					minVolCount = v.MinAllocableVolumeCount
