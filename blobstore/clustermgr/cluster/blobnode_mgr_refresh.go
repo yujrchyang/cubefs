@@ -82,8 +82,10 @@ func (b *BlobNodeManager) refresh(ctx context.Context) {
 		for _, nodeSet := range nodeSets {
 			nodeSetAllocator := newNodeSetAllocator(nodeSet.ID())
 			for _, diskSet := range nodeSet.GetDiskSets() {
+				// 获取磁盘切片（可能来自多个节点）
 				disks := diskSet.GetDisks()
 				// ecDiskSet[diskType] = append(ecDiskSet[diskType], disks...)
+				// 以 IDC 为单位的分配器，包含 Rack 和 Node 分配器
 				idcAllocators, diskSetFreeChunk := b.generateDiskSetStorage(ctx, disks, spaceStatInfo, diskStatInfo)
 				diskSetAllocator := newDiskSetAllocator(diskSet.ID(), diskSetFreeChunk, idcAllocators)
 				diskSetAllocators[diskType][diskSet.ID()] = diskSetAllocator

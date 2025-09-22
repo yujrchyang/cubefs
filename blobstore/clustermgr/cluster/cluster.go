@@ -823,23 +823,31 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 	)
 	for _, disk := range disks {
 		// call getNode outside disk lock, avoid nested meta and disk lock
+		// 获取磁盘所在 nodeID
 		nodeID := proto.InvalidNodeID
 		disk.withRLocked(func() error {
 			nodeID = disk.info.NodeID
 			return nil
 		})
+		// 根据 nodeID 获取节点信息
 		node, nodeExist := d.getNode(nodeID)
 		// read one disk info
+		// 获取磁盘信息：
+		//   位置信息 - 数据中心、机架、主机
+		//   容量信息
+		//   状态统计
 		err := disk.withRLocked(func() error {
 			idc = disk.info.Idc
 			rack = disk.info.Rack
 			host = disk.info.Host
+			// 如果有节点信息则使用节点中保存的值
 			if nodeExist {
 				idc = node.info.Idc
 				rack = node.info.Rack
 				host = node.info.Host
 			}
 			// idc disk status num calculate
+			// 磁盘信息按照 IDC 进行汇总
 			if diskStatInfosM[idc] == nil {
 				diskStatInfosM[idc] = &clustermgr.DiskStatInfo{IDC: idc}
 			}
@@ -980,7 +988,9 @@ func (d *manager) generateDiskSetStorage(ctx context.Context, disks []*diskItem,
 
 func (d *manager) calculateWritable(nodeStgs map[string][]*nodeAllocator) int64 {
 	// writable space statistic
+	// suCount - 最大 N+M+L
 	codeMode, suCount := d.getMaxSuCount()
+	// 每个 idc 需要提供的 ec 分片数
 	idcSuCount := suCount / len(d.cfg.IDC)
 	var itemSize int64
 	if d.cfg.ChunkSize != 0 {
@@ -990,28 +1000,35 @@ func (d *manager) calculateWritable(nodeStgs map[string][]*nodeAllocator) int64 
 		itemSize = d.cfg.ShardSize
 	}
 
+	// 节点级冗余
 	if d.cfg.HostAware && len(nodeStgs) > 0 {
 		// calculate minimum idc writable item num
 		calIDCWritableFunc := func(stgs []*nodeAllocator) int64 {
 			stripe := make([]int64, idcSuCount)
 			lefts := make(maxHeap, 0)
 			n := int64(0)
+			// 将所有节点的 chunk 数放入到 heap 中
 			for _, v := range stgs {
+				// 该节点能提供的 chunk 个数
 				count := v.free / itemSize
 				if count > 0 {
 					lefts = append(lefts, count)
 				}
 			}
 
+			// 初始化最大堆，堆顶是剩余 chunk 数最多的节点
 			heap.Init(&lefts)
 			for {
+				// 有空闲 chunk 的 node 小于每个 idc 需要提供的分片数，已经不能继续分配容量，退出
 				if lefts.Len() < idcSuCount {
 					break
 				}
+				// 弹出本 idc 需要提供的分片个数的节点
 				for i := 0; i < idcSuCount; i++ {
 					stripe[i] = heap.Pop(&lefts).(int64)
 				}
 				// set minimum stripe count to 10 with more random selection, optimize writable space accuracy
+				// 10 个一批，如果还有剩余在重新推到 最大堆 中
 				min := int64(10)
 				n += min
 				for i := 0; i < idcSuCount; i++ {
@@ -1024,6 +1041,7 @@ func (d *manager) calculateWritable(nodeStgs map[string][]*nodeAllocator) int64 
 			return n
 		}
 		minimumStripeCount := int64(math.MaxInt64)
+		// 多个 idc 选择最小的
 		for idc := range nodeStgs {
 			n := calIDCWritableFunc(nodeStgs[idc])
 			if n < minimumStripeCount {
@@ -1033,6 +1051,9 @@ func (d *manager) calculateWritable(nodeStgs map[string][]*nodeAllocator) int64 
 		return minimumStripeCount * int64(codeMode.Tactic().N) * itemSize
 	}
 
+	// 不支持节点级冗余的话，选择一个容量最小的 idc 进行计算
+	// minimumChunkNum : 容量最小的 idc
+	// minimumChunkNum / int64(idcSuCount) : 这个 idc 可提供的条带数量
 	if len(nodeStgs) > 0 {
 		minimumChunkNum := int64(math.MaxInt64)
 		for idc := range nodeStgs {
