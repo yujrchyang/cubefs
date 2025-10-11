@@ -84,26 +84,31 @@ func (a *allocator) Alloc(ctx context.Context, diskType proto.DiskType, mode cod
 	)
 
 	// alloc nodeset
-	// nodeset 是根据磁盘类型设置的节点组
+	// 根据 磁盘类型 选择 nodeSet 分配器
 	nodeSetAllocator, err := a.allocNodeSet(ctx, diskType, mode)
 	if err != nil {
 		span.Errorf("alloc nodeset failed, err: %s", err.Error())
 		return nil, err
 	}
 	// alloc diskset
+	// 通过加权随机方式在 nodeSet 中选择一个 diskSet
 	diskSetAllocator, err := nodeSetAllocator.allocDiskSet(ctx, allocCount, excludes)
 	if err != nil {
 		span.Errorf("alloc diskset failed, err: %s", err.Error())
 		return nil, err
 	}
 
+	// len(idcIndexes[0]) - 每个 IDC 需要分配的 EC 切片个数
+	// 获取满足要求的所有 IDC 分配器
 	idcAllocators := diskSetAllocator.alloc(ctx, len(idcIndexes[0]))
+	// 如果满足要求的 IDC 个数小于要求的个数，表明资源不足，返回失败
 	if len(idcAllocators) < len(idcIndexes) {
 		span.Errorf("need %d idcAllocators, but got %d", len(idcIndexes), len(idcAllocators))
 		return nil, ErrNoEnoughSpace
 	}
 
 	for i := range idcIndexes {
+		// 获取这个 IDC 需要分配的切片个数
 		count := len(idcIndexes[i])
 		_disks, _err := idcAllocators[i].alloc(ctx, count, nil)
 		if _err != nil {
@@ -220,6 +225,7 @@ func (n *nodeSetAllocator) addDiskSet(diskSet *diskSetAllocator) {
 	n.weight += diskSet.weight
 }
 
+// 加权随机选择
 func (n *nodeSetAllocator) allocDiskSet(ctx context.Context, count int, excludes []proto.DiskSetID) (*diskSetAllocator, error) {
 	span := trace.SpanFromContextSafe(ctx)
 
@@ -229,6 +235,8 @@ func (n *nodeSetAllocator) allocDiskSet(ctx context.Context, count int, excludes
 			_excludes[diskSetID] = struct{}{}
 		}
 	}
+	// weight 是 nodeSet 的总权重，等于 [0,w1][w1,w2]...
+	// randNum 可能落在任意区间内，即任意节点上
 	randNum := rand.Int63n(atomic.LoadInt64(&n.weight))
 	for diskSetID, diskSet := range n.diskSets {
 		if _, ok := _excludes[diskSetID]; ok {
@@ -236,6 +244,8 @@ func (n *nodeSetAllocator) allocDiskSet(ctx context.Context, count int, excludes
 			continue
 		}
 		free := atomic.LoadInt64(&diskSet.weight)
+		// free >= randNum 表明在本节点上
+		// 否则 randNum 减去 free 后继续遍历
 		if free >= randNum && free >= int64(count) {
 			return diskSet, nil
 		}
@@ -263,14 +273,17 @@ func (d *diskSetAllocator) alloc(ctx context.Context, count int) (ret []*idcAllo
 	span := trace.SpanFromContextSafe(ctx)
 	for _, idcAllocator := range d.idcAllocators {
 		nodeNum := len(idcAllocator.nodeStorages)
+		// 节点个数小于要求的切片个数
 		if idcAllocator.diffHost && nodeNum < count {
 			span.Errorf("allocate diff host idcAllocator from diskSet: %d failed, allocate num: %d, node num: %d", d.diskSetID, count, nodeNum)
 			continue
 		}
+		// 整个 IDC 空闲容量不足
 		if free := atomic.LoadInt64(&idcAllocator.weight); free < int64(count) {
 			span.Errorf("allocate idcAllocator from diskSet: %d failed, allocate num: %d, idc free: %d", d.diskSetID, count, free)
 			continue
 		}
+		// 返回满足要求的所有 IDC
 		ret = append(ret, idcAllocator)
 	}
 	return
@@ -308,6 +321,8 @@ type nodeAllocator struct {
 // allocDisk will choose disk by disk free item count weight
 func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID]*diskItem) (chosenDisk *diskItem) {
 	span := trace.SpanFromContextSafe(ctx)
+
+	// 本节点没有空间了，直接返回
 	totalWeight := atomic.LoadInt64(&d.weight)
 	if totalWeight <= 0 {
 		return nil
@@ -317,20 +332,25 @@ func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID
 	disks := make([]*diskItem, 0, total)
 	disks = append(disks, d.disks...)
 
+	// 最多尝试 total 次
 	for i := 0; i < total; i++ {
 		chosenDisk = func() *diskItem {
 			randNum := rand.Intn(randTotal)
 			defer func() {
+				// 将已经判断过的 disk 放到切片的最后
 				disks[randTotal-1], disks[randNum] = disks[randNum], disks[randTotal-1]
+				// 通过自减，缩小范围，从而再下一次随机选择时跳过已判断过的
 				randTotal--
 			}()
 			disk := disks[randNum]
 			err := disk.withRLocked(func() error {
 				weight := disk.weight()
+				// 没有空闲空间则跳过
 				if weight <= 0 {
 					return ErrNoEnoughSpace
 				}
 				// ignore not writable disk
+				// 不可写则跳过
 				if !disk.isWritable() {
 					span.Debugf("disk %d is not writable, is it expired: %v", disk.diskID, disk.isExpire())
 					return ErrNoEnoughSpace
@@ -341,6 +361,7 @@ func (d *nodeAllocator) allocDisk(ctx context.Context, excludes map[proto.DiskID
 				return nil
 			}
 
+			// 不在排除列表中，跳过
 			if _, ok := excludes[disk.diskID]; !ok {
 				span.Debugf("chosen disk: %#v", disk.info)
 				return disk
@@ -363,28 +384,36 @@ func (s *idcAllocator) alloc(ctx context.Context, count int, excludes map[proto.
 
 	totalWeight := atomic.LoadInt64(&s.weight)
 	span.Debugf("%s idc total free item: %d", s.idc, totalWeight)
+	// 可用空间小于要求的切片个数，返回失败
 	if totalWeight < int64(count) {
 		return nil, ErrNoEnoughSpace
 	}
 
 	if s.diffRack && s.diffHost {
+		// 根据机架进行分配
 		chosenRacks, chosenDataStorages, chosenDisks = s.allocFromRack(ctx, count, excludes)
 	} else {
+		// 根据节点进行分配
 		chosenDataStorages, chosenDisks = s.allocFromNodeStorages(ctx, count, totalWeight-defaultAllocTolerateBuff, s.nodeStorages, excludes)
 	}
 
+	// 分配失败
 	if len(chosenDisks) < count {
 		span.Warnf("alloc failed, chosenRacks: %v, chosenNodeStorages: %+v, chosenDisks: %v", chosenRacks, chosenDataStorages, chosenDisks)
 		return nil, ErrNoEnoughSpace
 	}
 
+	// 分配成功后减去分配的切片个数
 	atomic.AddInt64(&s.weight, int64(-count))
+	// 调整机架的权重
 	for rack, num := range chosenRacks {
 		atomic.AddInt64(&s.rackStorages[rack].weight, int64(-num))
 	}
+	// 调整节点的权重
 	for stg, num := range chosenDataStorages {
 		atomic.AddInt64(&stg.weight, int64(-num))
 	}
+	// 调整磁盘的权重
 	for id, disk := range chosenDisks {
 		disk.withLocked(func() error {
 			disk.decrWeight(1)
@@ -550,16 +579,19 @@ func (s *idcAllocator) allocFromNodeStorages(ctx context.Context, count int, tot
 	}
 	span.Debugf("total nodeStorages num: %d, excludes host: %v, excludes disk: %v", nodeStorageNum, excludeHosts, excludes)
 	// no available data node after exclude, then return
+	// 没有可用节点了
 	if nodeStorageNum == 0 {
 		return
 	}
 	// no available item after exclude, then return
+	// 没有可用空间了
 	if totalWeight <= 0 {
 		return
 	}
 
 	chosenIdx := 0
 	retryTimes := 0
+	// 最多重试 3 次
 	maxRetryTimes := defaultRetryTimes
 	// maxRetry times will equal to count when nodeStorageNum less than target count
 	if nodeStorageNum < count {
@@ -578,14 +610,20 @@ RETRY:
 		for i := chosenIdx; i < nodeStorageNum; i++ {
 			weight := atomic.LoadInt64(&nodeStorages[i].weight)
 			span.Debugf("total free item: %d, node(%s) free item: %d, randNum: %d", _totalWeight, nodeStorages[i].host, weight, randNum)
+			// 加权随机选择节点
 			if weight >= randNum {
 				if selectedDisk := nodeStorages[i].allocDisk(ctx, chosenDisks); selectedDisk != nil {
+					// 选盘成功
 					chosenDisks[selectedDisk.diskID] = selectedDisk
 					chosenDataStorages[nodeStorages[i]] += 1
+					// 将当前节点依次放到最开始（0,1,2），下次循环时不再使用
 					nodeStorages[chosenIdx], nodeStorages[i] = nodeStorages[i], nodeStorages[chosenIdx]
+					// 该节点不能再次被选择，在总权重中减去该节点的选中
 					_totalWeight -= weight
+					// 需要的切片个数减一
 					count -= 1
 					chosenIdx += 1
+					// 执行下一次选择
 					goto RETRY
 				}
 			}
