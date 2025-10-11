@@ -500,6 +500,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 		})
 		span.Debugf("idcIndexes is %#v", idcIndexes)
 
+		// 分配磁盘组
 		ret, err := allocator.Alloc(ctx, policy.DiskType, policy.CodeMode, nil)
 		if err != nil {
 			span.Errorf("create volume alloc first time failed, err: %s", err.Error())
@@ -510,6 +511,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 			idc := r.Idc
 			idcDiskMap[idc] = r.Disks
 			idcVuidIndexMap[idc] = make(map[proto.Vuid]int)
+			// vuidIdx 表示 EC 切片在 EC 中索引
 			for _, vuidIdx := range idcIndexes[idcIdx] {
 				vuid := policy.Vuids[vuidIdx]
 				idcVuidMap[idc] = append(idcVuidMap[idc], vuid)
@@ -545,6 +547,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 			}
 		}
 
+		// 校验分配的磁盘 ID 是否符合要求
 		if err := b.validateAllocRet(disks); err != nil {
 			return nil, nil, err
 		}
@@ -553,6 +556,7 @@ func (b *BlobNodeManager) AllocChunks(ctx context.Context, policy AllocPolicy) (
 		wg := sync.WaitGroup{}
 		wg.Add(len(disks))
 
+		// 并发创建 chunk
 		for ii := range disks {
 			idx := ii
 			disk, err_ := b.GetDiskInfo(ctx, disks[idx])
