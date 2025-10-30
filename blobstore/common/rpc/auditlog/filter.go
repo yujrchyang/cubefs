@@ -26,6 +26,7 @@ import (
 )
 
 // LogFilter filter log with queries.
+// Filter 返回 true 则跳过不输出这条日志
 type LogFilter interface {
 	Filter(*AuditLog) bool
 }
@@ -73,7 +74,9 @@ type filters struct {
 
 func newLogFilter(cfgs []FilterConfig) (LogFilter, error) {
 	fs := &filters{}
+	// 遍历最外层 filters 数组
 	for _, cfg := range cfgs {
+		// filters 数组中每个元素生成一个过滤函数，添加到 filters 切片中
 		f, err := newFilter(cfg)
 		if err != nil {
 			return nil, err
@@ -83,7 +86,10 @@ func newLogFilter(cfgs []FilterConfig) (LogFilter, error) {
 	return fs, nil
 }
 
+// 多个 filter 块之间，只要一个 filter 返回 ture，则不输出这条日志，即为 或 的关系
+// 一个 filter 中，满足 (must && !mustnot) || should 则返回 true，否则返回 false
 func (fs *filters) Filter(log *AuditLog) bool {
+	// 遍历所有的过滤条件，有一个成立则返回 true，即该条 log 不显示
 	for idx := range fs.filters {
 		if fs.filters[idx].Filter(log) {
 			return true
@@ -92,6 +98,7 @@ func (fs *filters) Filter(log *AuditLog) bool {
 	return false
 }
 
+// 带优先级动态调整的审计日志过滤器
 type filter struct {
 	lock  sync.RWMutex
 	and   condQueue
@@ -127,6 +134,13 @@ func getConditions(operation, field string, value interface{}) ([]condFunc, erro
 	return funcs, nil
 }
 
+// FilterConfig 是一个 and/or 条件组合
+// operation - term/match/regexp/range
+// field - status_code/duration/path
+// value - ...
+//
+// must 和 mustnot 为 and
+// should 为 or
 func newFilter(cfg FilterConfig) (*filter, error) {
 	f := new(filter)
 	f.lock.Lock()
@@ -170,6 +184,8 @@ func newFilter(cfg FilterConfig) (*filter, error) {
 }
 
 func (f *filter) Filter(log *AuditLog) bool {
+	// 不是首要条件命中时会给 count+1，当非首要条件到达 10000 时通过 heap.Init 根据
+	// 每个条件的 Priority 重新排序，命中次数多的排在前边，以优化条件判断
 	if atomic.LoadInt64(&f.count) > 10000 {
 		atomic.StoreInt64(&f.count, 0)
 		atomic.AddInt64(&f.reset, 1)
@@ -183,6 +199,7 @@ func (f *filter) Filter(log *AuditLog) bool {
 	f.lock.RLock()
 	defer f.lock.RUnlock()
 
+	// and 条件，只要有一个条件不满足则返回 false，此时会输出这条 log
 	for idx := range f.and {
 		if !f.and[idx].Func(log) {
 			atomic.AddInt64(&f.and[idx].Priority, 1)
@@ -193,6 +210,9 @@ func (f *filter) Filter(log *AuditLog) bool {
 		}
 	}
 
+	// and 所有条件都满足，再来判断 or 条件，如果没有指定 or，则直接返回 true，即不输出这条日志
+	// 只要有一个 or 条件满足则返回 true，即不输出这条日志
+	// or 条件都不满足，返回 false，即输出这条日志
 	hasor := len(f.or) > 0
 	for idx := range f.or {
 		if f.or[idx].Func(log) {
@@ -273,6 +293,8 @@ func parse(operation, field, value string) (condFunc, error) {
 					return nil, fmt.Errorf("invalid range:%s", value)
 				}
 
+				// start 未指定时为 int64 的最小值
+				// end 未指定时为 int64 的最大值
 				start := int64(math.MinInt64)
 				if se[0] != "" {
 					i, err := strconv.ParseInt(se[0], 10, 64)
@@ -295,6 +317,7 @@ func parse(operation, field, value string) (condFunc, error) {
 			return func(log *AuditLog) bool {
 				val := getIntField(log)
 				for idx := range ranges {
+					// 范围内返回 true，左闭右闭区间，因此 start 和 end 可以是同一个值
 					if val >= ranges[idx][0] && val <= ranges[idx][1] {
 						return true
 					}

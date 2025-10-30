@@ -145,6 +145,7 @@ func Open(module string, cfg *Config) (ph interface {
 		}
 	}
 
+	// 初始化审计日志过滤器
 	logFilter, err := newLogFilter(cfg.Filters)
 	if err != nil {
 		return nil, nil, errors.Info(err, "new log filter").Detail(err)
