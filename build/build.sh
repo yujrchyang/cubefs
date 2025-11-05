@@ -200,7 +200,7 @@ build_tcmalloc() {
     # mkdir ${BuildOutPath}/gperftools-gperftools-${TCMALLOC_VER}
     pushd ${BuildOutPath}/gperftools-gperftools-${TCMALLOC_VER}
     ./autogen.sh
-    CFLAGS='-fPIC' ./configure --enable-frame-pointers
+    CFLAGS='-fPIC' CXXFLAGS="-fPIC" ./configure --enable-frame-pointers --disable-libunwind --disable-shared --enable-static
     make -j ${PROCESSOR_NUMS}
     cp -f .libs/libtcmalloc.a ${BuildDependsLibPath}
     cp -rf src/gperftools ${BuildDependsIncludePath}
@@ -229,7 +229,9 @@ build_rocksdb() {
         FLAGS="-Wno-error=deprecated-copy -Wno-error=pessimizing-move -Wno-error=shadow -Wno-error=unused-but-set-variable"
     else
         CCMAJOR=`gcc -dumpversion | awk -F. '{print $1}'`
-        if [ ${CCMAJOR} -ge 9 ]; then
+        if [ "${CCMAJOR}" -ge 11 ]; then
+            FLAGS="-Wno-deprecated-copy -Wno-error=pessimizing-move"
+        elif [ "${CCMAJOR}" -ge 9 ]; then
             FLAGS="-Wno-error=deprecated-copy -Wno-error=pessimizing-move"
         fi
     fi
@@ -429,7 +431,7 @@ build_blobstore_dialtest_bin() {
 
 build_blobstore_bench() {
     pushd $SrcPath > /dev/null
-    echo -n "build blobstore bench"
+    echo -n "build blobstore bench    "
     go build ${MODFLAGS} -gcflags=all=-trimpath="${SrcPath}" -asmflags=all=-trimpath="${SrcPath}" -ldflags="${LDFlags}" -o "${BuildBinPath}/blobstore/blobstore-bench" "${SrcPath}/blobstore/tool/bench"
     popd > /dev/null
 }

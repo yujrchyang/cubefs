@@ -1,5 +1,6 @@
 # Cubefs Makefile
 #
+ROOT_DIR := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 threads?=0
 RM := $(shell [ -x /bin/rm ] && echo "/bin/rm" || echo "/usr/bin/rm" )
 GOMOD=on
@@ -20,7 +21,7 @@ deploy:
 
 
 blobstore:
-	@build/build.sh blobstore $(GOMOD) --threads=$(threads)
+	@$(ROOT_DIR)build/build.sh blobstore $(GOMOD) --threads=$(threads)
 
 blobstoredialtest:
 	@build/build.sh blobstoredialtest $(GOMOD) --threads=$(threads)
