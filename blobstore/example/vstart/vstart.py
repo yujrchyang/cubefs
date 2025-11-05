@@ -349,7 +349,7 @@ class ServiceProxy(ServiceBase):
 
     def _check_service(self) -> None:
         print("checking proxy ...")
-        url = "http://127.0.0.1:9600/volume/list?code_mode=240"
+        url = "http://127.0.0.1:9600/volume/list?code_mode=11"
         while True:
             result = CommandExecutor.run_http_get_json(url)
             if isinstance(result, dict) and 'vids' in result and len(result['vids']) > 0:
@@ -369,9 +369,7 @@ class ServiceScheduler(ServiceBase):
     def _check_service(self) -> None:
         print("checking scheduler ...")
         url = "http://127.0.0.1:9800/stats"
-        expected_keys=("disk_repair", "disk_drop", "balance",
-                       "manual_migrate", "volume_inspect",
-                       "shard_repair", "blob_delete")
+        expected_keys=("blobnode", "shard")
         while True:
             result = CommandExecutor.run_http_get_json(url)
             if isinstance(result, dict) and all(key in result for key in expected_keys):
@@ -381,6 +379,33 @@ class ServiceScheduler(ServiceBase):
 
     def _setup_service_name(self) -> None:
         self.name = "scheduler"
+
+class ServiceShardnode(ServiceBase):
+    def _setup_service(self) -> None:
+        print("starting shardnode ...")
+        self._setup_disks_dir()
+        self.command = [f"{self.dir_manager.bin_dir}/shardnode", "-f", f"{self.dir_manager.cfg_dir}/shardnode.json"]
+        self.logfile = f"{self.dir_manager.log_dir}/shardnode-start.log"
+
+    def _check_service(self) -> None:
+        print("checking shardnode ...")
+        url = "http://127.0.0.1:9101/blob/delete/stats"
+        expected_keys=("success_per_min", "failed_per_min")
+        while True:
+            result = CommandExecutor.run_http_get_json(url)
+            if isinstance(result, dict) and all(key in result for key in expected_keys):
+                print("scheduler started")
+                break
+            time.sleep(1)
+
+    def _setup_disks_dir(self) -> None:
+        shardnode_config = ConfigFileManager.get_json_data(f"{self.dir_manager.cfg_dir}/shardnode.json")
+        disks = shardnode_config.get("disks_config", {}).get("disks", [])
+        for disk_path in disks:
+            Path(disk_path).mkdir(parents=True, exist_ok=True)
+
+    def _setup_service_name(self) -> None:
+        self.name = "shardnode"
 
 class VstartManager:
     def __init__(self):
@@ -395,6 +420,7 @@ class VstartManager:
             ServiceBlobnode,
             ServiceProxy,
             ServiceScheduler,
+            ServiceShardnode,
         ]
 
     def _parse_args(self) -> argparse.Namespace:

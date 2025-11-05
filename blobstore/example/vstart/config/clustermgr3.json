@@ -1,14 +1,14 @@
 {
-    "bind_addr":":10000",
-    "cluster_id":1,
-    "idc":["z0"],
+    "bind_addr": ":10000",
+    "cluster_id": 1,
+    "idc": ["z0"],
     "chunk_size": 16777216,
     "log": {
         "level": "debug",
         "filename": "/var/log/blobstore/clustermgr3.log"
     },
-    "auditlog":{
-        "logdir":""
+    "auditlog": {
+        "logdir": ""
     },
     "auth": {
         "enable_auth": false,
@@ -16,28 +16,10 @@
     },
     "region": "test-region",
     "db_path": "/var/lib/blobstore/db3",
-    "code_mode_extends": [
-        {
-            "code_mode": 240,
-            "name": "EC4P2",
-            "n": 4,
-            "m": 2,
-            "l": 0,
-            "az_count": 1,
-            "put_quorum": 5,
-            "get_quorum": 0,
-            "min_shard_size": 2048
-        }
-    ],
     "code_mode_policies": [
-        {
-            "mode_name":"EC4P2",
-            "min_size":0,
-            "max_size":5368709120,
-            "size_ratio":1,
-            "enable":true
-        }
+        {"mode_name": "EC3P3", "min_size": 0, "max_size": 5368709120, "size_ratio": 1, "enable": true}
     ],
+    "shard_code_mode_name": "Replica3OneAZ",
     "consul_agent_addr": "http://127.0.0.1:8500",
     "raft_config": {
         "snapshot_patch_num": 64,
@@ -46,24 +28,24 @@
             "listen_port": 10112,
             "raft_wal_dir": "/var/lib/blobstore/raftwal3"
         },
-        "raft_node_config":{
+        "raft_node_config": {
             "flush_num_interval": 10000,
             "flush_time_interval_s": 10,
             "truncate_num_interval": 10,
             "node_protocol": "http://",
             "members": [
-                {"id":1, "host":"127.0.0.1:10110", "learner": false, "node_host":"127.0.0.1:9998"},
-                {"id":2, "host":"127.0.0.1:10111", "learner": false, "node_host":"127.0.0.1:9999"},
-                {"id":3, "host":"127.0.0.1:10112", "learner": false, "node_host":"127.0.0.1:10000"}
+                {"id": 1, "host": "127.0.0.1:10110", "learner": false, "node_host": "127.0.0.1:9998"},
+                {"id": 2, "host": "127.0.0.1:10111", "learner": false, "node_host": "127.0.0.1:9999"},
+                {"id": 3, "host": "127.0.0.1:10112", "learner": false, "node_host": "127.0.0.1:10000"}
             ]
         }
     },
-    "volume_mgr_config":{
-        "allocatable_size":1048576
+    "volume_mgr_config": {
+        "allocatable_size": 1048576
     },
     "disk_mgr_config": {
         "refresh_interval_s": 10,
-        "rack_aware":false,
-        "host_aware":false
+        "rack_aware": false,
+        "host_aware": false
     }
 }

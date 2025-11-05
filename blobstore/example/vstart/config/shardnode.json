@@ -1,0 +1,49 @@
+{
+    "bind_addr": ":9101",
+    "region_magic": "test-region",
+    "node_config": {
+        "cluster_id": 1,
+        "idc": "z0",
+        "rack": "testrack",
+        "host": "127.0.0.1:9100",
+        "disk_type": 1,
+        "role": 2,
+        "raft_host": "127.0.0.1:8080"
+    },
+    "rpc2_server": {
+        "name": "shardnode",
+        "addresses": [
+            {
+                "network": "tcp",
+                "address": ":9100"
+            }
+        ],
+        "bufio_reader_size": 10240000,
+        "stat_duration": "3s"
+    },
+
+    "log": {
+        "level": "debug",
+        "filename": "/var/log/blobstore/shardnode.log"
+    },
+    "auditlog": {
+        "logdir": ""
+    },
+    "cm_config": {
+        "hosts": [
+            "http://127.0.0.1:9998"
+        ]
+    },
+    "disks_config": {
+        "disks": [
+            "/var/lib/blobstore/disks/disk10",
+            "/var/lib/blobstore/disks/disk11",
+            "/var/lib/blobstore/disks/disk12"
+        ]
+    },
+    "blob_delete_cfg": {
+        "delete_log": {
+            "dir": "/var/log/blobstore/shardnode_delete_log/"
+        }
+    }
+}
