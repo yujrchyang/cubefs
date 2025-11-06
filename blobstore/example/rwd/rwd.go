@@ -7,14 +7,18 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"os"
+	"strconv"
+	"strings"
 
-	"code.cloudfoundry.org/bytefmt"
 	"github.com/cubefs/cubefs/blobstore/api/access"
+	"github.com/cubefs/cubefs/blobstore/common/proto"
 	"github.com/cubefs/cubefs/blobstore/sdk"
 )
 
@@ -31,6 +35,94 @@ var (
 	objectNum   int
 	objectData  []byte
 )
+
+// toBytes parses a human-readable byte string (e.g., "2G", "512MiB") into uint64 bytes.
+// It uses binary units (1K = 1024) by default.
+// Supported suffixes: B, K/KiB, M/MiB, G/GiB, T/TiB, P/PiB (case-insensitive).
+func toBytes(s string) (uint64, error) {
+	if s == "" {
+		return 0, errors.New("empty string")
+	}
+
+	// Trim whitespace
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, errors.New("empty after trim")
+	}
+
+	// Find where the number ends and unit begins
+	var i int
+	for i = 0; i < len(s); i++ {
+		c := s[i]
+		if c == '.' || c == '+' || c == '-' || ('0' <= c && c <= '9') {
+			continue
+		}
+		break
+	}
+
+	numPart := s[:i]
+	unitPart := strings.TrimSpace(s[i:])
+
+	// Parse number
+	num, err := strconv.ParseFloat(numPart, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid number %q: %w", numPart, err)
+	}
+
+	if num < 0 {
+		return 0, errors.New("negative size not allowed")
+	}
+
+	// Normalize unit
+	unit := strings.ToUpper(unitPart)
+	if unit == "" {
+		unit = "B"
+	}
+
+	// Map unit to multiplier (binary: powers of 1024)
+	var multiplier float64
+	switch unit {
+	case "B":
+		multiplier = 1
+	case "K", "KB", "KIB":
+		multiplier = 1 << 10 // 1024
+	case "M", "MB", "MIB":
+		multiplier = 1 << 20 // 1024^2
+	case "G", "GB", "GIB":
+		multiplier = 1 << 30 // 1024^3
+	case "T", "TB", "TIB":
+		multiplier = 1 << 40 // 1024^4
+	case "P", "PB", "PIB":
+		multiplier = 1 << 50 // 1024^5
+	default:
+		// Try to handle cases like "Ki", "Mi" (without B)
+		if len(unit) == 2 && unit[1] == 'I' && strings.ContainsRune("KMGTPE", rune(unit[0])) {
+			switch unit[0] {
+			case 'K':
+				multiplier = 1 << 10
+			case 'M':
+				multiplier = 1 << 20
+			case 'G':
+				multiplier = 1 << 30
+			case 'T':
+				multiplier = 1 << 40
+			case 'P':
+				multiplier = 1 << 50
+			default:
+				return 0, fmt.Errorf("unknown unit %q", unitPart)
+			}
+		} else {
+			return 0, fmt.Errorf("unknown unit %q", unitPart)
+		}
+	}
+
+	result := num * multiplier
+	if result > math.MaxUint64 {
+		return 0, errors.New("size overflows uint64")
+	}
+
+	return uint64(result), nil
+}
 
 func checkParameters() {
 	allowedOpt := map[string]struct{}{
@@ -49,13 +141,13 @@ func checkParameters() {
 	if info.IsDir() {
 		log.Fatalf("config file(%s) is a directory", config)
 	}
-	if s, err := bytefmt.ToBytes(objectSize); err != nil {
+	if s, err := toBytes(objectSize); err != nil {
 		log.Fatalf("failed to convert objectSize(%s): %v", objectSize, err)
 	} else {
 		objectBytes = s
 	}
 	if objectBytes <= 0 {
-		log.Fatalf("invalid objectSize: %d", objectSize)
+		log.Fatalf("invalid objectSize: %s", objectSize)
 	}
 	if objectNum <= 0 {
 		log.Fatalf("invalid objectNum: %d", objectNum)
@@ -90,7 +182,7 @@ type RWDStore struct {
 	client access.API
 }
 
-func (s *RWDStore) putObject(data io.Reader, size int64) (loc access.Location, err error) {
+func (s *RWDStore) putObject(data io.Reader, size int64) (loc proto.Location, err error) {
 	args := &access.PutArgs{
 		Size:   size,
 		Hashes: access.HashAlgDummy,
@@ -99,13 +191,13 @@ func (s *RWDStore) putObject(data io.Reader, size int64) (loc access.Location, e
 
 	loc, _, err = s.client.Put(s.ctx, args)
 	if err != nil {
-		return access.Location{}, err
+		return proto.Location{}, err
 	}
 
 	return loc, nil
 }
 
-func (s *RWDStore) getObject(loc access.Location, size int64) error {
+func (s *RWDStore) getObject(loc proto.Location, size int64) error {
 	args := &access.GetArgs{
 		Location: loc,
 		Offset:   0,
@@ -128,9 +220,9 @@ func (s *RWDStore) getObject(loc access.Location, size int64) error {
 	return nil
 }
 
-func (s *RWDStore) delObject(loc access.Location) error {
+func (s *RWDStore) delObject(loc proto.Location) error {
 	args := &access.DeleteArgs{
-		Locations: []access.Location{loc},
+		Locations: []proto.Location{loc},
 	}
 	_, err := s.client.Delete(s.ctx, args)
 	return err
