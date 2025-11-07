@@ -36,6 +36,7 @@ const (
 var (
 	ErrQosWrongConfig = errors.New("wrong qos config")
 
+	// 只有读在 blob 级别允许并发
 	defaultConfs = LevelConfigMap{
 		bnapi.ReadIO.String():       {Concurrency: 64, MBPS: 200, BusyFactor: 1.0, BidConcurrency: 32, IdleFactor: 1.0},
 		bnapi.WriteIO.String():      {Concurrency: 64, MBPS: 120, BusyFactor: 1.0, BidConcurrency: 1, IdleFactor: 1.2},
@@ -74,10 +75,12 @@ type LevelFlowConfig struct {
 	IdleFactor     float64 `json:"idle_factor"`     // idle factor [1.0, xx)
 }
 
+// 首次启动时对缺失字段使用默认值填充
 func FixQosConfigOnInit(conf *Config) error {
 	return initAndFixQosConfig(conf, true)
 }
 
+// 热更新时，只覆盖非零值，保留已有有效配置
 func FixQosConfigHotReset(conf *Config) error {
 	return initAndFixQosConfig(conf, false)
 }

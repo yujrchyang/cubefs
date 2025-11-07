@@ -562,6 +562,7 @@ func (s *Service) ShardDelete(c *rpc.Context) {
  *  request body:   bidData
  */
 func (s *Service) ShardPut(c *rpc.Context) {
+	// 解析参数
 	args := new(bnapi.PutShardArgs)
 	if err := c.ParseArgs(args); err != nil {
 		c.RespondError(err)
@@ -571,25 +572,30 @@ func (s *Service) ShardPut(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
 
+	// 初始化返回值
 	ret := &bnapi.PutShardRet{
 		Crc: proto.InvalidCrc32,
 	}
 
+	// 检查 Disk ID 是否有效
 	if !bnapi.IsValidDiskID(args.DiskID) {
 		c.RespondError(bloberr.ErrInvalidDiskId)
 		return
 	}
 
+	// 检查对象大小是否有效
 	if args.Size > math.MaxUint32 {
 		c.RespondError(bloberr.ErrShardSizeTooLarge)
 		return
 	}
 
+	// 检查 Blob ID 是否有效
 	if args.Bid == proto.InValidBlobID {
 		c.RespondError(bloberr.ErrShardInvalidBid)
 		return
 	}
 
+	// 检查请求类型是否有效
 	if !args.Type.IsValid() {
 		c.RespondError(bloberr.ErrInvalidParam)
 		return
@@ -598,11 +604,13 @@ func (s *Service) ShardPut(c *rpc.Context) {
 	s.lock.RLock()
 	ds, exist := s.Disks[args.DiskID]
 	s.lock.RUnlock()
+	// 检查磁盘存储器是否存在
 	if !exist {
 		c.RespondError(bloberr.ErrNoSuchDisk)
 		return
 	}
 
+	// 检查 Chunk 存储器是否存在
 	cs, exist := ds.GetChunkStorage(args.Vuid)
 	if !exist {
 		c.RespondError(bloberr.ErrNoSuchVuid)
@@ -611,18 +619,23 @@ func (s *Service) ShardPut(c *rpc.Context) {
 
 	// set io type
 	ctx = bnapi.SetIoType(ctx, args.Type)
+	// 获取对应请求类型的 Qos 控制器
 	qosLmt, exist := ds.GetIoQos().GetQueueQos(ctx)
 	if !exist {
 		span.Errorf("fail to get qos mgr, disk:%d", cs.Disk().ID())
 		c.RespondError(bloberr.ErrInternal)
 		return
 	}
+	// 申请并发资源：读写默认 64 并发，后台任务和删除为 32 并发
+	// 该 limit 是非阻塞的，即如果资源不足会立即返回错误
 	if err := qosLmt.Acquire(); err != nil {
 		c.RespondError(err)
 		return
 	}
+	// 处理完成后释放资源
 	defer qosLmt.Release()
 
+	// 检查 Chunk 是否可写
 	err := cs.AllowModify()
 	if err != nil {
 		span.Errorf("cs status check Invalid. err: %v", err)
@@ -630,6 +643,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		return
 	}
 
+	// chunk 空间不足返回错误
 	if !args.NopData && !cs.HasEnoughSpace(args.Size) {
 		span.Errorf("cs has no enougn space. args:%v, chunk info:%v, disk:%v",
 			args, cs.ChunkInfo(ctx), cs.Disk().Stats())
@@ -637,17 +651,22 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		return
 	}
 
+	// 创建 shard 结构
 	shard := core.NewShardWriter(args.Bid, args.Vuid, uint32(args.Size), c.Request.Body)
 	shard.NopData = args.NopData
 
+	// 设置起始时间
 	start := time.Now()
+	// 调用 Chunk 的接口写入这个 shard
 	err = cs.Write(ctx, shard)
 	span.AppendTrackLog("disk.put", start, err)
+	// 写失败报错
 	if err != nil {
 		span.Errorf("Failed to put shard, args: %+v, err: %v", args, err)
 		c.RespondError(err)
 		return
 	}
+	// 写成功返回对应的 crc
 	ret.Crc = shard.Crc
 
 	if !shard.Inline && !shard.NopData {
@@ -661,6 +680,7 @@ func (s *Service) ShardPut(c *rpc.Context) {
 		}
 	}
 
+	// 汇报流量
 	s.reportPutTraffic(args.Type, args.Size)
 	c.RespondJSON(ret)
 }

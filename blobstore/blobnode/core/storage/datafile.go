@@ -86,10 +86,10 @@ var (
 )
 
 type ChunkHeader struct {
-	magic       [_chunkMagicSize]byte
-	version     byte
-	parentChunk clustermgr.ChunkID
-	createTime  int64
+	magic       [_chunkMagicSize]byte // 魔法数，固定值
+	version     byte                  // chunk 版本号
+	parentChunk clustermgr.ChunkID    // 父 chunk id（用于快照？）
+	createTime  int64                 // 创建时间戳
 }
 
 type datafile struct {
@@ -106,6 +106,7 @@ type datafile struct {
 	closed bool
 }
 
+// chunk header 序列化
 func (hdr *ChunkHeader) Marshal() ([]byte, error) {
 	buf := make([]byte, _chunkHeaderSize)
 
@@ -121,6 +122,7 @@ func (hdr *ChunkHeader) Marshal() ([]byte, error) {
 	return buf, nil
 }
 
+// chunk header 反序列化
 func (hdr *ChunkHeader) Unmarshal(data []byte) error {
 	if len(data) != _chunkHeaderSize {
 		panic(ErrChunkHeaderBufSize)
@@ -155,6 +157,7 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		return nil, bloberr.ErrInvalidParam
 	}
 
+	// 创建 chunk 文件
 	fd, err := core.OpenFile(file, createIfMiss)
 	if err != nil {
 		err = fmt.Errorf("os.OpenFile(\"%s\") error(%v)", file, err)
@@ -165,8 +168,10 @@ func NewChunkData(ctx context.Context, vm core.VuidMeta, file string, conf *core
 		conf.HandleIOError(context.Background(), vm.DiskID, err)
 	}
 
+	// 根据 os 文件创建 blobFile 结构
 	ef := core.NewBlobFile(fd, handleIOError, uint64(vm.ChunkID.VolumeUnitId()), ioPools)
 
+	// 组成数据文件
 	cd = &datafile{
 		File:   file,
 		chunk:  vm.ChunkID,
@@ -202,6 +207,7 @@ func (cd *datafile) init(meta *core.VuidMeta) (err error) {
 	}
 
 	chunkSize := sysstat.Size
+	// 如果文件大小为 0 则初始化并写入超块信息
 	if chunkSize == 0 {
 		// first time. auto format
 		cd.initHeader(meta)
@@ -210,9 +216,11 @@ func (cd *datafile) init(meta *core.VuidMeta) (err error) {
 		}
 		cd.wOff = _chunkHeaderSize
 	} else {
+		// 解析 chunk header
 		if err = cd.parseMeta(); err != nil {
 			return
 		}
+		// 设置写入偏移为文件末尾对其后的位置
 		cd.wOff = core.AlignSize(chunkSize, int64(_pageSize))
 	}
 
@@ -299,13 +307,16 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 	span := trace.SpanFromContextSafe(ctx)
 
 	// allocate space
+	// shard header + shard data + crc + shard footer
 	phySize := core.Alignphysize(int64(shard.Size))
+	// 4K 对齐分配
 	pos, err := cd.allocSpace(phySize)
 	if err != nil {
 		return err
 	}
-	shard.Offset = pos
+	shard.Offset = pos // shard 在 chunk 中的偏移
 
+	// 准备缓冲区
 	var buffer []byte
 	var recycle func()
 	if phySize > core.CrcBlockUnitSize {
@@ -319,12 +330,13 @@ func (cd *datafile) Write(ctx context.Context, shard *core.Shard) (err error) {
 			bytespool.Free(buffer)
 		}
 	}
-	defer recycle()
+	defer recycle() // 写入完成后回收空间
 
 	// prepare reader and writer
 	w := &bncomm.WriterWithCtx{Offset: pos, Wt: cd.ef, Ctx: ctx}
+	// 创建有计算耗时功能的 Writer
 	twRaw := bncomm.NewTimeWriter(w)
-
+	// 创建基于流控的写句柄
 	qosw := cd.qosWriter(ctx, twRaw)
 	tw := bncomm.NewTimeWriter(qosw)
 

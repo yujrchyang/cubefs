@@ -14,6 +14,15 @@
 
 package core
 
+/**
+ * 基于逻辑时间戳的同步屏障（synchronization barrier）机制，用于需要强一致性语义或顺序可见性保证的场景
+ * 核心思想：
+ *   1. 使用一个全局递增的逻辑时间戳（timestamp）为每个请求（request）打上唯一序号
+ *   2. 所有请求通过 Begin() 注册，通过 End() 表示完成
+ *   3. 调用 Synchronize() 会阻塞，直到所有 时间戳 <= 当前时间戳 的请求都已完成
+ *   4. 利用 sync.Cond 实现高效等待/通知
+ */
+
 import (
 	"container/list"
 	"sync"
@@ -32,6 +41,7 @@ type ConsistencyController struct {
 	timestamp uint64
 }
 
+// 为请求分配时间戳，并将其插入到链表尾部
 func (cc *ConsistencyController) Begin(item interface{}) (elem *list.Element) {
 	cc.lock.Lock()
 	defer cc.lock.Unlock()
@@ -48,6 +58,7 @@ func (cc *ConsistencyController) Begin(item interface{}) (elem *list.Element) {
 	return elem
 }
 
+// 请求完成后从链表中删除并广播
 func (cc *ConsistencyController) End(elem *list.Element) {
 	cc.lock.Lock()
 	defer cc.lock.Unlock()
@@ -56,6 +67,7 @@ func (cc *ConsistencyController) End(elem *list.Element) {
 	cc.cond.Broadcast()
 }
 
+// 在条件变量中等待
 func (cc *ConsistencyController) synchronize(anchor uint64) {
 	cc.lock.Lock()
 	defer cc.lock.Unlock()

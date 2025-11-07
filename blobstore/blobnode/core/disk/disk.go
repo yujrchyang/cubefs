@@ -76,16 +76,19 @@ func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid,
 		return nil, bloberr.ErrInvalidParam
 	}
 
+	// chunk 个数过多
 	if ds.isChunksExceeded(ctx, chunksize) {
 		return nil, bloberr.ErrTooManyChunks
 	}
 
+	// 磁盘没有空闲空间了
 	stats := ds.stats.Load().(*core.DiskStats)
 	if ds.isMountPoint && stats.Free < chunksize {
 		return nil, bloberr.ErrDiskNoSpace
 	}
 
 	// The following logic, for the same vuid, only allows serial execution
+	// ChunkLimitPerKey 空闲容量为 1，所以相同 vuid 只能获取一次
 	if ds.ChunkLimitPerKey.Acquire(vuid) != nil {
 		return nil, bloberr.ErrOverload
 	}
@@ -103,6 +106,7 @@ func (dsw *DiskStorageWrapper) CreateChunk(ctx context.Context, vuid proto.Vuid,
 	chunkId := clustermgr.NewChunkID(vuid)
 	nowtime := time.Now().UnixNano()
 
+	// chunk meta
 	vm := core.VuidMeta{
 		Version:   _chunkVer[0],
 		Vuid:      vuid,
@@ -250,6 +254,7 @@ type DiskStorage struct {
 	MetaPath string
 
 	// limiter
+	// 空闲资源数为 1，表示每个 key 只能同时有一个在运行
 	ChunkLimitPerKey limit.Limiter
 
 	// stats
@@ -894,6 +899,11 @@ func (ds *DiskStorage) fillDiskUsage(ctx context.Context) (err error) {
 	return nil
 }
 
+/*
+ * 从以下两方面判断 chunk 是否超过限制
+ *   1. 个数有没有超过配置
+ *   2. 个数 * chunksize 有没有超过磁盘可用容量
+ */
 func (ds *DiskStorage) isChunksExceeded(ctx context.Context, chunksize int64) bool {
 	span := trace.SpanFromContextSafe(ctx)
 

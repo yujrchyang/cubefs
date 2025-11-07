@@ -100,6 +100,7 @@ func newChunkStorage(ctx context.Context, dataPath string, vm core.VuidMeta, ioP
 	span := trace.SpanFromContextSafe(ctx)
 
 	// chunk data
+	// chunk 文件使用 chunk id 命名
 	chunkFile := filepath.Join(dataPath, vm.ChunkID.String())
 
 	opt := core.Option{}
@@ -266,6 +267,7 @@ func (cs *chunk) Write(ctx context.Context, b *core.Shard) (err error) {
 		return bloberr.ErrVuidNotMatch
 	}
 
+	// 将 IO 加入排序队列，用于压实操作的等待
 	elem := cs.consistent.Begin(b.Bid)
 	defer cs.consistent.End(elem)
 
@@ -275,6 +277,7 @@ func (cs *chunk) Write(ctx context.Context, b *core.Shard) (err error) {
 
 	cs.lock.RLock()
 
+	// 如果正在压实，获取 bid 资源（资源数等于 1），正在压实的 chunk 只能执行一个 IO
 	if cs.compacting {
 		cs.bidlimiter.Acquire(b.Bid)
 		defer cs.bidlimiter.Release(b.Bid)

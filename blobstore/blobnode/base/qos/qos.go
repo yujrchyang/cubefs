@@ -12,6 +12,25 @@
 // implied. See the License for the specific language governing
 // permissions and limitations under the License.
 
+/**
+ * 该模块实现了 三个维度 的资源控制：
+ *
+ *   1. 带宽（MB/s）：使用 golang.org/x/time/rate.Limiter 实现令牌桶限速，控制每秒可传输的字节数
+ *   2. 并发数（全局）：使用 keycount.Limiter（基于固定的 key）限制某类 IO 的最大并发请求数
+ *   3. Bid 级并发：同一类 IO 中，按 blob id 维度限制并发，防止某个大对象独占资源（仅读操作支持 > 1）
+ *
+ * 此外，还支持：
+ *
+ *   动态调优：根据磁盘当前 BPS/IOPS 负载，自动调整限流阈值
+ *   热更新配置：运行时修改配置无需重新服务
+ *   资源隔离：四类 IO（read/write/delete/background）完全独立限流
+ *
+ * 动态调优机制：
+ *
+ *   核心思想：当磁盘繁忙时降低限流阈值，空闲时提升阈值，正常时恢复原始配置
+ *   使用 EMA（指数移动平均）平滑磁盘统计指标（BPS/IOPS），避免瞬时毛刺导致限流震荡
+ */
+
 package qos
 
 import (
@@ -54,6 +73,20 @@ type QosAPI interface {
 	ReleaseBid(uint64)
 }
 
+// QosMgr
+// ├── qos[ReadIO]   → queueQos (read)
+// ├── qos[WriteIO]  → queueQos (write)
+// ├── qos[DeleteIO] → queueQos (delete)
+// └── qos[BackgroundIO] → queueQos (background)
+//
+// 每个 queueQos 包含：
+// ├── limitBps         → *rate.Limiter (golang.org/x/time/rate)
+// ├── limitBid         → keycount.Limiter (按 bid 限并发)
+// ├── limitConcurrency → keycount.Limiter (全局并发)
+// ├── ioStat           → iostat.StatMgrAPI (统计当前 IO 流量)
+// ├── diskStat         → iostat.IOViewer (获取磁盘总 BPS/IOPS)
+// └── loopUpdateCurrentStat() → 后台协程，周期更新状态 & 调整限流
+
 // QosMgr manages QoS for different IO types
 type QosMgr struct {
 	qos    map[bnapi.IOType]*queueQos
@@ -89,6 +122,7 @@ func (mgr *QosMgr) Close() {
 }
 
 // GetQueueQos returns the queue qos for the given io type(which is the io type of the context).
+// 根据 ctx 中的 IO 类型返回对应的限流器
 func (mgr *QosMgr) GetQueueQos(ctx context.Context) (QosAPI, bool) {
 	ret, ok := mgr.qos[bnapi.GetIoType(ctx)]
 	return ret, ok
@@ -109,6 +143,7 @@ func (mgr *QosMgr) GetConfig() FlowConfig {
 }
 
 // ResetDiskConfig updates QosMgr config and level common disk limits based on new configuration
+// 支持配置热更新
 func (mgr *QosMgr) ResetDiskConfig(diskConf CommonDiskConfig) {
 	mgr.setDiskConfig(diskConf)
 }
@@ -150,6 +185,23 @@ type diskConfigGetter interface {
 }
 
 // queueQos limit disk bandwidth rate, iops rate and iops total rate, dynamic adjust rate
+/*
+ * type queueQos struct {
+ * 	limitBps         *rate.Limiter           // 控制 字节/秒 带宽（使用 token bucket）
+ * 	limitBid         limit.ResettableLimiter // 按 bid 限制并发
+ * 	limitConcurrency limit.ResettableLimiter // 全局限制该 IO 类型的总并发数
+ *
+ * 	ioStat      iostat.StatMgrAPI // 统计本队列的 IO 量（用于监控）
+ * 	diskStat    iostat.IOViewer   // 获取整个磁盘的实时 BPS/IOPS（用于动态调整）
+ * 	diskBps     uint64            // EMA 平滑后的磁盘负载指标
+ * 	diskIOps    uint64            // 平滑后的磁盘负载指标
+ * 	concurrence int64             // 当前生效的并发上限（动态调整）
+ *
+ * 	getter diskConfigGetter //
+ * 	conf   *perIOQosConfig  // 每个 IO 类型的配置
+ * 	closed closer.Closer    //
+ * }
+ */
 type queueQos struct {
 	limitBps         *rate.Limiter           // Bandwidth rate limiter
 	limitBid         limit.ResettableLimiter // bid-based concurrency limiter
@@ -190,6 +242,10 @@ func newQueueQos(ioType bnapi.IOType, conf Config, closed closer.Closer, getter 
 	return q
 }
 
+/*
+ * 所有 Reader/Writer 被包装成 rateLimiter，同时接入 ioStat 进行流量统计
+ */
+
 // ReaderAt wraps io.ReaderAt with QoS control
 func (q *queueQos) ReaderAt(ctx context.Context, reader io.ReaderAt) io.ReaderAt {
 	r := q.ioStat.ReaderAt(reader)
@@ -216,6 +272,7 @@ func (q *queueQos) Writer(ctx context.Context, writer io.Writer) io.Writer {
 
 // Acquire attempts to acquire a concurrency slot
 func (q *queueQos) Acquire() (err error) {
+	// 使用固定 key 等效于全局计数器
 	if err = q.limitConcurrency.Acquire(limitConcurrencyKey); err != nil {
 		return errcode.ErrOverload
 	}
@@ -241,11 +298,17 @@ func (q *queueQos) ReleaseBid(bid uint64) {
 }
 
 // ReserveN reserves n tokens from bandwidth limiter
+// 用于精确控制大块写
 func (q *queueQos) ReserveN(t time.Time, n int) *rate.Reservation {
 	return q.limitBps.ReserveN(t, n)
 }
 
 // UpdateQosBpsLimiter dynamically adjusts bandwidth limits based on disk usage
+/**
+ * 带宽动态调整
+ * 输入：磁盘当前 BPS、配置的磁盘总带宽、IO 类型带宽上限
+ * 输出：动态设置 rate.Limiter 的 Limit 和 Burst
+ */
 func (q *queueQos) UpdateQosBpsLimiter(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 	reason := ""
@@ -254,7 +317,9 @@ func (q *queueQos) UpdateQosBpsLimiter(ctx context.Context) {
 	lastBps := int64(q.limitBps.Limit())
 	diskConf := q.getter.getDiskConfig()
 	levelConf := q.getLevelConf()
+	// 磁盘总带宽上限
 	diskConfBps := uint64(diskConf.DiskBandwidthMB * humanize.MiByte)
+	// 配置中该 IO 类型的 MBPS
 	levelConfBps := levelConf.MBPS * humanize.MiByte
 	diskIdleBps := uint64(float64(diskConfBps) * diskConf.DiskIdleFactor)
 	levelIdleBps := int64(float64(levelConfBps) * levelConf.IdleFactor)
@@ -286,6 +351,12 @@ func (q *queueQos) UpdateQosBpsLimiter(ctx context.Context) {
 }
 
 // UpdateQosConcurrency dynamically adjusts concurrency limits using EMA
+/**
+ * 并发动态调整：基于磁盘 IOPS 利用率
+ *   >= 100% - 降低并发（* BusyFactor）
+ *   < DiskIdleFactor - 升并发（* IdleFactor）
+ *   恢复原始并发
+ */
 func (q *queueQos) UpdateQosConcurrency(ctx context.Context) {
 	span := trace.SpanFromContextSafe(ctx)
 	reason := ""
@@ -349,8 +420,8 @@ func (q *queueQos) loopUpdateCurrentStat(intervalMs int64) {
 			return
 		case <-ticker.C:
 			updateFn()
-			q.UpdateQosBpsLimiter(ctx)
-			q.UpdateQosConcurrency(ctx)
+			q.UpdateQosBpsLimiter(ctx)  // 调整带宽上限
+			q.UpdateQosConcurrency(ctx) // 调整并发上限
 		}
 	}
 }
@@ -409,6 +480,7 @@ func resetLimiter(limiter *rate.Limiter, capacity int) {
 // - α is tThe smoothing factor α (0 to 1):
 // - Higher α: more weight on recent data
 // - Lower α: smoother output, less sensitive to fluctuations
+// EMA 平滑算法，消除瞬时毛刺，避免限流策略震荡
 func ema(curVal, lastVal uint64) uint64 {
 	if lastVal == 0 {
 		lastVal = curVal
