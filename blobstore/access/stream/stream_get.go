@@ -913,8 +913,14 @@ func distance(idc1, idc2 string, punished bool) int {
 	return 1
 }
 
+/**
+ * ec shard 分片大小有最小限制
+ * 这里创建从实际数据最后一个 shard 开始到 n 之间的 set
+ */
 func emptyDataShardIndexes(sizes ec.BufferSizes) map[int]struct{} {
+	// 根据实际数据大小计
 	firstEmptyIdx := (sizes.DataSize + sizes.ShardSize - 1) / sizes.ShardSize
+	// ec 中数据段个数
 	n := sizes.ECDataSize / sizes.ShardSize
 	if firstEmptyIdx >= n {
 		return nil

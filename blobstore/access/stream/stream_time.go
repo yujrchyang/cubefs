@@ -20,6 +20,9 @@ import (
 	"time"
 )
 
+// a - 分配缓冲区消耗的时间
+// r - PUT：从客户端读取数据的时间；GET：从 blobnode 读取数据的时间
+// w - PUT：写入 blobnode 的时间；GET：写回到客户端的时间
 type timeReadWrite struct {
 	a int64 // alloc buffer
 	r int64 // PUT: read from client,  GET: read from blobnode

@@ -47,11 +47,13 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 	span.Debugf("alloc request with size:%d blobsize:%d cluster:%d codemode:%d",
 		size, blobSize, assignClusterID, codeMode)
 
+	// 对象大小不合法
 	if int64(size) > h.maxObjectSize {
 		span.Info("exceed max object size", h.maxObjectSize)
 		return nil, errcode.ErrAccessExceedSize
 	}
 
+	// 重置最大 blob 大小
 	if blobSize == 0 {
 		blobSize = atomic.LoadUint32(&h.MaxBlobSize)
 		span.Debugf("fill blobsize:%d", blobSize)
@@ -66,6 +68,9 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 		return nil, errcode.ErrIllegalArguments
 	}
 
+	// 选择写入到哪个集群中，并分配 blob
+	// clusterID - 集群 ID
+	// blobs - 为这个对象分配的 blob id，以及这些 blob 写入到哪个 volume 中
 	clusterID, blobs, err := h.allocFromAllocatorWithHystrix(ctx, codeMode, size, blobSize, assignClusterID)
 	if err != nil {
 		span.Error("alloc from proxy", errors.Detail(err))
@@ -73,6 +78,7 @@ func (h *Handler) Alloc(ctx context.Context, size uint64, blobSize uint32,
 	}
 	span.Debugf("allocated from %d %+v", clusterID, blobs)
 
+	// 返回分配的地址
 	location := &proto.Location{
 		ClusterID: clusterID,
 		CodeMode:  codeMode,
@@ -111,7 +117,7 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		clusterID = clusterChosen.ClusterID
 	}
 
-	// 按照最大 blobsize 进行切分
+	// 按照最大 blobsize 进行切分，向上取整
 	args := proxy.AllocVolsArgs{
 		Fsize:    size,
 		CodeMode: codeMode,
@@ -139,7 +145,8 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		hosts = hosts[1:]
 		allocHost = host
 
-		// 申请 volume
+		// 发送 /volume/alloc rpc 请求到 proxy 服务申请 volume
+		// 拿到一组 bid 和 volume 的对应关系
 		allocRets, err = h.proxyClient.VolumeAlloc(ctx, host, &args)
 		// 申请失败且满足条件时隔离 proxy
 		if err != nil {
@@ -157,11 +164,15 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 
 		// filter punished volume in allocating progress
 		for _, ret := range allocRets {
+			// 检查 volume 是否存在
+			// volume 是 proxy 预分配的，这里到 clustermgr 中检查 volume 是否存在
 			vInfo, err := h.getVolume(ctx, clusterID, ret.Vid, true)
+			// 检查失败，返回错误
 			if err != nil {
 				span.Warn(err)
 				return false, err
 			}
+			// volume 正在小黑屋中，不能使用，将其添加到 Excludes 中，下次不再分配
 			if vInfo.IsPunish {
 				// return err and retry allocate
 				err = errAllocatePunishedVolume
@@ -186,17 +197,21 @@ func (h *Handler) allocFromAllocator(ctx context.Context,
 		setCacheVidHost(clusterID, ret.Vid, allocHost)
 	}
 
-	// 组装返回值
+	// 需要多少个 blob
 	blobN := util.AlignedBlocks(size, uint64(blobSize))
+	// 一个 slice 可能对应多个 blob，要看其是否在一个 volume 上
 	blobs := make([]proto.Slice, 0, blobN)
 	for _, bidRet := range allocRets {
+		// 处理完毕
 		if blobN <= 0 {
 			break
 		}
 
+		//当前 bid 组的个数与 blobN 取最小值，即当前需要处理的 blob 个数
 		count := util.Min(blobN, uint64(bidRet.BidEnd)-uint64(bidRet.BidStart)+1)
 		blobN -= count
 
+		// count 表示 blob 个数
 		blobs = append(blobs, proto.Slice{
 			MinSliceID: bidRet.BidStart,
 			Vid:        bidRet.Vid,

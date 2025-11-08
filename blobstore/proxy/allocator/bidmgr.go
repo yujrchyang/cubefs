@@ -141,6 +141,7 @@ func (b *bidMgr) Alloc(ctx context.Context, count uint64) (bidRange []BidRange, 
 	if b.current == nil {
 		return nil, errcode.ErrAllocBidFromCm
 	}
+	// 当前 bid 缓存足够，返回一组范围，调整缓存中的信息
 	if count+uint64(b.current.minBid)-1 <= uint64(b.current.maxBid) {
 		br := BidRange{
 			StartBid: b.current.minBid,
@@ -156,6 +157,7 @@ func (b *bidMgr) Alloc(ctx context.Context, count uint64) (bidRange []BidRange, 
 		span.Debugf("after alloc, current bidScope: %v,backup bidScope: %v", b.current, b.backup)
 		return
 	}
+	// 当前 bid 缓存不足，添加 current 组，再从 backup 中取
 	br1 := BidRange{
 		StartBid: b.current.minBid,
 		EndBid:   b.current.maxBid,

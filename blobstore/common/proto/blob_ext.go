@@ -133,6 +133,10 @@ func (loc *Location) Base64String() string {
 }
 
 // Spread location blobs to slice
+// 将 location 中的每个 blob 组展开为一个一个具体的 blob
+// 一个 blob 组的信息是：midBid + count + vid
+// 将其展开为 bid + vid + size
+// size 结合对象大小、blob 最大大小依次设置，最后一个 blob 可能小于最大值，与其他 blob 不相等
 func (loc *Location) Spread() []BlobUnit {
 	count := 0
 	for _, blob := range loc.Slices {

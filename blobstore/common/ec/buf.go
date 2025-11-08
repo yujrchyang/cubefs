@@ -64,23 +64,35 @@ func isOutOfRange(dataSize, from, to int) bool {
 		to < 0 || to > dataSize
 }
 
+/**
+ * dataSize : 对象大小，单位为字节
+ * from ~ to : 表示要处理的范围，存在不是全量处理的场景
+ * tactic : ec 策略
+ * pool : 内存池
+ * hasParity : 是否要生成 EC 校验
+ */
 func newBuffer(dataSize, from, to int, tactic codemode.Tactic, pool *resourcepool.MemPool, hasParity bool) (*Buffer, error) {
+	// 边界校验
 	if isOutOfRange(dataSize, from, to) {
 		return nil, ErrShortData
 	}
 
+	// 数据段个数
 	shardN := tactic.N
 	if shardN <= 0 {
 		return nil, ErrInvalidCodeMode
 	}
 
+	// 将 blob 切分为 n 个数据分片，分片大小向上取整
 	shardSize := (dataSize + shardN - 1) / shardN
 	// align per shard with tactic MinShardSize
 	if shardSize < tactic.MinShardSize {
 		shardSize = tactic.MinShardSize
 	}
 
+	// 数据部分大小
 	ecDataSize := shardSize * tactic.N
+	// 总大小
 	ecSize := shardSize * (tactic.N + tactic.M + tactic.L)
 
 	var (
@@ -90,12 +102,15 @@ func newBuffer(dataSize, from, to int, tactic codemode.Tactic, pool *resourcepoo
 		dataBuf   []byte
 		ecDataBuf []byte
 	)
+	// 指定了内存池
 	if pool != nil {
 		size := ecSize
 		if !hasParity {
+			// to 是 blob 大小，如果不包含校验的话则总大小设置为 blob 大小
 			size = to - from
 		}
 
+		// 内存分配失败
 		buf, err = pool.Get(size)
 		if err == resourcepool.ErrNoSuitableSizeClass {
 			log.Warn(err, "for", size, "try to alloc bytes")
@@ -106,11 +121,14 @@ func newBuffer(dataSize, from, to int, tactic codemode.Tactic, pool *resourcepoo
 		}
 
 		if !hasParity {
+			// 如果没有校验的话返回 blob 大小的缓存即可
 			dataBuf = buf[:size]
 			ecDataBuf = nil
 		} else {
 			// zero the padding bytes of data section
+			// 将校验部分的内存设置为 0
 			pool.Zero(buf[dataSize:ecDataSize])
+			// ecDataBuf 包含 databuf 部分
 			dataBuf = buf[:dataSize]
 			ecDataBuf = buf[:ecDataSize]
 		}

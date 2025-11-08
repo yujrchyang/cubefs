@@ -151,6 +151,7 @@ func (m *modeInfo) TotalFree() int64 {
 func (m *modeInfo) needSwitchToBackup(fSize int64) (bool, error) {
 	m.lock.RLock()
 	totalFree := m.current.UpdateTotalFree(-fSize)
+	// 如果写入后 totalFree 小于阈值 或者 volume 个数小于阈值则切换到备份上
 	if totalFree <= int64(m.totalThreshold) || int64(m.current.Len())-1 < int64(m.totalVolNumThreshold) {
 		m.current.UpdateTotalFree(fSize)
 		if len(m.backup.List()) == 0 { // allocating from clusterMgr, can not switch to backup
@@ -165,6 +166,7 @@ func (m *modeInfo) needSwitchToBackup(fSize int64) (bool, error) {
 }
 
 func (m *modeInfo) getAvailableList(fsize int64, switchable bool) (vols []*volume) {
+	// 如果不需要切换则直接返回 current 中的 volume 切片组
 	if !switchable {
 		return m.List(false)
 	}
@@ -398,14 +400,18 @@ func (v *volumeMgr) initModeInfo(ctx context.Context) (err error) {
 }
 
 func (v *volumeMgr) Alloc(ctx context.Context, args *proxy.AllocVolsArgs) (allocRets []proxy.AllocRet, err error) {
+	// 为 blob 分配 bid
 	allocBidScopes, err := v.BidMgr.Alloc(ctx, args.BidCount)
 	if err != nil {
 		return nil, err
 	}
+	// 分配 volume
 	vid, err := v.allocVid(ctx, args)
 	if err != nil {
 		return nil, err
 	}
+
+	// 多个 blob 分配在这一个 volume 上（选择 volume 时是按照整个对象的大小选择的）
 	allocRets = make([]proxy.AllocRet, 0, 128)
 	for _, bidScope := range allocBidScopes {
 		volRet := proxy.AllocRet{
@@ -450,11 +456,14 @@ func (v *volumeMgr) List(ctx context.Context, codeMode codemode.CodeMode) (vids 
 }
 
 func (v *volumeMgr) getNextVid(ctx context.Context, vols []*volume, modeInfo *modeInfo, args *proxy.AllocVolsArgs) (proto.Vid, error) {
+	// 起始 volume 循环设置
 	curIdx := int(atomic.AddUint64(&v.preIdx, uint64(1)) % uint64(len(vols)))
 	l := len(vols) + curIdx
+	// 从 curIdex 开始遍历卷组
 	for i := curIdx; i < l; i++ {
 		idx := i % len(vols)
 		if v.modifySpace(ctx, vols[idx], modeInfo, args) {
+			// volume 可用，返回其 id
 			return vols[idx].Vid, nil
 		}
 	}
@@ -463,21 +472,28 @@ func (v *volumeMgr) getNextVid(ctx context.Context, vols []*volume, modeInfo *mo
 
 func (v *volumeMgr) modifySpace(ctx context.Context, volInfo *volume, modeInfo *modeInfo, args *proxy.AllocVolsArgs) bool {
 	span := trace.SpanFromContextSafe(ctx)
+	// 跳过不能使用的 volume
 	for _, id := range args.Excludes {
 		if volInfo.Vid == id {
 			return false
 		}
 	}
 	volInfo.mu.Lock()
+	// 如果 volume 空闲容量小于对象大小 或 volume 已经删除，跳过
 	if volInfo.Free < args.Fsize || volInfo.deleted {
 		span.Warnf("reselect vid: %v, free: %v, size: %v", volInfo.Vid, volInfo.Free, args.Fsize)
 		volInfo.mu.Unlock()
 		return false
 	}
+
+	// 至此，该 volume 可用
+
+	// 调整容量
 	volInfo.Free -= args.Fsize
 	volInfo.Used += args.Fsize
 	span.Debugf("selectVid: %v, this vid allocated Size: %v, freeSize: %v, reserve size: %v",
 		volInfo.Vid, volInfo.Used, volInfo.Free, v.VolumeReserveSize)
+	// 如果 volume 空闲容量小于需要预留的容量，即这个 volume 写满了，标记为删除
 	deleteFlag := false
 	if volInfo.Free < uint64(v.VolumeReserveSize) {
 		span.Infof("volume is full, remove vid:%v", volInfo.Vid)
@@ -493,6 +509,7 @@ func (v *volumeMgr) modifySpace(ctx context.Context, volInfo *volume, modeInfo *
 
 func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (proto.Vid, error) {
 	span := trace.SpanFromContextSafe(ctx)
+	// 检查 ec 类型
 	info := v.modeInfos[args.CodeMode]
 	if info == nil {
 		return 0, errcode.ErrNoCodemodeVolume
@@ -503,6 +520,7 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 		return 0, err
 	}
 	span.Debugf("codeMode: %v, available volumes: %v", args.CodeMode, vols)
+	// 在这一组 volume 中根据对象大小选择一个可用的
 	vid, err := v.getNextVid(ctx, vols, info, args)
 	if err != nil {
 		span.Errorf("get next vid failed, err: %v", err)
@@ -514,6 +532,7 @@ func (v *volumeMgr) allocVid(ctx context.Context, args *proxy.AllocVolsArgs) (pr
 
 func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsArgs) (vols []*volume, err error) {
 	span := trace.SpanFromContextSafe(ctx)
+	// 获取 codemode 对应的信息
 	info := v.modeInfos[args.CodeMode]
 	info.dealDisCards(args.Discards)
 	modeCfg := v.getCodeModeConfig(args.CodeMode)
@@ -526,12 +545,14 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 	}
 	vols = info.getAvailableList(int64(args.Fsize), needSwitch)
 
+	// 没有可用的卷组返回错误
 	if len(vols) == 0 {
 		v.allocNotify(ctx, args.CodeMode, modeCfg.DefaultAllocVolsNum, false)
 		span.Errorf("no available volumes to alloc")
 		return nil, errcode.ErrNoCodemodeVolume
 	}
 
+	// 如果预备卷组个数不够通知分配
 	backupLen := info.backup.Len()
 	if backupLen < modeCfg.DefaultAllocVolsNum {
 		v.allocNotify(ctx, args.CodeMode, modeCfg.DefaultAllocVolsNum-backupLen, true)
@@ -540,6 +561,7 @@ func (v *volumeMgr) getAvailableVols(ctx context.Context, args *proxy.AllocVolsA
 	span.Debugf("codeMode: %v, info.currentTotalFree: %v, info.totalThreshold: %v", args.CodeMode,
 		info.current.TotalFree(), info.totalThreshold)
 
+	// 返回得到的卷组
 	return vols, nil
 }
 

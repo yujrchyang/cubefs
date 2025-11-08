@@ -32,6 +32,7 @@ func (s *Service) Alloc(c *rpc.Context) {
 	ctx := c.Request.Context()
 	span := trace.SpanFromContextSafe(ctx)
 
+	// 检查参数的有效性
 	if args.BidCount == 0 || args.Fsize == 0 {
 		c.RespondError(errcode.ErrIllegalArguments)
 		return
