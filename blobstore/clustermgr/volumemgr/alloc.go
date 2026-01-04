@@ -47,13 +47,14 @@ type idleItem struct {
 }
 
 type idleVolumes struct {
-	m                 map[proto.Vid]idleItem
-	allocatableShards []*list.List
-	notAllocatable    *list.List
-	shardNum          int
+	m                 map[proto.Vid]idleItem // 根据 vid 管理的空闲 volume map
+	allocatableShards []*list.List           // shardNum 个链表
+	notAllocatable    *list.List             // 不可分配的 volume 链表
+	shardNum          int                    // 用来分组管理空闲 volume 的 shard，不是 EC 切片的 shard
 	sync.RWMutex
 }
 
+// 返回指定 shard 的所有空闲 volume
 func (i *idleVolumes) getOneShardIdles(shardId int) []*volume {
 	i.RLock()
 	shardId = shardId % i.shardNum
@@ -245,18 +246,31 @@ func (a *volumeAllocator) Insert(v *volume, mode codemode.CodeMode) {
 // 2. when EnableDiskLoad=true, if do not hash enough volumes to alloc ,
 //  1. first add disk's load and retry, each time add one until disk's load equal to diskLoadThreshold will set EnableDiskLoad=false
 //  2. second minus volume score and retry , each time minus one until volume's score equal to scoreThreshold
+//
+// 挑选可以分配使用的 volume
+//  1. 如果不考虑磁盘负载，则只考虑 volume 的健康程度，优先返回更健康的 volume
+//  2. 如果考虑磁盘负载，当没有足够的 volume 用来分配时：
+//     a. 首先增加磁盘负载并重试，每次增加 1，直到磁盘负载达到 diskLoadThreshold 为止，此时 EnableDiskLoad 将被设置为 false
+//     b. 其次减去 volume 得分并重试，每次减去 1，直到 volume 得分等于 scoreThreshold 阈值
 func (a *volumeAllocator) PreAlloc(ctx context.Context, mode codemode.CodeMode, count int) ([]proto.Vid, int) {
 	span := trace.SpanFromContextSafe(ctx)
+	// 先获取对应模式的所有空闲 volume
 	idleVolumes := a.idles[mode]
+	// 如果为空（即当下没有空闲的 volume）直接返回
 	if idleVolumes == nil {
 		return nil, 0
 	}
+	// shardNum - 在配置文件中指定，如果不指定则使用默认值 16
 	shardIdx := rand.Intn(idleVolumes.shardNum)
 	startIdx := shardIdx
 	isLastShard := false
 
+	// 一个 volume 可写的 chunk 个数一定要大于等于 PutQuorum
 	allocatableScoreThreshold := a.codeModes[mode].tactic.PutQuorum - a.getShardNum(mode)
+	// 检查是否要考虑磁盘负载，默认不考虑
 	isEnableDiskLoad := a.isEnableDiskLoad()
+	// 健康程度的得分阈值，初始值为 0
+	// 如果后续分配不出来会一次递减，直至等于 allocatableScoreThreshold
 	scoreThreshold := healthiestScore
 	// diskLoadThreshold start half of allocatableDiskLoadThreshold,avoid loop too much times
 	diskLoadThreshold := a.allocatableDiskLoadThreshold / 2
@@ -266,7 +280,9 @@ func (a *volumeAllocator) PreAlloc(ctx context.Context, mode codemode.CodeMode, 
 	var assignable []*volume
 
 GetOneShardAgain:
+	// 先获取 shardIdx 对应的空闲 shard 链表
 	allIdles := idleVolumes.getOneShardIdles(shardIdx)
+	// 检查是否遍历完了所有 shard
 	if (shardIdx+1)%idleVolumes.shardNum == startIdx {
 		isLastShard = true
 		// if last shard has none volume, will put assignable to allIdles, for adjust disk threshold
@@ -281,29 +297,48 @@ RETRY:
 	now := time.Now()
 	for idx, volume := range allIdles {
 		volume.lock.RLock()
+		// 如果满足以下条件则插入到 optionalVids 中
+		// 1. volume 是空闲状态
+		// 2. volume 的空闲容量大于 allocatableSize
+		// 3. volume 的健康状态大于等于 scoreThreshold
+		// 4. 在需要考虑磁盘负载的情况下磁盘负载不超过 diskLoadThreshold
+		// 如果不满足以上条件但满足以下条件，则插入到 notAllocatable 链表中
+		// 1. volume 的空闲容量小于 allocatableSize 或 volume 的健康状态小于 scoreThreshold
+		// 2. volume 是空闲状态
+		// 其他情况放入 assignable 中备用
 		if volume.canAlloc(a.allocatableSize, scoreThreshold) && (!isEnableDiskLoad || !a.isOverload(volume.vUnits, diskLoadThreshold)) {
 			optionalVids = append(optionalVids, volume.vid)
 			// only insufficient free size or unhealthy volume move to temporary head,
 			// ignore over diskLoad volume
 		} else if !volume.canAlloc(a.allocatableSize, allocatableScoreThreshold) && volume.canInsert() {
+			// 空闲容量不够或者健康分低的则加入到不能分配的链表中
 			idleVolumes.addNotAllocatable(volume)
 		} else {
+			// 其余条件的加入到 assignable 中
 			assignable = append(assignable, volume)
 		}
 		volume.lock.RUnlock()
 
+		// 如果选到了足够的 volume 则跳出循环
 		if len(optionalVids) >= a.allocFactor*count {
 			break
 		}
 
 		// go to the end, first retry with high disk load volume
 		// second  lower health score volume
+		// 如果不是最后一组 volume 则通过下面的 goto GetOneShardAgain 尝试下一组
+		// 如果已经是最后一组 shard 的最后一个 volume 了
 		if isLastShard && idx == len(allIdles)-1 {
 			span.Infof("assignable volume length is %d", len(assignable))
+			// assignable 为 0 表示没有可以尝试的 volume 了，直接返回
 			if len(assignable) == 0 {
 				span.Warnf("has no assignable volume,enableDiskLoad:%v,diskLoadThreshold:%d", isEnableDiskLoad, diskLoadThreshold)
 				break
 			}
+			// 1. 如果开启了磁盘负载选项并且小于阈值，那么逐步调大允许的范围
+			// 2. 如果已经超过阈值，则直接关闭磁盘负载选项，不检查这一项
+			// 3. 如果磁盘负载也关闭了，那么逐步减小得分阈值
+			// 4. 如果得分的阈值已经小于可分配的阈值了，则使用 assignable 最最后一次尝试
 			if isEnableDiskLoad && diskLoadThreshold < a.allocatableDiskLoadThreshold {
 				// When diskLoad exceeds the threshold, retry 3 times at most
 				diskLoadThreshold += int(math.Ceil(float64(a.allocatableDiskLoadThreshold) / 6.0))
@@ -317,6 +352,7 @@ RETRY:
 			goto RETRY
 		}
 	}
+	// 如果本批次的 volume 没有选够则递增 shard 查看下一组
 	if len(optionalVids) < a.allocFactor*count {
 		shardIdx = (shardIdx + 1) % idleVolumes.shardNum
 		if startIdx != shardIdx {
@@ -325,6 +361,7 @@ RETRY:
 	}
 	span.Infof("optional vids length is %d, vids is %v", len(optionalVids), optionalVids)
 
+	// 根据健康状态排序
 	optionalVids = a.sortVidByHealthAndDiskLoad(mode, optionalVids)
 	ret := idleVolumes.allocFromOptions(optionalVids, count)
 	span.Debugf("preAlloc volume cost time:%v", time.Since(now))

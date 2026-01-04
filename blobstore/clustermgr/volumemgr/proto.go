@@ -125,6 +125,10 @@ func (vol *volume) canInsert() bool {
 	return vol.volInfoBase.Status == proto.VolumeStatusIdle
 }
 
+// 满足以下几个条件的 volume 才可以分配
+// 1. 状态是空闲状态
+// 2. 空闲容量要大于允许分配的容量配置
+// 3. 健康值的分要超过允许的最小值
 func (vol *volume) canAlloc(allocatableSize uint64, allocatableScoreThreshold int) bool {
 	if vol.canInsert() && vol.volInfoBase.Free > allocatableSize && vol.volInfoBase.HealthScore >= allocatableScoreThreshold {
 		return true

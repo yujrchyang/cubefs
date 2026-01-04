@@ -285,6 +285,7 @@ func (v *VolumeMgr) PreRetainVolume(ctx context.Context, tokens []string, host s
 }
 
 func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, count int, host string) (ret *cm.AllocatedVolumeInfos, err error) {
+	// 检查 EC 模式是否有效
 	if _, ok := v.codeMode[mode]; !ok {
 		return nil, ErrInvalidCodeMode
 	}
@@ -295,6 +296,7 @@ func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, cou
 	v.pendingEntries.Store(pendingKey, nil)
 	defer v.pendingEntries.Delete(pendingKey)
 
+	// 预分配，尝试从缓存的已经分配好的 volume 中挑选可用的
 	preAllocVids, diskLoadThreshold := v.allocator.PreAlloc(ctx, mode, count)
 	span.Debugf("preAlloc vids is %v,now disk load is %d", preAllocVids, diskLoadThreshold)
 	defer func() {
@@ -320,11 +322,13 @@ func (v *VolumeMgr) AllocVolume(ctx context.Context, mode codemode.CodeMode, cou
 			v.reportVolAllocOverDiskLoad(float64(diskLoadThreshold))
 		}
 	}()
+	// 如果一个都没分配出来，在 defer 中要发送创建 volume 的消息
 	if len(preAllocVids) == 0 {
 		isAllocSucc = false
 		return nil, apierrors.ErrNoAvailableVolume
 	}
 
+	// 分配了至少一个，也可以先返回给申请方
 	allocArgs := &AllocVolumeCtx{
 		Vids:               preAllocVids,
 		Host:               host,
