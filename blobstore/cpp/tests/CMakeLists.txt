@@ -41,6 +41,18 @@ if (benchmark_FOUND)
             benchmark::benchmark
             benchmark::benchmark_main
     )
+
+    add_executable(store_allocator_bench store_allocator_bench.cc)
+    target_link_libraries(store_allocator_bench
+        PRIVATE
+            $<TARGET_OBJECTS:COMMON_OBJS>
+            $<TARGET_OBJECTS:BLOBNODE_OBJS>
+            protobuf::libprotobuf
+            Seastar::seastar
+            isal
+            benchmark::benchmark
+            benchmark::benchmark_main
+    )
 endif()
 
 add_executable(net_server_router_test net_server_router_test.cc mock_stream.h)
@@ -83,3 +95,16 @@ target_link_libraries(test_journal
 )
 target_compile_definitions(test_journal PRIVATE SEASTAR_TESTING_MAIN)
 add_test(NAME StoreJournalTest COMMAND test_journal -- -c 1)
+
+add_executable(test_store_allocator store_allocator_test.cc)
+target_link_libraries(test_store_allocator
+        $<TARGET_OBJECTS:COMMON_OBJS>
+        $<TARGET_OBJECTS:BLOBNODE_OBJS>
+        protobuf::libprotobuf
+        Seastar::seastar
+        isal
+        Seastar::seastar_testing
+        Boost::unit_test_framework
+)
+target_compile_definitions(test_store_allocator PRIVATE SEASTAR_TESTING_MAIN)
+add_test(NAME StoreAllocatorTest COMMAND test_store_allocator -- -c 1)
