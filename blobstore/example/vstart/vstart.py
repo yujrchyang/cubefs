@@ -339,7 +339,7 @@ class ServiceBlobnode(ServiceBase):
             disk_path.mkdir(parents=True, exist_ok=True)
 
     def _setup_service_name(self) -> None:
-        self.name = "blobnode"
+        self.name = "blobnode.json"
 
 class ServiceProxy(ServiceBase):
     def _setup_service(self) -> None:
@@ -358,7 +358,7 @@ class ServiceProxy(ServiceBase):
             time.sleep(1)
 
     def _setup_service_name(self) -> None:
-        self.name = "proxy"
+        self.name = "proxy.json"
 
 class ServiceScheduler(ServiceBase):
     def _setup_service(self) -> None:
@@ -378,7 +378,7 @@ class ServiceScheduler(ServiceBase):
             time.sleep(1)
 
     def _setup_service_name(self) -> None:
-        self.name = "scheduler"
+        self.name = "scheduler.json"
 
 class ServiceShardnode(ServiceBase):
     def _setup_service(self) -> None:
@@ -405,7 +405,7 @@ class ServiceShardnode(ServiceBase):
             Path(disk_path).mkdir(parents=True, exist_ok=True)
 
     def _setup_service_name(self) -> None:
-        self.name = "shardnode"
+        self.name = "shardnode.json"
 
 class VstartManager:
     def __init__(self):
@@ -422,15 +422,61 @@ class VstartManager:
             ServiceScheduler,
             ServiceShardnode,
         ]
+        self.service_name_to_class = {
+            (cls.__name__[7:] if cls.__name__.startswith("Service") else cls.__name__).lower(): cls
+            for cls in self.service_classes
+        }
 
     def _parse_args(self) -> argparse.Namespace:
         parser = argparse.ArgumentParser(description='Entrypoint for blobstore, used to start all services.')
         parser.add_argument('--rmdir', action="store_true", help='Remove all relative directories.')
         parser.add_argument('--start-services', action="store_true", help='Start all services.')
         parser.add_argument('--stop-services', action="store_true", help='Stop all services.')
+        parser.add_argument('--restart-service', type=str, metavar='SERVICE_NAME',
+                            help='Restart a specific service by name(e.g., consul, kafka, clustermgr1).')
+        parser.add_argument('--start-service', type=str, metavar='SERVICE_NAME',
+                            help='Start a specific service by name(e.g., consul, kafka, clustermgr1).')
+        parser.add_argument('--stop-service', type=str, metavar='SERVICE_NAME',
+                            help='Stop a specific service by name(e.g., consul, kafka, clustermgr1).')
         return parser.parse_args()
 
     def run(self) -> None:
+        if self.args.restart_service:
+            service_name = self.args.restart_service.lower()
+            if service_name not in self.service_name_to_class:
+                available = ', '.join(self.service_name_to_class.keys())
+                print(f"Error: unknown service '{service_name}'. Available services: {available}")
+                return
+            service_class = self.service_name_to_class[service_name]
+            print(f"restarting service: {service_name}")
+            instance = service_class(self.dir_manager)
+            instance.stop_service()
+            time.sleep(1)
+            instance.run_service()
+            return
+
+        if self.args.start_service:
+            service_name = self.args.start_service.lower()
+            if service_name not in self.service_name_to_class:
+                available = ', '.join(self.service_name_to_class.keys())
+                print(f"Error: unknown service '{service_name}'. Available services: {available}")
+                return
+            service_class = self.service_name_to_class[service_name]
+            print(f"starting service: {service_name}")
+            service_class(self.dir_manager).run_service()
+            return
+
+        if self.args.stop_service:
+            service_name = self.args.stop_service.lower()
+            if service_name not in self.service_name_to_class:
+                available = ', '.join(self.service_name_to_class.keys())
+                print(f"Error: unknown service '{service_name}'. Available services: {available}")
+                return
+            service_class = self.service_name_to_class[service_name]
+            print(f"stopping service: {service_name}")
+            service_class(self.dir_manager).stop_service()
+            return
+
         if self.args.stop_services:
             for service in self.service_classes:
                 service(self.dir_manager).stop_service()
