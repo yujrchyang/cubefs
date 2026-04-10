@@ -63,9 +63,11 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 		c.RespondError(bloberr.ErrOutOfLimit)
 		return
 	}
+	// 注册完成后释放，防止重复注册
 	defer s.DiskLimitRegister.Release(probePath)
 
 	// Verify that the directory path exists
+	// 检查路径是否存在
 	fileExists, err := base.IsFileExists(probePath)
 	if err != nil || !fileExists {
 		span.Errorf("probePath(%s) is not exist, err:%v", probePath, err)
@@ -74,6 +76,7 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	}
 
 	// Must be empty
+	// 目录必须是空（跳过了 lost+found）
 	empty, err := base.IsEmptyDisk(probePath)
 	if err != nil || !empty {
 		span.Errorf("probePath(%s) is not empty. err:%v", probePath, err)
@@ -135,6 +138,7 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	}
 
 	// The corresponding configuration file must exist
+	// 检查路径是否在配置文件中，如果不在服务一重启将丢失
 	foundIdx := -1
 	for idx, conf := range s.Conf.Disks {
 		path, err := filepath.Abs(conf.Path)
@@ -154,10 +158,12 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	}
 
 	// fix init config
+	// 根据配置文件初始化磁盘配置
 	diskConf := s.Conf.Disks[foundIdx]
 	s.fixDiskConf(&diskConf)
 
 	// new disk storage
+	// 创建新的磁盘存储句柄
 	ds, err := disk.NewDiskStorage(ctx, diskConf)
 	if err != nil {
 		span.Errorf("Failed Open DiskStorage. conf:%v, err:%v", diskConf, err)
@@ -166,6 +172,7 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	}
 
 	// add disk to cluster mgr
+	// 提取磁盘信息上报到 clustermgr
 	diskInfo := ds.DiskInfo()
 	err = s.ClusterMgrClient.AddDisk(ctx, &diskInfo)
 	if err != nil {
@@ -179,10 +186,12 @@ func (s *Service) DiskProbe(c *rpc.Context) {
 	s.Disks[ds.DiskID] = ds
 	s.lock.Unlock()
 
+	// 将磁盘信息导出到 blobnode 服务的 Prometheus
 	s.reportOnlineDisk(&diskConf.HostInfo, diskInfo.Path)
 	span.Infof("probe path<%s> diskId:%d success.", probePath, ds.DiskID)
 
 	// find old bad disk, by host+path disk, clean it
+	// 清理的是 blobnode 的 Prometheus 数据
 	if err = s.cleanOldDiskInspectMetric(ctx, ds); err != nil {
 		span.Warnf("fail to cleanOldDiskInspectMetric, newID=%d, path=%s, err=%+v", ds.ID(), ds.DataPath, err)
 	}

@@ -57,6 +57,8 @@ var (
 	}
 )
 
+// DiskStorage 实现了 core.DiskAPI 的所有接口，但是有些需要进行重新（如加日志）
+// 因此使用 DiskStorageWrapper 再封装一层，这样既能实现自己的需求，又不需要全部实现
 type DiskStorageWrapper struct {
 	*DiskStorage
 }
@@ -241,12 +243,13 @@ func (dsw *DiskStorageWrapper) RestoreChunkStorage(ctx context.Context) (err err
 }
 
 type DiskStorage struct {
+	// 系统内磁盘 ID
 	DiskID proto.DiskID
 	nodeID proto.NodeID
 
 	Lock       sync.RWMutex
-	SuperBlock *SuperBlock
-	Chunks     map[proto.Vuid]core.ChunkAPI
+	SuperBlock *SuperBlock                  // 超块信息，基于 rocksdb
+	Chunks     map[proto.Vuid]core.ChunkAPI // 数据文件抽象，基于 volume+shard_idx 管理
 
 	// conf
 	Conf     *core.Config
@@ -258,9 +261,10 @@ type DiskStorage struct {
 	ChunkLimitPerKey limit.Limiter
 
 	// stats
-	stats atomic.Value // *core.DiskStats
+	stats atomic.Value // *core.DiskStats（容量相关内容）
 
 	// DataQos (include io visualization function)
+	// 磁盘级 Qos（包含 IO 可视化功能）
 	dataQos *qos.QosMgr
 
 	// status
