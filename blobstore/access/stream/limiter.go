@@ -154,8 +154,12 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 }
 
 type limiter struct {
-	config     LimitConfig
-	limiters   map[string]limit.Limiter
+	config LimitConfig
+	// 维度 1：API 级别的并发/RPS 限制
+	// 控制面，使用 Aquire()/Release() 在接口层限制调用并发
+	limiters map[string]limit.Limiter
+	// 维度 2：读写带宽 BPS 限制 (基于 golang.org/x/time/rate)
+	// 数据面，使用 Reader()/Writer()，包装 io.Reader/io.Writer 不改变 IO 逻辑
 	rateReader *rate.Limiter
 	rateWriter *rate.Limiter
 }
